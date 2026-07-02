@@ -1,0 +1,43 @@
+:root {
+  --pcx-bg: #f6f7f9;
+  --pcx-border: #d8dee8;
+  --pcx-ink: #172033;
+  --pcx-muted: #687386;
+  --pcx-accent: #0f766e;
+}
+
+body {
+  background: var(--pcx-bg);
+  color: var(--pcx-ink);
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.navbar {
+  border-bottom: 1px solid var(--pcx-border);
+}
+
+.metric-card {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+}
+
+.metric-label {
+  color: var(--pcx-muted);
+  font-size: 0.875rem;
+}
+
+.metric-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.status-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--pcx-accent);
+  display: inline-block;
+}
