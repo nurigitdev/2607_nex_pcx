@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "NeX_PCX pre-CX RAG experiment bench"
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.16,<2.0",
     "fastapi>=0.116,<1.0",
     "jinja2>=3.1,<4.0",
     "psycopg[binary]>=3.2,<4.0",

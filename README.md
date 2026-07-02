@@ -33,3 +33,16 @@ bash scripts/check_pgvector.sh
 
 The integration tests create `pgvector` extension in the test database and verify both
 `vector` and `halfvec(2560)` support.
+
+## Migrations
+
+Alembic migrations read the database URL from `NEX_PCX_DATABASE_URL`.
+
+```bash
+export NEX_PCX_DATABASE_URL="postgresql://USER:PASSWORD@127.0.0.1:5432/nex_pcx_dev"
+bash scripts/migrate.sh upgrade head
+bash scripts/migrate.sh current
+```
+
+The initial migration enables the PostgreSQL `vector` extension. Its downgrade is a no-op
+because the extension may be shared by later objects or pre-existing local database setup.
