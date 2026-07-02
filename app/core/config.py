@@ -11,6 +11,8 @@ class Settings:
     app_name: str = "NeX_PCX"
     app_version: str = "0.1.0"
     environment: str = "local"
+    database_url: str | None = None
+    test_database_url: str | None = None
 
 
 def get_settings() -> Settings:
@@ -18,4 +20,6 @@ def get_settings() -> Settings:
         app_name=getenv("NEX_PCX_APP_NAME", "NeX_PCX"),
         app_version=getenv("NEX_PCX_APP_VERSION", "0.1.0"),
         environment=getenv("NEX_PCX_ENV", "local"),
+        database_url=getenv("NEX_PCX_DATABASE_URL"),
+        test_database_url=getenv("NEX_PCX_TEST_DATABASE_URL"),
     )

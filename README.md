@@ -18,3 +18,18 @@ Slice 001은 Project Skeleton + Quality Gate를 목표로 합니다.
 bash scripts/quality_gate.sh
 ./.venv/bin/uvicorn app.main:app --reload
 ```
+
+## PostgreSQL Test Database
+
+Slice 002 uses a local PostgreSQL test database. Docker is not required.
+
+Set the test database URL before running integration checks:
+
+```bash
+export NEX_PCX_TEST_DATABASE_URL="postgresql://USER:PASSWORD@127.0.0.1:5432/nex_pcx_test"
+bash scripts/check_pgvector.sh
+./.venv/bin/python -m pytest tests/integration
+```
+
+The integration tests create `pgvector` extension in the test database and verify both
+`vector` and `halfvec(2560)` support.

@@ -5,3 +5,6 @@ __pycache__/
 .coverage
 htmlcov/
 *.egg-info/
+.env
+.env.*
+!.env.example
