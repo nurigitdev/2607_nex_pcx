@@ -4,6 +4,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.database import connect, ensure_pgvector_extension
+from app.core.migrations import upgrade
 
 
 @pytest.fixture(scope="session")
@@ -24,3 +25,9 @@ def db_connection(test_database_url: str) -> Generator:
 def pgvector_connection(db_connection):
     ensure_pgvector_extension(db_connection)
     return db_connection
+
+
+@pytest.fixture()
+def migrated_database_url(test_database_url: str) -> str:
+    upgrade("head", test_database_url)
+    return test_database_url

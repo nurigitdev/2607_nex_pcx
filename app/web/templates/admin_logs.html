@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">Application Logs</h1>
+    <p class="text-secondary mb-0">Recent application errors, failures, and operational events</p>
+  </div>
+  <form class="d-flex align-items-center gap-2" method="get">
+    <label class="form-label mb-0 text-secondary" for="level">Level</label>
+    <select class="form-select form-select-sm" id="level" name="level" onchange="this.form.submit()">
+      <option value="" {% if not selected_level %}selected{% endif %}>All</option>
+      {% for level in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] %}
+      <option value="{{ level }}" {% if selected_level == level %}selected{% endif %}>{{ level }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">Time</th>
+          <th scope="col">Level</th>
+          <th scope="col">Event</th>
+          <th scope="col">Source</th>
+          <th scope="col">Message</th>
+          <th scope="col">Path</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="text-nowrap">{{ log.occurred_at }}</td>
+          <td><span class="badge text-bg-light border">{{ log.level }}</span></td>
+          <td>{{ log.event_type }}</td>
+          <td>{{ log.source or "" }}</td>
+          <td>{{ log.message }}</td>
+          <td>{{ log.request_path or "" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="6">No logs found</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

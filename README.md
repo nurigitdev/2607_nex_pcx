@@ -46,3 +46,18 @@ bash scripts/migrate.sh current
 
 The initial migration enables the PostgreSQL `vector` extension. Its downgrade is a no-op
 because the extension may be shared by later objects or pre-existing local database setup.
+
+## Admin Logs
+
+Application logs are stored in `app_logs` and controlled by `app_log_settings`.
+The default retention setting keeps 7 days of logs:
+
+```text
+logging_enabled=true
+min_log_level=INFO
+log_retention_days=7
+admin_log_page_size=100
+```
+
+The log viewer is available at `/admin/logs` after `NEX_PCX_DATABASE_URL` points to a
+migrated database.

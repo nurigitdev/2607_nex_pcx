@@ -16,7 +16,13 @@
     <div class="app-shell">
       <nav class="navbar bg-white">
         <div class="container-fluid px-4">
-          <span class="navbar-brand mb-0 h1">{{ app_name }}</span>
+          <div class="d-flex align-items-center gap-4">
+            <a class="navbar-brand mb-0 h1" href="/">{{ app_name }}</a>
+            <div class="nav">
+              <a class="nav-link px-2" href="/">Dashboard</a>
+              <a class="nav-link px-2" href="/admin/logs">Logs</a>
+            </div>
+          </div>
           <span class="badge text-bg-light border">v{{ app_version }} / {{ environment }}</span>
         </div>
       </nav>
