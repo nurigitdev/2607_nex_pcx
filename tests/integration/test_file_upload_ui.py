@@ -1,0 +1,125 @@
+from hashlib import sha256
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from app.core.config import Settings
+from app.core.database import connect, fetch_one
+from app.main import create_app
+
+
+def cleanup_checksum(database_url: str, checksum: str) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM files WHERE sha256_checksum = %s", (checksum,))
+
+
+def post_upload_form(client: TestClient, *, file_name: str, content: bytes, mime_type: str):
+    return client.post(
+        "/files/upload",
+        data={
+            "document_group": "ui-slice-007",
+            "security_level": "restricted",
+            "uploaded_by": "ui-test",
+        },
+        files={"file": (file_name, content, mime_type)},
+    )
+
+
+def test_file_upload_ui_stores_file_and_shows_result(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    content = b"# Slice 007\n\nUpload UI test."
+    checksum = sha256(content).hexdigest()
+    app = create_app(
+        Settings(database_url=migrated_database_url, upload_storage_dir=tmp_path),
+    )
+
+    try:
+        with TestClient(app) as client:
+            response = post_upload_form(
+                client,
+                file_name="slice-007.md",
+                content=content,
+                mime_type="text/markdown",
+            )
+
+        db_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT f.file_id, f.sha256_checksum, f.document_group, f.security_level
+            FROM files f
+            WHERE f.sha256_checksum = %s
+            """,
+            (checksum,),
+        )
+
+        assert response.status_code == 200
+        assert "File uploaded and metadata stored." in response.text
+        assert "Stored" in response.text
+        assert "slice-007.md" in response.text
+        assert checksum in response.text
+        assert db_row["document_group"] == "ui-slice-007"
+        assert db_row["security_level"] == "restricted"
+        assert len(list(tmp_path.iterdir())) == 1
+    finally:
+        cleanup_checksum(migrated_database_url, checksum)
+
+
+def test_file_upload_ui_shows_duplicate_result(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    content = b"# Duplicate UI\n\nSame content."
+    checksum = sha256(content).hexdigest()
+    app = create_app(
+        Settings(database_url=migrated_database_url, upload_storage_dir=tmp_path),
+    )
+
+    try:
+        with TestClient(app) as client:
+            created = post_upload_form(
+                client,
+                file_name="first.md",
+                content=content,
+                mime_type="text/markdown",
+            )
+            duplicate = post_upload_form(
+                client,
+                file_name="second.md",
+                content=content,
+                mime_type="text/markdown",
+            )
+
+        file_count = fetch_one(
+            migrated_database_url,
+            "SELECT count(*) AS count FROM files WHERE sha256_checksum = %s",
+            (checksum,),
+        )
+
+        assert created.status_code == 200
+        assert duplicate.status_code == 200
+        assert "Duplicate checksum detected. Existing file metadata was returned." in duplicate.text
+        assert file_count["count"] == 1
+        assert len(list(tmp_path.iterdir())) == 1
+    finally:
+        cleanup_checksum(migrated_database_url, checksum)
+
+
+def test_file_upload_ui_shows_unsupported_extension_error(tmp_path: Path) -> None:
+    app = create_app(
+        Settings(database_url="postgresql://example/db", upload_storage_dir=tmp_path),
+    )
+
+    with TestClient(app) as client:
+        response = post_upload_form(
+            client,
+            file_name="script.exe",
+            content=b"not allowed",
+            mime_type="application/octet-stream",
+        )
+
+    assert response.status_code == 200
+    assert "Unsupported file extension: .exe" in response.text
+    assert not tmp_path.exists() or list(tmp_path.iterdir()) == []

@@ -45,6 +45,11 @@ def test_sanitize_upload_file_name_rejects_empty_name() -> None:
         sanitize_upload_file_name(" ")
 
 
+def test_sanitize_upload_file_name_rejects_missing_name() -> None:
+    with pytest.raises(InvalidUploadFileNameError, match="file name"):
+        sanitize_upload_file_name(None)
+
+
 def test_build_stored_file_name_keeps_supported_extension() -> None:
     stored_file_name = build_stored_file_name("Report.PDF")
 
@@ -124,4 +129,21 @@ def test_store_upload_removes_new_file_when_duplicate(monkeypatch, tmp_path) -> 
     )
 
     assert result.duplicate
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_store_upload_removes_new_file_when_metadata_write_fails(monkeypatch, tmp_path) -> None:
+    def fake_create_file_metadata(database_url, metadata):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr("app.core.file_uploads.create_file_metadata", fake_create_file_metadata)
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        store_upload(
+            database_url="postgresql://example/db",
+            upload_stream=BytesIO(b"content"),
+            original_file_name="example.md",
+            storage_dir=tmp_path,
+        )
+
     assert list(tmp_path.iterdir()) == []

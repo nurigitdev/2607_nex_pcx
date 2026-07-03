@@ -5,4 +5,5 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "Dashboard" in response.text
     assert "RAG experiment bench skeleton" in response.text
     assert "Documents" in response.text
+    assert "Upload" in response.text
     assert "Logs" in response.text

@@ -41,3 +41,13 @@ body {
   background: var(--pcx-accent);
   display: inline-block;
 }
+
+.status-dot-muted {
+  background: var(--pcx-muted);
+}
+
+.metadata-table th {
+  color: var(--pcx-muted);
+  font-weight: 600;
+  width: 10rem;
+}

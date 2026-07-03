@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
+from app.core.file_uploads import InvalidUploadFileNameError
 from app.main import create_app
 
 
@@ -132,4 +133,29 @@ def test_upload_file_api_rejects_unsupported_extension(tmp_path: Path) -> None:
 
     assert response.status_code == 415
     assert "Unsupported file extension" in response.json()["detail"]
+    assert not tmp_path.exists() or list(tmp_path.iterdir()) == []
+
+
+def test_upload_file_api_returns_bad_request_for_invalid_upload(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_store_upload(**kwargs):
+        raise InvalidUploadFileNameError("file name is required")
+
+    monkeypatch.setattr("app.main.store_upload", fake_store_upload)
+    app = create_app(
+        Settings(database_url="postgresql://example/db", upload_storage_dir=tmp_path),
+    )
+
+    with TestClient(app) as client:
+        response = post_file(
+            client,
+            file_name="example.md",
+            content=b"invalid upload",
+            mime_type="text/markdown",
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "file name is required"
     assert not tmp_path.exists() or list(tmp_path.iterdir()) == []
