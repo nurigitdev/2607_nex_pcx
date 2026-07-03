@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260703_0002"
+HEAD_REVISION = "20260703_0003"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -37,6 +37,12 @@ def test_alembic_downgrade_base_clears_revision(test_database_url: str) -> None:
 
         assert revision_count["revision_count"] == 0
         assert extension["extversion"]
+        assert (
+            fetch_one(test_database_url, "SELECT to_regclass('public.files') AS table_name")[
+                "table_name"
+            ]
+            is None
+        )
     finally:
         upgrade("head", test_database_url)
 

@@ -61,3 +61,15 @@ admin_log_page_size=100
 
 The log viewer is available at `/admin/logs` after `NEX_PCX_DATABASE_URL` points to a
 migrated database.
+
+## Core Metadata Schema
+
+The core metadata migration creates the first MVP data tables:
+
+- `files`
+- `documents`
+- `chunk_policies`
+- `embedding_profiles`
+
+It also seeds the default `heading_512_64` chunk policy and the four initial embedding
+profiles used by the experiment bench.
