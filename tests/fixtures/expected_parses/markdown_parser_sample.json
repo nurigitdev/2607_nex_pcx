@@ -1,0 +1,63 @@
+{
+  "parser_name": "markdown",
+  "parser_version": "0.1.0",
+  "line_count": 19,
+  "blocks": [
+    {
+      "block_type": "heading",
+      "text": "Product Guide",
+      "heading_path": ["Product Guide"],
+      "start_line": 1,
+      "end_line": 1,
+      "metadata": {"level": 1}
+    },
+    {
+      "block_type": "paragraph",
+      "text": "Intro paragraph line one continues here.",
+      "heading_path": ["Product Guide"],
+      "start_line": 3,
+      "end_line": 4,
+      "metadata": {}
+    },
+    {
+      "block_type": "heading",
+      "text": "Setup",
+      "heading_path": ["Product Guide", "Setup"],
+      "start_line": 6,
+      "end_line": 6,
+      "metadata": {"level": 2}
+    },
+    {
+      "block_type": "code_block",
+      "text": "print(\"hello\")",
+      "heading_path": ["Product Guide", "Setup"],
+      "start_line": 8,
+      "end_line": 10,
+      "metadata": {"language": "python"}
+    },
+    {
+      "block_type": "table",
+      "text": "| Name | Value |\n| --- | --- |\n| alpha | 1 |\n| beta | 2 |",
+      "heading_path": ["Product Guide", "Setup"],
+      "start_line": 12,
+      "end_line": 15,
+      "metadata": {"columns": ["Name", "Value"], "row_count": 2}
+    },
+    {
+      "block_type": "heading",
+      "text": "Notes",
+      "heading_path": ["Product Guide", "Setup", "Notes"],
+      "start_line": 17,
+      "end_line": 17,
+      "metadata": {"level": 3}
+    },
+    {
+      "block_type": "paragraph",
+      "text": "Final note.",
+      "heading_path": ["Product Guide", "Setup", "Notes"],
+      "start_line": 19,
+      "end_line": 19,
+      "metadata": {}
+    }
+  ]
+}

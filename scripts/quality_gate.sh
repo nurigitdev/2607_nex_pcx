@@ -7,7 +7,7 @@ COVERAGE_BRANCH_FAIL_UNDER="${COVERAGE_BRANCH_FAIL_UNDER:-85}"
 
 "${PYTHON_BIN}" -m ruff check app tests
 "${PYTHON_BIN}" -m black --check app tests
-"${PYTHON_BIN}" -m pytest tests/unit tests/smoke tests/integration
+"${PYTHON_BIN}" -m pytest tests/unit tests/smoke tests/integration tests/regression
 "${PYTHON_BIN}" -m pytest --cov=app --cov-branch --cov-report=term-missing
 "${PYTHON_BIN}" -m coverage json -o "${COVERAGE_JSON}"
 "${PYTHON_BIN}" -c '

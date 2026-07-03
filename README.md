@@ -86,6 +86,16 @@ curl -F "file=@README.md" \
   http://127.0.0.1:8000/api/files
 ```
 
+## Markdown Parser Foundation
+
+Slice 008 adds the first parser foundation for Phase 3. `MarkdownParser` converts `.md`
+content into structured blocks with heading paths, line ranges, and block metadata. It
+preserves fenced code blocks and GitHub-style pipe tables as single blocks so the next
+chunking slice can keep those structures intact.
+
+Parser regression fixtures live under `tests/fixtures/` and are included in the quality
+gate through `tests/regression`.
+
 ## Core Metadata Schema
 
 The core metadata migration creates the first MVP data tables:
