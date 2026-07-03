@@ -62,6 +62,30 @@ admin_log_page_size=100
 The log viewer is available at `/admin/logs` after `NEX_PCX_DATABASE_URL` points to a
 migrated database.
 
+## File Upload API
+
+Slice 006 adds a local upload pipeline for supported MVP file types:
+
+- `.pdf`
+- `.docx`
+- `.hwpx`
+- `.pptx`
+- `.xlsx`
+- `.md`
+
+Uploaded files are stored under `NEX_PCX_UPLOAD_STORAGE_DIR` and metadata is persisted to
+`files` and `documents`. The API detects duplicate uploads by SHA-256 checksum and returns
+the existing metadata instead of creating another database row.
+
+```bash
+export NEX_PCX_DATABASE_URL="postgresql://USER:PASSWORD@127.0.0.1:5432/nex_pcx_dev"
+export NEX_PCX_UPLOAD_STORAGE_DIR="storage/uploads"
+curl -F "file=@README.md" \
+  -F "document_group=default" \
+  -F "security_level=internal" \
+  http://127.0.0.1:8000/api/files
+```
+
 ## Core Metadata Schema
 
 The core metadata migration creates the first MVP data tables:

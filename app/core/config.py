@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from os import getenv
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,7 @@ class Settings:
     environment: str = "local"
     database_url: str | None = None
     test_database_url: str | None = None
+    upload_storage_dir: Path = Path("storage/uploads")
 
 
 def get_settings() -> Settings:
@@ -22,4 +24,5 @@ def get_settings() -> Settings:
         environment=getenv("NEX_PCX_ENV", "local"),
         database_url=getenv("NEX_PCX_DATABASE_URL"),
         test_database_url=getenv("NEX_PCX_TEST_DATABASE_URL"),
+        upload_storage_dir=Path(getenv("NEX_PCX_UPLOAD_STORAGE_DIR", "storage/uploads")),
     )
