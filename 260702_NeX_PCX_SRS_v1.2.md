@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.1**
+**Software Requirements Specification v1.2**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.1  
+문서 상태: Draft v1.2  
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,18 +14,19 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.1 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.2 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.1 |
+| 문서 버전 | v1.2 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
 | 0.1 | 2026-07-02 | NeX_PCX 프로젝트명 반영 전 초안 분석 |
 | 1.0 | 2026-07-02 | Embedding 4개 profile, FastAPI+Bootstrap, 파일 metadata, 품질관리/테스트 요구사항 반영 |
 | 1.1 | 2026-07-02 | pgvector 2560차원 저장 방식, 핵심 DB 스키마, embedding job lifecycle, chunk policy, 검색 재현성 metadata 보강 |
+| 1.2 | 2026-07-05 | 계정, 조직 계층, 문서 접근 범위, permission-aware search, 권한 기반 평가 요구사항 보강 |
 
 # 목차
 
@@ -86,6 +87,7 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | Embedding | KURE-v1 1024, bge-m3 1024, Qwen3 1000, Qwen3 2560 profile 생성 및 저장 |
 | 검색 | 동일 query에 대한 4개 profile 병렬 검색 결과 표시 |
 | 평가 | 검색 결과 정답/부분정답/오답 피드백 저장, 검색 로그/latency 저장 |
+| 계정/권한 | 테스트용 사용자, 조직 계층, 역할, 문서 접근 범위, query 검색 범위 metadata 저장 |
 | 품질관리 | pytest, Playwright, pytest-cov, 독립 test DB, quality gate 절차 적용 |
 
 ## 1.4 범위 제외
@@ -95,7 +97,7 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | LLM 답변 생성 | MVP에서는 검색 품질 검증이 우선이다. LLM 답변 생성은 Phase 6 이후 확장한다. |
 | 완전한 GraphRAG | 초기에는 heading/section/chunk metadata를 축적하고, 이후 graph-assisted retrieval로 확장한다. |
 | 고도화된 이미지 embedding | 1차에서는 그림 원본/페이지/주변 텍스트/캡션 metadata 저장 수준으로 제한한다. |
-| 조직 권한관리/SSO | 내부 PoC 단계에서는 최소 인증 또는 개발자 접근 환경으로 제한한다. |
+| 운영용 SSO/HR 연동 | NeX_PCX에서는 테스트용 계정/조직 seed와 권한 시뮬레이션으로 제한한다. 운영 SSO/HR 연동은 NeX-CX 본 개발에서 확정한다. |
 | 대규모 분산 검색 | 초기에는 단일 PostgreSQL + worker 구조로 검증하고, 성능 병목 확인 후 확장한다. |
 
 ## 1.5 용어 및 약어
@@ -112,6 +114,11 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | pgvector | PostgreSQL에서 vector, halfvec type 및 similarity search를 지원하는 확장 |
 | Groundedness | 답변 또는 검색 결과가 실제 문서 근거에 의해 뒷받침되는 정도 |
 | Quality Gate | commit/sync 전에 반드시 통과해야 하는 테스트 및 품질 기준 |
+| Actor | 문서 업로드, 검색, 피드백을 수행하는 사용자 또는 테스트 계정 |
+| Organization Unit | 팀, 그룹, 본부 등 조직 계층을 표현하는 단위 |
+| Document Access Scope | 문서가 검색 대상에 포함될 수 있는 범위. personal, team, org_tree, company 등 |
+| Query Search Scope | 사용자가 query 실행 시 선택하는 검색 범위. mine, team, managed_org, company 등 |
+| Permission Pre-filter | vector search 후보군 생성 전에 actor 권한 조건으로 검색 대상을 제한하는 방식 |
 
 # 2. 전체 시스템 설명
 
@@ -134,6 +141,10 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Developer | 파서, chunker, embedding, 검색 API 구현 | 업로드, 검색, 로그, 테스트 실행 |
 | Evaluator | 검색 결과 품질 판정 및 피드백 입력 | 검색 비교 화면, 정답/부분정답/오답 체크 |
 | System Admin | DB, worker, 저장소, 모델 실행 환경 관리 | 대시보드, job 상태, 오류 로그 확인 |
+| Test User | 권한 실험용 일반 사용자 | 개인/팀/company 문서 업로드, 제한된 검색 |
+| Team Lead | 팀 단위 권한 실험용 사용자 | 본인 및 팀원 문서 검색, 팀 scope 평가 |
+| Group Lead | 하위 조직 포함 권한 실험용 사용자 | managed_org scope 검색, 그룹 단위 평가 |
+| Permission Admin | 테스트 계정, 조직, 역할 seed 관리 | 권한 fixture 관리, 접근 범위 검증 |
 
 ## 2.3 운영 가정
 
@@ -149,6 +160,12 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 
 - 검색 비교의 공정성을 위해 동일 문서, 동일 parser, 동일 chunk, 동일 query, 동일 top-k 기준으로 4개 profile을 비교한다.
 
+- 권한 실험의 공정성을 위해 동일 query라도 actor, requested_search_scope, effective_permission_filter를 search log에 기록한다.
+
+- 권한 조건은 vector search 이후 결과 제거 방식이 아니라 후보군 생성 단계의 pre-filter로 적용한다.
+
+- NeX_PCX의 권한 기능은 운영 인증 체계가 아니라 NeX-CX 적용성 검증을 위한 permission simulation layer로 구현한다.
+
 # 3. 시스템 아키텍처
 
 ## 3.1 논리 아키텍처
@@ -157,11 +174,13 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 [Bootstrap Web UI]
 ├─ Dashboard
 ├─ File Upload
+├─ Permission Simulation
 └─ Search / Model Compare
 │
 ▼
 [FastAPI Backend]
 ├─ Upload API
+├─ Identity / Permission API
 ├─ Document Parsing Service
 ├─ Chunking Service
 ├─ Embedding Job API
@@ -178,6 +197,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 │
 ▼
 [PostgreSQL + pgvector]
+├─ app_users / org_units / memberships
 ├─ files / documents / chunks
 ├─ embedding profile tables
 ├─ search_logs / feedback
@@ -191,6 +211,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Web UI | Bootstrap 기반 대시보드, 파일 업로드, 검색 비교, 피드백 입력 화면 제공 |
 | FastAPI Backend | REST API 제공, validation, 서비스 호출, DB transaction 처리 |
 | File Storage | 업로드 원본 파일과 추출 산출물 저장 |
+| Identity/Permission Service | 테스트 계정, 조직 계층, 역할, 문서 접근 범위, 검색 scope 계산 |
 | Parser Service | 파일 타입별 텍스트/메타데이터 추출 |
 | Chunking Service | 문서 구조와 정책에 따라 chunk 생성 및 prev/next 연결 |
 | Embedding Workers | profile별 모델 로딩, embedding 생성, 처리 시간/오류 기록 |
@@ -248,6 +269,14 @@ playwright-test: E2E test runner (CI 또는 local gate)
 | FR-018 | Embedding job 상태 관리 | chunk/profile별 pending/running/succeeded/failed 상태, 시도 횟수, 오류 메시지를 저장한다. | MUST |
 | FR-019 | Chunk policy 관리 | chunk size, overlap, split strategy, table/code block 보존 정책을 metadata로 관리한다. | MUST |
 | FR-020 | 검색 재현성 metadata 저장 | 검색 시점의 profile runtime 설정, chunk policy, similarity metric, top-k, query instruction을 로그로 저장한다. | MUST |
+| FR-021 | 테스트 계정 관리 | 권한 실험을 위한 사용자 계정, 표시명, 활성 상태를 관리한다. | MUST |
+| FR-022 | 조직 계층 관리 | 팀, 그룹, 본부 등 계층형 조직 단위와 사용자 소속/역할을 관리한다. | MUST |
+| FR-023 | 문서 소유자 및 접근 범위 저장 | 업로드 문서마다 업로드 사용자, 소유 조직, 접근 범위(personal/team/org_tree/company)를 저장한다. | MUST |
+| FR-024 | 권한 기반 검색 범위 선택 | query 실행 시 actor와 requested_search_scope를 선택하고 effective scope를 산출한다. | MUST |
+| FR-025 | Permission pre-filter 검색 | 권한 조건을 vector search 이후가 아니라 후보군 생성 단계에서 pre-filter로 적용한다. | MUST |
+| FR-026 | 권한별 검색 결과 비교 | 동일 query에 대해 사용자/검색 범위별 결과 차이를 비교하고 평가할 수 있어야 한다. | SHOULD |
+| FR-027 | 권한 metadata 감사 로그 | 업로드, 검색, 피드백 이벤트에 actor와 permission metadata를 남긴다. | MUST |
+| FR-028 | 공통 문서 관리 | 회사 규칙, 업무 규칙, 사규 등 company scope 문서를 별도 구분하여 전사 검색 대상에 포함한다. | MUST |
 
 ## 4.3 대시보드 요구사항
 
@@ -309,11 +338,47 @@ playwright-test: E2E test runner (CI 또는 local gate)
 
 - succeeded job은 해당 profile의 embedding table에 vector 또는 halfvec 저장이 완료된 상태를 의미한다.
 
+## 4.8 계정, 권한 및 검색 범위 요구사항
+
+- NeX_PCX는 운영 인증 시스템을 직접 구현하지 않고, 권한 실험을 위한 테스트 계정과 조직 seed를 제공한다.
+
+- 사용자 계정은 active/inactive 상태를 가지며, 비활성 사용자는 업로드와 검색 actor로 선택할 수 없다.
+
+- 조직은 parent-child 구조를 가져야 하며, 팀장/그룹장 역할은 하위 조직 범위를 계산할 수 있어야 한다.
+
+- 사용자 소속은 하나 이상의 조직 membership으로 표현하며, membership role은 member, team_lead, group_lead, admin 중 하나로 시작한다.
+
+- 문서 업로드 시 uploaded_by_user_id, owner_user_id, owner_org_unit_id, access_scope를 저장한다.
+
+- access_scope 기본값은 personal이며, 지원 값은 personal, team, org_tree, company로 한다.
+
+- personal 문서는 소유자와 managerial chain의 상위 역할자가 검색할 수 있다.
+
+- team 문서는 소유 조직 구성원과 해당 조직의 상위 역할자가 검색할 수 있다.
+
+- org_tree 문서는 소유 조직과 하위 조직 구성원, 그리고 상위 역할자가 검색할 수 있다.
+
+- company 문서는 활성 사용자 전체가 검색할 수 있다.
+
+- 검색 화면/API는 actor_user_id와 requested_search_scope를 받아 effective permission filter를 산출한다.
+
+- requested_search_scope는 mine, team, managed_org, company 중 하나로 시작한다.
+
+- 권한 필터는 chunk 후보군 생성 단계에서 document/file metadata와 join하여 적용한다.
+
+- 검색 로그는 actor_user_id, requested_search_scope, effective_scope, permission_filter_metadata를 저장한다.
+
+- 권한이 다른 actor가 같은 query를 실행하면 별도 검색 실험으로 기록하고, 평가 지표도 actor/scope별로 분리한다.
+
+- 권한 필터로 제외된 문서의 내용, 제목, chunk preview, score는 UI와 API 응답에 노출하지 않는다.
+
 # 5. 데이터 및 저장소 요구사항
 
 ## 5.1 저장소 원칙
 
 - 원본 파일 metadata, 문서 metadata, chunk metadata, embedding profile, 검색 로그, 피드백은 모두 PostgreSQL에 저장한다.
+
+- 사용자, 조직, 역할, 문서 접근 범위, 검색 actor/scope metadata도 PostgreSQL에 저장한다.
 
 - 원본 파일은 파일 시스템 또는 object storage에 저장하고, DB에는 storage_path와 checksum을 저장한다.
 
@@ -327,12 +392,17 @@ playwright-test: E2E test runner (CI 또는 local gate)
 
 - MVP의 기본 검색은 cosine distance를 사용한다. 데이터가 5만 chunk 이하인 초기 실험에서는 exact search를 우선하고, 이후 HNSW 또는 IVFFlat index를 profile별로 추가한다.
 
+- 권한 조건은 documents/files metadata와 join 가능한 정규화된 컬럼으로 저장하고, 검색 후보군 생성 단계에서 pre-filter로 적용한다.
+
 - DB schema 변경 시 migration과 migration regression test를 추가한다.
 
 ## 5.2 핵심 테이블
 
 | 테이블 | 설명 |
 | --- | --- |
+| app_users | 권한 실험용 사용자 계정 |
+| org_units | 팀, 그룹, 본부 등 계층형 조직 단위 |
+| user_org_memberships | 사용자-조직 소속과 역할 |
 | files | 업로드 원본 파일 metadata 및 parsing 상태 |
 | documents | 논리 문서 단위 정보 |
 | chunks | 검색 단위 chunk와 구조 metadata |
@@ -347,7 +417,48 @@ playwright-test: E2E test runner (CI 또는 local gate)
 | search_log_results | 검색 로그별 profile/rank/chunk 결과 |
 | search_result_feedback | 검색 결과별 정답/부분정답/오답 피드백 |
 
-## 5.3 files 테이블 요구사항
+## 5.3 계정/조직/역할 테이블 요구사항
+
+```sql
+CREATE TABLE app_users (
+user_id BIGSERIAL PRIMARY KEY,
+login_id TEXT NOT NULL UNIQUE,
+display_name TEXT NOT NULL,
+email TEXT,
+is_active BOOLEAN DEFAULT true,
+metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now(),
+updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE org_units (
+org_unit_id BIGSERIAL PRIMARY KEY,
+parent_org_unit_id BIGINT REFERENCES org_units(org_unit_id),
+org_unit_name TEXT NOT NULL,
+org_unit_type TEXT NOT NULL
+    CHECK (org_unit_type IN ('company', 'division', 'group', 'team')),
+is_active BOOLEAN DEFAULT true,
+metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now(),
+updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE user_org_memberships (
+membership_id BIGSERIAL PRIMARY KEY,
+user_id BIGINT NOT NULL REFERENCES app_users(user_id) ON DELETE CASCADE,
+org_unit_id BIGINT NOT NULL REFERENCES org_units(org_unit_id) ON DELETE CASCADE,
+role_name TEXT NOT NULL
+    CHECK (role_name IN ('member', 'team_lead', 'group_lead', 'admin')),
+is_primary BOOLEAN DEFAULT false,
+created_at TIMESTAMP DEFAULT now(),
+updated_at TIMESTAMP DEFAULT now(),
+UNIQUE (user_id, org_unit_id, role_name)
+);
+```
+
+초기 seed는 일반 사용자 2명 이상, 팀장 1명 이상, 그룹장 1명 이상, company 공통 문서 소유 조직을 포함해야 한다.
+
+## 5.4 files 테이블 요구사항
 
 ```sql
 CREATE TABLE files (
@@ -362,6 +473,7 @@ storage_path TEXT NOT NULL,
 document_group TEXT DEFAULT 'default',
 security_level TEXT DEFAULT 'internal',
 uploaded_by TEXT,
+uploaded_by_user_id BIGINT REFERENCES app_users(user_id),
 uploaded_at TIMESTAMP DEFAULT now(),
 parser_name TEXT,
 parser_version TEXT,
@@ -377,7 +489,7 @@ updated_at TIMESTAMP DEFAULT now()
 );
 ```
 
-## 5.4 documents/chunks/chunk_policies 테이블 요구사항
+## 5.5 documents/chunks/chunk_policies 테이블 요구사항
 
 ```sql
 CREATE TABLE documents (
@@ -386,8 +498,13 @@ file_id BIGINT NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
 document_title TEXT,
 document_group TEXT DEFAULT 'default',
 security_level TEXT DEFAULT 'internal',
+owner_user_id BIGINT REFERENCES app_users(user_id),
+owner_org_unit_id BIGINT REFERENCES org_units(org_unit_id),
+access_scope TEXT DEFAULT 'personal'
+    CHECK (access_scope IN ('personal', 'team', 'org_tree', 'company')),
 document_status TEXT DEFAULT 'active'
     CHECK (document_status IN ('active', 'archived', 'deleted')),
+permission_metadata JSONB DEFAULT '{}'::jsonb,
 metadata JSONB DEFAULT '{}'::jsonb,
 created_at TIMESTAMP DEFAULT now(),
 updated_at TIMESTAMP DEFAULT now()
@@ -429,13 +546,15 @@ UNIQUE (document_id, content_hash, chunk_policy_name)
 );
 ```
 
+chunks는 별도 owner/access 컬럼을 중복 저장하지 않고 documents의 owner_user_id, owner_org_unit_id, access_scope를 상속한다. 검색 SQL은 chunks → documents → files 순서로 join하여 permission pre-filter를 적용한다.
+
 초기 chunk policy는 다음 값을 기본값으로 한다.
 
 | chunk_policy_name | target_token_size | overlap_token_size | split_strategy | 비고 |
 | --- | --- | --- | --- | --- |
 | heading_512_64 | 512 | 64 | heading-aware | MVP 기본 정책 |
 
-## 5.5 embedding profile 및 job 테이블 요구사항
+## 5.6 embedding profile 및 job 테이블 요구사항
 
 ```sql
 CREATE TABLE embedding_profiles (
@@ -485,7 +604,7 @@ embedding profile 초기 데이터는 다음과 같다.
 | qwen3_4b_1000 | Qwen/Qwen3-Embedding-4B | 1000 | vector | 32768 | 8192 | true | query-side instruction 사용 여부를 profile metadata에 기록 | Qwen 저용량 profile |
 | qwen3_4b_2560 | Qwen/Qwen3-Embedding-4B | 2560 | halfvec | 32768 | 8192 | true | query-side instruction 사용 여부를 profile metadata에 기록 | Qwen 최대 차원 profile |
 
-## 5.6 profile별 embedding table
+## 5.7 profile별 embedding table
 
 ```sql
 CREATE TABLE chunk_embeddings_kure_v1_1024 (
@@ -517,13 +636,17 @@ created_at TIMESTAMP DEFAULT now()
 );
 ```
 
-## 5.7 search log 및 feedback 테이블 요구사항
+## 5.8 search log 및 feedback 테이블 요구사항
 
 ```sql
 CREATE TABLE search_logs (
 search_log_id BIGSERIAL PRIMARY KEY,
 query_text TEXT NOT NULL,
 normalized_query_text TEXT,
+actor_user_id BIGINT REFERENCES app_users(user_id),
+requested_search_scope TEXT,
+effective_search_scope TEXT,
+permission_filter_metadata JSONB DEFAULT '{}'::jsonb,
 document_group TEXT,
 file_type TEXT,
 chunk_policy_name TEXT,
@@ -533,6 +656,7 @@ profiles JSONB NOT NULL,
 query_runtime_metadata JSONB DEFAULT '{}'::jsonb,
 total_elapsed_ms INT,
 created_by TEXT,
+created_by_user_id BIGINT REFERENCES app_users(user_id),
 created_at TIMESTAMP DEFAULT now()
 );
 
@@ -556,11 +680,14 @@ relevance_label TEXT NOT NULL
     CHECK (relevance_label IN ('correct', 'partial', 'wrong', 'duplicate', 'insufficient_context')),
 comment TEXT,
 created_by TEXT,
+created_by_user_id BIGINT REFERENCES app_users(user_id),
 created_at TIMESTAMP DEFAULT now()
 );
 ```
 
-## 5.8 저장용량 산정
+permission_filter_metadata에는 actor의 primary org, managed org subtree, 포함된 access_scope 목록, company 문서 포함 여부, filter SQL/parameter fingerprint를 저장한다.
+
+## 5.9 저장용량 산정
 
 저장 타입 기준 embedding 원시 저장용량은 vector profile은 chunk 수 × dimension × 4 bytes, halfvec profile은 chunk 수 × dimension × 2 bytes로 산정한다. 실제 운영 용량은 PostgreSQL row overhead, pgvector index, chunk text, metadata, 원본 파일, 추출 산출물 용량을 추가로 고려해야 한다.
 
@@ -570,7 +697,7 @@ created_at TIMESTAMP DEFAULT now()
 | 1,000,000 | 3.9 GB | 3.9 GB | 3.8 GB | 4.9 GB | 약 16.5 GB |
 | 10,000,000 | 39 GB | 39 GB | 38 GB | 49 GB | 약 165 GB |
 
-## 5.9 index 요구사항
+## 5.10 index 요구사항
 
 - MVP 초기에는 exact search를 기준 결과로 남긴다.
 
@@ -595,9 +722,10 @@ created_at TIMESTAMP DEFAULT now()
 | 화면 | 주요 구성요소 |
 | --- | --- |
 | Dashboard | 문서 수, 파일 용량, chunk 수, profile별 embedding 진행률, 검색 latency, 오류 목록 |
-| File Upload | 파일 선택, 문서 그룹, 보안 등급, chunk policy, embedding profile 선택, 업로드 결과 |
-| Search Compare | 검색어, 필터, top-k, 4-column 결과 비교, 피드백 버튼 |
-| Document Detail | 원본 metadata, parsing 결과, chunk 목록, embedding 상태 |
+| File Upload | 파일 선택, 업로드 사용자, 소유 조직, 접근 범위, 문서 그룹, 보안 등급, 업로드 결과 |
+| Permission Simulation | 테스트 사용자, 조직 계층, membership role, 문서 접근 범위 fixture 관리 |
+| Search Compare | 검색어, actor, 검색 scope, 필터, top-k, 4-column 결과 비교, 피드백 버튼 |
+| Document Detail | 원본 metadata, owner, access scope, parsing 결과, chunk 목록, embedding 상태 |
 | Job Monitor | embedding job queue, 완료/실패/재처리 상태 |
 
 ## 6.3 검색 비교 화면 레이아웃
@@ -615,15 +743,21 @@ created_at TIMESTAMP DEFAULT now()
 └────────────────┴────────────────┴──────────────────┴──────────────────┘
 ```
 
+검색 비교 화면 상단에는 actor_user, requested_search_scope, effective permission summary를 표시한다. 권한 필터로 제외된 문서 수는 aggregate 숫자로만 표시할 수 있으며, 제외된 문서의 제목이나 본문 preview는 노출하지 않는다.
+
 # 7. Embedding 및 검색 평가 요구사항
 
 ## 7.1 평가 원칙
 
 - 동일 문서, 동일 parser, 동일 chunk, 동일 query, 동일 top-k 조건에서 embedding profile만 바꾸어 비교한다.
 
+- 권한 실험에서는 동일 query와 동일 embedding profile이라도 actor와 requested_search_scope가 다르면 별도 실험으로 기록한다.
+
 - 서로 다른 profile의 score 절대값은 직접 비교하지 않는다.
 
 - 주요 비교 기준은 정답 chunk의 rank, top-k 포함 여부, 관련 section 검색 여부, 피드백 분포이다.
+
+- permission-aware Recall@k, permission-aware MRR은 actor가 접근 가능한 정답 chunk 집합을 기준으로 계산한다.
 
 - Qwen3 1000 vs Qwen3 2560 비교를 통해 저장용량/검색품질 trade-off를 측정한다.
 
@@ -645,12 +779,16 @@ created_at TIMESTAMP DEFAULT now()
 | Feedback distribution | 정답/부분정답/오답/문맥부족/중복 비율 |
 | No-answer robustness | 문서에 없는 질문에 대해 관련 없는 chunk를 과도하게 반환하는 정도 |
 | Exact vs ANN delta | exact search 대비 HNSW/IVFFlat 적용 후 Recall@k, latency 변화 |
+| Permission-filtered Recall@k | actor의 effective scope 내 정답 chunk가 top-k에 포함되었는지 여부 |
+| Scope variance | 동일 query에 대해 mine/team/managed_org/company scope별 결과 차이 |
 
 ## 7.3 Golden Question Set 요구사항
 
 - 초기에는 문서 50~100개와 질문 100개 이상의 내부 평가셋을 구성한다.
 
 - 각 질문에는 expected_chunk_id 또는 expected_heading_path를 지정한다.
+
+- 권한 평가용 질문에는 actor_user_id, requested_search_scope, expected_visible_chunk_ids, expected_hidden_chunk_ids를 지정할 수 있다.
 
 - 질문 유형은 단일근거, section 기반, 비교, 문서에 없는 질문, 표/그림 관련 질문으로 분류한다.
 
@@ -665,6 +803,8 @@ created_at TIMESTAMP DEFAULT now()
 - Qwen 계열 profile은 query-side instruction 사용 여부와 instruction text를 반드시 profile metadata 또는 search log에 남긴다.
 
 - 검색 로그는 chunk_policy_name, parser_name, parser_version, similarity_metric, top_k, index_type, index_parameters를 저장해야 한다.
+
+- 검색 로그는 actor_user_id, requested_search_scope, effective_search_scope, permission_filter_metadata를 저장해야 한다.
 
 - 검색 결과는 profile별 rank, chunk_id, distance, score, profile_elapsed_ms를 개별 row로 저장한다.
 
@@ -683,6 +823,8 @@ created_at TIMESTAMP DEFAULT now()
 | NFR-007 | 유지보수성 | parser, chunker, embedding adapter, repository, API layer를 분리한다. |
 | NFR-008 | 관측성 | parsing, embedding, search, feedback 이벤트에 대해 로그를 남긴다. |
 | NFR-009 | 데이터 무결성 | chunk/profile job, search result, feedback은 FK와 unique constraint로 중복 및 고아 데이터를 방지한다. |
+| NFR-010 | 접근제어 | actor가 접근 권한이 없는 문서, chunk, score, preview는 API/UI/search log result에 노출하지 않는다. |
+| NFR-011 | 재현성 | 권한 기반 검색 실험은 actor, 조직 membership snapshot, requested/effective scope, permission filter metadata를 함께 저장한다. |
 
 # 9. 소프트웨어 품질관리 및 테스트 요구사항
 
@@ -704,6 +846,8 @@ created_at TIMESTAMP DEFAULT now()
 | QA-008 | boundary value analysis, robustness test, worst case 기반 test case를 설계한다. |
 | QA-009 | regression test 통과 후 GitHub commit/sync를 수행한다. |
 | QA-010 | pgvector vector/halfvec schema, embedding job status transition, search log 재현성 metadata를 integration/regression test에 포함한다. |
+| QA-011 | 권한 fixture는 일반 사용자, 팀장, 그룹장, company 문서를 포함하고 permission pre-filter 결과를 regression test로 검증한다. |
+| QA-012 | 같은 query에 대해 actor/scope별 결과 차이를 비교하는 permission-aware search test를 포함한다. |
 
 ## 9.2 테스트 계층
 
@@ -739,6 +883,7 @@ created_at TIMESTAMP DEFAULT now()
 | Boundary Value Analysis | 파일 크기, chunk size, overlap, top-k, query 길이 | 0 byte, max+1, overlap 100%, top-k 0 |
 | Robustness Test | 깨진 파일, 확장자 위조, DB 장애, 모델 로딩 실패 | password PDF, corrupted DOCX, duplicate checksum |
 | Worst Case Test | 대용량 문서, 대량 chunk, 동시 업로드, Qwen 2560 검색 | 수백 page PDF, 수천 chunk, index rebuild |
+| Permission Matrix Test | actor role, org hierarchy, access_scope, requested_scope 조합 | 개인 문서 숨김, 팀장 scope 포함, company 문서 전체 노출 |
 
 ## 9.5 테스트 디렉토리 구조
 
@@ -754,11 +899,13 @@ tests/
 │ ├─ test_chunk_policies.py
 │ ├─ test_embedding_profiles.py
 │ ├─ test_embedding_jobs.py
+│ ├─ test_permission_scope.py
 │ └─ test_file_metadata.py
 ├─ integration/
 │ ├─ test_pgvector_extension.py
 │ ├─ test_pgvector_halfvec.py
 │ ├─ test_document_repository.py
+│ ├─ test_permission_repository.py
 │ ├─ test_embedding_repository.py
 │ ├─ test_embedding_job_repository.py
 │ └─ test_vector_search_profiles.py
@@ -769,6 +916,7 @@ tests/
 │ └─ test_feedback_api.py
 ├─ regression/
 │ ├─ test_upload_regression.py
+│ ├─ test_permission_scope_regression.py
 │ ├─ test_chunking_regression.py
 │ ├─ test_search_ranking_regression.py
 │ └─ test_search_reproducibility_regression.py
@@ -782,6 +930,7 @@ tests/
 │ └─ test_search_compare_ui.py
 ├─ fixtures/
 │ ├─ files/
+│ ├─ permissions/
 │ ├─ expected_chunks/
 │ └─ expected_search_results/
 └─ conftest.py
@@ -819,6 +968,7 @@ pytest tests/e2e
 | --- | --- | --- | --- |
 | Phase 1 | Skeleton + 품질 기반 구축 | FastAPI/Bootstrap/PostgreSQL/pgvector/pytest/Playwright 기본 구조, migration 골격 | 앱 기동, DB 연결, vector/halfvec extension 확인, test DB 초기화, 기본 smoke test 통과 |
 | Phase 2 | 파일 업로드 + metadata 저장 | 업로드 API/UI, files/documents 테이블, checksum 중복 검출, 문서 그룹/보안 등급 metadata | 지원 확장자 업로드와 metadata 저장 test 통과 |
+| Phase 2.5 | Identity + Permission Metadata | 테스트 계정, 조직 계층, document access scope, permission-aware search metadata | actor/scope별 접근 가능 문서 fixture와 permission pre-filter test 통과 |
 | Phase 3 | Parsing + Chunking | 파일별 parser, heading-aware chunker, chunk_policies/chunks 저장 | fixture 문서별 chunk 생성 결과와 chunk policy regression test 통과 |
 | Phase 4 | 4개 Embedding Profile 처리 | profile별 worker/table, embedding_jobs 상태 관리, Qwen 2560 halfvec 저장 | 동일 chunk에 대해 4개 profile embedding 저장 및 job status transition 검증 |
 | Phase 5 | 검색 비교 UI | 4-column 검색 화면, search_logs/search_log_results/feedback 저장 | 동일 query에 대한 4개 profile top-k 결과 표시, 재현성 metadata 기록, 피드백 저장 |
@@ -828,6 +978,8 @@ pytest tests/e2e
 
 - PDF/DOCX/HWPX/PPTX/XLSX/MD 파일 업로드와 원본 metadata 저장이 가능하다.
 
+- 업로드 문서는 actor, owner, owner org, access scope metadata를 가져야 한다.
+
 - 파일별 parser가 최소 fixture 문서에 대해 정상적으로 text를 추출한다.
 
 - 동일 chunk를 4개 embedding profile로 변환하여 pgvector에 저장한다.
@@ -836,7 +988,11 @@ pytest tests/e2e
 
 - 검색 화면에서 4개 profile 결과를 병렬 비교할 수 있다.
 
+- 검색 화면/API에서 actor와 requested scope를 선택할 수 있고, 권한 범위 밖 문서는 결과에 노출되지 않는다.
+
 - 검색 로그는 profile runtime 설정, chunk policy, top-k, similarity metric, query instruction, 결과 chunk를 재현 가능하게 저장한다.
+
+- 검색 로그는 actor_user_id, requested_search_scope, effective_search_scope, permission_filter_metadata를 재현 가능하게 저장한다.
 
 - 검색 결과에 대해 정답/부분정답/오답 피드백을 저장할 수 있다.
 
@@ -854,6 +1010,9 @@ pytest tests/e2e
 | Chunk 정책 부적절 | 검색 recall 저하 또는 중복 검색 증가 | chunk_policy를 DB에 저장하고 정책별 평가 자동화 |
 | Score 비교 오해 | 모델 성능 오판 | score 절대값이 아닌 rank/top-k/피드백 기준으로 비교 |
 | Query instruction 미기록 | Qwen 계열 검색 결과 재현 불가 | profile metadata와 search log에 query instruction 사용 여부와 instruction text 저장 |
+| 권한 필터 누락 | 접근 권한이 없는 문서/chunk가 검색 결과에 노출 | permission pre-filter를 repository/search SQL 단계에서 적용하고 permission matrix regression test 추가 |
+| 사후 필터링으로 인한 top-k 왜곡 | 권한 없는 결과 제거 후 관련 chunk가 누락되어 검색 품질 오판 | vector search 후보군 생성 전 actor/scope 조건을 pre-filter로 적용 |
+| 권한 metadata 미기록 | 같은 query 결과 차이를 재현하거나 설명하기 어려움 | search_logs에 actor, requested/effective scope, permission filter metadata 저장 |
 | 테스트 DB 관리 실패 | 개발 DB 오염, regression 신뢰도 저하 | 독립 test DB 자동 생성/초기화/정리 fixture 적용 |
 | UI 테스트 취약 | 브라우저 회귀 결함 누락 | Playwright smoke flow를 quality gate에 포함 |
 | 실험 로그 미흡 | 결과 재현 불가 | profile runtime 설정, chunk_policy, query, top-k, index 설정, retrieved chunk 로그 필수 저장 |
@@ -866,6 +1025,8 @@ pytest tests/e2e
 | DR | Data Requirement. 데이터 및 저장소 요구사항 |
 | UI | User Interface Requirement. 화면 요구사항 |
 | NFR | Non-Functional Requirement. 비기능 요구사항 |
+| IAM | Identity and Access Management. 계정, 조직, 역할, 접근 범위 요구사항 |
+| ACL | Access Control List / Scope. 문서 접근 범위와 permission filter 요구사항 |
 | QA | Quality Assurance Requirement. 품질관리 요구사항 |
 | TST | Test Requirement. 테스트 요구사항 |
 | ACC | Acceptance Criteria. 인수 기준 |
