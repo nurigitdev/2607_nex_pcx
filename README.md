@@ -107,3 +107,20 @@ The core metadata migration creates the first MVP data tables:
 
 It also seeds the default `heading_512_64` chunk policy and the four initial embedding
 profiles used by the experiment bench.
+
+## Identity and Permission Schema
+
+Slice 009 adds the Phase 2.5 identity and permission metadata foundation:
+
+- `app_users`
+- `org_units`
+- `user_org_memberships`
+- `files.uploaded_by_user_id`
+- `documents.owner_user_id`
+- `documents.owner_org_unit_id`
+- `documents.access_scope`
+- `documents.permission_metadata`
+
+The migration seeds a small permission simulation graph with member, team lead, group lead,
+and admin accounts. Integration tests verify seed rows, hierarchy, FK links, access scope
+defaults, check constraints, and membership cascade behavior.
