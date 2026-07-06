@@ -152,3 +152,10 @@ Slice 011 adds repository helpers for the pipeline queue lifecycle:
 
 The repository keeps lifecycle SQL in one module so upload APIs, worker runners, and the
 future Job Monitor UI can share the same state transitions.
+
+## Upload API Queue Integration
+
+Slice 012 connects file upload success to the pipeline queue. New uploads create a
+`document_ingestion` job in `queued` status and return `pipeline_job_id` plus a compact
+`pipeline_job` payload from `/api/files`. Duplicate checksum uploads keep returning the
+existing file metadata and do not enqueue another pipeline job.

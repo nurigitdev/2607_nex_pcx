@@ -4,11 +4,11 @@ from io import BytesIO
 import pytest
 
 from app.core.file_metadata import (
-    CreateFileMetadataResult,
     FileMetadataRecord,
     UnsupportedFileExtensionError,
 )
 from app.core.file_uploads import (
+    FileUploadResult,
     InvalidUploadFileNameError,
     build_stored_file_name,
     sanitize_upload_file_name,
@@ -75,7 +75,7 @@ def test_write_stream_with_checksum_writes_file(tmp_path) -> None:
 def test_store_upload_creates_metadata_and_file(monkeypatch, tmp_path) -> None:
     captured_metadata = None
 
-    def fake_create_file_metadata(database_url, metadata):
+    def fake_create_upload_metadata_and_pipeline_job(database_url, metadata):
         nonlocal captured_metadata
         captured_metadata = metadata
         record = make_record(
@@ -87,9 +87,12 @@ def test_store_upload_creates_metadata_and_file(monkeypatch, tmp_path) -> None:
             document_group=metadata.document_group,
             security_level=metadata.security_level,
         )
-        return CreateFileMetadataResult(file=record, duplicate=False)
+        return FileUploadResult(file=record, duplicate=False)
 
-    monkeypatch.setattr("app.core.file_uploads.create_file_metadata", fake_create_file_metadata)
+    monkeypatch.setattr(
+        "app.core.file_uploads.create_upload_metadata_and_pipeline_job",
+        fake_create_upload_metadata_and_pipeline_job,
+    )
 
     result = store_upload(
         database_url="postgresql://example/db",
@@ -110,16 +113,19 @@ def test_store_upload_creates_metadata_and_file(monkeypatch, tmp_path) -> None:
 
 
 def test_store_upload_removes_new_file_when_duplicate(monkeypatch, tmp_path) -> None:
-    def fake_create_file_metadata(database_url, metadata):
+    def fake_create_upload_metadata_and_pipeline_job(database_url, metadata):
         record = make_record(
             original_file_name="existing.md",
             stored_file_name="existing.md",
             storage_path="/tmp/existing.md",
             sha256_checksum=metadata.sha256_checksum,
         )
-        return CreateFileMetadataResult(file=record, duplicate=True)
+        return FileUploadResult(file=record, duplicate=True)
 
-    monkeypatch.setattr("app.core.file_uploads.create_file_metadata", fake_create_file_metadata)
+    monkeypatch.setattr(
+        "app.core.file_uploads.create_upload_metadata_and_pipeline_job",
+        fake_create_upload_metadata_and_pipeline_job,
+    )
 
     result = store_upload(
         database_url="postgresql://example/db",
@@ -133,10 +139,13 @@ def test_store_upload_removes_new_file_when_duplicate(monkeypatch, tmp_path) -> 
 
 
 def test_store_upload_removes_new_file_when_metadata_write_fails(monkeypatch, tmp_path) -> None:
-    def fake_create_file_metadata(database_url, metadata):
+    def fake_create_upload_metadata_and_pipeline_job(database_url, metadata):
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr("app.core.file_uploads.create_file_metadata", fake_create_file_metadata)
+    monkeypatch.setattr(
+        "app.core.file_uploads.create_upload_metadata_and_pipeline_job",
+        fake_create_upload_metadata_and_pipeline_job,
+    )
 
     with pytest.raises(RuntimeError, match="database unavailable"):
         store_upload(

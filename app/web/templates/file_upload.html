@@ -108,6 +108,20 @@
               <th scope="row">Document ID</th>
               <td>{{ result.document_id or "" }}</td>
             </tr>
+            {% if result.pipeline_job %}
+            <tr>
+              <th scope="row">Pipeline Job ID</th>
+              <td>{{ result.pipeline_job.job_id }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Pipeline Status</th>
+              <td>{{ result.pipeline_job.status }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Pipeline Stage</th>
+              <td>{{ result.pipeline_job.stage }}</td>
+            </tr>
+            {% endif %}
             <tr>
               <th scope="row">Original Name</th>
               <td>{{ result.original_file_name }}</td>

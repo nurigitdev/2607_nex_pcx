@@ -17,6 +17,7 @@ from app.core.file_metadata import (
     UnsupportedFileExtensionError,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
+from app.core.pipeline_jobs import PipelineJobRecord
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=BASE_DIR / "web" / "templates")
@@ -24,6 +25,19 @@ UPLOAD_FILE_FORM = File(...)
 DOCUMENT_GROUP_FORM = Form("default")
 SECURITY_LEVEL_FORM = Form("internal")
 UPLOADED_BY_FORM = Form(None)
+
+
+def pipeline_job_response_payload(
+    pipeline_job: PipelineJobRecord | None,
+) -> dict[str, object] | None:
+    if pipeline_job is None:
+        return None
+    return {
+        "job_id": pipeline_job.job_id,
+        "status": pipeline_job.status,
+        "stage": pipeline_job.stage,
+        "progress_percent": str(pipeline_job.progress_percent),
+    }
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -123,7 +137,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(
             status_code=status.HTTP_200_OK if result.duplicate else status.HTTP_201_CREATED,
-            content={"duplicate": result.duplicate, "file": asdict(result.file)},
+            content={
+                "duplicate": result.duplicate,
+                "file": asdict(result.file),
+                "pipeline_job_id": (
+                    result.pipeline_job.job_id if result.pipeline_job is not None else None
+                ),
+                "pipeline_job": pipeline_job_response_payload(result.pipeline_job),
+            },
         )
 
     @app.get("/files/upload", response_class=HTMLResponse)
@@ -170,6 +191,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     uploaded_by=form_values["uploaded_by"] or None,
                 )
                 result_payload = asdict(result.file)
+                result_payload["pipeline_job"] = pipeline_job_response_payload(
+                    result.pipeline_job,
+                )
+                result_payload["pipeline_job_id"] = (
+                    result.pipeline_job.job_id if result.pipeline_job is not None else None
+                )
                 duplicate = result.duplicate
             except (
                 UnsupportedFileExtensionError,

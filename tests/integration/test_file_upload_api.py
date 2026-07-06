@@ -52,16 +52,41 @@ def test_upload_file_api_stores_file_and_metadata(
         db_row = fetch_one(
             migrated_database_url,
             """
-            SELECT f.file_id, f.sha256_checksum, f.document_group, d.document_id
+            SELECT
+                f.file_id,
+                f.sha256_checksum,
+                f.document_group,
+                d.document_id,
+                pj.job_id AS pipeline_job_id,
+                pj.status AS pipeline_status,
+                pj.stage AS pipeline_stage
             FROM files f
             JOIN documents d ON d.file_id = f.file_id
+            JOIN pipeline_jobs pj ON pj.document_id = d.document_id
             WHERE f.sha256_checksum = %s
             """,
             (checksum,),
         )
+        created_event = fetch_one(
+            migrated_database_url,
+            """
+            SELECT count(*) AS count
+            FROM pipeline_job_events
+            WHERE job_id = %s
+              AND event_type = 'created'
+            """,
+            (body["pipeline_job_id"],),
+        )
 
         assert response.status_code == 201
         assert body["duplicate"] is False
+        assert body["pipeline_job_id"] == db_row["pipeline_job_id"]
+        assert body["pipeline_job"] == {
+            "job_id": db_row["pipeline_job_id"],
+            "status": "queued",
+            "stage": "upload_saved",
+            "progress_percent": "0.00",
+        }
         assert file_payload["original_file_name"] == "slice-006.md"
         assert file_payload["file_ext"] == ".md"
         assert file_payload["file_size_bytes"] == len(content)
@@ -71,6 +96,9 @@ def test_upload_file_api_stores_file_and_metadata(
         assert stored_path.read_bytes() == content
         assert db_row["file_id"] == file_payload["file_id"]
         assert db_row["document_id"] == file_payload["document_id"]
+        assert db_row["pipeline_status"] == "queued"
+        assert db_row["pipeline_stage"] == "upload_saved"
+        assert created_event["count"] == 1
     finally:
         cleanup_checksum(migrated_database_url, checksum)
 
@@ -107,12 +135,27 @@ def test_upload_file_api_returns_duplicate_for_same_checksum(
             "SELECT count(*) AS count FROM files WHERE sha256_checksum = %s",
             (checksum,),
         )
+        job_count = fetch_one(
+            migrated_database_url,
+            """
+            SELECT count(*) AS count
+            FROM pipeline_jobs pj
+            JOIN files f ON f.file_id = pj.file_id
+            WHERE f.sha256_checksum = %s
+            """,
+            (checksum,),
+        )
 
         assert created.status_code == 201
         assert duplicate.status_code == 200
+        assert created_body["pipeline_job_id"] is not None
+        assert created_body["pipeline_job"]["status"] == "queued"
         assert duplicate_body["duplicate"] is True
+        assert duplicate_body["pipeline_job_id"] is None
+        assert duplicate_body["pipeline_job"] is None
         assert duplicate_body["file"]["file_id"] == created_body["file"]["file_id"]
         assert file_count["count"] == 1
+        assert job_count["count"] == 1
         assert len(list(tmp_path.iterdir())) == 1
     finally:
         cleanup_checksum(migrated_database_url, checksum)

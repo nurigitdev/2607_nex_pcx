@@ -6,13 +6,20 @@ from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
 
+from app.core.database import connect
 from app.core.file_metadata import (
     SUPPORTED_FILE_EXTENSIONS,
+    CreateFileMetadataResult,
     FileMetadataInput,
     FileMetadataRecord,
     UnsupportedFileExtensionError,
-    create_file_metadata,
+    create_file_metadata_in_connection,
     normalize_file_ext,
+)
+from app.core.pipeline_jobs import (
+    PipelineJobInput,
+    PipelineJobRecord,
+    create_pipeline_job_in_connection,
 )
 
 UPLOAD_CHUNK_SIZE = 1024 * 1024
@@ -22,6 +29,7 @@ UPLOAD_CHUNK_SIZE = 1024 * 1024
 class FileUploadResult:
     file: FileMetadataRecord
     duplicate: bool
+    pipeline_job: PipelineJobRecord | None = None
 
 
 class InvalidUploadFileNameError(ValueError):
@@ -56,6 +64,44 @@ def write_stream_with_checksum(upload_stream: BinaryIO, target_path: Path) -> tu
     return file_size_bytes, digest.hexdigest()
 
 
+def create_upload_metadata_and_pipeline_job(
+    database_url: str,
+    metadata: FileMetadataInput,
+) -> FileUploadResult:
+    with connect(database_url) as connection:
+        metadata_result: CreateFileMetadataResult = create_file_metadata_in_connection(
+            connection,
+            metadata,
+        )
+        if metadata_result.duplicate:
+            return FileUploadResult(file=metadata_result.file, duplicate=True)
+
+        if metadata_result.file.document_id is None:
+            msg = "Pipeline job cannot be queued without a document_id"
+            raise RuntimeError(msg)
+
+        pipeline_job = create_pipeline_job_in_connection(
+            connection,
+            PipelineJobInput(
+                job_type="document_ingestion",
+                file_id=metadata_result.file.file_id,
+                document_id=metadata_result.file.document_id,
+                metadata={
+                    "original_file_name": metadata_result.file.original_file_name,
+                    "document_group": metadata_result.file.document_group,
+                    "security_level": metadata_result.file.security_level,
+                    "sha256_checksum": metadata_result.file.sha256_checksum,
+                    "uploaded_by": metadata.uploaded_by,
+                },
+            ),
+        )
+        return FileUploadResult(
+            file=metadata_result.file,
+            duplicate=False,
+            pipeline_job=pipeline_job,
+        )
+
+
 def store_upload(
     *,
     database_url: str,
@@ -86,10 +132,10 @@ def store_upload(
             uploaded_by=uploaded_by,
             document_title=Path(safe_file_name).stem,
         )
-        metadata_result = create_file_metadata(database_url, metadata)
-        if metadata_result.duplicate:
+        upload_result = create_upload_metadata_and_pipeline_job(database_url, metadata)
+        if upload_result.duplicate:
             storage_path.unlink(missing_ok=True)
-        return FileUploadResult(file=metadata_result.file, duplicate=metadata_result.duplicate)
+        return upload_result
     except Exception:
         storage_path.unlink(missing_ok=True)
         raise

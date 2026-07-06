@@ -48,8 +48,14 @@ def test_file_upload_ui_stores_file_and_shows_result(
         db_row = fetch_one(
             migrated_database_url,
             """
-            SELECT f.file_id, f.sha256_checksum, f.document_group, f.security_level
+            SELECT
+                f.file_id,
+                f.sha256_checksum,
+                f.document_group,
+                f.security_level,
+                pj.job_id AS pipeline_job_id
             FROM files f
+            JOIN pipeline_jobs pj ON pj.file_id = f.file_id
             WHERE f.sha256_checksum = %s
             """,
             (checksum,),
@@ -58,6 +64,10 @@ def test_file_upload_ui_stores_file_and_shows_result(
         assert response.status_code == 200
         assert "File uploaded and metadata stored." in response.text
         assert "Stored" in response.text
+        assert "Pipeline Job ID" in response.text
+        assert "Pipeline Status" in response.text
+        assert "queued" in response.text
+        assert str(db_row["pipeline_job_id"]) in response.text
         assert "slice-007.md" in response.text
         assert checksum in response.text
         assert db_row["document_group"] == "ui-slice-007"
