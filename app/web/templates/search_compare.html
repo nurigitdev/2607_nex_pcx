@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">Search Compare</h1>
+    <p class="text-secondary mb-0">Permission-aware retrieval across embedding profiles</p>
+  </div>
+  <div class="text-secondary text-nowrap" id="search-summary"></div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="metric-card bg-white p-3 mb-4">
+  <form id="search-compare-form" class="search-form-grid">
+    <div class="search-query-field">
+      <label class="form-label" for="query_text">Query</label>
+      <input
+        class="form-control"
+        id="query_text"
+        name="query_text"
+        type="search"
+        autocomplete="off"
+        required
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div>
+      <label class="form-label" for="actor_user_id">Actor</label>
+      <select
+        class="form-select"
+        id="actor_user_id"
+        name="actor_user_id"
+        required
+        {% if not database_configured %}disabled{% endif %}
+      >
+        {% for actor in actor_options %}
+        <option value="{{ actor.user_id }}" {% if actor.user_id == default_actor_id %}selected{% endif %}>
+          {{ actor.display_name }} / {{ actor.login_id }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="requested_search_scope">Scope</label>
+      <select
+        class="form-select"
+        id="requested_search_scope"
+        name="requested_search_scope"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        {% for scope in ["mine", "team", "managed_org", "company"] %}
+        <option value="{{ scope }}" {% if scope == "company" %}selected{% endif %}>{{ scope }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="top_k">Top K</label>
+      <input
+        class="form-control"
+        id="top_k"
+        name="top_k"
+        type="number"
+        min="1"
+        max="20"
+        value="5"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div>
+      <label class="form-label" for="document_group">Group</label>
+      <input
+        class="form-control"
+        id="document_group"
+        name="document_group"
+        type="text"
+        placeholder="default"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div>
+      <label class="form-label" for="file_type">Type</label>
+      <select
+        class="form-select"
+        id="file_type"
+        name="file_type"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="">All</option>
+        {% for ext in [".md", ".pdf", ".docx", ".hwpx", ".pptx", ".xlsx"] %}
+        <option value="{{ ext }}">{{ ext }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <fieldset class="search-profile-field">
+      <legend class="form-label">Profiles</legend>
+      <div class="search-profile-list">
+        {% for profile in profile_options %}
+        <label class="search-profile-option">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            name="profiles"
+            value="{{ profile }}"
+            checked
+            {% if not database_configured %}disabled{% endif %}
+          >
+          <span>{{ profile }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="search-form-actions">
+      <button
+        class="btn btn-primary"
+        id="search-submit"
+        type="submit"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        Search
+      </button>
+    </div>
+  </form>
+</section>
+
+<div id="search-alert" class="alert alert-warning" role="alert" hidden></div>
+
+<section id="search-results" class="search-results-grid" aria-live="polite"></section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const form = document.getElementById("search-compare-form");
+  if (!form) {
+    return;
+  }
+
+  const alertEl = document.getElementById("search-alert");
+  const resultsEl = document.getElementById("search-results");
+  const summaryEl = document.getElementById("search-summary");
+  const submitButton = document.getElementById("search-submit");
+
+  const setAlert = (message) => {
+    alertEl.hidden = !message;
+    alertEl.textContent = message || "";
+  };
+
+  const clearResults = () => {
+    resultsEl.replaceChildren();
+    summaryEl.textContent = "";
+  };
+
+  const fieldValue = (name) => {
+    const value = new FormData(form).get(name);
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
+
+  const makeCell = (label, value) => {
+    const row = document.createElement("div");
+    row.className = "search-result-meta-row";
+    const term = document.createElement("span");
+    term.className = "text-secondary";
+    term.textContent = label;
+    const detail = document.createElement("span");
+    detail.textContent = value || "";
+    row.append(term, detail);
+    return row;
+  };
+
+  const renderResult = (result) => {
+    const item = document.createElement("article");
+    item.className = "search-result-item";
+
+    const header = document.createElement("div");
+    header.className = "search-result-header";
+    const rank = document.createElement("span");
+    rank.className = "badge text-bg-light border";
+    rank.textContent = `#${result.rank}`;
+    const score = document.createElement("span");
+    score.className = "search-result-score";
+    score.textContent = `score ${Number(result.score).toFixed(4)}`;
+    header.append(rank, score);
+
+    const title = document.createElement("h3");
+    title.className = "search-result-title";
+    title.textContent = result.document_title || result.original_file_name || "Untitled";
+
+    const preview = document.createElement("p");
+    preview.className = "search-result-preview";
+    preview.textContent = result.chunk_preview || "";
+
+    const meta = document.createElement("div");
+    meta.className = "search-result-meta";
+    meta.append(
+      makeCell("chunk", String(result.chunk_id)),
+      makeCell("distance", Number(result.distance).toFixed(4)),
+      makeCell("path", (result.heading_path || []).join(" / ")),
+    );
+
+    item.append(header, title, preview, meta);
+    return item;
+  };
+
+  const renderProfile = (profile) => {
+    const section = document.createElement("section");
+    section.className = "search-profile-column";
+
+    const header = document.createElement("div");
+    header.className = "search-profile-header";
+    const title = document.createElement("h2");
+    title.className = "h6 mb-0";
+    title.textContent = profile.profile_name;
+    const latency = document.createElement("span");
+    latency.className = "text-secondary";
+    latency.textContent = `${profile.elapsed_ms} ms`;
+    header.append(title, latency);
+
+    const body = document.createElement("div");
+    body.className = "search-result-list";
+    if (profile.results.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "search-empty-state";
+      empty.textContent = "No results";
+      body.append(empty);
+    } else {
+      profile.results.forEach((result) => body.append(renderResult(result)));
+    }
+
+    section.append(header, body);
+    return section;
+  };
+
+  const renderResponse = (payload) => {
+    clearResults();
+    summaryEl.textContent = `log #${payload.search_log_id} / ${payload.effective_search_scope} / ${payload.total_elapsed_ms} ms`;
+    payload.profiles.forEach((profile) => resultsEl.append(renderProfile(profile)));
+  };
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setAlert("");
+    clearResults();
+
+    const formData = new FormData(form);
+    const profiles = formData.getAll("profiles").filter(Boolean);
+    if (profiles.length === 0) {
+      setAlert("At least one profile is required.");
+      return;
+    }
+
+    const payload = {
+      query_text: fieldValue("query_text"),
+      actor_user_id: Number(formData.get("actor_user_id")),
+      requested_search_scope: fieldValue("requested_search_scope") || "company",
+      top_k: Number(formData.get("top_k") || 5),
+      profiles,
+      document_group: fieldValue("document_group"),
+      file_type: fieldValue("file_type"),
+    };
+
+    submitButton.disabled = true;
+    submitButton.textContent = "Searching";
+    try {
+      const response = await fetch("/api/search/compare", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        setAlert(body.detail || "Search failed.");
+        return;
+      }
+      renderResponse(body);
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Search failed.");
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = "Search";
+    }
+  });
+})();
+</script>
+{% endblock %}

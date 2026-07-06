@@ -12,10 +12,12 @@ from pydantic import BaseModel, Field
 
 from app.core.admin_logging import list_logs, log_event
 from app.core.config import Settings, get_settings
+from app.core.database import connect
 from app.core.embedding_jobs import (
     EmbeddingJobRecord,
     InvalidEmbeddingJobError,
     get_embedding_job,
+    list_active_embedding_profiles,
     list_embedding_jobs,
 )
 from app.core.embedding_vectors import (
@@ -66,6 +68,25 @@ class SearchCompareRequest(BaseModel):
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+
+
+def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT user_id, login_id, display_name
+                FROM app_users
+                WHERE is_active
+                ORDER BY login_id ASC
+                """)
+            return [
+                {
+                    "user_id": int(row["user_id"]),
+                    "login_id": str(row["login_id"]),
+                    "display_name": str(row["display_name"]),
+                }
+                for row in cursor.fetchall()
+            ]
 
 
 def pipeline_job_response_payload(
@@ -539,6 +560,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             request,
             "dashboard.html",
             template_context(request),
+        )
+
+    @app.get("/search", response_class=HTMLResponse)
+    def search_compare_page(request: Request) -> HTMLResponse:
+        actor_options: list[dict[str, object]] = []
+        profile_options: list[str] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                actor_options = list_search_actor_options(settings.database_url)
+                profile_options = [
+                    profile.profile_name
+                    for profile in list_active_embedding_profiles(settings.database_url)
+                ]
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "search_compare.html",
+            template_context(
+                request,
+                actor_options=actor_options,
+                profile_options=profile_options,
+                default_actor_id=actor_options[0]["user_id"] if actor_options else "",
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
         )
 
     @app.get("/admin/jobs", response_class=HTMLResponse)
