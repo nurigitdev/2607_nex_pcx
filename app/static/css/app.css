@@ -389,6 +389,114 @@ main.container-fluid {
   width: 0;
 }
 
+.progress-compact {
+  min-width: 5rem;
+  width: 100%;
+}
+
+.job-table th,
+.job-table td {
+  white-space: normal;
+}
+
+.job-table td:first-child,
+.job-table td:nth-child(4),
+.job-table td:nth-child(5),
+.job-table td:nth-child(7),
+.job-table td:nth-child(8) {
+  white-space: nowrap;
+}
+
+.job-table td:nth-child(2) {
+  min-width: 10rem;
+}
+
+.job-progress-cell {
+  min-width: 10rem;
+}
+
+.job-link {
+  font-weight: 700;
+}
+
+.job-detail-list {
+  display: grid;
+  gap: 0.625rem 1rem;
+  grid-template-columns: 8rem minmax(0, 1fr);
+}
+
+.job-detail-list dt {
+  color: var(--pcx-muted);
+  font-weight: 700;
+}
+
+.job-detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.event-timeline {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.event-row {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.event-row-header,
+.event-row-body {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+
+.event-row-header {
+  margin-bottom: 0.5rem;
+}
+
+.event-row-body span {
+  overflow-wrap: anywhere;
+}
+
+.status-badge {
+  border: 1px solid var(--pcx-border);
+  color: var(--pcx-ink);
+}
+
+.status-queued {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e3a8a;
+}
+
+.status-running {
+  background: #eefaf8;
+  border-color: #99f6e4;
+  color: #115e59;
+}
+
+.status-succeeded {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.status-failed,
+.status-canceled {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.status-skipped {
+  background: #f8fafc;
+  color: var(--pcx-muted);
+}
+
 .btn {
   border: 1px solid transparent;
   border-radius: 8px;
@@ -453,6 +561,10 @@ main.container-fluid {
 .table tr:last-child th,
 .table tr:last-child td {
   border-bottom: 0;
+}
+
+.table-active {
+  background: #eefaf8;
 }
 
 .metric-card {
@@ -535,5 +647,37 @@ main.container-fluid {
 
   .metadata-table th {
     width: 7.5rem;
+  }
+
+  .job-monitor-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .job-filter-form {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .job-filter-form .form-select {
+    width: 9rem;
+  }
+
+  .job-table th:nth-child(3),
+  .job-table td:nth-child(3),
+  .job-table th:nth-child(5),
+  .job-table td:nth-child(5),
+  .job-table th:nth-child(6),
+  .job-table td:nth-child(6),
+  .job-table th:nth-child(7),
+  .job-table td:nth-child(7),
+  .job-table th:nth-child(8),
+  .job-table td:nth-child(8) {
+    display: none;
+  }
+
+  .job-detail-list {
+    grid-template-columns: 8rem minmax(0, 1fr);
   }
 }

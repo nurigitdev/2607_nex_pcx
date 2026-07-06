@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">Pipeline Job Monitor</h1>
+    <p class="text-secondary mb-0">Queue status, stage progress, worker lease, and event timeline</p>
+  </div>
+  <form class="job-filter-form d-flex align-items-center gap-2" method="get">
+    <label class="form-label mb-0 text-secondary" for="status">Status</label>
+    <select class="form-select form-select-sm" id="status" name="status" onchange="this.form.submit()">
+      <option value="" {% if not selected_status %}selected{% endif %}>All</option>
+      {% for status in ["queued", "running", "failed", "succeeded", "canceled", "skipped"] %}
+      <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 job-table">
+      <thead>
+        <tr>
+          <th scope="col">Job</th>
+          <th scope="col">File</th>
+          <th scope="col">Type</th>
+          <th scope="col">Status</th>
+          <th scope="col">Stage</th>
+          <th scope="col">Progress</th>
+          <th scope="col">Attempts</th>
+          <th scope="col">Worker</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in jobs %}
+        <tr class="{% if selected_job_id == item.job.job_id %}table-active{% endif %}">
+          <td>
+            <a class="job-link" href="/admin/jobs{% if selected_status %}?status={{ selected_status }}&job_id={{ item.job.job_id }}{% else %}?job_id={{ item.job.job_id }}{% endif %}">
+              #{{ item.job.job_id }}
+            </a>
+          </td>
+          <td class="text-break">
+            {{ item.original_file_name or item.document_title or "" }}
+          </td>
+          <td>{{ item.job.job_type }}</td>
+          <td>
+            <span class="badge status-badge status-{{ item.job.status }}">{{ item.job.status }}</span>
+          </td>
+          <td>{{ item.job.stage }}</td>
+          <td class="job-progress-cell">
+            <div class="d-flex align-items-center gap-2">
+              <div class="progress progress-compact" role="progressbar" aria-label="Pipeline progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ item.job.progress_percent }}">
+                <div class="progress-bar" style="width: {{ item.job.progress_percent }}%"></div>
+              </div>
+              <span class="text-secondary text-nowrap">{{ item.job.progress_percent }}%</span>
+            </div>
+          </td>
+          <td>{{ item.job.attempts }} / {{ item.job.max_attempts }}</td>
+          <td>{{ item.job.lease_owner or "" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="8">
+            {% if database_configured %}No pipeline jobs found{% else %}No database configured{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if selected_job %}
+<div class="row g-3">
+  <div class="col-12 col-xl-5">
+    <section class="metric-card bg-white p-3">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="h5 mb-0">Job #{{ selected_job.job_id }}</h2>
+        <span class="badge status-badge status-{{ selected_job.status }}">{{ selected_job.status }}</span>
+      </div>
+      <dl class="job-detail-list mb-0">
+        <dt>Type</dt>
+        <dd>{{ selected_job.job_type }}</dd>
+        <dt>Stage</dt>
+        <dd>{{ selected_job.stage }}</dd>
+        <dt>Progress</dt>
+        <dd>{{ selected_job.progress_percent }}%</dd>
+        <dt>File ID</dt>
+        <dd>{{ selected_job.file_id or "" }}</dd>
+        <dt>Document ID</dt>
+        <dd>{{ selected_job.document_id or "" }}</dd>
+        <dt>Message</dt>
+        <dd>{{ selected_job.current_message or "" }}</dd>
+        <dt>Error</dt>
+        <dd>{{ selected_job.error_message or "" }}</dd>
+        <dt>Queued</dt>
+        <dd>{{ selected_job.queued_at }}</dd>
+        <dt>Updated</dt>
+        <dd>{{ selected_job.updated_at }}</dd>
+      </dl>
+    </section>
+  </div>
+  <div class="col-12 col-xl-7">
+    <section class="metric-card bg-white p-3">
+      <h2 class="h5 mb-3">Event Timeline</h2>
+      <div class="event-timeline">
+        {% for event in selected_events %}
+        <div class="event-row">
+          <div class="event-row-header">
+            <span class="badge text-bg-light border">{{ event.event_type }}</span>
+            <span class="text-secondary">{{ event.created_at }}</span>
+          </div>
+          <div class="event-row-body">
+            <span>{{ event.stage or "" }}</span>
+            <span>{{ event.status or "" }}</span>
+            <span class="text-secondary">{{ event.message or "" }}</span>
+          </div>
+        </div>
+        {% else %}
+        <div class="text-secondary text-center py-5">No job events found</div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

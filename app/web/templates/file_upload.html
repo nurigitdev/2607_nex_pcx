@@ -140,7 +140,11 @@
             {% if result.pipeline_job %}
             <tr>
               <th scope="row">Pipeline Job ID</th>
-              <td>{{ result.pipeline_job.job_id }}</td>
+              <td>
+                <a href="/admin/jobs?job_id={{ result.pipeline_job.job_id }}">
+                  {{ result.pipeline_job.job_id }}
+                </a>
+              </td>
             </tr>
             <tr>
               <th scope="row">Pipeline Status</th>

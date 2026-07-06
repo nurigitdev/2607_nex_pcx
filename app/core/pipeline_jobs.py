@@ -102,6 +102,15 @@ class PipelineJobEventRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class PipelineJobListItem:
+    job: PipelineJobRecord
+    original_file_name: str | None
+    document_title: str | None
+    requested_by_login_id: str | None
+    requested_by_display_name: str | None
+
+
 class InvalidPipelineJobError(ValueError):
     """Raised when a pipeline job operation is invalid before reaching the DB."""
 
@@ -141,6 +150,13 @@ def _validate_worker(worker_name: str) -> str:
 def _validate_lease_seconds(lease_seconds: int) -> None:
     if lease_seconds <= 0:
         raise InvalidPipelineJobError("lease_seconds must be greater than 0")
+
+
+def _validate_limit(limit: int) -> None:
+    if limit <= 0:
+        raise InvalidPipelineJobError("limit must be greater than 0")
+    if limit > 500:
+        raise InvalidPipelineJobError("limit must be less than or equal to 500")
 
 
 def validate_pipeline_job_input(job_input: PipelineJobInput) -> None:
@@ -202,6 +218,16 @@ def _row_to_pipeline_job_event_record(row: dict[str, Any]) -> PipelineJobEventRe
     )
 
 
+def _row_to_pipeline_job_list_item(row: dict[str, Any]) -> PipelineJobListItem:
+    return PipelineJobListItem(
+        job=_row_to_pipeline_job_record(row),
+        original_file_name=row["original_file_name"],
+        document_title=row["document_title"],
+        requested_by_login_id=row["requested_by_login_id"],
+        requested_by_display_name=row["requested_by_display_name"],
+    )
+
+
 def _select_pipeline_job_columns(alias: str = "pipeline_jobs") -> str:
     return f"""
         {alias}.job_id,
@@ -253,6 +279,76 @@ def get_pipeline_job_in_connection(
 def get_pipeline_job(database_url: str, job_id: int) -> PipelineJobRecord | None:
     with connect(database_url) as connection:
         return get_pipeline_job_in_connection(connection, job_id)
+
+
+def list_pipeline_jobs(
+    database_url: str,
+    *,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[PipelineJobListItem]:
+    _validate_status(status)
+    _validate_limit(limit)
+    where_clause = ""
+    params: tuple[object, ...] = (limit,)
+    if status is not None:
+        where_clause = "WHERE pj.status = %s"
+        params = (status, limit)
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    {_select_pipeline_job_columns("pj")},
+                    f.original_file_name,
+                    d.document_title,
+                    u.login_id AS requested_by_login_id,
+                    u.display_name AS requested_by_display_name
+                FROM pipeline_jobs pj
+                LEFT JOIN files f ON f.file_id = pj.file_id
+                LEFT JOIN documents d ON d.document_id = pj.document_id
+                LEFT JOIN app_users u ON u.user_id = pj.requested_by_user_id
+                {where_clause}
+                ORDER BY pj.queued_at DESC, pj.job_id DESC
+                LIMIT %s
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+    return [_row_to_pipeline_job_list_item(dict(row)) for row in rows]
+
+
+def list_pipeline_job_events(
+    database_url: str,
+    job_id: int,
+    *,
+    limit: int = 100,
+) -> list[PipelineJobEventRecord]:
+    _require_positive_id(job_id, "job_id")
+    _validate_limit(limit)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    event_id,
+                    job_id,
+                    event_type,
+                    stage,
+                    status,
+                    message,
+                    event_metadata,
+                    created_at
+                FROM pipeline_job_events
+                WHERE job_id = %s
+                ORDER BY created_at ASC, event_id ASC
+                LIMIT %s
+                """,
+                (job_id, limit),
+            )
+            rows = cursor.fetchall()
+    return [_row_to_pipeline_job_event_record(dict(row)) for row in rows]
 
 
 def create_pipeline_job_in_connection(

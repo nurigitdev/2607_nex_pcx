@@ -11,6 +11,8 @@ from app.core.pipeline_jobs import (
     create_pipeline_job,
     get_pipeline_job,
     heartbeat_pipeline_job,
+    list_pipeline_job_events,
+    list_pipeline_jobs,
     mark_pipeline_failed,
     mark_pipeline_succeeded,
     record_pipeline_event,
@@ -404,3 +406,47 @@ def test_record_pipeline_event_wrapper_persists_metadata(
         assert event.event_metadata == {"stage_index": 2}
     finally:
         _cleanup_file(migrated_database_url, file_id)
+
+
+def test_list_pipeline_jobs_filters_status_and_includes_context(
+    migrated_database_url: str,
+) -> None:
+    file_id, document_id, user_id = _create_document(migrated_database_url)
+    try:
+        job = create_pipeline_job(
+            migrated_database_url,
+            PipelineJobInput(
+                job_type="document_ingestion",
+                file_id=file_id,
+                document_id=document_id,
+                requested_by_user_id=user_id,
+                total_units=3,
+            ),
+        )
+        failed = mark_pipeline_failed(
+            migrated_database_url,
+            job.job_id,
+            error_code="MONITOR_TEST",
+            error_message="monitor fixture failure",
+        )
+
+        failed_jobs = list_pipeline_jobs(migrated_database_url, status="failed", limit=20)
+        events = list_pipeline_job_events(migrated_database_url, job.job_id)
+
+        assert failed is not None
+        assert any(item.job.job_id == job.job_id for item in failed_jobs)
+        list_item = next(item for item in failed_jobs if item.job.job_id == job.job_id)
+        assert list_item.original_file_name is not None
+        assert list_item.document_title is not None
+        assert list_item.requested_by_login_id == "alice.member"
+        assert [event.event_type for event in events] == ["created", "failed"]
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_pipeline_job_list_rejects_invalid_filters() -> None:
+    with pytest.raises(InvalidPipelineJobError, match="Unsupported pipeline job status"):
+        list_pipeline_jobs("postgresql://example/db", status="unknown")
+
+    with pytest.raises(InvalidPipelineJobError, match="limit"):
+        list_pipeline_job_events("postgresql://example/db", 1, limit=0)
