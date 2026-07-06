@@ -124,3 +124,17 @@ Slice 009 adds the Phase 2.5 identity and permission metadata foundation:
 The migration seeds a small permission simulation graph with member, team lead, group lead,
 and admin accounts. Integration tests verify seed rows, hierarchy, FK links, access scope
 defaults, check constraints, and membership cascade behavior.
+
+## Pipeline Job Queue Schema
+
+Slice 010 adds the PostgreSQL-backed queue foundation for document ingestion:
+
+- `pipeline_jobs`
+- `pipeline_job_events`
+- queued/running/succeeded/failed/canceled/skipped status tracking
+- upload/parsing/chunking/embedding/vector-indexing stage tracking
+- worker lease metadata for `FOR UPDATE SKIP LOCKED` claim queries
+- progress, retry, error, and append-only event metadata
+
+Integration tests verify defaults, constraints, FK cascade behavior, claim indexes, and
+locked-row skipping for concurrent worker claims.
