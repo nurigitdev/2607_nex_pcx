@@ -8,6 +8,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFi
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
 from app.core.admin_logging import list_logs, log_event
 from app.core.config import Settings, get_settings
@@ -28,6 +29,7 @@ from app.core.file_metadata import (
     UnsupportedFileExtensionError,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
+from app.core.permissions import InvalidPermissionError
 from app.core.pipeline_jobs import (
     InvalidPipelineJobError,
     PipelineJobEventRecord,
@@ -37,6 +39,15 @@ from app.core.pipeline_jobs import (
     list_pipeline_job_events,
     list_pipeline_jobs,
 )
+from app.core.search_compare import (
+    InvalidSearchCompareError,
+    SearchCompareInput,
+    SearchCompareProfileResult,
+    SearchCompareResult,
+    run_search_compare,
+)
+from app.core.search_logs import InvalidSearchLogError
+from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=BASE_DIR / "web" / "templates")
@@ -44,6 +55,17 @@ UPLOAD_FILE_FORM = File(...)
 DOCUMENT_GROUP_FORM = Form("default")
 SECURITY_LEVEL_FORM = Form("internal")
 UPLOADED_BY_FORM = Form(None)
+
+
+class SearchCompareRequest(BaseModel):
+    query_text: str
+    actor_user_id: int
+    requested_search_scope: str = "company"
+    top_k: int = Field(default=5, ge=1)
+    profiles: list[str] | None = None
+    chunk_policy_name: str | None = None
+    document_group: str | None = None
+    file_type: str | None = None
 
 
 def pipeline_job_response_payload(
@@ -148,6 +170,53 @@ def embedding_vector_payload(vector: EmbeddingVectorRecord | None) -> dict[str, 
         "storage_type": vector.storage_type,
         "elapsed_ms": vector.elapsed_ms,
         "created_at": _datetime_response(vector.created_at),
+    }
+
+
+def vector_search_result_payload(result: VectorSearchResult) -> dict[str, object]:
+    return {
+        "profile_name": result.profile_name,
+        "rank": result.rank,
+        "chunk_id": result.chunk_id,
+        "document_id": result.document_id,
+        "file_id": result.file_id,
+        "distance": result.distance,
+        "score": result.score,
+        "chunk_preview": result.chunk_preview,
+        "content_hash": result.content_hash,
+        "chunk_policy_name": result.chunk_policy_name,
+        "heading_path": list(result.heading_path),
+        "page_no": result.page_no,
+        "slide_no": result.slide_no,
+        "sheet_name": result.sheet_name,
+        "cell_range": result.cell_range,
+        "document_title": result.document_title,
+        "document_group": result.document_group,
+        "original_file_name": result.original_file_name,
+        "file_ext": result.file_ext,
+        "embedding_elapsed_ms": result.embedding_elapsed_ms,
+    }
+
+
+def search_compare_profile_payload(profile: SearchCompareProfileResult) -> dict[str, object]:
+    return {
+        "profile_name": profile.profile_name,
+        "elapsed_ms": profile.elapsed_ms,
+        "results": [vector_search_result_payload(result) for result in profile.results],
+    }
+
+
+def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
+    return {
+        "search_log_id": result.search_log_id,
+        "query_text": result.query_text,
+        "actor_user_id": result.actor_user_id,
+        "requested_search_scope": result.requested_search_scope,
+        "effective_search_scope": result.effective_search_scope,
+        "permission_filter_metadata": result.permission_filter.metadata,
+        "top_k": result.top_k,
+        "total_elapsed_ms": result.total_elapsed_ms,
+        "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
     }
 
 
@@ -361,6 +430,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "embedding": embedding_vector_payload(vector),
             },
         )
+
+    @app.post("/api/search/compare")
+    def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            result = run_search_compare(
+                settings.database_url,
+                SearchCompareInput(
+                    query_text=payload.query_text,
+                    actor_user_id=payload.actor_user_id,
+                    requested_search_scope=payload.requested_search_scope,
+                    top_k=payload.top_k,
+                    profiles=tuple(payload.profiles) if payload.profiles is not None else None,
+                    chunk_policy_name=payload.chunk_policy_name,
+                    document_group=payload.document_group,
+                    file_type=payload.file_type,
+                ),
+            )
+        except (
+            InvalidSearchCompareError,
+            InvalidPermissionError,
+            InvalidVectorSearchError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=search_compare_payload(result))
 
     @app.get("/files/upload", response_class=HTMLResponse)
     def upload_file_page(request: Request) -> HTMLResponse:
