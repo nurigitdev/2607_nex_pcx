@@ -47,6 +47,7 @@ def test_core_metadata_tables_and_seed_rows(migrated_database_url: str) -> None:
           AND table_name IN (
               'files',
               'documents',
+              'chunks',
               'chunk_policies',
               'embedding_profiles'
           )
@@ -64,6 +65,10 @@ def test_core_metadata_tables_and_seed_rows(migrated_database_url: str) -> None:
         migrated_database_url,
         "SELECT count(*) AS count FROM embedding_profiles WHERE is_active",
     )
+    chunk_policy_count = fetch_one(
+        migrated_database_url,
+        "SELECT count(*) AS count FROM chunk_policies",
+    )
     qwen_profile = fetch_one(
         migrated_database_url,
         """
@@ -73,12 +78,13 @@ def test_core_metadata_tables_and_seed_rows(migrated_database_url: str) -> None:
         """,
     )
 
-    assert table_count["count"] == 4
+    assert table_count["count"] == 5
     assert chunk_policy == {
         "target_token_size": 512,
         "overlap_token_size": 64,
         "split_strategy": "heading-aware",
     }
+    assert chunk_policy_count["count"] >= 3
     assert embedding_profiles["count"] == 4
     assert qwen_profile == {"dimension": 2560, "storage_type": "halfvec"}
 

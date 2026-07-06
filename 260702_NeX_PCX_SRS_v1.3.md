@@ -28,6 +28,7 @@
 | 1.1 | 2026-07-02 | pgvector 2560차원 저장 방식, 핵심 DB 스키마, embedding job lifecycle, chunk policy, 검색 재현성 metadata 보강 |
 | 1.2 | 2026-07-05 | 계정, 조직 계층, 문서 접근 범위, permission-aware search, 권한 기반 평가 요구사항 보강 |
 | 1.3 | 2026-07-05 | 비동기 문서 처리 파이프라인, PostgreSQL job queue, worker 동시성, 진행 상태, 실패/재시도, 관리자 모니터링 요구사항 보강 |
+| 1.4 | 2026-07-06 | chunk size/overlap 실험 정책, 기본 운영 정책과 문서 구조 보존 원칙 보강 |
 
 # 목차
 
@@ -346,11 +347,15 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - MVP 기본 정책은 heading-aware chunking으로 한다.
 
-- 기본 chunk target size는 512 tokens, overlap은 64 tokens로 시작하되, chunk_policies table에 저장하여 실험별로 변경 가능해야 한다.
+- chunk size와 overlap은 검색 정확도, 저장용량, embedding 비용, hallucination 위험에 영향을 주므로 고정 상수가 아니라 chunk_policies table에 저장되는 실험 정책으로 관리한다.
+
+- 운영 기본 정책은 하나로 유지하여 관리 복잡도를 낮추되, NeX_PCX 실험 단계에서는 2~3개 정책을 같은 fixture/golden question set으로 비교할 수 있어야 한다.
+
+- 기본 chunk target size는 512 tokens, overlap은 64 tokens로 시작한다. 추가 실험 후보로 1000/200, 1500/200 계열 정책을 seed하여 짧은 사실 검색과 긴 문맥 검색의 trade-off를 비교한다.
 
 - Heading 경계가 있는 경우 heading hierarchy를 우선 보존하고, heading 하나의 본문이 target size를 초과하면 paragraph/table/code block 경계를 우선하여 분할한다.
 
-- Markdown code block과 table, DOCX/HWPX/PPTX/XLSX table은 가능한 한 하나의 chunk 안에서 보존한다. target size를 크게 초과하는 table은 row group 단위로 분할한다.
+- Markdown code block과 table, DOCX/HWPX/PPTX/XLSX table은 가능한 한 하나의 chunk 안에서 보존한다. token size는 구조 경계를 무시하는 절대 길이가 아니라 구조 보존 후 분할 여부를 결정하는 상한선으로 사용한다. target size를 크게 초과하는 table은 row group 단위로 분할한다.
 
 - 각 chunk는 chunk_policy_name, parser_name, parser_version, token_count, char_count, content_hash를 저장하여 regression test와 검색 재현성에 사용할 수 있어야 한다.
 
@@ -615,6 +620,8 @@ chunks는 별도 owner/access 컬럼을 중복 저장하지 않고 documents의 
 | chunk_policy_name | target_token_size | overlap_token_size | split_strategy | 비고 |
 | --- | --- | --- | --- | --- |
 | heading_512_64 | 512 | 64 | heading-aware | MVP 기본 정책 |
+| heading_1000_200 | 1000 | 200 | heading-aware | 실무 기본 후보, 문맥/비용 균형 비교 |
+| heading_1500_200 | 1500 | 200 | heading-aware | 긴 문맥 문서 후보, 저장량 대비 recall 비교 |
 
 ## 5.6 pipeline job queue 테이블 요구사항
 
