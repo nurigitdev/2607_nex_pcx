@@ -12,6 +12,8 @@ def test_file_upload_page_renders_configuration_state() -> None:
 
     assert response.status_code == 200
     assert "File Upload" in response.text
+    assert "Drop file here" in response.text
+    assert "data-upload-progress" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert "No upload result" in response.text
 

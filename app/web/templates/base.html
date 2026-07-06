@@ -13,23 +13,46 @@
     <link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
   </head>
   <body>
-    <div class="app-shell">
-      <nav class="navbar bg-white">
-        <div class="container-fluid px-4">
-          <div class="d-flex align-items-center gap-4">
+    {% set current_path = request.url.path %}
+    <div class="app-shell d-lg-flex">
+      <aside class="app-sidebar d-none d-lg-flex flex-column">
+        <div class="sidebar-brand">
+          <a class="text-decoration-none" href="/">
+            <span class="brand-mark">N</span>
+            <span class="brand-text">{{ app_name }}</span>
+          </a>
+          <div class="sidebar-version">v{{ app_version }} / {{ environment }}</div>
+        </div>
+        <nav class="sidebar-nav nav nav-pills flex-column gap-1" aria-label="Primary navigation">
+          <a class="nav-link {% if current_path == '/' %}active{% endif %}" href="/">Dashboard</a>
+          <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">Upload</a>
+          <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">Logs</a>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>Ready</span>
+        </div>
+      </aside>
+
+      <div class="app-content flex-grow-1">
+        <nav class="navbar mobile-navbar bg-white d-lg-none">
+          <div class="container-fluid px-3">
             <a class="navbar-brand mb-0 h1" href="/">{{ app_name }}</a>
-            <div class="nav">
-              <a class="nav-link px-2" href="/">Dashboard</a>
-              <a class="nav-link px-2" href="/files/upload">Upload</a>
-              <a class="nav-link px-2" href="/admin/logs">Logs</a>
+            <span class="badge text-bg-light border">v{{ app_version }}</span>
+          </div>
+          <div class="container-fluid px-3 pb-2">
+            <div class="nav nav-pills mobile-nav gap-1">
+              <a class="nav-link {% if current_path == '/' %}active{% endif %}" href="/">Dashboard</a>
+              <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">Upload</a>
+              <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">Logs</a>
             </div>
           </div>
-          <span class="badge text-bg-light border">v{{ app_version }} / {{ environment }}</span>
-        </div>
-      </nav>
-      <main class="container-fluid px-4 py-4">
-        {% block content %}{% endblock %}
-      </main>
+        </nav>
+        <main class="container-fluid px-3 px-md-4 py-4">
+          {% block content %}{% endblock %}
+        </main>
+      </div>
     </div>
+    {% block scripts %}{% endblock %}
   </body>
 </html>
