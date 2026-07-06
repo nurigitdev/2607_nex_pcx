@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.2**
+**Software Requirements Specification v1.3**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.2  
+문서 상태: Draft v1.3  
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.2 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.3 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.2 |
+| 문서 버전 | v1.3 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -27,6 +27,7 @@
 | 1.0 | 2026-07-02 | Embedding 4개 profile, FastAPI+Bootstrap, 파일 metadata, 품질관리/테스트 요구사항 반영 |
 | 1.1 | 2026-07-02 | pgvector 2560차원 저장 방식, 핵심 DB 스키마, embedding job lifecycle, chunk policy, 검색 재현성 metadata 보강 |
 | 1.2 | 2026-07-05 | 계정, 조직 계층, 문서 접근 범위, permission-aware search, 권한 기반 평가 요구사항 보강 |
+| 1.3 | 2026-07-05 | 비동기 문서 처리 파이프라인, PostgreSQL job queue, worker 동시성, 진행 상태, 실패/재시도, 관리자 모니터링 요구사항 보강 |
 
 # 목차
 
@@ -85,6 +86,7 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | 문서 업로드 | PDF, DOCX, HWPX, PPTX, XLSX, MD 파일 업로드 및 원본 metadata 저장 |
 | 문서 처리 | 텍스트 추출, heading/section 추정, chunk 생성, chunk metadata 저장 |
 | Embedding | KURE-v1 1024, bge-m3 1024, Qwen3 1000, Qwen3 2560 profile 생성 및 저장 |
+| 비동기 처리 | 업로드 이후 텍스트 추출, parsing, chunking, embedding, vector indexing을 job queue와 worker로 처리 |
 | 검색 | 동일 query에 대한 4개 profile 병렬 검색 결과 표시 |
 | 평가 | 검색 결과 정답/부분정답/오답 피드백 저장, 검색 로그/latency 저장 |
 | 계정/권한 | 테스트용 사용자, 조직 계층, 역할, 문서 접근 범위, query 검색 범위 metadata 저장 |
@@ -119,6 +121,9 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | Document Access Scope | 문서가 검색 대상에 포함될 수 있는 범위. personal, team, org_tree, company 등 |
 | Query Search Scope | 사용자가 query 실행 시 선택하는 검색 범위. mine, team, managed_org, company 등 |
 | Permission Pre-filter | vector search 후보군 생성 전에 actor 권한 조건으로 검색 대상을 제한하는 방식 |
+| Pipeline Job | 업로드 후 텍스트 추출, parsing, chunking, embedding, vector indexing 단계를 추적하는 비동기 작업 단위 |
+| Pipeline Job Event | pipeline job의 상태 변경, 진행률 변경, 오류, 재시도 이력을 append-only로 기록한 이벤트 |
+| Worker Lease | 여러 worker가 같은 job을 중복 처리하지 않도록 일정 시간 동안 job 점유권을 부여하는 방식 |
 
 # 2. 전체 시스템 설명
 
@@ -148,7 +153,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 
 ## 2.3 운영 가정
 
-- 초기 PoC는 내부 개발/검증용 단일 서버 또는 Docker Compose 환경에서 운영한다.
+- 초기 PoC는 Docker 없이 내부 개발/검증용 단일 서버와 로컬 worker process 기준으로 운영한다.
 
 - PostgreSQL에는 pgvector extension이 활성화되어야 한다.
 
@@ -157,6 +162,10 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 - Qwen3-Embedding-4B 2560 profile은 pgvector의 일반 vector type 차원 한계를 초과하므로 MVP에서는 halfvec(2560) 저장 방식을 사용한다.
 
 - 파일 업로드 후 embedding은 background job으로 수행하며, 대시보드에서 profile별 진행률을 확인할 수 있어야 한다.
+
+- MVP의 background queue는 Redis/Celery 등 외부 broker가 아니라 PostgreSQL 기반 pipeline job queue로 구현한다.
+
+- worker는 초기에는 단일 process/단일 concurrency로 시작하고, 이후 설정값으로 worker 수와 stage별 동시성을 늘릴 수 있어야 한다.
 
 - 검색 비교의 공정성을 위해 동일 문서, 동일 parser, 동일 chunk, 동일 query, 동일 top-k 기준으로 4개 profile을 비교한다.
 
@@ -181,6 +190,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 [FastAPI Backend]
 ├─ Upload API
 ├─ Identity / Permission API
+├─ Pipeline Job API
 ├─ Document Parsing Service
 ├─ Chunking Service
 ├─ Embedding Job API
@@ -189,16 +199,22 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 └─ Feedback API
 │
 ▼
-[Background Workers]
-├─ kure_v1_1024 worker
-├─ bge_m3_1024 worker
-├─ qwen3_4b_1000 worker
-└─ qwen3_4b_2560 worker
+[PostgreSQL Pipeline Queue]
+├─ pipeline_jobs
+└─ pipeline_job_events
+│
+▼
+[Background Worker Runners]
+├─ text extraction / parsing worker
+├─ chunking worker
+├─ kure_v1_1024 / bge_m3_1024 worker
+└─ qwen3_4b_1000 / qwen3_4b_2560 worker
 │
 ▼
 [PostgreSQL + pgvector]
 ├─ app_users / org_units / memberships
 ├─ files / documents / chunks
+├─ pipeline_jobs / pipeline_job_events
 ├─ embedding profile tables
 ├─ search_logs / feedback
 └─ experiment/evaluation tables
@@ -212,9 +228,12 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | FastAPI Backend | REST API 제공, validation, 서비스 호출, DB transaction 처리 |
 | File Storage | 업로드 원본 파일과 추출 산출물 저장 |
 | Identity/Permission Service | 테스트 계정, 조직 계층, 역할, 문서 접근 범위, 검색 scope 계산 |
+| Pipeline Job Service | 업로드 이후 텍스트 추출, parsing, chunking, embedding, vector indexing 작업 생성과 상태 전이 관리 |
+| PostgreSQL Job Queue | pipeline_jobs를 기반으로 queued job, lease, retry, progress, worker heartbeat를 관리 |
 | Parser Service | 파일 타입별 텍스트/메타데이터 추출 |
 | Chunking Service | 문서 구조와 정책에 따라 chunk 생성 및 prev/next 연결 |
-| Embedding Workers | profile별 모델 로딩, embedding 생성, 처리 시간/오류 기록 |
+| Worker Runners | stage별 job 점유, 처리, heartbeat, 실패/재시도, 처리 시간/오류 기록 |
+| Embedding Workers | profile별 모델 로딩, embedding 생성, pgvector 저장 |
 | Search Service | query embedding 생성, pgvector 검색, 4개 profile 결과 병렬 반환 |
 | Statistics Service | 문서/chunk/vector/job/검색 통계 산출 |
 | Quality/Test Framework | pytest, Playwright, coverage, 독립 test DB 기반 품질 검증 |
@@ -222,18 +241,17 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 ## 3.3 배포 구조
 
 ```text
-Docker Compose 기준 초기 배포 구조
+Docker 미사용 로컬 서버 기준 초기 배포 구조
 
-services:
+processes:
 web-app: FastAPI + Bootstrap templates
 postgres: PostgreSQL + pgvector
-redis: background job broker
-worker-kure: KURE-v1 1024 embedding worker
-worker-bge: bge-m3 1024 embedding worker
-worker-qwen-1000: Qwen3-Embedding-4B 1000 worker
-worker-qwen-2560: Qwen3-Embedding-4B 2560 worker
+worker-default: text extraction, parsing, chunking, light embedding job 처리
+worker-qwen: Qwen3-Embedding-4B 1000/2560 profile 전용 worker
 playwright-test: E2E test runner (CI 또는 local gate)
 ```
+
+MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, lease, SKIP LOCKED 기반 claim query로 queue를 구현한다. 이후 NeX-CX 본 개발에서 처리량 요구가 커질 경우 Redis/Celery, RabbitMQ, cloud queue 등 외부 broker 전환 여부를 재검토한다.
 
 # 4. 기능 요구사항
 
@@ -277,6 +295,12 @@ playwright-test: E2E test runner (CI 또는 local gate)
 | FR-026 | 권한별 검색 결과 비교 | 동일 query에 대해 사용자/검색 범위별 결과 차이를 비교하고 평가할 수 있어야 한다. | SHOULD |
 | FR-027 | 권한 metadata 감사 로그 | 업로드, 검색, 피드백 이벤트에 actor와 permission metadata를 남긴다. | MUST |
 | FR-028 | 공통 문서 관리 | 회사 규칙, 업무 규칙, 사규 등 company scope 문서를 별도 구분하여 전사 검색 대상에 포함한다. | MUST |
+| FR-029 | Pipeline job 생성 | 파일 업로드 완료 후 텍스트 추출, parsing, chunking, embedding, vector indexing을 위한 비동기 pipeline job을 생성한다. | MUST |
+| FR-030 | Pipeline 진행 상태 조회 | 파일/문서별 현재 stage, status, 진행률, 시작/종료 시간, 오류 요약을 조회한다. | MUST |
+| FR-031 | PostgreSQL job queue | pipeline_jobs를 PostgreSQL 기반 queue로 사용하고 worker가 lease 방식으로 job을 점유한다. | MUST |
+| FR-032 | Worker 동시성 제어 | worker 수, stage별 동시성, profile별 worker 분리를 설정값으로 관리한다. | SHOULD |
+| FR-033 | Pipeline 실패/재시도 | 실패한 pipeline job은 오류 원인, attempt 수, 재시도 가능 여부를 저장하고 수동 재시도할 수 있어야 한다. | MUST |
+| FR-034 | Pipeline event 감사 | job 생성, 점유, stage 전환, 진행률, 실패, 재시도 이벤트를 append-only event로 저장한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 
@@ -288,6 +312,8 @@ playwright-test: E2E test runner (CI 또는 local gate)
 | FR-001-04 | kure_v1_1024, bge_m3_1024, qwen3_4b_1000, qwen3_4b_2560 profile별 완료/대기/실패 건수를 표시한다. |
 | FR-001-05 | profile별 평균 embedding 시간과 평균 검색 latency를 표시한다. |
 | FR-001-06 | parsing 실패, embedding 실패, DB 저장 실패 목록을 최근순으로 표시한다. |
+| FR-001-07 | pipeline queue depth, running job 수, 오래 대기 중인 job, lease 만료 job, 실패 job 수를 표시한다. |
+| FR-001-08 | stage별 평균 처리 시간과 최근 실패 원인을 표시한다. |
 
 ## 4.4 파일 업로드 및 parsing 요구사항
 
@@ -299,6 +325,10 @@ playwright-test: E2E test runner (CI 또는 local gate)
 | PPTX | slide_no, title, body, table text 추출, slide 단위 chunk 지원 |
 | XLSX | sheet_name, used range, row/table text 추출, sheet/table 단위 chunk 지원 |
 | MD | heading 구조, code block, table 구조 보존 |
+
+- 업로드 API는 원본 파일 저장과 metadata 저장을 완료한 뒤 heavy processing을 기다리지 않고 file_id, document_id, pipeline_job_id, queued status를 반환한다.
+
+- 파일 업로드 직후 사용자는 Job Monitor 또는 Document Detail 화면에서 처리 진행 상태를 확인할 수 있어야 한다.
 
 ## 4.5 검색 요구사항
 
@@ -372,6 +402,34 @@ playwright-test: E2E test runner (CI 또는 local gate)
 
 - 권한 필터로 제외된 문서의 내용, 제목, chunk preview, score는 UI와 API 응답에 노출하지 않는다.
 
+## 4.9 비동기 문서 처리 파이프라인 요구사항
+
+- 문서 처리 파이프라인은 upload_saved, text_extraction, parsing, chunking, embedding, vector_indexing, completed 단계로 추적한다.
+
+- pipeline job status는 queued, running, succeeded, failed, canceled, skipped 중 하나로 관리한다.
+
+- 업로드 요청 transaction은 원본 파일, files/documents metadata, root pipeline job 생성을 원자적으로 처리한다.
+
+- worker는 `FOR UPDATE SKIP LOCKED` 방식의 claim query로 queued job을 점유하고 lease_owner, lease_expires_at, heartbeat_at을 갱신한다.
+
+- lease가 만료된 running job은 재점유 가능해야 하며, 재점유 시 attempts와 event log를 남긴다.
+
+- 초기 운영은 단일 worker와 순차 처리로 시작하되, NEX_PCX_WORKER_CONCURRENCY 또는 동등한 설정값으로 worker 동시성을 늘릴 수 있어야 한다.
+
+- Qwen3-Embedding-4B 1000/2560 profile은 처리 시간이 길 수 있으므로 별도 worker pool로 분리 가능해야 한다.
+
+- pipeline 진행률은 total_units, processed_units, progress_percent, current_stage, current_message로 표현한다.
+
+- chunk/profile 단위 embedding 작업은 embedding_jobs로 세부 추적하고, 상위 pipeline job은 문서 단위 전체 진행률을 집계한다.
+
+- 중복 checksum 파일은 기존 files/documents metadata를 재사용하거나 별도 정책에 따라 새 document record만 생성하되, 동일 chunk/profile embedding job 중복 생성은 방지한다.
+
+- 실패한 job은 error_code, error_message, failed_at, attempts, max_attempts를 저장하고, 상세 stack trace 또는 내부 오류 상세는 app_logs와 연결한다.
+
+- 관리자 또는 권한 있는 actor는 failed/canceled job을 수동 retry할 수 있어야 한다.
+
+- 사용자는 본인이 업로드했거나 권한 범위에 포함되는 문서의 pipeline 상태만 조회할 수 있고, System Admin은 전체 queue를 조회할 수 있다.
+
 # 5. 데이터 및 저장소 요구사항
 
 ## 5.1 저장소 원칙
@@ -379,6 +437,8 @@ playwright-test: E2E test runner (CI 또는 local gate)
 - 원본 파일 metadata, 문서 metadata, chunk metadata, embedding profile, 검색 로그, 피드백은 모두 PostgreSQL에 저장한다.
 
 - 사용자, 조직, 역할, 문서 접근 범위, 검색 actor/scope metadata도 PostgreSQL에 저장한다.
+
+- 비동기 파이프라인 queue, worker lease, 진행률, 재시도, 이벤트 이력도 PostgreSQL에 저장한다.
 
 - 원본 파일은 파일 시스템 또는 object storage에 저장하고, DB에는 storage_path와 checksum을 저장한다.
 
@@ -407,6 +467,8 @@ playwright-test: E2E test runner (CI 또는 local gate)
 | documents | 논리 문서 단위 정보 |
 | chunks | 검색 단위 chunk와 구조 metadata |
 | chunk_policies | chunk size, overlap, split strategy 등 chunk 생성 정책 |
+| pipeline_jobs | 문서 처리 파이프라인의 상위 job, stage, status, lease, 진행률 |
+| pipeline_job_events | pipeline job 상태 변경과 진행률 변경 이력 |
 | embedding_profiles | 모델명, dimension, storage type, runtime 설정 등 profile metadata |
 | embedding_jobs | chunk/profile별 embedding 작업 상태와 재시도 정보 |
 | chunk_embeddings_kure_v1_1024 | KURE-v1 1024차원 embedding 저장 |
@@ -554,7 +616,80 @@ chunks는 별도 owner/access 컬럼을 중복 저장하지 않고 documents의 
 | --- | --- | --- | --- | --- |
 | heading_512_64 | 512 | 64 | heading-aware | MVP 기본 정책 |
 
-## 5.6 embedding profile 및 job 테이블 요구사항
+## 5.6 pipeline job queue 테이블 요구사항
+
+```sql
+CREATE TABLE pipeline_jobs (
+job_id BIGSERIAL PRIMARY KEY,
+job_type TEXT NOT NULL
+    CHECK (job_type IN ('document_ingestion', 'text_extraction', 'parsing', 'chunking', 'embedding', 'vector_indexing')),
+file_id BIGINT REFERENCES files(file_id) ON DELETE CASCADE,
+document_id BIGINT REFERENCES documents(document_id) ON DELETE CASCADE,
+parent_job_id BIGINT REFERENCES pipeline_jobs(job_id) ON DELETE CASCADE,
+requested_by_user_id BIGINT REFERENCES app_users(user_id),
+status TEXT NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'canceled', 'skipped')),
+stage TEXT NOT NULL DEFAULT 'upload_saved'
+    CHECK (stage IN ('upload_saved', 'text_extraction', 'parsing', 'chunking', 'embedding', 'vector_indexing', 'completed')),
+priority INT NOT NULL DEFAULT 100,
+total_units INT DEFAULT 0,
+processed_units INT DEFAULT 0,
+progress_percent NUMERIC(5, 2) DEFAULT 0,
+current_message TEXT,
+attempts INT NOT NULL DEFAULT 0,
+max_attempts INT NOT NULL DEFAULT 3,
+lease_owner TEXT,
+lease_expires_at TIMESTAMP,
+heartbeat_at TIMESTAMP,
+error_code TEXT,
+error_message TEXT,
+metadata JSONB DEFAULT '{}'::jsonb,
+queued_at TIMESTAMP DEFAULT now(),
+started_at TIMESTAMP,
+finished_at TIMESTAMP,
+updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE INDEX idx_pipeline_jobs_claim
+ON pipeline_jobs (status, priority, queued_at)
+WHERE status = 'queued';
+
+CREATE INDEX idx_pipeline_jobs_file ON pipeline_jobs (file_id);
+CREATE INDEX idx_pipeline_jobs_document ON pipeline_jobs (document_id);
+CREATE INDEX idx_pipeline_jobs_lease ON pipeline_jobs (lease_expires_at)
+WHERE status = 'running';
+
+CREATE TABLE pipeline_job_events (
+event_id BIGSERIAL PRIMARY KEY,
+job_id BIGINT NOT NULL REFERENCES pipeline_jobs(job_id) ON DELETE CASCADE,
+event_type TEXT NOT NULL
+    CHECK (event_type IN ('created', 'claimed', 'heartbeat', 'stage_started', 'progress', 'stage_succeeded', 'failed', 'retried', 'canceled')),
+stage TEXT,
+status TEXT,
+message TEXT,
+event_metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE INDEX idx_pipeline_job_events_job ON pipeline_job_events (job_id, created_at);
+```
+
+pipeline_jobs는 문서 단위 ingestion 상태와 UI 진행률을 제공한다. embedding_jobs는 chunk/profile 단위 작업을 세밀하게 추적하며, 상위 pipeline job의 embedding stage는 embedding_jobs의 완료/실패 건수를 집계한다.
+
+MVP의 worker claim query는 다음 원칙을 따른다.
+
+```sql
+SELECT job_id
+FROM pipeline_jobs
+WHERE status = 'queued'
+ORDER BY priority ASC, queued_at ASC
+FOR UPDATE SKIP LOCKED
+LIMIT 1;
+```
+
+claim 성공 후 같은 transaction에서 status, lease_owner, lease_expires_at, heartbeat_at을 갱신하고 pipeline_job_events에 claimed event를 기록한다.
+
+## 5.7 embedding profile 및 job 테이블 요구사항
 
 ```sql
 CREATE TABLE embedding_profiles (
@@ -604,7 +739,7 @@ embedding profile 초기 데이터는 다음과 같다.
 | qwen3_4b_1000 | Qwen/Qwen3-Embedding-4B | 1000 | vector | 32768 | 8192 | true | query-side instruction 사용 여부를 profile metadata에 기록 | Qwen 저용량 profile |
 | qwen3_4b_2560 | Qwen/Qwen3-Embedding-4B | 2560 | halfvec | 32768 | 8192 | true | query-side instruction 사용 여부를 profile metadata에 기록 | Qwen 최대 차원 profile |
 
-## 5.7 profile별 embedding table
+## 5.8 profile별 embedding table
 
 ```sql
 CREATE TABLE chunk_embeddings_kure_v1_1024 (
@@ -636,7 +771,7 @@ created_at TIMESTAMP DEFAULT now()
 );
 ```
 
-## 5.8 search log 및 feedback 테이블 요구사항
+## 5.9 search log 및 feedback 테이블 요구사항
 
 ```sql
 CREATE TABLE search_logs (
@@ -687,7 +822,7 @@ created_at TIMESTAMP DEFAULT now()
 
 permission_filter_metadata에는 actor의 primary org, managed org subtree, 포함된 access_scope 목록, company 문서 포함 여부, filter SQL/parameter fingerprint를 저장한다.
 
-## 5.9 저장용량 산정
+## 5.10 저장용량 산정
 
 저장 타입 기준 embedding 원시 저장용량은 vector profile은 chunk 수 × dimension × 4 bytes, halfvec profile은 chunk 수 × dimension × 2 bytes로 산정한다. 실제 운영 용량은 PostgreSQL row overhead, pgvector index, chunk text, metadata, 원본 파일, 추출 산출물 용량을 추가로 고려해야 한다.
 
@@ -697,7 +832,7 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | 1,000,000 | 3.9 GB | 3.9 GB | 3.8 GB | 4.9 GB | 약 16.5 GB |
 | 10,000,000 | 39 GB | 39 GB | 38 GB | 49 GB | 약 165 GB |
 
-## 5.10 index 요구사항
+## 5.11 index 요구사항
 
 - MVP 초기에는 exact search를 기준 결과로 남긴다.
 
@@ -721,12 +856,12 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 
 | 화면 | 주요 구성요소 |
 | --- | --- |
-| Dashboard | 문서 수, 파일 용량, chunk 수, profile별 embedding 진행률, 검색 latency, 오류 목록 |
-| File Upload | 파일 선택, 업로드 사용자, 소유 조직, 접근 범위, 문서 그룹, 보안 등급, 업로드 결과 |
+| Dashboard | 문서 수, 파일 용량, chunk 수, pipeline/embedding 진행률, queue backlog, 검색 latency, 오류 목록 |
+| File Upload | 파일 선택, 업로드 사용자, 소유 조직, 접근 범위, 문서 그룹, 보안 등급, 업로드 결과, queued job link |
 | Permission Simulation | 테스트 사용자, 조직 계층, membership role, 문서 접근 범위 fixture 관리 |
 | Search Compare | 검색어, actor, 검색 scope, 필터, top-k, 4-column 결과 비교, 피드백 버튼 |
-| Document Detail | 원본 metadata, owner, access scope, parsing 결과, chunk 목록, embedding 상태 |
-| Job Monitor | embedding job queue, 완료/실패/재처리 상태 |
+| Document Detail | 원본 metadata, owner, access scope, pipeline timeline, parsing 결과, chunk 목록, embedding 상태 |
+| Job Monitor | pipeline job queue, stage/status/progress, 완료/실패/재처리 상태, worker lease 상태 |
 
 ## 6.3 검색 비교 화면 레이아웃
 
@@ -744,6 +879,22 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 ```
 
 검색 비교 화면 상단에는 actor_user, requested_search_scope, effective permission summary를 표시한다. 권한 필터로 제외된 문서 수는 aggregate 숫자로만 표시할 수 있으며, 제외된 문서의 제목이나 본문 preview는 노출하지 않는다.
+
+## 6.4 Pipeline / Job Monitor 화면 요구사항
+
+- File Upload 완료 화면은 업로드 성공/중복 여부와 함께 root pipeline_job_id, 현재 status, Job Monitor 링크를 표시한다.
+
+- Job Monitor 목록은 파일명, 업로드 actor, access scope, status, current stage, progress_percent, attempts, lease_owner, queued_at, started_at, finished_at, duration, error summary를 표시한다.
+
+- Job Monitor는 queued, running, failed, succeeded, canceled 상태별 필터를 제공한다.
+
+- failed/canceled job에는 권한 있는 actor에게 retry action을 제공한다.
+
+- Document Detail 화면은 upload_saved부터 vector_indexing까지 stage timeline을 표시한다.
+
+- 진행 상태 갱신은 MVP에서 server-rendered page refresh 또는 lightweight polling으로 구현하며, 고급 SPA/WebSocket은 후속 phase에서 검토한다.
+
+- 권한 없는 사용자는 본인이 볼 수 없는 문서의 job 상세, 오류 메시지, 파일명, document title을 볼 수 없다.
 
 # 7. Embedding 및 검색 평가 요구사항
 
@@ -825,6 +976,9 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | NFR-009 | 데이터 무결성 | chunk/profile job, search result, feedback은 FK와 unique constraint로 중복 및 고아 데이터를 방지한다. |
 | NFR-010 | 접근제어 | actor가 접근 권한이 없는 문서, chunk, score, preview는 API/UI/search log result에 노출하지 않는다. |
 | NFR-011 | 재현성 | 권한 기반 검색 실험은 actor, 조직 membership snapshot, requested/effective scope, permission filter metadata를 함께 저장한다. |
+| NFR-012 | 운영성 | 오래 걸리는 ingestion pipeline은 API request thread를 점유하지 않고 queue와 worker에서 처리한다. |
+| NFR-013 | 신뢰성 | worker 중단, lease 만료, 일시적 DB 오류가 발생해도 job은 재시도 가능하고 중복 저장을 방지해야 한다. |
+| NFR-014 | 관측성 | pipeline job의 stage 전환, 진행률, worker heartbeat, 실패 원인, 재시도 이력을 UI와 로그로 추적할 수 있어야 한다. |
 
 # 9. 소프트웨어 품질관리 및 테스트 요구사항
 
@@ -848,13 +1002,16 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | QA-010 | pgvector vector/halfvec schema, embedding job status transition, search log 재현성 metadata를 integration/regression test에 포함한다. |
 | QA-011 | 권한 fixture는 일반 사용자, 팀장, 그룹장, company 문서를 포함하고 permission pre-filter 결과를 regression test로 검증한다. |
 | QA-012 | 같은 query에 대해 actor/scope별 결과 차이를 비교하는 permission-aware search test를 포함한다. |
+| QA-013 | pipeline job queue schema, claim query, lease 만료, retry, progress update를 integration test에 포함한다. |
+| QA-014 | 동시 worker claim 상황에서 같은 job이 중복 점유되지 않는지 concurrency regression test를 포함한다. |
+| QA-015 | 업로드 API는 heavy processing을 기다리지 않고 queued job id를 반환하는 smoke test를 포함한다. |
 
 ## 9.2 테스트 계층
 
 | 테스트 유형 | 목적 | 예시 |
 | --- | --- | --- |
 | Unit Test | 개별 함수/클래스 검증 | parser, chunker, metadata extractor, embedding adapter |
-| Integration Test | DB/pgvector/API/worker 연동 검증 | pgvector extension, vector search SQL, repository transaction |
+| Integration Test | DB/pgvector/API/worker 연동 검증 | pgvector extension, pipeline queue claim, vector search SQL, repository transaction |
 | Regression Test | 기존 검색/업로드/embedding 동작 유지 확인 | 고정 fixture 기반 결과 순위 검증 |
 | Smoke Test | 핵심 실행 흐름의 최소 동작 확인 | 서버 기동, DB 연결, MD 업로드, 검색 |
 | E2E/UI Test | 브라우저 기반 사용자 흐름 검증 | 대시보드, 업로드, 검색 비교, 피드백 |
@@ -884,6 +1041,7 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | Robustness Test | 깨진 파일, 확장자 위조, DB 장애, 모델 로딩 실패 | password PDF, corrupted DOCX, duplicate checksum |
 | Worst Case Test | 대용량 문서, 대량 chunk, 동시 업로드, Qwen 2560 검색 | 수백 page PDF, 수천 chunk, index rebuild |
 | Permission Matrix Test | actor role, org hierarchy, access_scope, requested_scope 조합 | 개인 문서 숨김, 팀장 scope 포함, company 문서 전체 노출 |
+| Concurrency Test | worker claim, lease expiry, retry, duplicate job 방지 | worker 2개 동시 claim, lease 만료 job 재점유 |
 
 ## 9.5 테스트 디렉토리 구조
 
@@ -906,16 +1064,19 @@ tests/
 │ ├─ test_pgvector_halfvec.py
 │ ├─ test_document_repository.py
 │ ├─ test_permission_repository.py
+│ ├─ test_pipeline_job_repository.py
 │ ├─ test_embedding_repository.py
 │ ├─ test_embedding_job_repository.py
 │ └─ test_vector_search_profiles.py
 ├─ api/
 │ ├─ test_upload_api.py
+│ ├─ test_pipeline_jobs_api.py
 │ ├─ test_dashboard_api.py
 │ ├─ test_search_api.py
 │ └─ test_feedback_api.py
 ├─ regression/
 │ ├─ test_upload_regression.py
+│ ├─ test_pipeline_job_regression.py
 │ ├─ test_permission_scope_regression.py
 │ ├─ test_chunking_regression.py
 │ ├─ test_search_ranking_regression.py
@@ -923,10 +1084,12 @@ tests/
 ├─ smoke/
 │ ├─ test_app_startup.py
 │ ├─ test_db_ready.py
+│ ├─ test_upload_to_pipeline_flow.py
 │ └─ test_upload_to_search_flow.py
 ├─ e2e/
 │ ├─ test_dashboard_ui.py
 │ ├─ test_file_upload_ui.py
+│ ├─ test_job_monitor_ui.py
 │ └─ test_search_compare_ui.py
 ├─ fixtures/
 │ ├─ files/
@@ -969,6 +1132,7 @@ pytest tests/e2e
 | Phase 1 | Skeleton + 품질 기반 구축 | FastAPI/Bootstrap/PostgreSQL/pgvector/pytest/Playwright 기본 구조, migration 골격 | 앱 기동, DB 연결, vector/halfvec extension 확인, test DB 초기화, 기본 smoke test 통과 |
 | Phase 2 | 파일 업로드 + metadata 저장 | 업로드 API/UI, files/documents 테이블, checksum 중복 검출, 문서 그룹/보안 등급 metadata | 지원 확장자 업로드와 metadata 저장 test 통과 |
 | Phase 2.5 | Identity + Permission Metadata | 테스트 계정, 조직 계층, document access scope, permission-aware search metadata | actor/scope별 접근 가능 문서 fixture와 permission pre-filter test 통과 |
+| Phase 2.6 | Pipeline Queue + Worker Foundation | pipeline_jobs/pipeline_job_events, PostgreSQL queue claim, worker lease, 진행 상태 API/UI | 업로드 후 queued job 생성, worker claim/retry/progress integration test 통과 |
 | Phase 3 | Parsing + Chunking | 파일별 parser, heading-aware chunker, chunk_policies/chunks 저장 | fixture 문서별 chunk 생성 결과와 chunk policy regression test 통과 |
 | Phase 4 | 4개 Embedding Profile 처리 | profile별 worker/table, embedding_jobs 상태 관리, Qwen 2560 halfvec 저장 | 동일 chunk에 대해 4개 profile embedding 저장 및 job status transition 검증 |
 | Phase 5 | 검색 비교 UI | 4-column 검색 화면, search_logs/search_log_results/feedback 저장 | 동일 query에 대한 4개 profile top-k 결과 표시, 재현성 metadata 기록, 피드백 저장 |
@@ -979,6 +1143,10 @@ pytest tests/e2e
 - PDF/DOCX/HWPX/PPTX/XLSX/MD 파일 업로드와 원본 metadata 저장이 가능하다.
 
 - 업로드 문서는 actor, owner, owner org, access scope metadata를 가져야 한다.
+
+- 업로드 API는 heavy processing을 기다리지 않고 pipeline job을 queued 상태로 생성해야 한다.
+
+- 사용자는 업로드한 문서의 pipeline stage, status, progress, 실패 원인을 화면에서 확인할 수 있어야 한다.
 
 - 파일별 parser가 최소 fixture 문서에 대해 정상적으로 text를 추출한다.
 
@@ -1013,6 +1181,10 @@ pytest tests/e2e
 | 권한 필터 누락 | 접근 권한이 없는 문서/chunk가 검색 결과에 노출 | permission pre-filter를 repository/search SQL 단계에서 적용하고 permission matrix regression test 추가 |
 | 사후 필터링으로 인한 top-k 왜곡 | 권한 없는 결과 제거 후 관련 chunk가 누락되어 검색 품질 오판 | vector search 후보군 생성 전 actor/scope 조건을 pre-filter로 적용 |
 | 권한 metadata 미기록 | 같은 query 결과 차이를 재현하거나 설명하기 어려움 | search_logs에 actor, requested/effective scope, permission filter metadata 저장 |
+| Queue backlog 누적 | 대용량/동시 업로드 시 처리 지연과 사용자 불안 증가 | queue depth와 stage별 latency를 dashboard에 표시하고 worker concurrency 설정값 제공 |
+| Worker 중단 또는 lease 고착 | running job이 영구 대기 상태로 남음 | lease_expires_at과 heartbeat_at을 사용해 만료 job 재점유 및 retry 처리 |
+| 중복 job 처리 | 같은 파일/chunk/profile이 중복 embedding되어 저장용량과 비용 증가 | checksum, chunk content_hash, chunk/profile unique constraint, idempotent worker 저장 로직 적용 |
+| Pipeline 상태 UI 부재 | 사용자가 긴 처리 시간을 오류로 오해 | 업로드 직후 queued 상태와 stage timeline, progress_percent, error summary를 표시 |
 | 테스트 DB 관리 실패 | 개발 DB 오염, regression 신뢰도 저하 | 독립 test DB 자동 생성/초기화/정리 fixture 적용 |
 | UI 테스트 취약 | 브라우저 회귀 결함 누락 | Playwright smoke flow를 quality gate에 포함 |
 | 실험 로그 미흡 | 결과 재현 불가 | profile runtime 설정, chunk_policy, query, top-k, index 설정, retrieved chunk 로그 필수 저장 |
@@ -1027,6 +1199,7 @@ pytest tests/e2e
 | NFR | Non-Functional Requirement. 비기능 요구사항 |
 | IAM | Identity and Access Management. 계정, 조직, 역할, 접근 범위 요구사항 |
 | ACL | Access Control List / Scope. 문서 접근 범위와 permission filter 요구사항 |
+| PIPE | Pipeline Processing. 비동기 문서 처리, queue, worker, 진행 상태 요구사항 |
 | QA | Quality Assurance Requirement. 품질관리 요구사항 |
 | TST | Test Requirement. 테스트 요구사항 |
 | ACC | Acceptance Criteria. 인수 기준 |
@@ -1051,4 +1224,4 @@ pytest tests/e2e
 
 > **최종 정의**
 >
-> NeX_PCX는 FastAPI + Bootstrap 기반 Web 환경에서 사내 문서를 업로드하고, 동일 chunk를 4개 embedding profile로 변환하여 PostgreSQL + pgvector에 저장한 뒤, 검색 결과를 병렬 비교하고 품질 피드백을 축적하는 NeX-CX 선행 검증 플랫폼이다. 본 프로젝트의 핵심 산출물은 프로그램 자체뿐 아니라, 한국어 사내 문서 검색을 위한 모델/정책/품질관리 기준 데이터이다.
+> NeX_PCX는 FastAPI + Bootstrap 기반 Web 환경에서 사내 문서를 업로드하고, PostgreSQL 기반 pipeline queue와 worker로 텍스트 추출, chunking, embedding, vector indexing을 수행한 뒤, 동일 chunk를 4개 embedding profile로 PostgreSQL + pgvector에 저장하고 검색 결과를 병렬 비교하는 NeX-CX 선행 검증 플랫폼이다. 본 프로젝트의 핵심 산출물은 프로그램 자체뿐 아니라, 한국어 사내 문서 검색을 위한 모델/정책/운영/품질관리 기준 데이터이다.
