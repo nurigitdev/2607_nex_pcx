@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from time import perf_counter
 
 from app.core.database import connect
+from app.core.embedding_adapters import (
+    DEFAULT_ADAPTER_NAME,
+    EmbeddingModelProfile,
+    get_global_embedding_adapter_cache,
+)
 from app.core.embedding_jobs import (
     EmbeddingJobRecord,
     claim_next_embedding_job,
@@ -15,7 +20,6 @@ from app.core.embedding_vectors import (
     EmbeddingVectorInput,
     EmbeddingVectorRecord,
     InvalidEmbeddingVectorError,
-    generate_mock_embedding,
     get_chunk_text_in_connection,
     get_embedding_vector_table,
     store_chunk_embedding_in_connection,
@@ -69,11 +73,11 @@ def process_next_mock_embedding_job(
                     f"Chunk was not found for chunk_id={job.chunk_id}",
                 )
 
-            embedding = generate_mock_embedding(
-                chunk_text,
-                profile_name=job.profile_name,
-                dimension=table.dimension,
+            adapter = get_global_embedding_adapter_cache().get_adapter(
+                EmbeddingModelProfile.from_vector_table(table),
+                adapter_name=DEFAULT_ADAPTER_NAME,
             )
+            embedding = adapter.embed_documents([chunk_text])[0]
             elapsed_ms = max(0, int((perf_counter() - started_at) * 1000))
             vector = store_chunk_embedding_in_connection(
                 connection,
@@ -88,7 +92,7 @@ def process_next_mock_embedding_job(
                 connection,
                 job.job_id,
                 runtime_metadata={
-                    "adapter": "mock",
+                    **adapter.runtime_metadata(),
                     "dimension": table.dimension,
                     "storage_type": table.storage_type,
                     "table_name": table.table_name,
