@@ -11,6 +11,17 @@ from fastapi.templating import Jinja2Templates
 
 from app.core.admin_logging import list_logs, log_event
 from app.core.config import Settings, get_settings
+from app.core.embedding_jobs import (
+    EmbeddingJobRecord,
+    InvalidEmbeddingJobError,
+    get_embedding_job,
+    list_embedding_jobs,
+)
+from app.core.embedding_vectors import (
+    EmbeddingVectorRecord,
+    InvalidEmbeddingVectorError,
+    get_chunk_embedding,
+)
 from app.core.file_metadata import (
     SUPPORTED_FILE_EXTENSIONS,
     InvalidFileMetadataError,
@@ -102,6 +113,41 @@ def pipeline_job_event_payload(event: PipelineJobEventRecord) -> dict[str, objec
         "message": event.message,
         "event_metadata": event.event_metadata,
         "created_at": _datetime_response(event.created_at),
+    }
+
+
+def embedding_job_payload(job: EmbeddingJobRecord) -> dict[str, object]:
+    return {
+        "job_id": job.job_id,
+        "chunk_id": job.chunk_id,
+        "profile_name": job.profile_name,
+        "status": job.status,
+        "attempts": job.attempts,
+        "max_attempts": job.max_attempts,
+        "lease_owner": job.lease_owner,
+        "lease_expires_at": _datetime_response(job.lease_expires_at),
+        "error_code": job.error_code,
+        "error_message": job.error_message,
+        "last_error_at": _datetime_response(job.last_error_at),
+        "runtime_metadata": job.runtime_metadata,
+        "created_at": _datetime_response(job.created_at),
+        "started_at": _datetime_response(job.started_at),
+        "finished_at": _datetime_response(job.finished_at),
+        "updated_at": _datetime_response(job.updated_at),
+    }
+
+
+def embedding_vector_payload(vector: EmbeddingVectorRecord | None) -> dict[str, object] | None:
+    if vector is None:
+        return None
+    return {
+        "chunk_id": vector.chunk_id,
+        "profile_name": vector.profile_name,
+        "table_name": vector.table_name,
+        "dimension": vector.dimension,
+        "storage_type": vector.storage_type,
+        "elapsed_ms": vector.elapsed_ms,
+        "created_at": _datetime_response(vector.created_at),
     }
 
 
@@ -260,6 +306,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.get("/api/embedding/jobs")
+    def api_list_embedding_jobs(
+        status_filter: str | None = Query(default=None, alias="status"),
+        profile_name: str | None = None,
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            jobs = list_embedding_jobs(
+                settings.database_url,
+                status=status_filter,
+                profile_name=profile_name,
+                limit=limit,
+            )
+        except InvalidEmbeddingJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"jobs": [embedding_job_payload(job) for job in jobs]})
+
+    @app.get("/api/embedding/jobs/{job_id}")
+    def api_get_embedding_job(job_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            job = get_embedding_job(settings.database_url, job_id)
+            if job is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Embedding job not found.",
+                )
+            vector = get_chunk_embedding(
+                settings.database_url,
+                profile_name=job.profile_name,
+                chunk_id=job.chunk_id,
+            )
+        except InvalidEmbeddingJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidEmbeddingVectorError:
+            vector = None
+
+        return JSONResponse(
+            content={
+                "job": embedding_job_payload(job),
+                "embedding": embedding_vector_payload(vector),
+            },
+        )
+
     @app.get("/files/upload", response_class=HTMLResponse)
     def upload_file_page(request: Request) -> HTMLResponse:
         error_message = None
@@ -372,6 +474,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_job=selected_job,
                 selected_events=selected_events,
                 selected_status=status_filter or "",
+                selected_job_id=job_id,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/embedding-jobs", response_class=HTMLResponse)
+    def embedding_jobs_page(
+        request: Request,
+        status_filter: str | None = Query(default=None, alias="status"),
+        profile_name: str | None = None,
+        job_id: int | None = None,
+    ) -> HTMLResponse:
+        jobs: list[EmbeddingJobRecord] = []
+        selected_job = None
+        selected_vector = None
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                jobs = list_embedding_jobs(
+                    settings.database_url,
+                    status=status_filter,
+                    profile_name=profile_name,
+                )
+                if job_id is not None:
+                    selected_job = get_embedding_job(settings.database_url, job_id)
+                    if selected_job is None:
+                        error_message = f"Embedding job not found: {job_id}"
+                    else:
+                        try:
+                            selected_vector = get_chunk_embedding(
+                                settings.database_url,
+                                profile_name=selected_job.profile_name,
+                                chunk_id=selected_job.chunk_id,
+                            )
+                        except InvalidEmbeddingVectorError:
+                            selected_vector = None
+            except InvalidEmbeddingJobError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "embedding_jobs.html",
+            template_context(
+                request,
+                jobs=jobs,
+                selected_job=selected_job,
+                selected_vector=selected_vector,
+                selected_status=status_filter or "",
+                selected_profile_name=profile_name or "",
                 selected_job_id=job_id,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),

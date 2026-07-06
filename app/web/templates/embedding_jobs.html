@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">Embedding Job Monitor</h1>
+    <p class="text-secondary mb-0">Profile queue status, worker lease, and vector storage result</p>
+  </div>
+  <form class="job-filter-form d-flex align-items-center gap-2" method="get">
+    <label class="form-label mb-0 text-secondary" for="status">Status</label>
+    <select class="form-select form-select-sm" id="status" name="status" onchange="this.form.submit()">
+      <option value="" {% if not selected_status %}selected{% endif %}>All</option>
+      {% for status in ["pending", "running", "failed", "succeeded", "skipped"] %}
+      <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+      {% endfor %}
+    </select>
+    <label class="form-label mb-0 text-secondary" for="profile_name">Profile</label>
+    <select class="form-select form-select-sm" id="profile_name" name="profile_name" onchange="this.form.submit()">
+      <option value="" {% if not selected_profile_name %}selected{% endif %}>All</option>
+      {% for profile in ["kure_v1_1024", "bge_m3_1024", "qwen3_4b_1000", "qwen3_4b_2560"] %}
+      <option value="{{ profile }}" {% if selected_profile_name == profile %}selected{% endif %}>{{ profile }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 job-table">
+      <thead>
+        <tr>
+          <th scope="col">Job</th>
+          <th scope="col">Chunk</th>
+          <th scope="col">Profile</th>
+          <th scope="col">Status</th>
+          <th scope="col">Attempts</th>
+          <th scope="col">Worker</th>
+          <th scope="col">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr class="{% if selected_job_id == job.job_id %}table-active{% endif %}">
+          <td>
+            <a class="job-link" href="/admin/embedding-jobs?job_id={{ job.job_id }}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name }}{% endif %}">
+              #{{ job.job_id }}
+            </a>
+          </td>
+          <td>#{{ job.chunk_id }}</td>
+          <td class="text-break">{{ job.profile_name }}</td>
+          <td>
+            <span class="badge status-badge status-{{ job.status }}">{{ job.status }}</span>
+          </td>
+          <td>{{ job.attempts }} / {{ job.max_attempts }}</td>
+          <td>{{ job.lease_owner or "" }}</td>
+          <td>{{ job.updated_at }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="7">
+            {% if database_configured %}No embedding jobs found{% else %}No database configured{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if selected_job %}
+<div class="row g-3">
+  <div class="col-12 col-xl-5">
+    <section class="metric-card bg-white p-3">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="h5 mb-0">Embedding Job #{{ selected_job.job_id }}</h2>
+        <span class="badge status-badge status-{{ selected_job.status }}">{{ selected_job.status }}</span>
+      </div>
+      <dl class="job-detail-list mb-0">
+        <dt>Chunk ID</dt>
+        <dd>{{ selected_job.chunk_id }}</dd>
+        <dt>Profile</dt>
+        <dd>{{ selected_job.profile_name }}</dd>
+        <dt>Attempts</dt>
+        <dd>{{ selected_job.attempts }} / {{ selected_job.max_attempts }}</dd>
+        <dt>Worker</dt>
+        <dd>{{ selected_job.lease_owner or "" }}</dd>
+        <dt>Error</dt>
+        <dd>{{ selected_job.error_message or "" }}</dd>
+        <dt>Created</dt>
+        <dd>{{ selected_job.created_at }}</dd>
+        <dt>Updated</dt>
+        <dd>{{ selected_job.updated_at }}</dd>
+      </dl>
+    </section>
+  </div>
+  <div class="col-12 col-xl-7">
+    <section class="metric-card bg-white p-3">
+      <h2 class="h5 mb-3">Vector Storage</h2>
+      {% if selected_vector %}
+      <dl class="job-detail-list mb-0">
+        <dt>Table</dt>
+        <dd>{{ selected_vector.table_name }}</dd>
+        <dt>Dimension</dt>
+        <dd>{{ selected_vector.dimension }}</dd>
+        <dt>Storage</dt>
+        <dd>{{ selected_vector.storage_type }}</dd>
+        <dt>Elapsed</dt>
+        <dd>{{ selected_vector.elapsed_ms or 0 }} ms</dd>
+        <dt>Stored</dt>
+        <dd>{{ selected_vector.created_at }}</dd>
+      </dl>
+      {% else %}
+      <div class="text-secondary text-center py-5">No vector stored for this job yet</div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
