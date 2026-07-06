@@ -13,6 +13,7 @@ from app.core.embedding_vectors import (
     get_embedding_vector_table,
     vector_to_pg_literal,
 )
+from app.core.permissions import PermissionSearchFilter
 
 SUPPORTED_SIMILARITY_METRICS = {"cosine"}
 MAX_TOP_K = 100
@@ -29,6 +30,7 @@ class VectorSearchInput:
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    permission_filter: PermissionSearchFilter | None = None
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,9 @@ def _build_search_filters(
     if file_type is not None:
         where_clauses.append("f.file_ext = %s")
         params.append(file_type)
+    if query_input.permission_filter is not None:
+        where_clauses.append(query_input.permission_filter.where_sql)
+        params.extend(query_input.permission_filter.params)
 
     return " AND ".join(where_clauses), params
 
