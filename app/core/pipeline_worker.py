@@ -1,0 +1,273 @@
+"""Pipeline worker MVP for Markdown document ingestion."""
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from app.core.chunking import chunk_parsed_document, get_chunk_policy
+from app.core.chunks import DEFAULT_CHUNK_POLICY_NAME, replace_document_chunks_in_connection
+from app.core.database import connect
+from app.core.document_parsers import (
+    PARSER_NAME_MARKDOWN,
+    PARSER_VERSION_MARKDOWN,
+    MarkdownParser,
+)
+from app.core.file_metadata import (
+    FileMetadataRecord,
+    get_file_metadata,
+    mark_file_parse_failed,
+    mark_file_parse_running_in_connection,
+    mark_file_parse_succeeded_in_connection,
+)
+from app.core.pipeline_jobs import (
+    DEFAULT_LEASE_SECONDS,
+    PipelineJobRecord,
+    claim_next_pipeline_job,
+    get_pipeline_job,
+    mark_pipeline_failed,
+    mark_pipeline_succeeded_in_connection,
+    update_pipeline_progress,
+    update_pipeline_progress_in_connection,
+)
+
+MARKDOWN_PIPELINE_TOTAL_UNITS = 4
+ERROR_CODE_INVALID_JOB_INPUT = "INVALID_JOB_INPUT"
+ERROR_CODE_STORED_FILE_NOT_FOUND = "STORED_FILE_NOT_FOUND"
+ERROR_CODE_UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
+ERROR_CODE_UNSUPPORTED_JOB_TYPE = "UNSUPPORTED_JOB_TYPE"
+ERROR_CODE_MARKDOWN_PIPELINE_ERROR = "MARKDOWN_PIPELINE_ERROR"
+
+
+@dataclass(frozen=True)
+class MarkdownPipelineWorkerResult:
+    processed: bool
+    job: PipelineJobRecord | None
+    chunk_count: int = 0
+    message: str | None = None
+
+
+def process_next_markdown_pipeline_job(
+    database_url: str,
+    *,
+    worker_name: str,
+    lease_seconds: int = DEFAULT_LEASE_SECONDS,
+    chunk_policy_name: str = DEFAULT_CHUNK_POLICY_NAME,
+) -> MarkdownPipelineWorkerResult:
+    """Claim and process one queued Markdown ingestion job."""
+
+    policy = get_chunk_policy(chunk_policy_name)
+    job = claim_next_pipeline_job(database_url, worker_name, lease_seconds=lease_seconds)
+    if job is None:
+        return MarkdownPipelineWorkerResult(
+            processed=False,
+            job=None,
+            message="No queued pipeline job is available",
+        )
+
+    try:
+        file_record = _load_claimed_job_file(database_url, job)
+        if file_record.file_ext != ".md":
+            message = f"Markdown worker cannot process {file_record.file_ext} files"
+            failed_job = _fail_claimed_job(
+                database_url,
+                job,
+                error_code=ERROR_CODE_UNSUPPORTED_FILE_TYPE,
+                error_message=message,
+                parser_name=PARSER_NAME_MARKDOWN,
+                parser_version=PARSER_VERSION_MARKDOWN,
+            )
+            return MarkdownPipelineWorkerResult(
+                processed=True,
+                job=failed_job,
+                message=message,
+            )
+
+        source_path = Path(file_record.storage_path)
+        if not source_path.is_file():
+            message = f"Stored upload file was not found: {source_path}"
+            failed_job = _fail_claimed_job(
+                database_url,
+                job,
+                error_code=ERROR_CODE_STORED_FILE_NOT_FOUND,
+                error_message=message,
+                parser_name=PARSER_NAME_MARKDOWN,
+                parser_version=PARSER_VERSION_MARKDOWN,
+            )
+            return MarkdownPipelineWorkerResult(
+                processed=True,
+                job=failed_job,
+                message=message,
+            )
+
+        with connect(database_url) as connection:
+            mark_file_parse_running_in_connection(
+                connection,
+                file_record.file_id,
+                parser_name=PARSER_NAME_MARKDOWN,
+                parser_version=PARSER_VERSION_MARKDOWN,
+            )
+            update_pipeline_progress_in_connection(
+                connection,
+                job.job_id,
+                processed_units=0,
+                total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
+                stage="text_extraction",
+                current_message="Reading Markdown source file",
+            )
+
+        parsed_document = MarkdownParser().parse_path(source_path)
+        update_pipeline_progress(
+            database_url,
+            job.job_id,
+            processed_units=1,
+            total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
+            stage="parsing",
+            current_message=f"Parsed {len(parsed_document.blocks)} Markdown blocks",
+        )
+
+        chunk_inputs = chunk_parsed_document(
+            parsed_document,
+            document_id=file_record.document_id,
+            policy=policy,
+        )
+        update_pipeline_progress(
+            database_url,
+            job.job_id,
+            processed_units=2,
+            total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
+            stage="chunking",
+            current_message=f"Prepared {len(chunk_inputs)} chunks",
+        )
+
+        with connect(database_url) as connection:
+            chunks = replace_document_chunks_in_connection(
+                connection,
+                file_record.document_id,
+                chunk_inputs,
+                chunk_policy_name=policy.chunk_policy_name,
+            )
+            mark_file_parse_succeeded_in_connection(
+                connection,
+                file_record.file_id,
+                parser_name=parsed_document.parser_name,
+                parser_version=parsed_document.parser_version,
+                extracted_text_size=parsed_document.extracted_text_size,
+            )
+            update_pipeline_progress_in_connection(
+                connection,
+                job.job_id,
+                processed_units=3,
+                total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
+                stage="chunking",
+                current_message=f"Stored {len(chunks)} chunks",
+            )
+            final_job = mark_pipeline_succeeded_in_connection(
+                connection,
+                job.job_id,
+                message=f"Markdown ingestion completed with {len(chunks)} chunks",
+            )
+
+        if final_job is None:
+            msg = f"Claimed pipeline job disappeared before completion: {job.job_id}"
+            raise RuntimeError(msg)
+
+        return MarkdownPipelineWorkerResult(
+            processed=True,
+            job=final_job,
+            chunk_count=len(chunks),
+            message="Markdown ingestion completed",
+        )
+    except _FailClaimedJob as exc:
+        failed_job = _fail_claimed_job(
+            database_url,
+            job,
+            error_code=exc.error_code,
+            error_message=exc.error_message,
+        )
+        return MarkdownPipelineWorkerResult(
+            processed=True,
+            job=failed_job,
+            message=exc.error_message,
+        )
+    except Exception as exc:
+        failed_job = _fail_claimed_job(
+            database_url,
+            job,
+            error_code=ERROR_CODE_MARKDOWN_PIPELINE_ERROR,
+            error_message=str(exc),
+            parser_name=PARSER_NAME_MARKDOWN,
+            parser_version=PARSER_VERSION_MARKDOWN,
+        )
+        return MarkdownPipelineWorkerResult(
+            processed=True,
+            job=failed_job,
+            message=str(exc),
+        )
+
+
+def _load_claimed_job_file(
+    database_url: str,
+    job: PipelineJobRecord,
+) -> FileMetadataRecord:
+    if job.job_type != "document_ingestion":
+        message = f"Markdown worker cannot process {job.job_type} jobs"
+        raise _FailClaimedJob(ERROR_CODE_UNSUPPORTED_JOB_TYPE, message)
+    if job.file_id is None:
+        raise _FailClaimedJob(ERROR_CODE_INVALID_JOB_INPUT, "Pipeline job is missing file_id")
+    if job.document_id is None:
+        raise _FailClaimedJob(
+            ERROR_CODE_INVALID_JOB_INPUT,
+            "Pipeline job is missing document_id",
+        )
+
+    file_record = get_file_metadata(database_url, job.file_id)
+    if file_record is None:
+        raise _FailClaimedJob(
+            ERROR_CODE_INVALID_JOB_INPUT,
+            f"File metadata was not found for file_id={job.file_id}",
+        )
+    if file_record.document_id is None:
+        raise _FailClaimedJob(
+            ERROR_CODE_INVALID_JOB_INPUT,
+            "File metadata is missing document_id",
+        )
+    if file_record.document_id != job.document_id:
+        raise _FailClaimedJob(
+            ERROR_CODE_INVALID_JOB_INPUT,
+            "Pipeline job document_id does not match file metadata",
+        )
+    return file_record
+
+
+def _fail_claimed_job(
+    database_url: str,
+    job: PipelineJobRecord,
+    *,
+    error_code: str,
+    error_message: str,
+    parser_name: str | None = None,
+    parser_version: str | None = None,
+) -> PipelineJobRecord:
+    if job.file_id is not None:
+        mark_file_parse_failed(
+            database_url,
+            job.file_id,
+            error_message=error_message,
+            parser_name=parser_name,
+            parser_version=parser_version,
+        )
+    failed_job = mark_pipeline_failed(
+        database_url,
+        job.job_id,
+        error_code=error_code,
+        error_message=error_message,
+    )
+    return failed_job or get_pipeline_job(database_url, job.job_id) or job
+
+
+@dataclass(frozen=True)
+class _FailClaimedJob(Exception):
+    error_code: str
+    error_message: str
+
+    def __str__(self) -> str:
+        return self.error_message

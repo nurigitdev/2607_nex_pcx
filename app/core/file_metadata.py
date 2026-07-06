@@ -56,6 +56,11 @@ class InvalidFileMetadataError(ValueError):
     """Raised when file metadata is incomplete or invalid."""
 
 
+def _require_positive_id(value: int, field_name: str) -> None:
+    if value <= 0:
+        raise InvalidFileMetadataError(f"{field_name} must be greater than 0")
+
+
 def calculate_sha256(file_path: Path) -> str:
     digest = sha256()
     with file_path.open("rb") as file:
@@ -130,6 +135,206 @@ def find_file_by_checksum(connection: Connection, checksum: str) -> FileMetadata
         )
         row = cursor.fetchone()
         return row_to_file_metadata_record(dict(row)) if row else None
+
+
+def get_file_metadata_in_connection(
+    connection: Connection,
+    file_id: int,
+) -> FileMetadataRecord | None:
+    _require_positive_id(file_id, "file_id")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                f.file_id,
+                d.document_id,
+                f.original_file_name,
+                f.stored_file_name,
+                f.file_ext,
+                f.mime_type,
+                f.file_size_bytes,
+                f.sha256_checksum,
+                f.storage_path,
+                f.document_group,
+                f.security_level,
+                f.parse_status
+            FROM files f
+            LEFT JOIN documents d ON d.file_id = f.file_id
+            WHERE f.file_id = %s
+            ORDER BY d.document_id
+            LIMIT 1
+            """,
+            (file_id,),
+        )
+        row = cursor.fetchone()
+    return row_to_file_metadata_record(dict(row)) if row else None
+
+
+def get_file_metadata(database_url: str, file_id: int) -> FileMetadataRecord | None:
+    with connect(database_url) as connection:
+        return get_file_metadata_in_connection(connection, file_id)
+
+
+def mark_file_parse_running_in_connection(
+    connection: Connection,
+    file_id: int,
+    *,
+    parser_name: str,
+    parser_version: str,
+) -> FileMetadataRecord | None:
+    _require_positive_id(file_id, "file_id")
+    if not parser_name.strip():
+        raise InvalidFileMetadataError("parser_name is required")
+    if not parser_version.strip():
+        raise InvalidFileMetadataError("parser_version is required")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE files
+            SET parser_name = %s,
+                parser_version = %s,
+                parse_status = 'running',
+                parse_error_message = NULL,
+                updated_at = now()
+            WHERE file_id = %s
+            """,
+            (parser_name.strip(), parser_version.strip(), file_id),
+        )
+        if cursor.rowcount == 0:
+            return None
+    return get_file_metadata_in_connection(connection, file_id)
+
+
+def mark_file_parse_running(
+    database_url: str,
+    file_id: int,
+    *,
+    parser_name: str,
+    parser_version: str,
+) -> FileMetadataRecord | None:
+    with connect(database_url) as connection:
+        return mark_file_parse_running_in_connection(
+            connection,
+            file_id,
+            parser_name=parser_name,
+            parser_version=parser_version,
+        )
+
+
+def mark_file_parse_succeeded_in_connection(
+    connection: Connection,
+    file_id: int,
+    *,
+    parser_name: str,
+    parser_version: str,
+    extracted_text_size: int,
+) -> FileMetadataRecord | None:
+    _require_positive_id(file_id, "file_id")
+    if not parser_name.strip():
+        raise InvalidFileMetadataError("parser_name is required")
+    if not parser_version.strip():
+        raise InvalidFileMetadataError("parser_version is required")
+    if extracted_text_size < 0:
+        raise InvalidFileMetadataError("extracted_text_size must be greater than or equal to 0")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE files
+            SET parser_name = %s,
+                parser_version = %s,
+                parse_status = 'succeeded',
+                parse_error_message = NULL,
+                extracted_text_size = %s,
+                updated_at = now()
+            WHERE file_id = %s
+            """,
+            (
+                parser_name.strip(),
+                parser_version.strip(),
+                extracted_text_size,
+                file_id,
+            ),
+        )
+        if cursor.rowcount == 0:
+            return None
+    return get_file_metadata_in_connection(connection, file_id)
+
+
+def mark_file_parse_succeeded(
+    database_url: str,
+    file_id: int,
+    *,
+    parser_name: str,
+    parser_version: str,
+    extracted_text_size: int,
+) -> FileMetadataRecord | None:
+    with connect(database_url) as connection:
+        return mark_file_parse_succeeded_in_connection(
+            connection,
+            file_id,
+            parser_name=parser_name,
+            parser_version=parser_version,
+            extracted_text_size=extracted_text_size,
+        )
+
+
+def mark_file_parse_failed_in_connection(
+    connection: Connection,
+    file_id: int,
+    *,
+    error_message: str,
+    parser_name: str | None = None,
+    parser_version: str | None = None,
+) -> FileMetadataRecord | None:
+    _require_positive_id(file_id, "file_id")
+    if not error_message.strip():
+        raise InvalidFileMetadataError("error_message is required")
+    if parser_name is not None and not parser_name.strip():
+        raise InvalidFileMetadataError("parser_name must not be blank")
+    if parser_version is not None and not parser_version.strip():
+        raise InvalidFileMetadataError("parser_version must not be blank")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            UPDATE files
+            SET parser_name = COALESCE(%s, parser_name),
+                parser_version = COALESCE(%s, parser_version),
+                parse_status = 'failed',
+                parse_error_message = %s,
+                updated_at = now()
+            WHERE file_id = %s
+            """,
+            (
+                parser_name.strip() if parser_name is not None else None,
+                parser_version.strip() if parser_version is not None else None,
+                error_message.strip(),
+                file_id,
+            ),
+        )
+        if cursor.rowcount == 0:
+            return None
+    return get_file_metadata_in_connection(connection, file_id)
+
+
+def mark_file_parse_failed(
+    database_url: str,
+    file_id: int,
+    *,
+    error_message: str,
+    parser_name: str | None = None,
+    parser_version: str | None = None,
+) -> FileMetadataRecord | None:
+    with connect(database_url) as connection:
+        return mark_file_parse_failed_in_connection(
+            connection,
+            file_id,
+            error_message=error_message,
+            parser_name=parser_name,
+            parser_version=parser_version,
+        )
 
 
 def create_file_metadata_in_connection(
