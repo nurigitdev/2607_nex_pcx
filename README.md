@@ -138,3 +138,17 @@ Slice 010 adds the PostgreSQL-backed queue foundation for document ingestion:
 
 Integration tests verify defaults, constraints, FK cascade behavior, claim indexes, and
 locked-row skipping for concurrent worker claims.
+
+## Pipeline Job Repository
+
+Slice 011 adds repository helpers for the pipeline queue lifecycle:
+
+- create queued pipeline jobs and append created events
+- claim queued or lease-expired jobs with worker lease metadata
+- heartbeat running jobs
+- update stage progress
+- mark jobs succeeded or failed
+- requeue failed/canceled jobs for retry
+
+The repository keeps lifecycle SQL in one module so upload APIs, worker runners, and the
+future Job Monitor UI can share the same state transitions.
