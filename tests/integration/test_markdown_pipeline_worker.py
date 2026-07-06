@@ -7,6 +7,7 @@ import pytest
 
 from app.core.chunks import list_document_chunks
 from app.core.database import connect, fetch_one
+from app.core.embedding_jobs import list_embedding_jobs
 from app.core.file_uploads import store_upload
 from app.core.pipeline_jobs import get_pipeline_job, list_pipeline_job_events
 from app.core.pipeline_worker import (
@@ -73,11 +74,17 @@ This section should become another heading-aware chunk.
         assert result.job.stage == "completed"
         assert result.job.progress_percent == 100
         assert result.chunk_count == 2
+        assert result.embedding_job_count == 8
 
         chunks = list_document_chunks(
             migrated_database_url,
             upload_result.file.document_id,
         )
+        embedding_jobs = [
+            job
+            for chunk in chunks
+            for job in list_embedding_jobs(migrated_database_url, chunk_id=chunk.chunk_id)
+        ]
         file_row = fetch_one(
             migrated_database_url,
             """
@@ -100,6 +107,14 @@ This section should become another heading-aware chunk.
         assert [chunk.chunk_seq for chunk in chunks] == [0, 1]
         assert chunks[0].chunk_text.startswith("# Slice 017")
         assert chunks[1].heading_path == ("Slice 017", "Details")
+        assert len(embedding_jobs) == 8
+        assert {job.profile_name for job in embedding_jobs} == {
+            "kure_v1_1024",
+            "bge_m3_1024",
+            "qwen3_4b_1000",
+            "qwen3_4b_2560",
+        }
+        assert {job.status for job in embedding_jobs} == {"pending"}
         assert file_row["parser_name"] == "markdown"
         assert file_row["parser_version"] == "0.1.0"
         assert file_row["parse_status"] == "succeeded"

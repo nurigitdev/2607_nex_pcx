@@ -242,6 +242,14 @@ def test_process_next_markdown_pipeline_job_marks_failed_when_completion_disappe
         lambda *args, **k: [],
     )
     monkeypatch.setattr(
+        "app.core.pipeline_worker.list_active_embedding_profiles_in_connection",
+        lambda *args, **k: [],
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.create_embedding_jobs_for_chunk_in_connection",
+        lambda *args, **k: [],
+    )
+    monkeypatch.setattr(
         "app.core.pipeline_worker.mark_file_parse_succeeded_in_connection",
         lambda *args, **k: None,
     )

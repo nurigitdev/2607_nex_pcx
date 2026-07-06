@@ -39,6 +39,7 @@ def main() -> int:
         "status": result.job.status if result.job else None,
         "stage": result.job.stage if result.job else None,
         "chunk_count": result.chunk_count,
+        "embedding_job_count": result.embedding_job_count,
         "message": result.message,
     }
     print(json.dumps(payload, ensure_ascii=False))

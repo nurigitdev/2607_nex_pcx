@@ -11,6 +11,10 @@ from app.core.document_parsers import (
     PARSER_VERSION_MARKDOWN,
     MarkdownParser,
 )
+from app.core.embedding_jobs import (
+    create_embedding_jobs_for_chunk_in_connection,
+    list_active_embedding_profiles_in_connection,
+)
 from app.core.file_metadata import (
     FileMetadataRecord,
     get_file_metadata,
@@ -42,6 +46,7 @@ class MarkdownPipelineWorkerResult:
     processed: bool
     job: PipelineJobRecord | None
     chunk_count: int = 0
+    embedding_job_count: int = 0
     message: str | None = None
 
 
@@ -145,6 +150,17 @@ def process_next_markdown_pipeline_job(
                 chunk_inputs,
                 chunk_policy_name=policy.chunk_policy_name,
             )
+            active_profiles = list_active_embedding_profiles_in_connection(connection)
+            active_profile_names = [profile.profile_name for profile in active_profiles]
+            embedding_job_results = [
+                result
+                for chunk in chunks
+                for result in create_embedding_jobs_for_chunk_in_connection(
+                    connection,
+                    chunk.chunk_id,
+                    profile_names=active_profile_names,
+                )
+            ]
             mark_file_parse_succeeded_in_connection(
                 connection,
                 file_record.file_id,
@@ -155,15 +171,21 @@ def process_next_markdown_pipeline_job(
             update_pipeline_progress_in_connection(
                 connection,
                 job.job_id,
-                processed_units=3,
+                processed_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
                 total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
-                stage="chunking",
-                current_message=f"Stored {len(chunks)} chunks",
+                stage="embedding",
+                current_message=(
+                    f"Queued {len(embedding_job_results)} embedding jobs "
+                    f"for {len(chunks)} chunks"
+                ),
             )
             final_job = mark_pipeline_succeeded_in_connection(
                 connection,
                 job.job_id,
-                message=f"Markdown ingestion completed with {len(chunks)} chunks",
+                message=(
+                    f"Markdown ingestion completed with {len(chunks)} chunks "
+                    f"and {len(embedding_job_results)} embedding jobs"
+                ),
             )
 
         if final_job is None:
@@ -174,6 +196,7 @@ def process_next_markdown_pipeline_job(
             processed=True,
             job=final_job,
             chunk_count=len(chunks),
+            embedding_job_count=len(embedding_job_results),
             message="Markdown ingestion completed",
         )
     except _FailClaimedJob as exc:
