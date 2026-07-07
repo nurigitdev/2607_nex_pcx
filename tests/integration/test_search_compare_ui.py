@@ -22,3 +22,5 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert "bge_m3_1024" in response.text
     assert 'id="search-compare-form"' in response.text
     assert 'id="search-results"' in response.text
+    assert "search-feedback-button" in response.text
+    assert "/api/search/feedback" in response.text

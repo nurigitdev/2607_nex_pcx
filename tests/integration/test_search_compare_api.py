@@ -210,6 +210,27 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             """,
             (body["search_log_id"],),
         )
+        first_result_id = profile_results["kure_v1_1024"][0]["search_log_result_id"]
+
+        with TestClient(app) as client:
+            feedback_response = client.post(
+                "/api/search/feedback",
+                json={
+                    "search_log_result_id": first_result_id,
+                    "relevance_label": "correct",
+                },
+            )
+
+        feedback_body = feedback_response.json()
+        feedback_count = fetch_one(
+            migrated_database_url,
+            """
+            SELECT count(*) AS count
+            FROM search_result_feedback
+            WHERE search_log_result_id = %s
+            """,
+            (first_result_id,),
+        )
 
         assert response.status_code == 200
         assert body["requested_search_scope"] == "company"
@@ -219,6 +240,16 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert result_chunk_ids == {visible_chunk_id}
         assert hidden_chunk_id not in result_chunk_ids
         assert result_count["count"] == 2
+        assert all(
+            "search_log_result_id" in result
+            for results in profile_results.values()
+            for result in results
+        )
+        assert feedback_response.status_code == 201
+        assert feedback_body["feedback"]["relevance_label"] == "correct"
+        assert feedback_body["feedback"]["created_by"] == "search-compare-ui"
+        assert feedback_body["feedback"]["created_by_user_id"] == ids["alice.member"]
+        assert feedback_count["count"] == 1
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
 
@@ -241,3 +272,21 @@ def test_search_compare_api_handles_invalid_scope(
 
     assert response.status_code == 400
     assert "requested_search_scope" in response.json()["detail"]
+
+
+def test_search_feedback_api_returns_not_found_for_missing_result(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/search/feedback",
+            json={
+                "search_log_result_id": 999999999,
+                "relevance_label": "correct",
+            },
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Search result not found."}

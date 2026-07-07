@@ -11,6 +11,7 @@ from app.core.search_logs import (
     create_search_log_results,
     create_search_result_feedback,
     get_search_log,
+    get_search_log_result,
     list_search_log_results,
 )
 
@@ -153,9 +154,14 @@ def test_search_log_repository_persists_results_and_feedback(
             ),
         )
         stored_log = get_search_log(migrated_database_url, search_log.search_log_id)
+        stored_result = get_search_log_result(
+            migrated_database_url,
+            results[0].search_log_result_id,
+        )
         stored_results = list_search_log_results(migrated_database_url, search_log.search_log_id)
 
         assert stored_log == search_log
+        assert stored_result == results[0]
         assert search_log.profiles == ("kure_v1_1024",)
         assert search_log.permission_filter_metadata == {"actor_user_id": user_id}
         assert search_log.query_runtime_metadata == {"adapter": "mock"}
@@ -173,4 +179,5 @@ def test_search_log_repository_returns_none_and_empty_results_for_missing_log(
     migrated_database_url: str,
 ) -> None:
     assert get_search_log(migrated_database_url, 999999999) is None
+    assert get_search_log_result(migrated_database_url, 999999999) is None
     assert list_search_log_results(migrated_database_url, 999999999) == []

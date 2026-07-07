@@ -19,3 +19,19 @@ def test_search_compare_api_requires_database_url() -> None:
 
     assert response.status_code == 503
     assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
+def test_search_feedback_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/search/feedback",
+            json={
+                "search_log_result_id": 1,
+                "relevance_label": "correct",
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}

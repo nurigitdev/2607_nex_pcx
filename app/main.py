@@ -48,7 +48,14 @@ from app.core.search_compare import (
     SearchCompareResult,
     run_search_compare,
 )
-from app.core.search_logs import InvalidSearchLogError
+from app.core.search_logs import (
+    InvalidSearchLogError,
+    SearchResultFeedbackInput,
+    SearchResultFeedbackRecord,
+    create_search_result_feedback,
+    get_search_log,
+    get_search_log_result,
+)
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -68,6 +75,12 @@ class SearchCompareRequest(BaseModel):
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+
+
+class SearchFeedbackRequest(BaseModel):
+    search_log_result_id: int = Field(ge=1)
+    relevance_label: str
+    comment: str | None = None
 
 
 def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
@@ -223,7 +236,13 @@ def search_compare_profile_payload(profile: SearchCompareProfileResult) -> dict[
     return {
         "profile_name": profile.profile_name,
         "elapsed_ms": profile.elapsed_ms,
-        "results": [vector_search_result_payload(result) for result in profile.results],
+        "results": [
+            {
+                **vector_search_result_payload(result.vector_result),
+                "search_log_result_id": result.search_log_result_id,
+            }
+            for result in profile.results
+        ],
     }
 
 
@@ -238,6 +257,18 @@ def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
         "top_k": result.top_k,
         "total_elapsed_ms": result.total_elapsed_ms,
         "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
+    }
+
+
+def search_feedback_payload(feedback: SearchResultFeedbackRecord) -> dict[str, object]:
+    return {
+        "feedback_id": feedback.feedback_id,
+        "search_log_result_id": feedback.search_log_result_id,
+        "relevance_label": feedback.relevance_label,
+        "comment": feedback.comment,
+        "created_by": feedback.created_by,
+        "created_by_user_id": feedback.created_by_user_id,
+        "created_at": _datetime_response(feedback.created_at),
     }
 
 
@@ -483,6 +514,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content=search_compare_payload(result))
+
+    @app.post("/api/search/feedback")
+    def api_search_feedback(payload: SearchFeedbackRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            search_result = get_search_log_result(
+                settings.database_url,
+                payload.search_log_result_id,
+            )
+            if search_result is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Search result not found.",
+                )
+            search_log = get_search_log(settings.database_url, search_result.search_log_id)
+            feedback = create_search_result_feedback(
+                settings.database_url,
+                SearchResultFeedbackInput(
+                    search_log_result_id=payload.search_log_result_id,
+                    relevance_label=payload.relevance_label,
+                    comment=payload.comment,
+                    created_by="search-compare-ui",
+                    created_by_user_id=search_log.actor_user_id if search_log else None,
+                ),
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"feedback": search_feedback_payload(feedback)},
+        )
 
     @app.get("/files/upload", response_class=HTMLResponse)
     def upload_file_page(request: Request) -> HTMLResponse:

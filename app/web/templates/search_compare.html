@@ -149,6 +149,13 @@
   const resultsEl = document.getElementById("search-results");
   const summaryEl = document.getElementById("search-summary");
   const submitButton = document.getElementById("search-submit");
+  const feedbackOptions = [
+    {label: "Correct", value: "correct"},
+    {label: "Partial", value: "partial"},
+    {label: "Wrong", value: "wrong"},
+    {label: "Duplicate", value: "duplicate"},
+    {label: "Insufficient", value: "insufficient_context"},
+  ];
 
   const setAlert = (message) => {
     alertEl.hidden = !message;
@@ -177,6 +184,84 @@
     return row;
   };
 
+  const setFeedbackDisabled = (actions, disabled) => {
+    actions
+      .querySelectorAll(".search-feedback-button")
+      .forEach((button) => {
+        button.disabled = disabled;
+      });
+  };
+
+  const markSelectedFeedback = (actions, relevanceLabel) => {
+    actions
+      .querySelectorAll(".search-feedback-button")
+      .forEach((button) => {
+        button.classList.toggle(
+          "search-feedback-selected",
+          button.dataset.relevanceLabel === relevanceLabel,
+        );
+      });
+  };
+
+  const submitFeedback = async (resultId, relevanceLabel, actions, statusEl) => {
+    statusEl.textContent = "Saving";
+    setFeedbackDisabled(actions, true);
+    try {
+      const response = await fetch("/api/search/feedback", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          search_log_result_id: resultId,
+          relevance_label: relevanceLabel,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        statusEl.textContent = body.detail || "Feedback failed.";
+        return;
+      }
+      markSelectedFeedback(actions, body.feedback.relevance_label);
+      statusEl.textContent = `Saved ${body.feedback.relevance_label}`;
+    } catch (error) {
+      statusEl.textContent = error instanceof Error ? error.message : "Feedback failed.";
+    } finally {
+      setFeedbackDisabled(actions, false);
+    }
+  };
+
+  const renderFeedbackActions = (result) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "search-feedback";
+
+    const actions = document.createElement("div");
+    actions.className = "search-feedback-actions";
+
+    const status = document.createElement("div");
+    status.className = "search-feedback-status";
+    status.setAttribute("aria-live", "polite");
+
+    if (!result.search_log_result_id) {
+      status.textContent = "Feedback unavailable";
+      wrapper.append(actions, status);
+      return wrapper;
+    }
+
+    feedbackOptions.forEach((option) => {
+      const button = document.createElement("button");
+      button.className = "btn btn-outline-secondary search-feedback-button";
+      button.type = "button";
+      button.dataset.relevanceLabel = option.value;
+      button.textContent = option.label;
+      button.addEventListener("click", () => {
+        submitFeedback(result.search_log_result_id, option.value, actions, status);
+      });
+      actions.append(button);
+    });
+
+    wrapper.append(actions, status);
+    return wrapper;
+  };
+
   const renderResult = (result) => {
     const item = document.createElement("article");
     item.className = "search-result-item";
@@ -202,12 +287,13 @@
     const meta = document.createElement("div");
     meta.className = "search-result-meta";
     meta.append(
+      makeCell("result", String(result.search_log_result_id)),
       makeCell("chunk", String(result.chunk_id)),
       makeCell("distance", Number(result.distance).toFixed(4)),
       makeCell("path", (result.heading_path || []).join(" / ")),
     );
 
-    item.append(header, title, preview, meta);
+    item.append(header, title, preview, meta, renderFeedbackActions(result));
     return item;
   };
 

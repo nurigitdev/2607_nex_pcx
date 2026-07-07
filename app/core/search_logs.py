@@ -358,6 +358,21 @@ def get_search_log(database_url: str, search_log_id: int) -> SearchLogRecord | N
     return _row_to_search_log_record(dict(row)) if row else None
 
 
+def get_search_log_result(
+    database_url: str,
+    search_log_result_id: int,
+) -> SearchLogResultRecord | None:
+    _require_positive_id(search_log_result_id, "search_log_result_id")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM search_log_results WHERE search_log_result_id = %s",
+                (search_log_result_id,),
+            )
+            row = cursor.fetchone()
+    return _row_to_search_log_result_record(dict(row)) if row else None
+
+
 def create_search_log_result_in_connection(
     connection: Connection,
     result_input: SearchLogResultInput,

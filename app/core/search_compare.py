@@ -27,10 +27,16 @@ class SearchCompareInput:
 
 
 @dataclass(frozen=True)
+class SearchCompareResultItem:
+    search_log_result_id: int
+    vector_result: VectorSearchResult
+
+
+@dataclass(frozen=True)
 class SearchCompareProfileResult:
     profile_name: str
     elapsed_ms: int
-    results: tuple[VectorSearchResult, ...]
+    results: tuple[SearchCompareResultItem, ...]
 
 
 @dataclass(frozen=True)
@@ -112,7 +118,7 @@ def run_search_compare(
     )
 
     started_at = perf_counter()
-    profile_results: list[SearchCompareProfileResult] = []
+    raw_profile_results: list[tuple[str, int, tuple[VectorSearchResult, ...]]] = []
     for profile_name in profiles:
         profile_started_at = perf_counter()
         results = search_similar_chunks(
@@ -127,11 +133,11 @@ def run_search_compare(
                 permission_filter=permission_filter,
             ),
         )
-        profile_results.append(
-            SearchCompareProfileResult(
-                profile_name=profile_name,
-                elapsed_ms=max(0, int((perf_counter() - profile_started_at) * 1000)),
-                results=tuple(results),
+        raw_profile_results.append(
+            (
+                profile_name,
+                max(0, int((perf_counter() - profile_started_at) * 1000)),
+                tuple(results),
             )
         )
 
@@ -162,18 +168,35 @@ def run_search_compare(
     result_inputs = [
         SearchLogResultInput(
             search_log_id=search_log.search_log_id,
-            profile_name=profile_result.profile_name,
+            profile_name=profile_name,
             rank=result.rank,
             chunk_id=result.chunk_id,
             distance=result.distance,
             score=result.score,
-            profile_elapsed_ms=profile_result.elapsed_ms,
+            profile_elapsed_ms=elapsed_ms,
         )
-        for profile_result in profile_results
-        for result in profile_result.results
+        for profile_name, elapsed_ms, results in raw_profile_results
+        for result in results
     ]
+    stored_results = []
     if result_inputs:
-        create_search_log_results(database_url, result_inputs)
+        stored_results = create_search_log_results(database_url, result_inputs)
+
+    result_id_iter = iter(stored_results)
+    profile_results = [
+        SearchCompareProfileResult(
+            profile_name=profile_name,
+            elapsed_ms=elapsed_ms,
+            results=tuple(
+                SearchCompareResultItem(
+                    search_log_result_id=next(result_id_iter).search_log_result_id,
+                    vector_result=result,
+                )
+                for result in results
+            ),
+        )
+        for profile_name, elapsed_ms, results in raw_profile_results
+    ]
 
     return SearchCompareResult(
         search_log_id=search_log.search_log_id,
