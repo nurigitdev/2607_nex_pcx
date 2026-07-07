@@ -118,6 +118,22 @@
     "no_org_units": "조직이 없습니다.",
     "no_memberships": "멤버십이 없습니다."
   },
+  "permission_readiness": {
+    "title": "권한 Metadata 준비도",
+    "subtitle": "문서 검색 권한 필터링에 필요한 업로더와 소유자 metadata 누락을 점검합니다.",
+    "ready": "준비 완료",
+    "issue_documents": "보완 필요 문서",
+    "missing_uploader": "업로더 누락",
+    "personal_missing_owner": "개인 소유자 누락",
+    "scoped_missing_org": "조직 소유 누락",
+    "issues": "이슈",
+    "no_issues": "권한 metadata 이슈가 없습니다.",
+    "issue": {
+      "missing_uploader": "업로더 누락",
+      "personal_missing_owner": "개인 소유자 누락",
+      "scoped_missing_org": "조직 소유 누락"
+    }
+  },
   "upload_permissions": {
     "fieldset": "권한 Metadata",
     "uploaded_by_user": "업로드 사용자",

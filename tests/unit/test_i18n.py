@@ -19,6 +19,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("search_matrix.title") == "Permission Search Matrix"
     assert korean("search_scope.managed_org") == "관리 조직"
     assert english("search_scope.managed_org") == "Managed Org"
+    assert korean("permission_readiness.title") == "권한 Metadata 준비도"
+    assert english("permission_readiness.title") == "Permission Metadata Readiness"
 
 
 def test_translator_falls_back_to_key_when_missing() -> None:

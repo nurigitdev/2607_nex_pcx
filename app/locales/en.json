@@ -118,6 +118,22 @@
     "no_org_units": "No org units found",
     "no_memberships": "No memberships found"
   },
+  "permission_readiness": {
+    "title": "Permission Metadata Readiness",
+    "subtitle": "Checks uploader and ownership metadata needed for permission-aware search filtering.",
+    "ready": "Ready",
+    "issue_documents": "Issue Documents",
+    "missing_uploader": "Missing uploader",
+    "personal_missing_owner": "Missing personal owner",
+    "scoped_missing_org": "Missing org owner",
+    "issues": "Issues",
+    "no_issues": "No permission metadata issues found.",
+    "issue": {
+      "missing_uploader": "Missing uploader",
+      "personal_missing_owner": "Missing personal owner",
+      "scoped_missing_org": "Missing org owner"
+    }
+  },
   "upload_permissions": {
     "fieldset": "Permission Metadata",
     "uploaded_by_user": "Uploaded By User",

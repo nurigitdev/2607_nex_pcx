@@ -26,6 +26,28 @@ class PermissionInventorySummary:
 
 
 @dataclass(frozen=True)
+class PermissionReadinessIssueRecord:
+    document_id: int
+    file_id: int
+    document_title: str | None
+    original_file_name: str
+    access_scope: str
+    issue_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PermissionReadinessSummary:
+    document_count: int
+    ready_document_count: int
+    issue_document_count: int
+    missing_uploader_count: int
+    personal_missing_owner_count: int
+    scoped_missing_org_count: int
+    readiness_percent: float | None
+    issues: tuple[PermissionReadinessIssueRecord, ...]
+
+
+@dataclass(frozen=True)
 class PermissionUserInventoryRecord:
     user_id: int
     login_id: str
@@ -102,6 +124,28 @@ def _row_to_access_scope_count(row: dict[str, Any]) -> PermissionAccessScopeCoun
     return PermissionAccessScopeCount(
         access_scope=str(row["access_scope"]),
         document_count=int(row["document_count"]),
+    )
+
+
+def _readiness_issue_codes(row: dict[str, Any]) -> tuple[str, ...]:
+    issue_codes: list[str] = []
+    if row["uploaded_by_user_id"] is None:
+        issue_codes.append("missing_uploader")
+    if row["access_scope"] == "personal" and row["owner_user_id"] is None:
+        issue_codes.append("personal_missing_owner")
+    if row["access_scope"] in {"team", "org_tree"} and row["owner_org_unit_id"] is None:
+        issue_codes.append("scoped_missing_org")
+    return tuple(issue_codes)
+
+
+def _row_to_readiness_issue(row: dict[str, Any]) -> PermissionReadinessIssueRecord:
+    return PermissionReadinessIssueRecord(
+        document_id=int(row["document_id"]),
+        file_id=int(row["file_id"]),
+        document_title=row["document_title"],
+        original_file_name=str(row["original_file_name"]),
+        access_scope=str(row["access_scope"]),
+        issue_codes=_readiness_issue_codes(row),
     )
 
 
@@ -218,6 +262,98 @@ def get_permission_inventory_summary(database_url: str) -> PermissionInventorySu
         access_scope_counts=tuple(
             _row_to_access_scope_count(dict(row)) for row in access_scope_rows
         ),
+    )
+
+
+def get_permission_readiness_summary(
+    database_url: str,
+    *,
+    issue_limit: int = 20,
+) -> PermissionReadinessSummary:
+    validated_limit = _validate_limit(issue_limit, max_limit=100)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                WITH document_readiness AS (
+                    SELECT
+                        d.document_id,
+                        d.file_id,
+                        d.document_title,
+                        d.access_scope,
+                        d.owner_user_id,
+                        d.owner_org_unit_id,
+                        f.original_file_name,
+                        f.uploaded_by_user_id,
+                        (
+                            f.uploaded_by_user_id IS NOT NULL
+                            AND (
+                                d.access_scope != 'personal'
+                                OR d.owner_user_id IS NOT NULL
+                            )
+                            AND (
+                                d.access_scope NOT IN ('team', 'org_tree')
+                                OR d.owner_org_unit_id IS NOT NULL
+                            )
+                        ) AS is_ready
+                    FROM documents d
+                    JOIN files f ON f.file_id = d.file_id
+                )
+                SELECT
+                    count(*) AS document_count,
+                    count(*) FILTER (WHERE is_ready) AS ready_document_count,
+                    count(*) FILTER (WHERE NOT is_ready) AS issue_document_count,
+                    count(*) FILTER (
+                        WHERE uploaded_by_user_id IS NULL
+                    ) AS missing_uploader_count,
+                    count(*) FILTER (
+                        WHERE access_scope = 'personal'
+                          AND owner_user_id IS NULL
+                    ) AS personal_missing_owner_count,
+                    count(*) FILTER (
+                        WHERE access_scope IN ('team', 'org_tree')
+                          AND owner_org_unit_id IS NULL
+                    ) AS scoped_missing_org_count
+                FROM document_readiness
+                """)
+            summary_row = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT
+                    d.document_id,
+                    d.file_id,
+                    d.document_title,
+                    d.access_scope,
+                    d.owner_user_id,
+                    d.owner_org_unit_id,
+                    f.original_file_name,
+                    f.uploaded_by_user_id
+                FROM documents d
+                JOIN files f ON f.file_id = d.file_id
+                WHERE f.uploaded_by_user_id IS NULL
+                   OR (d.access_scope = 'personal' AND d.owner_user_id IS NULL)
+                   OR (
+                       d.access_scope IN ('team', 'org_tree')
+                       AND d.owner_org_unit_id IS NULL
+                   )
+                ORDER BY d.updated_at DESC, d.document_id DESC
+                LIMIT %s
+                """,
+                (validated_limit,),
+            )
+            issue_rows = cursor.fetchall()
+
+    document_count = int(summary_row["document_count"])
+    ready_document_count = int(summary_row["ready_document_count"])
+    readiness_percent = round(ready_document_count / document_count, 4) if document_count else None
+    return PermissionReadinessSummary(
+        document_count=document_count,
+        ready_document_count=ready_document_count,
+        issue_document_count=int(summary_row["issue_document_count"]),
+        missing_uploader_count=int(summary_row["missing_uploader_count"]),
+        personal_missing_owner_count=int(summary_row["personal_missing_owner_count"]),
+        scoped_missing_org_count=int(summary_row["scoped_missing_org_count"]),
+        readiness_percent=readiness_percent,
+        issues=tuple(_row_to_readiness_issue(dict(row)) for row in issue_rows),
     )
 
 

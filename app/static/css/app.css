@@ -861,6 +861,27 @@ main.container-fluid {
   margin-top: 0.5rem;
 }
 
+.permission-readiness-grid {
+  border-bottom: 1px solid var(--pcx-border);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(12rem, 0.4fr) minmax(0, 1fr);
+}
+
+.permission-readiness-score {
+  border-right: 1px solid var(--pcx-border);
+  min-width: 0;
+}
+
+.permission-readiness-table td:first-child {
+  min-width: 18rem;
+  overflow-wrap: anywhere;
+}
+
+.permission-readiness-table td:nth-child(2) {
+  white-space: nowrap;
+}
+
 .policy-name {
   display: inline-block;
   font-weight: 700;
@@ -1607,6 +1628,7 @@ main.container-fluid {
   .feedback-summary-grid,
   .golden-fieldset,
   .golden-question-layout,
+  .permission-readiness-grid,
   .permission-summary-grid,
   .search-form-grid,
   .search-history-filter,
@@ -1619,6 +1641,10 @@ main.container-fluid {
 
   .search-profile-field {
     grid-column: auto;
+  }
+
+  .permission-readiness-score {
+    border-right: 0;
   }
 
   .search-form-actions {

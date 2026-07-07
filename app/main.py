@@ -137,9 +137,12 @@ from app.core.permission_inventory import (
     PermissionInventorySummary,
     PermissionMembershipInventoryRecord,
     PermissionOrgUnitInventoryRecord,
+    PermissionReadinessIssueRecord,
+    PermissionReadinessSummary,
     PermissionUserInventoryRecord,
     get_permission_inventory,
     get_permission_inventory_summary,
+    get_permission_readiness_summary,
     list_permission_memberships,
     list_permission_org_units,
     list_permission_users,
@@ -1275,6 +1278,34 @@ def permission_inventory_summary_payload(
     }
 
 
+def permission_readiness_issue_payload(
+    issue: PermissionReadinessIssueRecord,
+) -> dict[str, object]:
+    return {
+        "document_id": issue.document_id,
+        "file_id": issue.file_id,
+        "document_title": issue.document_title,
+        "original_file_name": issue.original_file_name,
+        "access_scope": issue.access_scope,
+        "issue_codes": list(issue.issue_codes),
+    }
+
+
+def permission_readiness_summary_payload(
+    summary: PermissionReadinessSummary,
+) -> dict[str, object]:
+    return {
+        "document_count": summary.document_count,
+        "ready_document_count": summary.ready_document_count,
+        "issue_document_count": summary.issue_document_count,
+        "missing_uploader_count": summary.missing_uploader_count,
+        "personal_missing_owner_count": summary.personal_missing_owner_count,
+        "scoped_missing_org_count": summary.scoped_missing_org_count,
+        "readiness_percent": summary.readiness_percent,
+        "issues": [permission_readiness_issue_payload(issue) for issue in summary.issues],
+    }
+
+
 def permission_user_inventory_payload(
     user: PermissionUserInventoryRecord,
 ) -> dict[str, object]:
@@ -1513,6 +1544,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(
             content={"permission_inventory": permission_inventory_payload(inventory)}
+        )
+
+    @app.get("/api/admin/permissions/readiness")
+    def api_get_permission_readiness(issue_limit: int = 20) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            readiness = get_permission_readiness_summary(
+                settings.database_url,
+                issue_limit=issue_limit,
+            )
+        except InvalidPermissionInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={"permission_readiness": permission_readiness_summary_payload(readiness)}
         )
 
     @app.get("/api/admin/permissions/users")
@@ -3281,6 +3332,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/admin/permissions", response_class=HTMLResponse)
     def permission_inventory_page(request: Request) -> HTMLResponse:
         summary: PermissionInventorySummary | None = None
+        readiness: PermissionReadinessSummary | None = None
         users: tuple[PermissionUserInventoryRecord, ...] = ()
         org_units: tuple[PermissionOrgUnitInventoryRecord, ...] = ()
         memberships: tuple[PermissionMembershipInventoryRecord, ...] = ()
@@ -3291,6 +3343,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             try:
                 summary = get_permission_inventory_summary(settings.database_url)
+                readiness = get_permission_readiness_summary(settings.database_url)
                 users = tuple(list_permission_users(settings.database_url))
                 org_units = tuple(list_permission_org_units(settings.database_url))
                 memberships = tuple(list_permission_memberships(settings.database_url))
@@ -3305,6 +3358,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             template_context(
                 request,
                 summary=summary,
+                readiness=readiness,
                 users=users,
                 org_units=org_units,
                 memberships=memberships,

@@ -21,6 +21,7 @@ def test_permission_inventory_supports_english_language_switch(client) -> None:
 def test_permission_inventory_apis_require_database(client) -> None:
     for path in (
         "/api/admin/permissions",
+        "/api/admin/permissions/readiness",
         "/api/admin/permissions/users",
         "/api/admin/permissions/org-units",
         "/api/admin/permissions/memberships",
