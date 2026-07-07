@@ -745,6 +745,24 @@ main.container-fluid {
   white-space: nowrap;
 }
 
+.chunk-policy-table td:nth-child(1) {
+  min-width: 14rem;
+}
+
+.chunk-policy-table td:nth-child(2),
+.chunk-policy-table td:nth-child(3),
+.chunk-policy-table td:nth-child(4),
+.chunk-policy-table td:nth-child(5),
+.chunk-policy-table td:nth-child(6) {
+  white-space: nowrap;
+}
+
+.policy-name {
+  display: inline-block;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .document-detail-grid {
   display: grid;
   gap: 1rem;
@@ -1307,6 +1325,10 @@ main.container-fluid {
 }
 
 @media (min-width: 768px) {
+  .col-md-4 {
+    grid-column: span 4;
+  }
+
   .col-md-6 {
     grid-column: span 6;
   }

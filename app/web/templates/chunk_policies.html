@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">Chunk Policies</h1>
+    <p class="text-secondary mb-0">Chunk size candidates, overlap settings, and observed usage</p>
+  </div>
+  <span class="badge text-bg-light border">Default: {{ default_chunk_policy_name }}</span>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if policies %}
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-4">
+    <section class="metric-card bg-white p-3">
+      <div class="metric-label">Policies</div>
+      <div class="metric-value">{{ policies|length }}</div>
+    </section>
+  </div>
+  <div class="col-12 col-md-4">
+    <section class="metric-card bg-white p-3">
+      <div class="metric-label">Stored Chunks</div>
+      <div class="metric-value">{{ policies|sum(attribute="chunk_count") }}</div>
+    </section>
+  </div>
+  <div class="col-12 col-md-4">
+    <section class="metric-card bg-white p-3">
+      <div class="metric-label">Policy Documents</div>
+      <div class="metric-value">{{ policies|sum(attribute="document_count") }}</div>
+    </section>
+  </div>
+</div>
+{% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 chunk-policy-table">
+      <thead>
+        <tr>
+          <th scope="col">Policy</th>
+          <th scope="col">Target</th>
+          <th scope="col">Overlap</th>
+          <th scope="col">Strategy</th>
+          <th scope="col">Preserve</th>
+          <th scope="col">Usage</th>
+          <th scope="col">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for policy in policies %}
+        <tr>
+          <td>
+            <span class="policy-name">{{ policy.chunk_policy_name }}</span>
+            <div class="mt-1">
+              {% if policy.is_default %}
+              <span class="badge text-bg-primary">Default</span>
+              {% endif %}
+              {% if policy.chunk_count > 0 %}
+              <span class="badge text-bg-success">In use</span>
+              {% else %}
+              <span class="badge text-bg-light border">No chunks</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>{{ policy.target_token_size }} tokens</td>
+          <td>{{ policy.overlap_token_size }} tokens</td>
+          <td>{{ policy.split_strategy }}</td>
+          <td>
+            <span class="badge text-bg-light border">table {{ "on" if policy.preserve_table else "off" }}</span>
+            <span class="badge text-bg-light border">code {{ "on" if policy.preserve_code_block else "off" }}</span>
+          </td>
+          <td>
+            <strong>{{ policy.chunk_count }}</strong> chunks
+            <div class="text-secondary small">{{ policy.document_count }} documents</div>
+            <div class="text-secondary small">
+              avg {{ (policy.average_token_count or 0)|round(1) }} tokens /
+              {{ (policy.average_char_count or 0)|round(1) }} chars
+            </div>
+          </td>
+          <td class="text-break">{{ policy.description or "" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="7">
+            {% if database_configured %}No chunk policies found{% else %}No database configured{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

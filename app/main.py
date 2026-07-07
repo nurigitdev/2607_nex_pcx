@@ -11,7 +11,14 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.core.admin_logging import list_logs, log_event
+from app.core.chunk_policies import (
+    ChunkPolicySummaryRecord,
+    InvalidChunkPolicyManagementError,
+    get_chunk_policy_summary,
+    list_chunk_policy_summaries,
+)
 from app.core.chunks import (
+    DEFAULT_CHUNK_POLICY_NAME,
     ChunkRecord,
     InvalidChunkError,
     list_document_chunks,
@@ -981,6 +988,30 @@ def chunk_payload(chunk: ChunkRecord) -> dict[str, object]:
     }
 
 
+def chunk_policy_summary_payload(policy: ChunkPolicySummaryRecord) -> dict[str, object]:
+    return {
+        "chunk_policy_name": policy.chunk_policy_name,
+        "target_token_size": policy.target_token_size,
+        "overlap_token_size": policy.overlap_token_size,
+        "split_strategy": policy.split_strategy,
+        "preserve_table": policy.preserve_table,
+        "preserve_code_block": policy.preserve_code_block,
+        "description": policy.description,
+        "is_default": policy.is_default,
+        "chunk_count": policy.chunk_count,
+        "document_count": policy.document_count,
+        "total_token_count": policy.total_token_count,
+        "total_char_count": policy.total_char_count,
+        "average_token_count": (
+            str(policy.average_token_count) if policy.average_token_count is not None else None
+        ),
+        "average_char_count": (
+            str(policy.average_char_count) if policy.average_char_count is not None else None
+        ),
+        "created_at": _datetime_response(policy.created_at),
+    }
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -1038,6 +1069,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content={"evaluations": evaluation_dashboard_summary_payload(summary)})
+
+    @app.get("/api/chunk-policies")
+    def api_list_chunk_policies() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        policies = list_chunk_policy_summaries(settings.database_url)
+        return JSONResponse(
+            content={
+                "default_chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                "chunk_policies": [chunk_policy_summary_payload(policy) for policy in policies],
+            },
+        )
+
+    @app.get("/api/chunk-policies/{chunk_policy_name}")
+    def api_get_chunk_policy(chunk_policy_name: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            policy = get_chunk_policy_summary(settings.database_url, chunk_policy_name)
+        except InvalidChunkPolicyManagementError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if policy is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Chunk policy not found.",
+            )
+
+        return JSONResponse(content={"chunk_policy": chunk_policy_summary_payload(policy)})
 
     @app.get("/api/documents")
     def api_list_documents(
@@ -2496,6 +2563,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_status=status_filter or "",
                 selected_profile_name=profile_name or "",
                 selected_job_id=job_id,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/chunk-policies", response_class=HTMLResponse)
+    def chunk_policies_page(request: Request) -> HTMLResponse:
+        policies: list[ChunkPolicySummaryRecord] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                policies = list_chunk_policy_summaries(settings.database_url)
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "chunk_policies.html",
+            template_context(
+                request,
+                policies=policies,
+                default_chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),
