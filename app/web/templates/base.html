@@ -26,6 +26,7 @@
         <nav class="sidebar-nav nav nav-pills flex-column gap-1" aria-label="Primary navigation">
           <a class="nav-link {% if current_path == '/' %}active{% endif %}" href="/">Dashboard</a>
           <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">Upload</a>
+          <a class="nav-link {% if current_path.startswith('/documents') %}active{% endif %}" href="/documents">Documents</a>
           <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">Search</a>
           <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">History</a>
           <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">Evaluations</a>
@@ -50,6 +51,7 @@
             <div class="nav nav-pills mobile-nav gap-1">
               <a class="nav-link {% if current_path == '/' %}active{% endif %}" href="/">Dashboard</a>
               <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">Upload</a>
+              <a class="nav-link {% if current_path.startswith('/documents') %}active{% endif %}" href="/documents">Documents</a>
               <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">Search</a>
               <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">History</a>
               <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">Evaluations</a>

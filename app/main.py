@@ -13,6 +13,11 @@ from pydantic import BaseModel, Field
 from app.core.admin_logging import list_logs, log_event
 from app.core.config import Settings, get_settings
 from app.core.database import connect
+from app.core.document_inventory import (
+    DocumentInventoryItem,
+    InvalidDocumentInventoryError,
+    list_document_inventory,
+)
 from app.core.embedding_jobs import (
     EmbeddingJobRecord,
     InvalidEmbeddingJobError,
@@ -906,6 +911,45 @@ def evaluation_dashboard_summary_payload(
     }
 
 
+def document_inventory_item_payload(item: DocumentInventoryItem) -> dict[str, object]:
+    return {
+        "document_id": item.document_id,
+        "file_id": item.file_id,
+        "document_title": item.document_title,
+        "original_file_name": item.original_file_name,
+        "file_ext": item.file_ext,
+        "mime_type": item.mime_type,
+        "file_size_bytes": item.file_size_bytes,
+        "document_group": item.document_group,
+        "security_level": item.security_level,
+        "document_status": item.document_status,
+        "parse_status": item.parse_status,
+        "owner_user_id": item.owner_user_id,
+        "owner_login_id": item.owner_login_id,
+        "owner_display_name": item.owner_display_name,
+        "owner_org_unit_id": item.owner_org_unit_id,
+        "owner_org_unit_name": item.owner_org_unit_name,
+        "access_scope": item.access_scope,
+        "uploaded_by": item.uploaded_by,
+        "uploaded_by_user_id": item.uploaded_by_user_id,
+        "uploaded_by_login_id": item.uploaded_by_login_id,
+        "uploaded_by_display_name": item.uploaded_by_display_name,
+        "chunk_count": item.chunk_count,
+        "total_token_count": item.total_token_count,
+        "total_char_count": item.total_char_count,
+        "latest_pipeline_job_id": item.latest_pipeline_job_id,
+        "latest_pipeline_status": item.latest_pipeline_status,
+        "latest_pipeline_stage": item.latest_pipeline_stage,
+        "latest_pipeline_progress_percent": (
+            str(item.latest_pipeline_progress_percent)
+            if item.latest_pipeline_progress_percent is not None
+            else None
+        ),
+        "uploaded_at": _datetime_response(item.uploaded_at),
+        "updated_at": _datetime_response(item.updated_at),
+    }
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -963,6 +1007,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content={"evaluations": evaluation_dashboard_summary_payload(summary)})
+
+    @app.get("/api/documents")
+    def api_list_documents(
+        parse_status: str | None = None,
+        document_group: str | None = None,
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            documents = list_document_inventory(
+                settings.database_url,
+                parse_status=parse_status,
+                document_group=document_group,
+                limit=limit,
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "documents": [document_inventory_item_payload(document) for document in documents],
+            },
+        )
 
     def upload_template_context(
         request: Request,
@@ -1908,6 +1980,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 database_configured=bool(settings.database_url),
                 evaluation_dashboard=evaluation_dashboard,
+                error_message=error_message,
+            ),
+        )
+
+    @app.get("/documents", response_class=HTMLResponse)
+    def documents_page(
+        request: Request,
+        parse_status: str | None = None,
+        document_group: str | None = None,
+    ) -> HTMLResponse:
+        documents: list[DocumentInventoryItem] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                documents = list_document_inventory(
+                    settings.database_url,
+                    parse_status=parse_status,
+                    document_group=document_group,
+                    limit=100,
+                )
+            except InvalidDocumentInventoryError as exc:
+                error_message = str(exc)
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "documents.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                documents=documents,
+                selected_parse_status=parse_status,
+                selected_document_group=document_group,
                 error_message=error_message,
             ),
         )

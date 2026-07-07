@@ -702,6 +702,41 @@ main.container-fluid {
   min-width: 14rem;
 }
 
+.document-filter-form {
+  flex-wrap: wrap;
+}
+
+.document-filter-form .form-control {
+  min-width: 9rem;
+  width: 12rem;
+}
+
+.document-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.document-group {
+  display: inline-block;
+  max-width: 11rem;
+  overflow-wrap: anywhere;
+}
+
+.document-table td:nth-child(1) {
+  min-width: 18rem;
+}
+
+.document-table td:nth-child(2) {
+  min-width: 9rem;
+}
+
+.document-table td:nth-child(4),
+.document-table td:nth-child(5),
+.document-table td:nth-child(6),
+.document-table td:nth-child(7) {
+  white-space: nowrap;
+}
+
 .metric-label {
   color: var(--pcx-muted);
   font-size: 0.875rem;
@@ -1248,6 +1283,18 @@ main.container-fluid {
 
   .job-filter-form {
     justify-content: space-between;
+    width: 100%;
+  }
+
+  .document-filter-form {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .document-filter-form .form-control,
+  .document-filter-form .form-select,
+  .document-filter-form .btn {
     width: 100%;
   }
 
