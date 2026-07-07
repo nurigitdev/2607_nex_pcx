@@ -25,6 +25,12 @@ from app.core.embedding_vectors import (
     InvalidEmbeddingVectorError,
     get_chunk_embedding,
 )
+from app.core.evaluation_executor import (
+    GoldenEvaluationExecutionInput,
+    GoldenEvaluationExecutionReport,
+    InvalidGoldenEvaluationExecutionError,
+    execute_golden_evaluation,
+)
 from app.core.evaluation_runs import (
     EvaluationResultRecord,
     EvaluationRunRecord,
@@ -170,6 +176,15 @@ class GoldenQuestionPromotionRequest(BaseModel):
     notes: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
     created_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class GoldenEvaluationExecuteRequest(BaseModel):
+    question_set_id: int = Field(ge=1)
+    profile_name: str
+    run_name: str | None = None
+    chunk_policy_name: str | None = None
+    top_k: int = Field(default=5, ge=1)
+    runtime_metadata: dict[str, object] = Field(default_factory=dict)
 
 
 def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
@@ -685,6 +700,41 @@ def evaluation_result_payload(result: EvaluationResultRecord) -> dict[str, objec
         "no_answer_success": result.no_answer_success,
         "metadata": result.metadata,
         "created_at": _datetime_response(result.created_at),
+    }
+
+
+def golden_evaluation_execution_input_from_request(
+    payload: GoldenEvaluationExecuteRequest,
+) -> GoldenEvaluationExecutionInput:
+    return GoldenEvaluationExecutionInput(
+        question_set_id=payload.question_set_id,
+        profile_name=payload.profile_name,
+        run_name=payload.run_name,
+        chunk_policy_name=payload.chunk_policy_name,
+        top_k=payload.top_k,
+        runtime_metadata=dict(payload.runtime_metadata),
+    )
+
+
+def golden_evaluation_execution_payload(
+    execution: GoldenEvaluationExecutionReport,
+) -> dict[str, object]:
+    return {
+        "run": evaluation_run_payload(execution.evaluation.run),
+        "question_set": golden_question_set_payload(execution.question_set),
+        "results": [evaluation_result_payload(result) for result in execution.evaluation.results],
+        "search_log_ids_by_question": execution.search_log_ids_by_question,
+        "summary": {
+            "question_count": execution.evaluation.summary.question_count,
+            "recall_question_count": execution.evaluation.summary.recall_question_count,
+            "ndcg_question_count": execution.evaluation.summary.ndcg_question_count,
+            "no_answer_question_count": execution.evaluation.summary.no_answer_question_count,
+            "hidden_violation_count": execution.evaluation.summary.hidden_violation_count,
+            "mean_recall_at_k": execution.evaluation.summary.mean_recall_at_k,
+            "mean_reciprocal_rank": execution.evaluation.summary.mean_reciprocal_rank,
+            "mean_ndcg": execution.evaluation.summary.mean_ndcg,
+            "no_answer_success_rate": execution.evaluation.summary.no_answer_success_rate,
+        },
     }
 
 
@@ -1437,6 +1487,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content={"runs": [evaluation_run_payload(run) for run in runs]})
+
+    @app.post("/api/evaluations/runs/execute")
+    def api_execute_golden_evaluation(payload: GoldenEvaluationExecuteRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            execution = execute_golden_evaluation(
+                settings.database_url,
+                golden_evaluation_execution_input_from_request(payload),
+            )
+        except (
+            InvalidGoldenEvaluationExecutionError,
+            InvalidEvaluationRunError,
+            InvalidGoldenQuestionError,
+            InvalidSearchCompareError,
+            InvalidPermissionError,
+            InvalidVectorSearchError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if execution is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question set not found.",
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"execution": golden_evaluation_execution_payload(execution)},
+        )
 
     @app.get("/api/evaluations/runs/{evaluation_run_id}")
     def api_get_evaluation_run_detail(evaluation_run_id: int) -> JSONResponse:
