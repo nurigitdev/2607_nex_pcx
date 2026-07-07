@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">Search History</h1>
+    <p class="text-secondary mb-0">Search log replay, result rows, and evaluator feedback</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/search">New Search</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="metric-card bg-white p-3 mb-4">
+  <form class="search-history-filter" method="get">
+    <div>
+      <label class="form-label" for="actor_user_id">Actor</label>
+      <select
+        class="form-select"
+        id="actor_user_id"
+        name="actor_user_id"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="" {% if not selected_actor_user_id %}selected{% endif %}>All</option>
+        {% for actor in actor_options %}
+        <option value="{{ actor.user_id }}" {% if actor.user_id == selected_actor_user_id %}selected{% endif %}>
+          {{ actor.display_name }} / {{ actor.login_id }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="requested_search_scope">Scope</label>
+      <select
+        class="form-select"
+        id="requested_search_scope"
+        name="requested_search_scope"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="" {% if not selected_scope %}selected{% endif %}>All</option>
+        {% for scope in ["mine", "team", "managed_org", "company"] %}
+        <option value="{{ scope }}" {% if scope == selected_scope %}selected{% endif %}>{{ scope }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="document_group">Group</label>
+      <input
+        class="form-control"
+        id="document_group"
+        name="document_group"
+        type="text"
+        value="{{ selected_document_group }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div>
+      <label class="form-label" for="limit">Limit</label>
+      <input
+        class="form-control"
+        id="limit"
+        name="limit"
+        type="number"
+        min="1"
+        max="200"
+        value="{{ selected_limit }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div class="search-history-filter-actions">
+      <button class="btn btn-primary" type="submit" {% if not database_configured %}disabled{% endif %}>Apply</button>
+    </div>
+  </form>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 search-log-table">
+      <thead>
+        <tr>
+          <th scope="col">Log</th>
+          <th scope="col">Query</th>
+          <th scope="col">Actor</th>
+          <th scope="col">Scope</th>
+          <th scope="col">Group</th>
+          <th scope="col">Results</th>
+          <th scope="col">Feedback</th>
+          <th scope="col">Latency</th>
+          <th scope="col">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in logs %}
+        <tr class="{% if selected_search_log_id == item.search_log.search_log_id %}table-active{% endif %}">
+          <td>
+            <a class="job-link" href="/search/logs?search_log_id={{ item.search_log.search_log_id }}">
+              #{{ item.search_log.search_log_id }}
+            </a>
+          </td>
+          <td class="text-break">{{ item.search_log.query_text }}</td>
+          <td>{{ item.actor_display_name or item.actor_login_id or "" }}</td>
+          <td>{{ item.search_log.requested_search_scope or "" }}</td>
+          <td>{{ item.search_log.document_group or "" }}</td>
+          <td>{{ item.result_count }}</td>
+          <td>
+            <span class="badge text-bg-light border">{{ item.feedback_count }}</span>
+            {% if item.feedback_count %}
+            <span class="text-secondary">C{{ item.correct_count }} / P{{ item.partial_count }} / W{{ item.wrong_count }}</span>
+            {% endif %}
+          </td>
+          <td>{{ item.search_log.total_elapsed_ms or "" }} ms</td>
+          <td>{{ item.search_log.created_at }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="9">
+            {% if database_configured %}No search logs found{% else %}No database configured{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if selected_log %}
+<div class="search-history-detail">
+  <section class="metric-card bg-white p-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h2 class="h5 mb-0">Search Log #{{ selected_log.search_log.search_log_id }}</h2>
+      <span class="badge text-bg-light border">{{ selected_log.search_log.effective_search_scope or "" }}</span>
+    </div>
+    <dl class="job-detail-list mb-0">
+      <dt>Query</dt>
+      <dd>{{ selected_log.search_log.query_text }}</dd>
+      <dt>Actor</dt>
+      <dd>{{ selected_log.actor_display_name or selected_log.actor_login_id or "" }}</dd>
+      <dt>Scope</dt>
+      <dd>{{ selected_log.search_log.requested_search_scope or "" }} / {{ selected_log.search_log.effective_search_scope or "" }}</dd>
+      <dt>Group</dt>
+      <dd>{{ selected_log.search_log.document_group or "" }}</dd>
+      <dt>Top K</dt>
+      <dd>{{ selected_log.search_log.top_k }}</dd>
+      <dt>Profiles</dt>
+      <dd>{{ selected_log.search_log.profiles | join(", ") }}</dd>
+      <dt>Latency</dt>
+      <dd>{{ selected_log.search_log.total_elapsed_ms or "" }} ms</dd>
+      <dt>Created</dt>
+      <dd>{{ selected_log.search_log.created_at }}</dd>
+    </dl>
+  </section>
+
+  <section class="search-history-results">
+    {% for result in selected_log.results %}
+    <article class="search-history-result bg-white">
+      <div class="search-result-header">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-light border">#{{ result.search_log_result.rank }}</span>
+          <strong>{{ result.search_log_result.profile_name }}</strong>
+        </div>
+        <span class="search-result-score">score {{ "%.4f"|format(result.search_log_result.score or 0) }}</span>
+      </div>
+
+      <h3 class="search-result-title">{{ result.document_title or result.original_file_name }}</h3>
+      <p class="search-result-preview">{{ result.chunk_preview }}</p>
+
+      <div class="search-result-meta mb-3">
+        <div class="search-result-meta-row"><span class="text-secondary">result</span><span>{{ result.search_log_result.search_log_result_id }}</span></div>
+        <div class="search-result-meta-row"><span class="text-secondary">chunk</span><span>{{ result.search_log_result.chunk_id }}</span></div>
+        <div class="search-result-meta-row"><span class="text-secondary">distance</span><span>{{ "%.4f"|format(result.search_log_result.distance or 0) }}</span></div>
+        <div class="search-result-meta-row"><span class="text-secondary">path</span><span>{{ result.heading_path | join(" / ") }}</span></div>
+      </div>
+
+      <div class="search-history-feedback">
+        {% for feedback in result.feedback %}
+        <div class="search-history-feedback-row">
+          <span class="badge feedback-label-{{ feedback.relevance_label }}">{{ feedback.relevance_label }}</span>
+          <span class="text-secondary">{{ feedback.created_at }}</span>
+          {% if feedback.comment %}<span>{{ feedback.comment }}</span>{% endif %}
+        </div>
+        {% else %}
+        <div class="text-secondary">No feedback yet</div>
+        {% endfor %}
+      </div>
+    </article>
+    {% else %}
+    <section class="metric-card bg-white p-3 text-secondary text-center">No result rows found</section>
+    {% endfor %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

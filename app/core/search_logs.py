@@ -131,6 +131,49 @@ class SearchFeedbackSummaryRecord:
     profiles: tuple[SearchFeedbackProfileSummaryRecord, ...]
 
 
+@dataclass(frozen=True)
+class SearchLogListItem:
+    search_log: SearchLogRecord
+    actor_login_id: str | None
+    actor_display_name: str | None
+    result_count: int
+    feedback_count: int
+    correct_count: int
+    partial_count: int
+    wrong_count: int
+    duplicate_count: int
+    insufficient_context_count: int
+    latest_feedback_at: datetime | None
+
+
+@dataclass(frozen=True)
+class SearchLogResultDetailRecord:
+    search_log_result: SearchLogResultRecord
+    document_id: int
+    file_id: int
+    chunk_preview: str
+    content_hash: str
+    chunk_policy_name: str
+    heading_path: tuple[str, ...]
+    page_no: int | None
+    slide_no: int | None
+    sheet_name: str | None
+    cell_range: str | None
+    document_title: str | None
+    document_group: str
+    original_file_name: str
+    file_ext: str | None
+    feedback: tuple[SearchResultFeedbackRecord, ...]
+
+
+@dataclass(frozen=True)
+class SearchLogDetailRecord:
+    search_log: SearchLogRecord
+    actor_login_id: str | None
+    actor_display_name: str | None
+    results: tuple[SearchLogResultDetailRecord, ...]
+
+
 class InvalidSearchLogError(ValueError):
     """Raised when a search log operation is invalid before reaching the DB."""
 
@@ -341,6 +384,61 @@ def _row_to_search_feedback_profile_summary_record(
     )
 
 
+def _row_to_search_log_list_item(row: dict[str, Any]) -> SearchLogListItem:
+    return SearchLogListItem(
+        search_log=_row_to_search_log_record(row),
+        actor_login_id=row["actor_login_id"],
+        actor_display_name=row["actor_display_name"],
+        result_count=int(row["result_count"] or 0),
+        feedback_count=int(row["feedback_count"] or 0),
+        correct_count=int(row["correct_count"] or 0),
+        partial_count=int(row["partial_count"] or 0),
+        wrong_count=int(row["wrong_count"] or 0),
+        duplicate_count=int(row["duplicate_count"] or 0),
+        insufficient_context_count=int(row["insufficient_context_count"] or 0),
+        latest_feedback_at=row["latest_feedback_at"],
+    )
+
+
+def _chunk_preview(chunk_text: str, limit: int = 240) -> str:
+    normalized = " ".join(chunk_text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 1].rstrip() + "..."
+
+
+def _row_to_search_log_result_detail_record(
+    row: dict[str, Any],
+    feedback: tuple[SearchResultFeedbackRecord, ...],
+) -> SearchLogResultDetailRecord:
+    return SearchLogResultDetailRecord(
+        search_log_result=_row_to_search_log_result_record(row),
+        document_id=int(row["document_id"]),
+        file_id=int(row["file_id"]),
+        chunk_preview=_chunk_preview(str(row["chunk_text"])),
+        content_hash=str(row["content_hash"]),
+        chunk_policy_name=str(row["chunk_policy_name"]),
+        heading_path=tuple(row["heading_path"] or ()),
+        page_no=int(row["page_no"]) if row["page_no"] is not None else None,
+        slide_no=int(row["slide_no"]) if row["slide_no"] is not None else None,
+        sheet_name=row["sheet_name"],
+        cell_range=row["cell_range"],
+        document_title=row["document_title"],
+        document_group=str(row["document_group"]),
+        original_file_name=str(row["original_file_name"]),
+        file_ext=row["file_ext"],
+        feedback=feedback,
+    )
+
+
+def _validate_limit(limit: int, *, max_limit: int = 200) -> int:
+    if limit <= 0:
+        raise InvalidSearchLogError("limit must be greater than 0")
+    if limit > max_limit:
+        raise InvalidSearchLogError(f"limit must be less than or equal to {max_limit}")
+    return limit
+
+
 def create_search_log_in_connection(
     connection: Connection,
     search_log_input: SearchLogInput,
@@ -410,6 +508,87 @@ def get_search_log(database_url: str, search_log_id: int) -> SearchLogRecord | N
             )
             row = cursor.fetchone()
     return _row_to_search_log_record(dict(row)) if row else None
+
+
+def _search_log_filter_clause(
+    *,
+    actor_user_id: int | None,
+    requested_search_scope: str | None,
+    document_group: str | None,
+) -> tuple[str, list[object]]:
+    params: list[object] = []
+    clauses: list[str] = []
+    _require_positive_id(actor_user_id, "actor_user_id")
+    normalized_scope = _validate_scope(requested_search_scope, "requested_search_scope")
+    normalized_document_group = _validate_nonblank(document_group, "document_group")
+    if actor_user_id is not None:
+        clauses.append("sl.actor_user_id = %s")
+        params.append(actor_user_id)
+    if normalized_scope is not None:
+        clauses.append("sl.requested_search_scope = %s")
+        params.append(normalized_scope)
+    if normalized_document_group is not None:
+        clauses.append("sl.document_group = %s")
+        params.append(normalized_document_group)
+    if not clauses:
+        return "", params
+    return f"WHERE {' AND '.join(clauses)}", params
+
+
+def list_search_logs(
+    database_url: str,
+    *,
+    actor_user_id: int | None = None,
+    requested_search_scope: str | None = None,
+    document_group: str | None = None,
+    limit: int = 50,
+) -> list[SearchLogListItem]:
+    validated_limit = _validate_limit(limit)
+    where_clause, params = _search_log_filter_clause(
+        actor_user_id=actor_user_id,
+        requested_search_scope=requested_search_scope,
+        document_group=document_group,
+    )
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    sl.*,
+                    au.login_id AS actor_login_id,
+                    au.display_name AS actor_display_name,
+                    count(DISTINCT slr.search_log_result_id) AS result_count,
+                    count(srf.feedback_id) AS feedback_count,
+                    count(srf.feedback_id) FILTER (
+                        WHERE srf.relevance_label = 'correct'
+                    ) AS correct_count,
+                    count(srf.feedback_id) FILTER (
+                        WHERE srf.relevance_label = 'partial'
+                    ) AS partial_count,
+                    count(srf.feedback_id) FILTER (
+                        WHERE srf.relevance_label = 'wrong'
+                    ) AS wrong_count,
+                    count(srf.feedback_id) FILTER (
+                        WHERE srf.relevance_label = 'duplicate'
+                    ) AS duplicate_count,
+                    count(srf.feedback_id) FILTER (
+                        WHERE srf.relevance_label = 'insufficient_context'
+                    ) AS insufficient_context_count,
+                    max(srf.created_at) AS latest_feedback_at
+                FROM search_logs sl
+                LEFT JOIN app_users au ON au.user_id = sl.actor_user_id
+                LEFT JOIN search_log_results slr ON slr.search_log_id = sl.search_log_id
+                LEFT JOIN search_result_feedback srf
+                  ON srf.search_log_result_id = slr.search_log_result_id
+                {where_clause}
+                GROUP BY sl.search_log_id, au.login_id, au.display_name
+                ORDER BY sl.created_at DESC, sl.search_log_id DESC
+                LIMIT %s
+                """,
+                [*params, validated_limit],
+            )
+            rows = cursor.fetchall()
+    return [_row_to_search_log_list_item(dict(row)) for row in rows]
 
 
 def get_search_log_result(
@@ -489,6 +668,90 @@ def list_search_log_results(
             )
             rows = cursor.fetchall()
     return [_row_to_search_log_result_record(dict(row)) for row in rows]
+
+
+def get_search_log_detail(
+    database_url: str,
+    search_log_id: int,
+) -> SearchLogDetailRecord | None:
+    _require_positive_id(search_log_id, "search_log_id")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    sl.*,
+                    au.login_id AS actor_login_id,
+                    au.display_name AS actor_display_name
+                FROM search_logs sl
+                LEFT JOIN app_users au ON au.user_id = sl.actor_user_id
+                WHERE sl.search_log_id = %s
+                """,
+                (search_log_id,),
+            )
+            log_row = cursor.fetchone()
+            if log_row is None:
+                return None
+
+            cursor.execute(
+                """
+                SELECT
+                    slr.*,
+                    c.document_id,
+                    d.file_id,
+                    c.chunk_text,
+                    c.content_hash,
+                    c.chunk_policy_name,
+                    c.heading_path,
+                    c.page_no,
+                    c.slide_no,
+                    c.sheet_name,
+                    c.cell_range,
+                    d.document_title,
+                    d.document_group,
+                    f.original_file_name,
+                    f.file_ext
+                FROM search_log_results slr
+                JOIN chunks c ON c.chunk_id = slr.chunk_id
+                JOIN documents d ON d.document_id = c.document_id
+                JOIN files f ON f.file_id = d.file_id
+                WHERE slr.search_log_id = %s
+                ORDER BY slr.profile_name ASC, slr.rank ASC
+                """,
+                (search_log_id,),
+            )
+            result_rows = [dict(row) for row in cursor.fetchall()]
+
+            cursor.execute(
+                """
+                SELECT srf.*
+                FROM search_result_feedback srf
+                JOIN search_log_results slr
+                  ON slr.search_log_result_id = srf.search_log_result_id
+                WHERE slr.search_log_id = %s
+                ORDER BY srf.search_log_result_id ASC, srf.created_at ASC
+                """,
+                (search_log_id,),
+            )
+            feedback_rows = cursor.fetchall()
+
+    feedback_by_result_id: dict[int, list[SearchResultFeedbackRecord]] = {}
+    for row in feedback_rows:
+        feedback = _row_to_search_result_feedback_record(dict(row))
+        feedback_by_result_id.setdefault(feedback.search_log_result_id, []).append(feedback)
+
+    return SearchLogDetailRecord(
+        search_log=_row_to_search_log_record(dict(log_row)),
+        actor_login_id=log_row["actor_login_id"],
+        actor_display_name=log_row["actor_display_name"],
+        results=tuple(
+            _row_to_search_log_result_detail_record(
+                row,
+                tuple(feedback_by_result_id.get(int(row["search_log_result_id"]), ())),
+            )
+            for row in result_rows
+        ),
+    )
 
 
 def create_search_result_feedback(

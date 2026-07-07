@@ -224,9 +224,16 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                 "/api/search/feedback/summary",
                 params={"document_group": document_group},
             )
+            logs_response = client.get(
+                "/api/search/logs",
+                params={"document_group": document_group},
+            )
+            detail_response = client.get(f"/api/search/logs/{body['search_log_id']}")
 
         feedback_body = feedback_response.json()
         summary_body = summary_response.json()
+        logs_body = logs_response.json()
+        detail_body = detail_response.json()
         feedback_count = fetch_one(
             migrated_database_url,
             """
@@ -265,6 +272,18 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert profile_summary["kure_v1_1024"]["relevant_count"] == 1
         assert profile_summary["kure_v1_1024"]["correct_rate"] == 1
         assert profile_summary["bge_m3_1024"]["feedback_count"] == 0
+        assert logs_response.status_code == 200
+        assert len(logs_body["logs"]) == 1
+        assert logs_body["logs"][0]["search_log_id"] == body["search_log_id"]
+        assert logs_body["logs"][0]["result_count"] == 2
+        assert logs_body["logs"][0]["feedback_count"] == 1
+        assert detail_response.status_code == 200
+        assert detail_body["search_log"]["search_log_id"] == body["search_log_id"]
+        assert detail_body["search_log"]["actor_login_id"] == "alice.member"
+        assert len(detail_body["results"]) == 2
+        assert detail_body["results"][0]["document_group"] == document_group
+        detail_results = {result["profile_name"]: result for result in detail_body["results"]}
+        assert detail_results["kure_v1_1024"]["feedback"][0]["relevance_label"] == "correct"
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
 
@@ -305,3 +324,15 @@ def test_search_feedback_api_returns_not_found_for_missing_result(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Search result not found."}
+
+
+def test_search_log_detail_api_returns_not_found_for_missing_log(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    with TestClient(app) as client:
+        response = client.get("/api/search/logs/999999999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Search log not found."}

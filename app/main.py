@@ -51,11 +51,16 @@ from app.core.search_compare import (
 from app.core.search_logs import (
     InvalidSearchLogError,
     SearchFeedbackProfileSummaryRecord,
+    SearchLogDetailRecord,
+    SearchLogListItem,
+    SearchLogResultDetailRecord,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
     create_search_result_feedback,
     get_search_log,
+    get_search_log_detail,
     get_search_log_result,
+    list_search_logs,
     summarize_search_feedback,
 )
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
@@ -271,6 +276,120 @@ def search_feedback_payload(feedback: SearchResultFeedbackRecord) -> dict[str, o
         "created_by": feedback.created_by,
         "created_by_user_id": feedback.created_by_user_id,
         "created_at": _datetime_response(feedback.created_at),
+    }
+
+
+def search_log_record_payload(item: SearchLogListItem) -> dict[str, object]:
+    search_log = item.search_log
+    return {
+        "search_log_id": search_log.search_log_id,
+        "query_text": search_log.query_text,
+        "normalized_query_text": search_log.normalized_query_text,
+        "actor_user_id": search_log.actor_user_id,
+        "actor_login_id": item.actor_login_id,
+        "actor_display_name": item.actor_display_name,
+        "requested_search_scope": search_log.requested_search_scope,
+        "effective_search_scope": search_log.effective_search_scope,
+        "permission_filter_metadata": search_log.permission_filter_metadata,
+        "document_group": search_log.document_group,
+        "file_type": search_log.file_type,
+        "chunk_policy_name": search_log.chunk_policy_name,
+        "top_k": search_log.top_k,
+        "similarity_metric": search_log.similarity_metric,
+        "profiles": list(search_log.profiles),
+        "query_runtime_metadata": search_log.query_runtime_metadata,
+        "total_elapsed_ms": search_log.total_elapsed_ms,
+        "result_count": item.result_count,
+        "feedback_count": item.feedback_count,
+        "correct_count": item.correct_count,
+        "partial_count": item.partial_count,
+        "wrong_count": item.wrong_count,
+        "duplicate_count": item.duplicate_count,
+        "insufficient_context_count": item.insufficient_context_count,
+        "created_by": search_log.created_by,
+        "created_by_user_id": search_log.created_by_user_id,
+        "created_at": _datetime_response(search_log.created_at),
+        "latest_feedback_at": _datetime_response(item.latest_feedback_at),
+    }
+
+
+def search_log_result_detail_payload(
+    result: SearchLogResultDetailRecord,
+) -> dict[str, object]:
+    search_result = result.search_log_result
+    return {
+        "search_log_result_id": search_result.search_log_result_id,
+        "search_log_id": search_result.search_log_id,
+        "profile_name": search_result.profile_name,
+        "rank": search_result.rank,
+        "chunk_id": search_result.chunk_id,
+        "document_id": result.document_id,
+        "file_id": result.file_id,
+        "distance": search_result.distance,
+        "score": search_result.score,
+        "profile_elapsed_ms": search_result.profile_elapsed_ms,
+        "chunk_preview": result.chunk_preview,
+        "content_hash": result.content_hash,
+        "chunk_policy_name": result.chunk_policy_name,
+        "heading_path": list(result.heading_path),
+        "page_no": result.page_no,
+        "slide_no": result.slide_no,
+        "sheet_name": result.sheet_name,
+        "cell_range": result.cell_range,
+        "document_title": result.document_title,
+        "document_group": result.document_group,
+        "original_file_name": result.original_file_name,
+        "file_ext": result.file_ext,
+        "created_at": _datetime_response(search_result.created_at),
+        "feedback": [search_feedback_payload(feedback) for feedback in result.feedback],
+    }
+
+
+def search_log_detail_payload(detail: SearchLogDetailRecord) -> dict[str, object]:
+    list_item = SearchLogListItem(
+        search_log=detail.search_log,
+        actor_login_id=detail.actor_login_id,
+        actor_display_name=detail.actor_display_name,
+        result_count=len(detail.results),
+        feedback_count=sum(len(result.feedback) for result in detail.results),
+        correct_count=sum(
+            1
+            for result in detail.results
+            for feedback in result.feedback
+            if feedback.relevance_label == "correct"
+        ),
+        partial_count=sum(
+            1
+            for result in detail.results
+            for feedback in result.feedback
+            if feedback.relevance_label == "partial"
+        ),
+        wrong_count=sum(
+            1
+            for result in detail.results
+            for feedback in result.feedback
+            if feedback.relevance_label == "wrong"
+        ),
+        duplicate_count=sum(
+            1
+            for result in detail.results
+            for feedback in result.feedback
+            if feedback.relevance_label == "duplicate"
+        ),
+        insufficient_context_count=sum(
+            1
+            for result in detail.results
+            for feedback in result.feedback
+            if feedback.relevance_label == "insufficient_context"
+        ),
+        latest_feedback_at=max(
+            (feedback.created_at for result in detail.results for feedback in result.feedback),
+            default=None,
+        ),
+    )
+    return {
+        "search_log": search_log_record_payload(list_item),
+        "results": [search_log_result_detail_payload(result) for result in detail.results],
     }
 
 
@@ -548,6 +667,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=search_compare_payload(result))
 
+    @app.get("/api/search/logs")
+    def api_list_search_logs(
+        actor_user_id: int | None = None,
+        requested_search_scope: str | None = None,
+        document_group: str | None = None,
+        limit: int = 50,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            logs = list_search_logs(
+                settings.database_url,
+                actor_user_id=actor_user_id,
+                requested_search_scope=requested_search_scope,
+                document_group=document_group,
+                limit=limit,
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"logs": [search_log_record_payload(log) for log in logs]})
+
+    @app.get("/api/search/logs/{search_log_id}")
+    def api_get_search_log_detail(search_log_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_search_log_detail(settings.database_url, search_log_id)
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log not found.",
+            )
+
+        return JSONResponse(content=search_log_detail_payload(detail))
+
     @app.post("/api/search/feedback")
     def api_search_feedback(payload: SearchFeedbackRequest) -> JSONResponse:
         if not settings.database_url:
@@ -717,6 +882,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 actor_options=actor_options,
                 profile_options=profile_options,
                 default_actor_id=actor_options[0]["user_id"] if actor_options else "",
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/search/logs", response_class=HTMLResponse)
+    def search_logs_page(
+        request: Request,
+        actor_user_id: str | None = None,
+        requested_search_scope: str | None = None,
+        document_group: str | None = None,
+        search_log_id: int | None = None,
+        limit: int = 50,
+    ) -> HTMLResponse:
+        actor_options: list[dict[str, object]] = []
+        logs: list[SearchLogListItem] = []
+        selected_log: SearchLogDetailRecord | None = None
+        error_message = None
+        actor_user_id_value: int | None = None
+        scope_value = requested_search_scope.strip() if requested_search_scope else None
+        document_group_value = document_group.strip() if document_group else None
+        if scope_value == "":
+            scope_value = None
+        if document_group_value == "":
+            document_group_value = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                if actor_user_id and actor_user_id.strip():
+                    actor_user_id_value = int(actor_user_id)
+                actor_options = list_search_actor_options(settings.database_url)
+                logs = list_search_logs(
+                    settings.database_url,
+                    actor_user_id=actor_user_id_value,
+                    requested_search_scope=scope_value,
+                    document_group=document_group_value,
+                    limit=limit,
+                )
+                if search_log_id is not None:
+                    selected_log = get_search_log_detail(settings.database_url, search_log_id)
+                    if selected_log is None:
+                        error_message = f"Search log not found: {search_log_id}"
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "search_history.html",
+            template_context(
+                request,
+                actor_options=actor_options,
+                logs=logs,
+                selected_log=selected_log,
+                selected_actor_user_id=actor_user_id_value or "",
+                selected_scope=scope_value or "",
+                selected_document_group=document_group_value or "",
+                selected_search_log_id=search_log_id,
+                selected_limit=limit,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

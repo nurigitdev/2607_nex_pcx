@@ -11,8 +11,10 @@ from app.core.search_logs import (
     create_search_log_results,
     create_search_result_feedback,
     get_search_log,
+    get_search_log_detail,
     get_search_log_result,
     list_search_log_results,
+    list_search_logs,
     summarize_search_feedback,
 )
 
@@ -166,6 +168,13 @@ def test_search_log_repository_persists_results_and_feedback(
             migrated_database_url,
             document_group=document_group,
         )
+        history = list_search_logs(
+            migrated_database_url,
+            actor_user_id=user_id,
+            requested_search_scope="mine",
+            document_group=document_group,
+        )
+        detail = get_search_log_detail(migrated_database_url, search_log.search_log_id)
         profile_summary = next(
             profile for profile in summary.profiles if profile.profile_name == "kure_v1_1024"
         )
@@ -189,6 +198,18 @@ def test_search_log_repository_persists_results_and_feedback(
         assert profile_summary.relevant_count == 1
         assert profile_summary.average_rank == pytest.approx(1)
         assert profile_summary.average_score == pytest.approx(0.88)
+        assert len(history) == 1
+        assert history[0].search_log == search_log
+        assert history[0].actor_login_id == "alice.member"
+        assert history[0].result_count == 1
+        assert history[0].feedback_count == 1
+        assert detail is not None
+        assert detail.search_log == search_log
+        assert detail.actor_login_id == "alice.member"
+        assert len(detail.results) == 1
+        assert detail.results[0].search_log_result == results[0]
+        assert detail.results[0].document_group == document_group
+        assert detail.results[0].feedback == (feedback,)
     finally:
         _cleanup_file(migrated_database_url, file_id)
 
@@ -197,5 +218,6 @@ def test_search_log_repository_returns_none_and_empty_results_for_missing_log(
     migrated_database_url: str,
 ) -> None:
     assert get_search_log(migrated_database_url, 999999999) is None
+    assert get_search_log_detail(migrated_database_url, 999999999) is None
     assert get_search_log_result(migrated_database_url, 999999999) is None
     assert list_search_log_results(migrated_database_url, 999999999) == []
