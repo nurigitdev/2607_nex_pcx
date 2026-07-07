@@ -11,6 +11,7 @@ from app.core.evaluation_runs import (
     EvaluationRunInput,
     InvalidEvaluationRunError,
     list_evaluation_runs,
+    run_golden_evaluation_from_search_logs,
     validate_evaluation_result_input,
     validate_evaluation_run_input,
 )
@@ -138,3 +139,28 @@ def test_list_evaluation_runs_rejects_invalid_limit_before_connecting() -> None:
 
     with pytest.raises(InvalidEvaluationRunError, match="less than or equal"):
         list_evaluation_runs("postgresql://unused", limit=501)
+
+
+def test_search_log_adapter_rejects_invalid_mapping_before_connecting() -> None:
+    run_input = EvaluationRunInput(question_set_id=1, run_name="run", profile_name="profile")
+
+    with pytest.raises(InvalidEvaluationRunError, match="must not be empty"):
+        run_golden_evaluation_from_search_logs(
+            "postgresql://unused",
+            run_input,
+            search_log_ids_by_question={},
+        )
+
+    with pytest.raises(InvalidEvaluationRunError, match="question_id"):
+        run_golden_evaluation_from_search_logs(
+            "postgresql://unused",
+            run_input,
+            search_log_ids_by_question={0: 1},
+        )
+
+    with pytest.raises(InvalidEvaluationRunError, match="search_log_id"):
+        run_golden_evaluation_from_search_logs(
+            "postgresql://unused",
+            run_input,
+            search_log_ids_by_question={1: 0},
+        )

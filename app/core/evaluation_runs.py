@@ -511,6 +511,56 @@ def _load_expected_targets_in_connection(
     )
 
 
+def _validate_search_log_mapping(search_log_ids_by_question: dict[int, int]) -> None:
+    if not search_log_ids_by_question:
+        raise InvalidEvaluationRunError("search_log_ids_by_question must not be empty")
+    for question_id, search_log_id in search_log_ids_by_question.items():
+        _require_positive_id(question_id, "question_id")
+        _require_positive_id(search_log_id, "search_log_id")
+
+
+def _ensure_search_log_exists_in_connection(connection: Connection, search_log_id: int) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT 1 FROM search_logs WHERE search_log_id = %s",
+            (search_log_id,),
+        )
+        row = cursor.fetchone()
+    if row is None:
+        raise InvalidEvaluationRunError("search_log_id was not found")
+
+
+def _load_ranked_results_for_search_log_in_connection(
+    connection: Connection,
+    *,
+    search_log_id: int,
+    profile_name: str,
+    top_k: int,
+) -> tuple[RankedSearchResult, ...]:
+    _ensure_search_log_exists_in_connection(connection, search_log_id)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT rank, chunk_id, score
+            FROM search_log_results
+            WHERE search_log_id = %s
+              AND profile_name = %s
+              AND rank <= %s
+            ORDER BY rank ASC
+            """,
+            (search_log_id, profile_name, top_k),
+        )
+        rows = cursor.fetchall()
+    return tuple(
+        RankedSearchResult(
+            rank=int(row["rank"]),
+            chunk_id=int(row["chunk_id"]),
+            score=float(row["score"]) if row["score"] is not None else None,
+        )
+        for row in rows
+    )
+
+
 def run_golden_evaluation(
     database_url: str,
     run_input: EvaluationRunInput,
@@ -561,4 +611,31 @@ def run_golden_evaluation(
         run=completed_run,
         results=tuple(result_records),
         summary=summary,
+    )
+
+
+def run_golden_evaluation_from_search_logs(
+    database_url: str,
+    run_input: EvaluationRunInput,
+    *,
+    search_log_ids_by_question: dict[int, int],
+) -> EvaluationRunReport:
+    validated = validate_evaluation_run_input(run_input)
+    _validate_search_log_mapping(search_log_ids_by_question)
+    with connect(database_url) as connection:
+        ranked_results_by_question = {
+            question_id: _load_ranked_results_for_search_log_in_connection(
+                connection,
+                search_log_id=search_log_id,
+                profile_name=validated.profile_name,
+                top_k=validated.top_k,
+            )
+            for question_id, search_log_id in search_log_ids_by_question.items()
+        }
+
+    return run_golden_evaluation(
+        database_url,
+        validated,
+        ranked_results_by_question=ranked_results_by_question,
+        search_log_ids_by_question=search_log_ids_by_question,
     )

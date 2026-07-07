@@ -20,6 +20,13 @@ from app.core.evaluation_runs import (
     list_evaluation_results,
     list_evaluation_runs,
     run_golden_evaluation,
+    run_golden_evaluation_from_search_logs,
+)
+from app.core.search_logs import (
+    SearchLogInput,
+    SearchLogResultInput,
+    create_search_log,
+    create_search_log_results,
 )
 
 pytestmark = pytest.mark.integration
@@ -214,6 +221,21 @@ def _cleanup_fixture(database_url: str, fixture: dict[str, object]) -> None:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
+                """
+                DELETE FROM search_logs
+                WHERE search_log_id IN (
+                    SELECT DISTINCT sl.search_log_id
+                    FROM search_logs sl
+                    JOIN search_log_results slr
+                      ON slr.search_log_id = sl.search_log_id
+                    JOIN chunks c ON c.chunk_id = slr.chunk_id
+                    JOIN documents d ON d.document_id = c.document_id
+                    WHERE d.file_id = %s
+                )
+                """,
+                (fixture["file_id"],),
+            )
+            cursor.execute(
                 "DELETE FROM golden_question_sets WHERE set_name = %s",
                 (fixture["set_name"],),
             )
@@ -364,6 +386,73 @@ def test_evaluation_repository_supports_manual_run_and_result_lifecycle(
         assert completed_run.status == "succeeded"
         assert completed_run.question_count == 1
         assert list_evaluation_results(migrated_database_url, run.evaluation_run_id) == [result]
+    finally:
+        _cleanup_fixture(migrated_database_url, fixture)
+
+
+def test_run_golden_evaluation_from_search_logs_uses_stored_profile_results(
+    migrated_database_url: str,
+) -> None:
+    fixture = _create_evaluation_fixture(migrated_database_url)
+    try:
+        search_log = create_search_log(
+            migrated_database_url,
+            SearchLogInput(
+                query_text="Which chunk is expected?",
+                normalized_query_text="which chunk is expected?",
+                requested_search_scope="company",
+                top_k=2,
+                profiles=("kure_v1_1024",),
+                chunk_policy_name="heading_512_64",
+                created_by="slice-040-test",
+            ),
+        )
+        create_search_log_results(
+            migrated_database_url,
+            [
+                SearchLogResultInput(
+                    search_log_id=search_log.search_log_id,
+                    profile_name="kure_v1_1024",
+                    rank=1,
+                    chunk_id=fixture["visible_chunk_id"],
+                    score=1,
+                ),
+                SearchLogResultInput(
+                    search_log_id=search_log.search_log_id,
+                    profile_name="kure_v1_1024",
+                    rank=2,
+                    chunk_id=fixture["hidden_chunk_id"],
+                    score=0.5,
+                ),
+            ],
+        )
+
+        report = run_golden_evaluation_from_search_logs(
+            migrated_database_url,
+            EvaluationRunInput(
+                question_set_id=fixture["question_set_id"],
+                run_name=f"slice-040-search-log-{uuid4()}",
+                profile_name="kure_v1_1024",
+                chunk_policy_name="heading_512_64",
+                top_k=2,
+            ),
+            search_log_ids_by_question={
+                fixture["fact_question_id"]: search_log.search_log_id,
+            },
+        )
+        result_by_question = {result.question_id: result for result in report.results}
+        fact_result = result_by_question[fixture["fact_question_id"]]
+        no_answer_result = result_by_question[fixture["no_answer_question_id"]]
+
+        assert report.run.status == "succeeded"
+        assert report.run.question_count == 2
+        assert report.run.hidden_violation_count == 1
+        assert fact_result.search_log_id == search_log.search_log_id
+        assert fact_result.matched_chunk_ids == (fixture["visible_chunk_id"],)
+        assert fact_result.hidden_violation_chunk_ids == (fixture["hidden_chunk_id"],)
+        assert fact_result.recall_at_k == pytest.approx(1)
+        assert no_answer_result.search_log_id is None
+        assert no_answer_result.no_answer_success is True
     finally:
         _cleanup_fixture(migrated_database_url, fixture)
 
