@@ -25,12 +25,26 @@ from app.core.embedding_vectors import (
     InvalidEmbeddingVectorError,
     get_chunk_embedding,
 )
+from app.core.evaluation_runs import (
+    EvaluationResultRecord,
+    EvaluationRunRecord,
+    InvalidEvaluationRunError,
+    get_evaluation_run,
+    list_evaluation_results,
+    list_evaluation_runs,
+)
 from app.core.file_metadata import (
     SUPPORTED_FILE_EXTENSIONS,
     InvalidFileMetadataError,
     UnsupportedFileExtensionError,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
+from app.core.golden_questions import (
+    GoldenQuestionSetRecord,
+    InvalidGoldenQuestionError,
+    get_golden_question_set,
+    list_golden_question_sets,
+)
 from app.core.permissions import InvalidPermissionError
 from app.core.pipeline_jobs import (
     InvalidPipelineJobError,
@@ -424,6 +438,71 @@ def search_feedback_profile_summary_payload(
     }
 
 
+def golden_question_set_payload(question_set: GoldenQuestionSetRecord) -> dict[str, object]:
+    return {
+        "question_set_id": question_set.question_set_id,
+        "set_name": question_set.set_name,
+        "description": question_set.description,
+        "is_active": question_set.is_active,
+        "metadata": question_set.metadata,
+        "created_by_user_id": question_set.created_by_user_id,
+        "created_at": _datetime_response(question_set.created_at),
+        "updated_at": _datetime_response(question_set.updated_at),
+    }
+
+
+def evaluation_run_payload(run: EvaluationRunRecord) -> dict[str, object]:
+    return {
+        "evaluation_run_id": run.evaluation_run_id,
+        "question_set_id": run.question_set_id,
+        "run_name": run.run_name,
+        "profile_name": run.profile_name,
+        "chunk_policy_name": run.chunk_policy_name,
+        "similarity_metric": run.similarity_metric,
+        "top_k": run.top_k,
+        "status": run.status,
+        "question_count": run.question_count,
+        "recall_question_count": run.recall_question_count,
+        "ndcg_question_count": run.ndcg_question_count,
+        "no_answer_question_count": run.no_answer_question_count,
+        "hidden_violation_count": run.hidden_violation_count,
+        "mean_recall_at_k": run.mean_recall_at_k,
+        "mean_reciprocal_rank": run.mean_reciprocal_rank,
+        "mean_ndcg": run.mean_ndcg,
+        "no_answer_success_rate": run.no_answer_success_rate,
+        "runtime_metadata": run.runtime_metadata,
+        "error_message": run.error_message,
+        "started_at": _datetime_response(run.started_at),
+        "finished_at": _datetime_response(run.finished_at),
+        "created_at": _datetime_response(run.created_at),
+        "updated_at": _datetime_response(run.updated_at),
+    }
+
+
+def evaluation_result_payload(result: EvaluationResultRecord) -> dict[str, object]:
+    return {
+        "evaluation_result_id": result.evaluation_result_id,
+        "evaluation_run_id": result.evaluation_run_id,
+        "question_id": result.question_id,
+        "search_log_id": result.search_log_id,
+        "top_k": result.top_k,
+        "visible_expected_count": result.visible_expected_count,
+        "retrieved_count": result.retrieved_count,
+        "matched_visible_count": result.matched_visible_count,
+        "hidden_violation_count": result.hidden_violation_count,
+        "matched_chunk_ids": list(result.matched_chunk_ids),
+        "hidden_violation_chunk_ids": list(result.hidden_violation_chunk_ids),
+        "recall_at_k": result.recall_at_k,
+        "reciprocal_rank": result.reciprocal_rank,
+        "dcg": result.dcg,
+        "ideal_dcg": result.ideal_dcg,
+        "ndcg": result.ndcg,
+        "no_answer_success": result.no_answer_success,
+        "metadata": result.metadata,
+        "created_at": _datetime_response(result.created_at),
+    }
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -775,6 +854,92 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "profiles": [
                     search_feedback_profile_summary_payload(profile) for profile in summary.profiles
                 ],
+            },
+        )
+
+    @app.get("/api/evaluations/question-sets")
+    def api_list_golden_question_sets(
+        active_only: bool = True,
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            question_sets = list_golden_question_sets(
+                settings.database_url,
+                active_only=active_only,
+                limit=limit,
+            )
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "question_sets": [
+                    golden_question_set_payload(question_set) for question_set in question_sets
+                ],
+            },
+        )
+
+    @app.get("/api/evaluations/runs")
+    def api_list_evaluation_runs(
+        question_set_id: int | None = None,
+        profile_name: str | None = None,
+        status_filter: str | None = Query(default=None, alias="status"),
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            runs = list_evaluation_runs(
+                settings.database_url,
+                question_set_id=question_set_id,
+                profile_name=profile_name,
+                status=status_filter,
+                limit=limit,
+            )
+        except InvalidEvaluationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"runs": [evaluation_run_payload(run) for run in runs]})
+
+    @app.get("/api/evaluations/runs/{evaluation_run_id}")
+    def api_get_evaluation_run_detail(evaluation_run_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            run = get_evaluation_run(settings.database_url, evaluation_run_id)
+            if run is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Evaluation run not found.",
+                )
+            question_set = get_golden_question_set(settings.database_url, run.question_set_id)
+            results = list_evaluation_results(settings.database_url, evaluation_run_id)
+        except InvalidEvaluationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "run": evaluation_run_payload(run),
+                "question_set": (
+                    golden_question_set_payload(question_set) if question_set is not None else None
+                ),
+                "results": [evaluation_result_payload(result) for result in results],
             },
         )
 
