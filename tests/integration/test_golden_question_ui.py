@@ -20,11 +20,16 @@ def test_golden_question_manager_page_renders_crud_shell(
     assert "Alice Member / alice.member" in response.text
     assert 'href="/evaluations/questions"' in response.text
     assert 'id="question-set-form"' in response.text
+    assert 'id="question-set-export"' in response.text
+    assert 'id="question-set-import"' in response.text
+    assert 'id="question-set-exchange-json"' in response.text
     assert 'id="question-form"' in response.text
     assert 'id="target-form"' in response.text
     assert 'id="question-set-table-body"' in response.text
     assert 'id="question-table-body"' in response.text
     assert 'id="target-table-body"' in response.text
     assert "/api/evaluations/question-sets" in response.text
+    assert "/api/evaluations/question-sets/import" in response.text
+    assert "/export" in response.text
     assert "/api/evaluations/questions" in response.text
     assert "/api/evaluations/expected-targets" in response.text

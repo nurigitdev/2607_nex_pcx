@@ -26,6 +26,7 @@ def _cleanup_question_set(database_url: str, set_name: str) -> None:
 def test_golden_question_crud_api_lifecycle(migrated_database_url: str) -> None:
     user_id = _seed_user_id(migrated_database_url)
     set_name = f"slice-041-{uuid4()}"
+    imported_set_name = f"{set_name}-imported"
     app = create_app(Settings(database_url=migrated_database_url))
 
     try:
@@ -128,6 +129,18 @@ def test_golden_question_crud_api_lifecycle(migrated_database_url: str) -> None:
                     "metadata": {"case": "visible"},
                 },
             )
+            export_response = client.get(f"/api/evaluations/question-sets/{question_set_id}/export")
+            exported_payload = export_response.json()
+            exported_payload["question_set"]["set_name"] = imported_set_name
+            import_response = client.post(
+                "/api/evaluations/question-sets/import",
+                json=exported_payload,
+            )
+            imported = import_response.json()["imported"]
+            bad_import_response = client.post(
+                "/api/evaluations/question-sets/import",
+                json={**exported_payload, "version": 999},
+            )
             delete_target_response = client.delete(
                 f"/api/evaluations/expected-targets/{expected_target_id}"
             )
@@ -181,6 +194,22 @@ def test_golden_question_crud_api_lifecycle(migrated_database_url: str) -> None:
         assert update_target_response.status_code == 200
         assert update_target_response.json()["expected_target"]["expectation_type"] == "visible"
         assert update_target_response.json()["expected_target"]["relevance_grade"] == 2
+        assert export_response.status_code == 200
+        assert exported_payload["version"] == 1
+        assert exported_payload["question_set"]["set_name"] == imported_set_name
+        assert exported_payload["questions"][0]["question_text"] == (
+            "Which updated Slice 041 behavior is covered?"
+        )
+        assert exported_payload["questions"][0]["expected_targets"][0]["expectation_type"] == (
+            "visible"
+        )
+        assert import_response.status_code == 201
+        assert imported["question_set"]["set_name"] == imported_set_name
+        assert imported["questions"][0]["question_text"] == (
+            "Which updated Slice 041 behavior is covered?"
+        )
+        assert imported["expected_targets"][0]["expected_heading_path"] == ["Policy", "Updated"]
+        assert bad_import_response.status_code == 400
         assert delete_target_response.status_code == 204
         assert missing_target_response.status_code == 404
         assert delete_question_response.status_code == 204
@@ -190,3 +219,4 @@ def test_golden_question_crud_api_lifecycle(migrated_database_url: str) -> None:
         assert bad_set_response.status_code == 400
     finally:
         _cleanup_question_set(migrated_database_url, set_name)
+        _cleanup_question_set(migrated_database_url, imported_set_name)

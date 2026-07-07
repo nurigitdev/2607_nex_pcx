@@ -50,6 +50,15 @@ from app.core.file_metadata import (
     UnsupportedFileExtensionError,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
+from app.core.golden_question_exchange import (
+    GoldenQuestionImportInput,
+    GoldenQuestionImportQuestionInput,
+    GoldenQuestionImportRecord,
+    GoldenQuestionImportTargetInput,
+    InvalidGoldenQuestionExchangeError,
+    export_golden_question_set,
+    import_golden_question_set,
+)
 from app.core.golden_question_promotions import (
     GoldenQuestionPromotionInput,
     GoldenQuestionPromotionRecord,
@@ -190,6 +199,36 @@ class GoldenEvaluationExecuteRequest(BaseModel):
     chunk_policy_name: str | None = None
     top_k: int = Field(default=5, ge=1)
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class GoldenQuestionImportTargetRequest(BaseModel):
+    chunk_id: int | None = Field(default=None, ge=1)
+    expected_heading_path: list[str] = Field(default_factory=list)
+    expectation_type: str = "visible"
+    relevance_grade: int = Field(default=3, ge=0, le=3)
+    notes: str | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class GoldenQuestionImportQuestionRequest(BaseModel):
+    question_text: str
+    normalized_question_text: str | None = None
+    question_type: str = "single_fact"
+    actor_user_id: int | None = Field(default=None, ge=1)
+    requested_search_scope: str = "company"
+    document_group: str | None = None
+    file_type: str | None = None
+    chunk_policy_name: str | None = None
+    top_k: int = Field(default=5, ge=1)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_by_user_id: int | None = Field(default=None, ge=1)
+    expected_targets: list[GoldenQuestionImportTargetRequest] = Field(default_factory=list)
+
+
+class GoldenQuestionSetImportRequest(BaseModel):
+    version: int = 1
+    question_set: GoldenQuestionSetRequest
+    questions: list[GoldenQuestionImportQuestionRequest] = Field(default_factory=list)
 
 
 def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
@@ -639,6 +678,42 @@ def golden_question_promotion_input_from_request(
     )
 
 
+def golden_question_import_input_from_request(
+    payload: GoldenQuestionSetImportRequest,
+) -> GoldenQuestionImportInput:
+    return GoldenQuestionImportInput(
+        version=payload.version,
+        question_set=golden_question_set_input_from_request(payload.question_set),
+        questions=tuple(
+            GoldenQuestionImportQuestionInput(
+                question_text=question.question_text,
+                normalized_question_text=question.normalized_question_text,
+                question_type=question.question_type,
+                actor_user_id=question.actor_user_id,
+                requested_search_scope=question.requested_search_scope,
+                document_group=question.document_group,
+                file_type=question.file_type,
+                chunk_policy_name=question.chunk_policy_name,
+                top_k=question.top_k,
+                metadata=dict(question.metadata),
+                created_by_user_id=question.created_by_user_id,
+                expected_targets=tuple(
+                    GoldenQuestionImportTargetInput(
+                        chunk_id=target.chunk_id,
+                        expected_heading_path=tuple(target.expected_heading_path),
+                        expectation_type=target.expectation_type,
+                        relevance_grade=target.relevance_grade,
+                        notes=target.notes,
+                        metadata=dict(target.metadata),
+                    )
+                    for target in question.expected_targets
+                ),
+            )
+            for question in payload.questions
+        ),
+    )
+
+
 def golden_question_promotion_payload(
     promotion: GoldenQuestionPromotionRecord,
 ) -> dict[str, object]:
@@ -653,6 +728,16 @@ def golden_question_promotion_payload(
             "profile_name": source_result.profile_name,
             "rank": source_result.rank,
         },
+    }
+
+
+def golden_question_import_payload(imported: GoldenQuestionImportRecord) -> dict[str, object]:
+    return {
+        "question_set": golden_question_set_payload(imported.question_set),
+        "questions": [golden_question_payload(question) for question in imported.questions],
+        "expected_targets": [
+            expected_target_payload(target) for target in imported.expected_targets
+        ],
     }
 
 
@@ -1200,6 +1285,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=status.HTTP_201_CREATED,
             content={"question_set": golden_question_set_payload(question_set)},
         )
+
+    @app.post("/api/evaluations/question-sets/import")
+    def api_import_golden_question_set(payload: GoldenQuestionSetImportRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            imported = import_golden_question_set(
+                settings.database_url,
+                golden_question_import_input_from_request(payload),
+            )
+        except (InvalidGoldenQuestionExchangeError, InvalidGoldenQuestionError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"imported": golden_question_import_payload(imported)},
+        )
+
+    @app.get("/api/evaluations/question-sets/{question_set_id}/export")
+    def api_export_golden_question_set(question_set_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            exported = export_golden_question_set(settings.database_url, question_set_id)
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if exported is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question set not found.",
+            )
+
+        return JSONResponse(content=exported)
 
     @app.get("/api/evaluations/question-sets/{question_set_id}")
     def api_get_golden_question_set(question_set_id: int) -> JSONResponse:

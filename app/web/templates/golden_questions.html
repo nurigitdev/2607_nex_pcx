@@ -22,7 +22,10 @@
         <h2 class="h5 mb-1">Question Sets</h2>
         <div class="text-secondary" id="question-set-count">{{ question_sets|length }} sets</div>
       </div>
-      <button class="btn btn-outline-secondary" id="question-set-new" type="button" {% if not database_configured %}disabled{% endif %}>New</button>
+      <div class="golden-panel-actions">
+        <button class="btn btn-outline-secondary" id="question-set-export" type="button" disabled>Export</button>
+        <button class="btn btn-outline-secondary" id="question-set-new" type="button" {% if not database_configured %}disabled{% endif %}>New</button>
+      </div>
     </div>
 
     <form id="question-set-form" class="golden-form-grid">
@@ -59,6 +62,23 @@
         </div>
       </fieldset>
     </form>
+
+    <section class="golden-exchange-panel">
+      <div class="golden-panel-header">
+        <div>
+          <h3 class="h6 mb-1">Import / Export</h3>
+          <div class="text-secondary small">Portable JSON</div>
+        </div>
+        <button class="btn btn-outline-secondary" id="question-set-import" type="button" {% if not database_configured %}disabled{% endif %}>Import</button>
+      </div>
+      <label class="form-label" for="question-set-exchange-json">JSON</label>
+      <textarea
+        class="form-control golden-json-field"
+        id="question-set-exchange-json"
+        rows="8"
+        {% if not database_configured %}disabled{% endif %}
+      ></textarea>
+    </section>
 
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0 golden-question-set-table">
@@ -252,6 +272,9 @@
   const questionForm = document.getElementById("question-form");
   const targetForm = document.getElementById("target-form");
   const setDeleteButton = document.getElementById("question-set-delete");
+  const setExportButton = document.getElementById("question-set-export");
+  const setImportButton = document.getElementById("question-set-import");
+  const setExchangeJson = document.getElementById("question-set-exchange-json");
   const questionDeleteButton = document.getElementById("question-delete");
   const targetDeleteButton = document.getElementById("target-delete");
 
@@ -387,6 +410,7 @@
     document.getElementById("set_is_active").checked = true;
     setSelectValue("set_created_by_user_id", defaultActorId);
     setDeleteButton.disabled = true;
+    setExportButton.disabled = true;
   };
 
   const fillQuestionSetForm = (item) => {
@@ -397,6 +421,7 @@
     document.getElementById("set_metadata").value = metadataText(item.metadata);
     setSelectValue("set_created_by_user_id", item.created_by_user_id);
     setDeleteButton.disabled = false;
+    setExportButton.disabled = false;
   };
 
   const resetQuestionForm = () => {
@@ -753,6 +778,42 @@
       }
     } catch (error) {
       setAlert(error instanceof Error ? error.message : "Delete failed.", "warning");
+    }
+  });
+
+  setExportButton.addEventListener("click", async () => {
+    if (!selectedSetId) {
+      setAlert("Select a question set first.", "warning");
+      return;
+    }
+    try {
+      const exported = await apiRequest(
+        `/api/evaluations/question-sets/${selectedSetId}/export`,
+      );
+      setExchangeJson.value = JSON.stringify(exported, null, 2);
+      setAlert("Question set exported.", "success");
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Export failed.", "warning");
+    }
+  });
+
+  setImportButton.addEventListener("click", async () => {
+    if (!setExchangeJson.value.trim()) {
+      setAlert("Paste import JSON first.", "warning");
+      return;
+    }
+    try {
+      const response = await apiRequest("/api/evaluations/question-sets/import", {
+        method: "POST",
+        body: JSON.stringify(JSON.parse(setExchangeJson.value)),
+      });
+      const questionSet = response.imported.question_set;
+      questionSets = [questionSet, ...questionSets];
+      setExchangeJson.value = "";
+      setAlert("Question set imported.", "success");
+      await selectQuestionSet(questionSet.question_set_id);
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Import failed.", "warning");
     }
   });
 

@@ -116,6 +116,29 @@ def test_evaluation_question_create_api_requires_database_url() -> None:
     assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
 
 
+def test_evaluation_question_set_export_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.get("/api/evaluations/question-sets/1/export")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
+def test_evaluation_question_set_import_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/evaluations/question-sets/import",
+            json={"question_set": {"set_name": "baseline"}},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
 def test_evaluation_expected_target_create_api_requires_database_url() -> None:
     app = create_app(Settings(database_url=None))
 
