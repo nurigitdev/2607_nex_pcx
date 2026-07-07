@@ -131,6 +131,57 @@
   </form>
 </section>
 
+{% if selected_question_set_id %}
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="evaluation-report-header p-3">
+    <div>
+      <h2 class="h5 mb-1">Profile Comparison</h2>
+      <div class="text-secondary">Latest succeeded run per profile</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="/api/evaluations/profile-comparison?question_set_id={{ selected_question_set_id }}">API</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 profile-comparison-table">
+      <thead>
+        <tr>
+          <th scope="col">Profile</th>
+          <th scope="col">Run</th>
+          <th scope="col">Questions</th>
+          <th scope="col">Recall</th>
+          <th scope="col">MRR</th>
+          <th scope="col">nDCG</th>
+          <th scope="col">No Answer</th>
+          <th scope="col">Hidden</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for comparison in profile_comparison %}
+        <tr>
+          <td class="text-nowrap">{{ comparison.profile_name }}</td>
+          <td>
+            <a class="job-link" href="/evaluations?evaluation_run_id={{ comparison.evaluation_run_id }}&question_set_id={{ selected_question_set_id }}">
+              #{{ comparison.evaluation_run_id }}
+            </a>
+            <div class="text-secondary small">{{ comparison.run_name }}</div>
+          </td>
+          <td>{{ comparison.question_count }}</td>
+          <td>{{ "%.2f"|format((comparison.mean_recall_at_k or 0) * 100) }}%</td>
+          <td>{{ "%.2f"|format((comparison.mean_reciprocal_rank or 0) * 100) }}%</td>
+          <td>{{ "%.2f"|format((comparison.mean_ndcg or 0) * 100) }}%</td>
+          <td>{{ "%.2f"|format((comparison.no_answer_success_rate or 0) * 100) }}%</td>
+          <td>{{ comparison.hidden_violation_count }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="8">No succeeded evaluation runs found</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 {% if selected_run %}
 <section class="evaluation-summary-grid mb-4">
   <div class="metric-card bg-white p-3">

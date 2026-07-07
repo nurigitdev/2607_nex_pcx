@@ -132,7 +132,23 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
             )
             detail_response = client.get(f"/api/evaluations/runs/{fixture['evaluation_run_id']}")
             page_response = client.get(
-                f"/evaluations?evaluation_run_id={fixture['evaluation_run_id']}"
+                "/evaluations",
+                params={
+                    "evaluation_run_id": fixture["evaluation_run_id"],
+                    "question_set_id": fixture["question_set_id"],
+                },
+            )
+            comparison_response = client.get(
+                "/api/evaluations/profile-comparison",
+                params={"question_set_id": fixture["question_set_id"]},
+            )
+            missing_comparison_response = client.get(
+                "/api/evaluations/profile-comparison",
+                params={"question_set_id": 999999999},
+            )
+            bad_comparison_response = client.get(
+                "/api/evaluations/profile-comparison",
+                params={"question_set_id": fixture["question_set_id"], "limit": 0},
             )
             missing_response = client.get("/api/evaluations/runs/999999999")
             bad_request_response = client.get("/api/evaluations/runs", params={"limit": 0})
@@ -141,6 +157,7 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         runs = runs_response.json()["runs"]
         detail = detail_response.json()
         result = detail["results"][0]
+        comparison = comparison_response.json()["profiles"][0]
 
         assert question_sets_response.status_code == 200
         assert fixture["question_set_id"] in {item["question_set_id"] for item in question_sets}
@@ -155,14 +172,22 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         assert result["evaluation_result_id"] == fixture["evaluation_result_id"]
         assert result["question_id"] == fixture["question_id"]
         assert result["no_answer_success"] is True
+        assert comparison_response.status_code == 200
+        assert comparison["evaluation_run_id"] == fixture["evaluation_run_id"]
+        assert comparison["profile_name"] == "kure_v1_1024"
+        assert comparison["no_answer_success_rate"] == pytest.approx(1)
         assert page_response.status_code == 200
         assert "Golden Evaluation Monitor" in page_response.text
         assert "Run Evaluation" in page_response.text
+        assert "Profile Comparison" in page_response.text
+        assert "/api/evaluations/profile-comparison" in page_response.text
         assert 'id="evaluation-execute-form"' in page_response.text
         assert "/api/evaluations/runs/execute" in page_response.text
         assert f"#{fixture['evaluation_run_id']}" in page_response.text
         assert fixture["set_name"] in page_response.text
         assert "kure_v1_1024" in page_response.text
+        assert missing_comparison_response.status_code == 404
+        assert bad_comparison_response.status_code == 400
         assert missing_response.status_code == 404
         assert bad_request_response.status_code == 400
     finally:

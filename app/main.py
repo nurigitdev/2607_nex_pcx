@@ -31,6 +31,11 @@ from app.core.evaluation_executor import (
     InvalidGoldenEvaluationExecutionError,
     execute_golden_evaluation,
 )
+from app.core.evaluation_reports import (
+    InvalidEvaluationReportError,
+    ProfileComparisonRecord,
+    get_latest_profile_comparison,
+)
 from app.core.evaluation_runs import (
     EvaluationResultRecord,
     EvaluationRunRecord,
@@ -735,6 +740,28 @@ def golden_evaluation_execution_payload(
             "mean_ndcg": execution.evaluation.summary.mean_ndcg,
             "no_answer_success_rate": execution.evaluation.summary.no_answer_success_rate,
         },
+    }
+
+
+def profile_comparison_payload(comparison: ProfileComparisonRecord) -> dict[str, object]:
+    return {
+        "evaluation_run_id": comparison.evaluation_run_id,
+        "question_set_id": comparison.question_set_id,
+        "run_name": comparison.run_name,
+        "profile_name": comparison.profile_name,
+        "chunk_policy_name": comparison.chunk_policy_name,
+        "top_k": comparison.top_k,
+        "question_count": comparison.question_count,
+        "recall_question_count": comparison.recall_question_count,
+        "ndcg_question_count": comparison.ndcg_question_count,
+        "no_answer_question_count": comparison.no_answer_question_count,
+        "hidden_violation_count": comparison.hidden_violation_count,
+        "mean_recall_at_k": comparison.mean_recall_at_k,
+        "mean_reciprocal_rank": comparison.mean_reciprocal_rank,
+        "mean_ndcg": comparison.mean_ndcg,
+        "no_answer_success_rate": comparison.no_answer_success_rate,
+        "finished_at": _datetime_response(comparison.finished_at),
+        "created_at": _datetime_response(comparison.created_at),
     }
 
 
@@ -1521,6 +1548,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={"execution": golden_evaluation_execution_payload(execution)},
         )
 
+    @app.get("/api/evaluations/profile-comparison")
+    def api_get_profile_comparison(question_set_id: int, limit: int = 20) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            question_set = get_golden_question_set(settings.database_url, question_set_id)
+            if question_set is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Golden question set not found.",
+                )
+            profile_comparison = get_latest_profile_comparison(
+                settings.database_url,
+                question_set_id,
+                limit=limit,
+            )
+        except InvalidEvaluationReportError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "question_set": golden_question_set_payload(question_set),
+                "profiles": [
+                    profile_comparison_payload(comparison) for comparison in profile_comparison
+                ],
+            },
+        )
+
     @app.get("/api/evaluations/runs/{evaluation_run_id}")
     def api_get_evaluation_run_detail(evaluation_run_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -1776,6 +1837,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         question_sets: list[GoldenQuestionSetRecord] = []
         profile_options: list[str] = []
         runs: list[EvaluationRunRecord] = []
+        profile_comparison: list[ProfileComparisonRecord] = []
         selected_run: EvaluationRunRecord | None = None
         selected_question_set: GoldenQuestionSetRecord | None = None
         selected_results: list[EvaluationResultRecord] = []
@@ -1803,6 +1865,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status=status_filter,
                     limit=limit,
                 )
+                if question_set_id is not None:
+                    profile_comparison = get_latest_profile_comparison(
+                        settings.database_url,
+                        question_set_id,
+                    )
                 if evaluation_run_id is not None:
                     selected_run = get_evaluation_run(settings.database_url, evaluation_run_id)
                     if selected_run is None:
@@ -1816,7 +1883,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             settings.database_url,
                             selected_run.evaluation_run_id,
                         )
-            except (InvalidEvaluationRunError, InvalidGoldenQuestionError) as exc:
+            except (
+                InvalidEvaluationRunError,
+                InvalidEvaluationReportError,
+                InvalidGoldenQuestionError,
+            ) as exc:
                 error_message = str(exc)
 
         question_set_names = {
@@ -1832,6 +1903,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 question_set_names=question_set_names,
                 profile_options=profile_options,
                 runs=runs,
+                profile_comparison=profile_comparison,
                 selected_run=selected_run,
                 selected_question_set=selected_question_set,
                 selected_results=selected_results,
