@@ -254,7 +254,21 @@
     <section class="metric-card bg-white p-3">
       <div class="d-flex align-items-center justify-content-between mb-3">
         <h2 class="h5 mb-0">Run #{{ selected_run.evaluation_run_id }}</h2>
-        <span class="badge status-badge status-{{ selected_run.status }}">{{ selected_run.status }}</span>
+        <div class="job-detail-actions">
+          <a
+            class="btn btn-outline-secondary"
+            href="/api/evaluations/runs/{{ selected_run.evaluation_run_id }}/export?format=json"
+          >
+            JSON
+          </a>
+          <a
+            class="btn btn-outline-secondary"
+            href="/api/evaluations/runs/{{ selected_run.evaluation_run_id }}/export?format=csv"
+          >
+            CSV
+          </a>
+          <span class="badge status-badge status-{{ selected_run.status }}">{{ selected_run.status }}</span>
+        </div>
       </div>
       <dl class="job-detail-list mb-0">
         <dt>Run Name</dt>

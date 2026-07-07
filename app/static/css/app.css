@@ -1358,12 +1358,20 @@ main.container-fluid {
     grid-column: span 3;
   }
 
+  .col-xl-4 {
+    grid-column: span 4;
+  }
+
   .col-xl-5 {
     grid-column: span 5;
   }
 
   .col-xl-7 {
     grid-column: span 7;
+  }
+
+  .col-xl-8 {
+    grid-column: span 8;
   }
 }
 

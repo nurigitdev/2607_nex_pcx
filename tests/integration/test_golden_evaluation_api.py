@@ -131,6 +131,13 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
                 },
             )
             detail_response = client.get(f"/api/evaluations/runs/{fixture['evaluation_run_id']}")
+            export_json_response = client.get(
+                f"/api/evaluations/runs/{fixture['evaluation_run_id']}/export",
+            )
+            export_csv_response = client.get(
+                f"/api/evaluations/runs/{fixture['evaluation_run_id']}/export",
+                params={"format": "csv"},
+            )
             page_response = client.get(
                 "/evaluations",
                 params={
@@ -151,11 +158,18 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
                 params={"question_set_id": fixture["question_set_id"], "limit": 0},
             )
             missing_response = client.get("/api/evaluations/runs/999999999")
+            missing_export_response = client.get("/api/evaluations/runs/999999999/export")
+            bad_export_response = client.get(
+                f"/api/evaluations/runs/{fixture['evaluation_run_id']}/export",
+                params={"format": "xlsx"},
+            )
             bad_request_response = client.get("/api/evaluations/runs", params={"limit": 0})
 
         question_sets = question_sets_response.json()["question_sets"]
         runs = runs_response.json()["runs"]
         detail = detail_response.json()
+        export_json = export_json_response.json()
+        export_csv = export_csv_response.text
         result = detail["results"][0]
         comparison = comparison_response.json()["profiles"][0]
 
@@ -172,6 +186,18 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         assert result["evaluation_result_id"] == fixture["evaluation_result_id"]
         assert result["question_id"] == fixture["question_id"]
         assert result["no_answer_success"] is True
+        assert export_json_response.status_code == 200
+        assert export_json_response.headers["content-disposition"].endswith('.json"')
+        assert export_json["version"] == 1
+        assert export_json["run"]["evaluation_run_id"] == fixture["evaluation_run_id"]
+        assert export_json["question_set"]["set_name"] == fixture["set_name"]
+        assert export_json["results"][0]["evaluation_result_id"] == fixture["evaluation_result_id"]
+        assert export_csv_response.status_code == 200
+        assert export_csv_response.headers["content-type"].startswith("text/csv")
+        assert export_csv_response.headers["content-disposition"].endswith('.csv"')
+        assert "evaluation_run_id,run_name,question_set_id" in export_csv
+        assert str(fixture["evaluation_run_id"]) in export_csv
+        assert str(fixture["question_id"]) in export_csv
         assert comparison_response.status_code == 200
         assert comparison["evaluation_run_id"] == fixture["evaluation_run_id"]
         assert comparison["profile_name"] == "kure_v1_1024"
@@ -184,11 +210,19 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         assert 'id="evaluation-execute-form"' in page_response.text
         assert "/api/evaluations/runs/execute" in page_response.text
         assert f"#{fixture['evaluation_run_id']}" in page_response.text
+        assert f"/api/evaluations/runs/{fixture['evaluation_run_id']}/export?format=json" in (
+            page_response.text
+        )
+        assert f"/api/evaluations/runs/{fixture['evaluation_run_id']}/export?format=csv" in (
+            page_response.text
+        )
         assert fixture["set_name"] in page_response.text
         assert "kure_v1_1024" in page_response.text
         assert missing_comparison_response.status_code == 404
         assert bad_comparison_response.status_code == 400
         assert missing_response.status_code == 404
+        assert missing_export_response.status_code == 404
+        assert bad_export_response.status_code == 400
         assert bad_request_response.status_code == 400
     finally:
         _cleanup_fixture(migrated_database_url, fixture)

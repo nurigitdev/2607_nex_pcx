@@ -1,5 +1,7 @@
 """FastAPI application factory for NeX_PCX."""
 
+import csv
+import io
 import traceback as traceback_module
 from dataclasses import asdict
 from pathlib import Path
@@ -157,6 +159,7 @@ UPLOAD_FILE_FORM = File(...)
 DOCUMENT_GROUP_FORM = Form("default")
 SECURITY_LEVEL_FORM = Form("internal")
 UPLOADED_BY_FORM = Form(None)
+EVALUATION_EXPORT_VERSION = 1
 
 
 class SearchCompareRequest(BaseModel):
@@ -818,6 +821,89 @@ def evaluation_result_payload(result: EvaluationResultRecord) -> dict[str, objec
         "metadata": result.metadata,
         "created_at": _datetime_response(result.created_at),
     }
+
+
+def evaluation_run_export_payload(
+    run: EvaluationRunRecord,
+    question_set: GoldenQuestionSetRecord | None,
+    results: list[EvaluationResultRecord],
+) -> dict[str, object]:
+    return {
+        "version": EVALUATION_EXPORT_VERSION,
+        "run": evaluation_run_payload(run),
+        "question_set": (
+            golden_question_set_payload(question_set) if question_set is not None else None
+        ),
+        "results": [evaluation_result_payload(result) for result in results],
+    }
+
+
+def evaluation_results_csv(
+    run: EvaluationRunRecord,
+    question_set: GoldenQuestionSetRecord | None,
+    results: list[EvaluationResultRecord],
+) -> str:
+    fieldnames = [
+        "evaluation_run_id",
+        "run_name",
+        "question_set_id",
+        "question_set_name",
+        "profile_name",
+        "chunk_policy_name",
+        "status",
+        "question_id",
+        "search_log_id",
+        "top_k",
+        "visible_expected_count",
+        "retrieved_count",
+        "matched_visible_count",
+        "hidden_violation_count",
+        "matched_chunk_ids",
+        "hidden_violation_chunk_ids",
+        "recall_at_k",
+        "reciprocal_rank",
+        "ndcg",
+        "no_answer_success",
+        "result_created_at",
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for result in results:
+        writer.writerow(
+            {
+                "evaluation_run_id": run.evaluation_run_id,
+                "run_name": run.run_name,
+                "question_set_id": run.question_set_id,
+                "question_set_name": question_set.set_name if question_set is not None else "",
+                "profile_name": run.profile_name,
+                "chunk_policy_name": run.chunk_policy_name or "",
+                "status": run.status,
+                "question_id": result.question_id,
+                "search_log_id": result.search_log_id or "",
+                "top_k": result.top_k,
+                "visible_expected_count": result.visible_expected_count,
+                "retrieved_count": result.retrieved_count,
+                "matched_visible_count": result.matched_visible_count,
+                "hidden_violation_count": result.hidden_violation_count,
+                "matched_chunk_ids": ",".join(
+                    str(chunk_id) for chunk_id in result.matched_chunk_ids
+                ),
+                "hidden_violation_chunk_ids": ",".join(
+                    str(chunk_id) for chunk_id in result.hidden_violation_chunk_ids
+                ),
+                "recall_at_k": result.recall_at_k if result.recall_at_k is not None else "",
+                "reciprocal_rank": (
+                    result.reciprocal_rank if result.reciprocal_rank is not None else ""
+                ),
+                "ndcg": result.ndcg if result.ndcg is not None else "",
+                "no_answer_success": (
+                    result.no_answer_success if result.no_answer_success is not None else ""
+                ),
+                "result_created_at": _datetime_response(result.created_at),
+            }
+        )
+    return output.getvalue()
 
 
 def golden_evaluation_execution_input_from_request(
@@ -2040,6 +2126,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "profiles": [
                     profile_comparison_payload(comparison) for comparison in profile_comparison
                 ],
+            },
+        )
+
+    @app.get("/api/evaluations/runs/{evaluation_run_id}/export")
+    def api_export_evaluation_run(
+        evaluation_run_id: int,
+        export_format: str = Query(default="json", alias="format"),
+    ) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        normalized_format = export_format.strip().lower()
+        if normalized_format not in {"json", "csv"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="format must be json or csv.",
+            )
+
+        try:
+            run = get_evaluation_run(settings.database_url, evaluation_run_id)
+            if run is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Evaluation run not found.",
+                )
+            question_set = get_golden_question_set(settings.database_url, run.question_set_id)
+            results = list_evaluation_results(settings.database_url, evaluation_run_id)
+        except InvalidEvaluationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        filename_base = f"golden-evaluation-run-{run.evaluation_run_id}"
+        if normalized_format == "csv":
+            return Response(
+                content=evaluation_results_csv(run, question_set, results),
+                media_type="text/csv; charset=utf-8",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename_base}.csv"',
+                },
+            )
+
+        return JSONResponse(
+            content=evaluation_run_export_payload(run, question_set, results),
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename_base}.json"',
             },
         )
 
