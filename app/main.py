@@ -25,6 +25,13 @@ from app.core.embedding_vectors import (
     InvalidEmbeddingVectorError,
     get_chunk_embedding,
 )
+from app.core.evaluation_dashboard import (
+    EvaluationDashboardRecentRun,
+    EvaluationDashboardStatusCount,
+    EvaluationDashboardSummary,
+    InvalidEvaluationDashboardError,
+    get_evaluation_dashboard_summary,
+)
 from app.core.evaluation_executor import (
     GoldenEvaluationExecutionInput,
     GoldenEvaluationExecutionReport,
@@ -850,6 +857,55 @@ def profile_comparison_payload(comparison: ProfileComparisonRecord) -> dict[str,
     }
 
 
+def evaluation_dashboard_status_count_payload(
+    status_count: EvaluationDashboardStatusCount,
+) -> dict[str, object]:
+    return {
+        "status": status_count.status,
+        "count": status_count.count,
+    }
+
+
+def evaluation_dashboard_recent_run_payload(
+    recent_run: EvaluationDashboardRecentRun,
+) -> dict[str, object]:
+    return {
+        "evaluation_run_id": recent_run.evaluation_run_id,
+        "question_set_id": recent_run.question_set_id,
+        "question_set_name": recent_run.question_set_name,
+        "run_name": recent_run.run_name,
+        "profile_name": recent_run.profile_name,
+        "status": recent_run.status,
+        "question_count": recent_run.question_count,
+        "hidden_violation_count": recent_run.hidden_violation_count,
+        "mean_recall_at_k": recent_run.mean_recall_at_k,
+        "mean_ndcg": recent_run.mean_ndcg,
+        "no_answer_success_rate": recent_run.no_answer_success_rate,
+        "created_at": _datetime_response(recent_run.created_at),
+        "finished_at": _datetime_response(recent_run.finished_at),
+    }
+
+
+def evaluation_dashboard_summary_payload(
+    summary: EvaluationDashboardSummary,
+) -> dict[str, object]:
+    return {
+        "question_set_count": summary.question_set_count,
+        "active_question_set_count": summary.active_question_set_count,
+        "question_count": summary.question_count,
+        "expected_target_count": summary.expected_target_count,
+        "evaluation_run_count": summary.evaluation_run_count,
+        "status_counts": [
+            evaluation_dashboard_status_count_payload(status_count)
+            for status_count in summary.status_counts
+        ],
+        "recent_runs": [
+            evaluation_dashboard_recent_run_payload(recent_run)
+            for recent_run in summary.recent_runs
+        ],
+    }
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -889,6 +945,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "version": settings.app_version,
             "environment": settings.environment,
         }
+
+    @app.get("/api/dashboard/evaluations")
+    def api_get_evaluation_dashboard(recent_limit: int = 5) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            summary = get_evaluation_dashboard_summary(
+                settings.database_url,
+                recent_limit=recent_limit,
+            )
+        except InvalidEvaluationDashboardError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"evaluations": evaluation_dashboard_summary_payload(summary)})
 
     def upload_template_context(
         request: Request,
@@ -1812,10 +1886,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request) -> HTMLResponse:
+        evaluation_dashboard: EvaluationDashboardSummary | None = None
+        error_message = None
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                evaluation_dashboard = get_evaluation_dashboard_summary(
+                    settings.database_url,
+                    recent_limit=5,
+                )
+            except InvalidEvaluationDashboardError as exc:
+                error_message = str(exc)
+            except Exception as exc:
+                error_message = str(exc)
+
         return TEMPLATES.TemplateResponse(
             request,
             "dashboard.html",
-            template_context(request),
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                evaluation_dashboard=evaluation_dashboard,
+                error_message=error_message,
+            ),
         )
 
     @app.get("/search", response_class=HTMLResponse)

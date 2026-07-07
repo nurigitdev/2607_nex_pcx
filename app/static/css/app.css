@@ -654,6 +654,54 @@ main.container-fluid {
   min-width: 14rem;
 }
 
+.dashboard-panel-header {
+  align-items: center;
+  border-bottom: 1px solid var(--pcx-border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.dashboard-evaluation-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-status-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-status-item {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.dashboard-status-item strong {
+  font-size: 1.25rem;
+}
+
+.dashboard-evaluation-table td:nth-child(1),
+.dashboard-evaluation-table td:nth-child(3),
+.dashboard-evaluation-table td:nth-child(4),
+.dashboard-evaluation-table td:nth-child(5),
+.dashboard-evaluation-table td:nth-child(6),
+.dashboard-evaluation-table td:nth-child(7) {
+  white-space: nowrap;
+}
+
+.dashboard-evaluation-table td:nth-child(2) {
+  min-width: 14rem;
+}
+
 .metric-label {
   color: var(--pcx-muted);
   font-size: 0.875rem;
@@ -1226,6 +1274,7 @@ main.container-fluid {
 
   .evaluation-summary-grid,
   .evaluation-execute-form,
+  .dashboard-status-grid,
   .feedback-summary-grid,
   .golden-fieldset,
   .golden-question-layout,
@@ -1283,6 +1332,7 @@ main.container-fluid {
   }
 
   .evaluation-summary-grid,
+  .dashboard-status-grid,
   .feedback-summary-grid {
     grid-template-columns: repeat(2, minmax(16rem, 1fr));
   }
