@@ -188,6 +188,34 @@
         <div class="text-secondary">No feedback yet</div>
         {% endfor %}
       </div>
+
+      <form
+        class="search-history-promotion"
+        data-search-log-result-id="{{ result.search_log_result.search_log_result_id }}"
+      >
+        <label class="form-label" for="promotion_question_set_{{ result.search_log_result.search_log_result_id }}">Promote To</label>
+        <div class="search-history-promotion-row">
+          <select
+            class="form-select"
+            id="promotion_question_set_{{ result.search_log_result.search_log_result_id }}"
+            name="question_set_id"
+            {% if not database_configured or not question_sets %}disabled{% endif %}
+          >
+            <option value="">Question set</option>
+            {% for question_set in question_sets %}
+            <option value="{{ question_set.question_set_id }}">{{ question_set.set_name }}</option>
+            {% endfor %}
+          </select>
+          <button
+            class="btn btn-outline-secondary"
+            type="submit"
+            {% if not database_configured or not question_sets %}disabled{% endif %}
+          >
+            Promote
+          </button>
+        </div>
+        <div class="search-history-promotion-status text-secondary" aria-live="polite"></div>
+      </form>
     </article>
     {% else %}
     <section class="metric-card bg-white p-3 text-secondary text-center">No result rows found</section>
@@ -195,4 +223,53 @@
   </section>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  document.querySelectorAll(".search-history-promotion").forEach((form) => {
+    const resultId = form.dataset.searchLogResultId;
+    const select = form.querySelector("select[name='question_set_id']");
+    const button = form.querySelector("button[type='submit']");
+    const status = form.querySelector(".search-history-promotion-status");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!resultId || !select.value) {
+        status.textContent = "Select a question set.";
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = "Promoting";
+      try {
+        const response = await fetch(
+          `/api/search/results/${resultId}/promote-golden-question`,
+          {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              question_set_id: Number(select.value),
+              metadata: {created_from: "search_history"},
+            }),
+          },
+        );
+        const body = await response.json();
+        if (!response.ok) {
+          status.textContent = body.detail || "Promotion failed.";
+          return;
+        }
+        status.textContent =
+          `Created golden question #${body.promotion.question.question_id}`;
+      } catch (error) {
+        status.textContent =
+          error instanceof Error ? error.message : "Promotion failed.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

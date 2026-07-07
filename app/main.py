@@ -39,6 +39,12 @@ from app.core.file_metadata import (
     UnsupportedFileExtensionError,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
+from app.core.golden_question_promotions import (
+    GoldenQuestionPromotionInput,
+    GoldenQuestionPromotionRecord,
+    InvalidGoldenQuestionPromotionError,
+    promote_search_result_to_golden_question,
+)
 from app.core.golden_questions import (
     GoldenQuestionDetailRecord,
     GoldenQuestionExpectedTargetInput,
@@ -154,6 +160,16 @@ class ExpectedTargetRequest(BaseModel):
     relevance_grade: int = Field(default=3, ge=0, le=3)
     notes: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class GoldenQuestionPromotionRequest(BaseModel):
+    question_set_id: int = Field(ge=1)
+    question_type: str = "single_fact"
+    expectation_type: str = "visible"
+    relevance_grade: int = Field(default=3, ge=0, le=3)
+    notes: str | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_by_user_id: int | None = Field(default=None, ge=1)
 
 
 def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
@@ -587,6 +603,39 @@ def expected_target_input_from_request(
     )
 
 
+def golden_question_promotion_input_from_request(
+    search_log_result_id: int,
+    payload: GoldenQuestionPromotionRequest,
+) -> GoldenQuestionPromotionInput:
+    return GoldenQuestionPromotionInput(
+        question_set_id=payload.question_set_id,
+        search_log_result_id=search_log_result_id,
+        question_type=payload.question_type,
+        expectation_type=payload.expectation_type,
+        relevance_grade=payload.relevance_grade,
+        notes=payload.notes,
+        metadata=dict(payload.metadata),
+        created_by_user_id=payload.created_by_user_id,
+    )
+
+
+def golden_question_promotion_payload(
+    promotion: GoldenQuestionPromotionRecord,
+) -> dict[str, object]:
+    source_result = promotion.source_result.search_log_result
+    return {
+        "question": golden_question_payload(promotion.question),
+        "expected_target": expected_target_payload(promotion.expected_target),
+        "source": {
+            "search_log_id": promotion.source_search_log.search_log_id,
+            "search_log_result_id": source_result.search_log_result_id,
+            "chunk_id": source_result.chunk_id,
+            "profile_name": source_result.profile_name,
+            "rank": source_result.rank,
+        },
+    }
+
+
 def evaluation_run_payload(run: EvaluationRunRecord) -> dict[str, object]:
     return {
         "evaluation_run_id": run.evaluation_run_id,
@@ -991,6 +1040,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     search_feedback_profile_summary_payload(profile) for profile in summary.profiles
                 ],
             },
+        )
+
+    @app.post("/api/search/results/{search_log_result_id}/promote-golden-question")
+    def api_promote_search_result_to_golden_question(
+        search_log_result_id: int,
+        payload: GoldenQuestionPromotionRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            promotion = promote_search_result_to_golden_question(
+                settings.database_url,
+                golden_question_promotion_input_from_request(search_log_result_id, payload),
+            )
+        except (
+            InvalidGoldenQuestionPromotionError,
+            InvalidGoldenQuestionError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if promotion is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search result not found.",
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"promotion": golden_question_promotion_payload(promotion)},
         )
 
     @app.get("/api/evaluations/question-sets")
@@ -1507,6 +1589,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         limit: int = 50,
     ) -> HTMLResponse:
         actor_options: list[dict[str, object]] = []
+        question_sets: list[GoldenQuestionSetRecord] = []
         logs: list[SearchLogListItem] = []
         selected_log: SearchLogDetailRecord | None = None
         error_message = None
@@ -1525,6 +1608,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if actor_user_id and actor_user_id.strip():
                     actor_user_id_value = int(actor_user_id)
                 actor_options = list_search_actor_options(settings.database_url)
+                question_sets = list_golden_question_sets(
+                    settings.database_url,
+                    active_only=True,
+                )
                 logs = list_search_logs(
                     settings.database_url,
                     actor_user_id=actor_user_id_value,
@@ -1545,6 +1632,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             template_context(
                 request,
                 actor_options=actor_options,
+                question_sets=question_sets,
                 logs=logs,
                 selected_log=selected_log,
                 selected_actor_user_id=actor_user_id_value or "",

@@ -737,6 +737,25 @@ main.container-fluid {
   min-width: 0;
 }
 
+.search-history-promotion {
+  border-top: 1px solid var(--pcx-border);
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+}
+
+.search-history-promotion-row {
+  align-items: center;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.search-history-promotion-status {
+  font-size: 0.75rem;
+  min-height: 1rem;
+}
+
 .feedback-label-correct,
 .feedback-label-partial,
 .feedback-label-wrong,
@@ -1145,6 +1164,7 @@ main.container-fluid {
   .golden-question-layout,
   .search-form-grid,
   .search-history-filter,
+  .search-history-promotion-row,
   .search-history-results,
   .search-results-grid {
     grid-template-columns: 1fr;
@@ -1160,7 +1180,8 @@ main.container-fluid {
 
   .search-form-actions .btn,
   .golden-form-actions .btn,
-  .search-history-filter-actions .btn {
+  .search-history-filter-actions .btn,
+  .search-history-promotion-row .btn {
     width: 100%;
   }
 }
