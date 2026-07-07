@@ -101,6 +101,36 @@ class SearchResultFeedbackRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class SearchFeedbackProfileSummaryRecord:
+    profile_name: str
+    feedback_count: int
+    search_log_count: int
+    result_count: int
+    correct_count: int
+    partial_count: int
+    wrong_count: int
+    duplicate_count: int
+    insufficient_context_count: int
+    average_rank: float | None
+    average_score: float | None
+    average_profile_elapsed_ms: float | None
+    latest_feedback_at: datetime | None
+
+    @property
+    def relevant_count(self) -> int:
+        return self.correct_count + self.partial_count
+
+
+@dataclass(frozen=True)
+class SearchFeedbackSummaryRecord:
+    feedback_count: int
+    search_log_count: int
+    result_count: int
+    latest_feedback_at: datetime | None
+    profiles: tuple[SearchFeedbackProfileSummaryRecord, ...]
+
+
 class InvalidSearchLogError(ValueError):
     """Raised when a search log operation is invalid before reaching the DB."""
 
@@ -287,6 +317,30 @@ def _row_to_search_result_feedback_record(row: dict[str, Any]) -> SearchResultFe
     )
 
 
+def _optional_float(value: Any) -> float | None:
+    return float(value) if value is not None else None
+
+
+def _row_to_search_feedback_profile_summary_record(
+    row: dict[str, Any],
+) -> SearchFeedbackProfileSummaryRecord:
+    return SearchFeedbackProfileSummaryRecord(
+        profile_name=str(row["profile_name"]),
+        feedback_count=int(row["feedback_count"] or 0),
+        search_log_count=int(row["search_log_count"] or 0),
+        result_count=int(row["result_count"] or 0),
+        correct_count=int(row["correct_count"] or 0),
+        partial_count=int(row["partial_count"] or 0),
+        wrong_count=int(row["wrong_count"] or 0),
+        duplicate_count=int(row["duplicate_count"] or 0),
+        insufficient_context_count=int(row["insufficient_context_count"] or 0),
+        average_rank=_optional_float(row["average_rank"]),
+        average_score=_optional_float(row["average_score"]),
+        average_profile_elapsed_ms=_optional_float(row["average_profile_elapsed_ms"]),
+        latest_feedback_at=row["latest_feedback_at"],
+    )
+
+
 def create_search_log_in_connection(
     connection: Connection,
     search_log_input: SearchLogInput,
@@ -465,3 +519,107 @@ def create_search_result_feedback(
                 ),
             )
             return _row_to_search_result_feedback_record(dict(cursor.fetchone()))
+
+
+def _feedback_summary_filter_clause(
+    *,
+    document_group: str | None,
+) -> tuple[str, list[str]]:
+    params: list[str] = []
+    clauses: list[str] = []
+    normalized_document_group = _validate_nonblank(document_group, "document_group")
+    if normalized_document_group is not None:
+        clauses.append("sl.document_group = %s")
+        params.append(normalized_document_group)
+    if not clauses:
+        return "", params
+    return f"WHERE {' AND '.join(clauses)}", params
+
+
+def summarize_search_feedback(
+    database_url: str,
+    *,
+    document_group: str | None = None,
+) -> SearchFeedbackSummaryRecord:
+    where_clause, params = _feedback_summary_filter_clause(document_group=document_group)
+    feedback_cte = f"""
+        WITH feedback AS (
+            SELECT
+                srf.feedback_id,
+                srf.relevance_label,
+                srf.created_at AS feedback_created_at,
+                slr.search_log_result_id,
+                slr.search_log_id,
+                slr.profile_name,
+                slr.rank,
+                slr.score,
+                slr.profile_elapsed_ms
+            FROM search_result_feedback srf
+            JOIN search_log_results slr
+              ON slr.search_log_result_id = srf.search_log_result_id
+            JOIN search_logs sl
+              ON sl.search_log_id = slr.search_log_id
+            {where_clause}
+        )
+        """
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                {feedback_cte}
+                SELECT
+                    count(feedback_id) AS feedback_count,
+                    count(DISTINCT search_log_id) AS search_log_count,
+                    count(DISTINCT search_log_result_id) AS result_count,
+                    max(feedback_created_at) AS latest_feedback_at
+                FROM feedback
+                """,
+                params,
+            )
+            total_row = dict(cursor.fetchone())
+            cursor.execute(
+                f"""
+                {feedback_cte}
+                SELECT
+                    ep.profile_name,
+                    count(f.feedback_id) AS feedback_count,
+                    count(DISTINCT f.search_log_id) AS search_log_count,
+                    count(DISTINCT f.search_log_result_id) AS result_count,
+                    count(f.feedback_id) FILTER (
+                        WHERE f.relevance_label = 'correct'
+                    ) AS correct_count,
+                    count(f.feedback_id) FILTER (
+                        WHERE f.relevance_label = 'partial'
+                    ) AS partial_count,
+                    count(f.feedback_id) FILTER (
+                        WHERE f.relevance_label = 'wrong'
+                    ) AS wrong_count,
+                    count(f.feedback_id) FILTER (
+                        WHERE f.relevance_label = 'duplicate'
+                    ) AS duplicate_count,
+                    count(f.feedback_id) FILTER (
+                        WHERE f.relevance_label = 'insufficient_context'
+                    ) AS insufficient_context_count,
+                    avg(f.rank) AS average_rank,
+                    avg(f.score) AS average_score,
+                    avg(f.profile_elapsed_ms) AS average_profile_elapsed_ms,
+                    max(f.feedback_created_at) AS latest_feedback_at
+                FROM embedding_profiles ep
+                LEFT JOIN feedback f ON f.profile_name = ep.profile_name
+                WHERE ep.is_active
+                GROUP BY ep.profile_name
+                ORDER BY ep.profile_name ASC
+                """,
+                params,
+            )
+            profile_rows = cursor.fetchall()
+
+    return SearchFeedbackSummaryRecord(
+        feedback_count=int(total_row["feedback_count"] or 0),
+        search_log_count=int(total_row["search_log_count"] or 0),
+        result_count=int(total_row["result_count"] or 0),
+        latest_feedback_at=total_row["latest_feedback_at"],
+        profiles=tuple(
+            _row_to_search_feedback_profile_summary_record(dict(row)) for row in profile_rows
+        ),
+    )

@@ -132,6 +132,24 @@
   </form>
 </section>
 
+<section class="search-feedback-summary-panel mb-4">
+  <div class="search-feedback-summary-header">
+    <div>
+      <h2 class="h5 mb-1">Feedback Summary</h2>
+      <div class="text-secondary" id="feedback-summary-meta">Loading</div>
+    </div>
+    <button
+      class="btn btn-outline-secondary"
+      id="feedback-summary-refresh"
+      type="button"
+      {% if not database_configured %}disabled{% endif %}
+    >
+      Refresh
+    </button>
+  </div>
+  <div id="feedback-summary-grid" class="feedback-summary-grid" aria-live="polite"></div>
+</section>
+
 <div id="search-alert" class="alert alert-warning" role="alert" hidden></div>
 
 <section id="search-results" class="search-results-grid" aria-live="polite"></section>
@@ -149,6 +167,10 @@
   const resultsEl = document.getElementById("search-results");
   const summaryEl = document.getElementById("search-summary");
   const submitButton = document.getElementById("search-submit");
+  const feedbackSummaryGrid = document.getElementById("feedback-summary-grid");
+  const feedbackSummaryMeta = document.getElementById("feedback-summary-meta");
+  const feedbackSummaryRefresh = document.getElementById("feedback-summary-refresh");
+  const canLoadFeedbackSummary = {{ "true" if database_configured else "false" }};
   const feedbackOptions = [
     {label: "Correct", value: "correct"},
     {label: "Partial", value: "partial"},
@@ -182,6 +204,105 @@
     detail.textContent = value || "";
     row.append(term, detail);
     return row;
+  };
+
+  const formatPercent = (value) => {
+    if (value === null || value === undefined) {
+      return "-";
+    }
+    return `${Math.round(Number(value) * 100)}%`;
+  };
+
+  const formatAverage = (value, digits = 1) => {
+    if (value === null || value === undefined) {
+      return "-";
+    }
+    return Number(value).toFixed(digits);
+  };
+
+  const renderSummaryCount = (label, value) => {
+    const row = document.createElement("div");
+    row.className = "feedback-summary-count-row";
+    const term = document.createElement("span");
+    term.textContent = label;
+    const detail = document.createElement("strong");
+    detail.textContent = String(value || 0);
+    row.append(term, detail);
+    return row;
+  };
+
+  const renderFeedbackSummary = (payload) => {
+    feedbackSummaryGrid.replaceChildren();
+    feedbackSummaryMeta.textContent =
+      `${payload.feedback_count} feedback / ${payload.search_log_count} searches`;
+
+    payload.profiles.forEach((profile) => {
+      const item = document.createElement("article");
+      item.className = "feedback-summary-item";
+
+      const header = document.createElement("div");
+      header.className = "feedback-summary-item-header";
+      const title = document.createElement("h3");
+      title.className = "h6 mb-0";
+      title.textContent = profile.profile_name;
+      const rate = document.createElement("span");
+      rate.className = "feedback-summary-rate";
+      rate.textContent = formatPercent(profile.relevant_rate);
+      header.append(title, rate);
+
+      const counts = document.createElement("div");
+      counts.className = "feedback-summary-counts";
+      counts.append(
+        renderSummaryCount("Correct", profile.correct_count),
+        renderSummaryCount("Partial", profile.partial_count),
+        renderSummaryCount("Wrong", profile.wrong_count),
+        renderSummaryCount("Duplicate", profile.duplicate_count),
+        renderSummaryCount("Insufficient", profile.insufficient_context_count),
+      );
+
+      const footer = document.createElement("div");
+      footer.className = "feedback-summary-footer";
+      const latencyText =
+        profile.average_profile_elapsed_ms === null ||
+        profile.average_profile_elapsed_ms === undefined
+          ? "-"
+          : `${formatAverage(profile.average_profile_elapsed_ms, 0)} ms`;
+      footer.append(
+        makeCell("rank", formatAverage(profile.average_rank)),
+        makeCell("latency", latencyText),
+      );
+
+      item.append(header, counts, footer);
+      feedbackSummaryGrid.append(item);
+    });
+  };
+
+  const loadFeedbackSummary = async () => {
+    if (!canLoadFeedbackSummary) {
+      feedbackSummaryMeta.textContent = "Database unavailable";
+      return;
+    }
+    const params = new URLSearchParams();
+    const documentGroup = fieldValue("document_group");
+    if (documentGroup) {
+      params.set("document_group", documentGroup);
+    }
+    feedbackSummaryMeta.textContent = "Loading";
+    const url = params.toString()
+      ? `/api/search/feedback/summary?${params.toString()}`
+      : "/api/search/feedback/summary";
+    try {
+      const response = await fetch(url);
+      const body = await response.json();
+      if (!response.ok) {
+        feedbackSummaryMeta.textContent = body.detail || "Summary failed.";
+        return;
+      }
+      renderFeedbackSummary(body);
+    } catch (error) {
+      feedbackSummaryMeta.textContent =
+        error instanceof Error ? error.message : "Summary failed.";
+    }
   };
 
   const setFeedbackDisabled = (actions, disabled) => {
@@ -222,6 +343,7 @@
       }
       markSelectedFeedback(actions, body.feedback.relevance_label);
       statusEl.textContent = `Saved ${body.feedback.relevance_label}`;
+      loadFeedbackSummary();
     } catch (error) {
       statusEl.textContent = error instanceof Error ? error.message : "Feedback failed.";
     } finally {
@@ -368,6 +490,7 @@
         return;
       }
       renderResponse(body);
+      loadFeedbackSummary();
     } catch (error) {
       setAlert(error instanceof Error ? error.message : "Search failed.");
     } finally {
@@ -375,6 +498,12 @@
       submitButton.textContent = "Search";
     }
   });
+
+  feedbackSummaryRefresh?.addEventListener("click", () => {
+    loadFeedbackSummary();
+  });
+
+  loadFeedbackSummary();
 })();
 </script>
 {% endblock %}

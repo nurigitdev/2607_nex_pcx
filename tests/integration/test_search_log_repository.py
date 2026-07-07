@@ -13,13 +13,15 @@ from app.core.search_logs import (
     get_search_log,
     get_search_log_result,
     list_search_log_results,
+    summarize_search_feedback,
 )
 
 pytestmark = pytest.mark.integration
 
 
-def _create_search_fixture(database_url: str) -> tuple[int, int, int]:
+def _create_search_fixture(database_url: str) -> tuple[int, int, int, str]:
     checksum = f"search-repository-{uuid4()}"
+    document_group = f"slice-026-{uuid4()}"
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT user_id FROM app_users WHERE login_id = 'alice.member'")
@@ -36,7 +38,7 @@ def _create_search_fixture(database_url: str) -> tuple[int, int, int]:
                     uploaded_by_user_id,
                     document_group
                 )
-                VALUES (%s, %s, '.md', 1, %s, %s, %s, 'slice-026')
+                VALUES (%s, %s, '.md', 1, %s, %s, %s, %s)
                 RETURNING file_id
                 """,
                 (
@@ -45,6 +47,7 @@ def _create_search_fixture(database_url: str) -> tuple[int, int, int]:
                     checksum,
                     f"/tmp/{checksum}.md",
                     user_id,
+                    document_group,
                 ),
             )
             file_id = cursor.fetchone()["file_id"]
@@ -57,10 +60,10 @@ def _create_search_fixture(database_url: str) -> tuple[int, int, int]:
                     owner_user_id,
                     access_scope
                 )
-                VALUES (%s, %s, 'slice-026', %s, 'personal')
+                VALUES (%s, %s, %s, %s, 'personal')
                 RETURNING document_id
                 """,
-                (file_id, f"Search repository fixture {checksum}", user_id),
+                (file_id, f"Search repository fixture {checksum}", document_group, user_id),
             )
             document_id = cursor.fetchone()["document_id"]
             cursor.execute(
@@ -80,7 +83,7 @@ def _create_search_fixture(database_url: str) -> tuple[int, int, int]:
             )
             chunk_id = cursor.fetchone()["chunk_id"]
 
-    return file_id, chunk_id, user_id
+    return file_id, chunk_id, user_id, document_group
 
 
 def _cleanup_file(database_url: str, file_id: int) -> None:
@@ -107,7 +110,7 @@ def _cleanup_file(database_url: str, file_id: int) -> None:
 def test_search_log_repository_persists_results_and_feedback(
     migrated_database_url: str,
 ) -> None:
-    file_id, chunk_id, user_id = _create_search_fixture(migrated_database_url)
+    file_id, chunk_id, user_id, document_group = _create_search_fixture(migrated_database_url)
     try:
         search_log = create_search_log(
             migrated_database_url,
@@ -118,7 +121,7 @@ def test_search_log_repository_persists_results_and_feedback(
                 requested_search_scope="mine",
                 effective_search_scope="mine",
                 permission_filter_metadata={"actor_user_id": user_id},
-                document_group="slice-026",
+                document_group=document_group,
                 file_type=".md",
                 chunk_policy_name="heading_512_64",
                 top_k=3,
@@ -159,6 +162,13 @@ def test_search_log_repository_persists_results_and_feedback(
             results[0].search_log_result_id,
         )
         stored_results = list_search_log_results(migrated_database_url, search_log.search_log_id)
+        summary = summarize_search_feedback(
+            migrated_database_url,
+            document_group=document_group,
+        )
+        profile_summary = next(
+            profile for profile in summary.profiles if profile.profile_name == "kure_v1_1024"
+        )
 
         assert stored_log == search_log
         assert stored_result == results[0]
@@ -171,6 +181,14 @@ def test_search_log_repository_persists_results_and_feedback(
         assert results[0].distance == pytest.approx(0.12)
         assert feedback.relevance_label == "correct"
         assert feedback.comment == "expected result"
+        assert summary.feedback_count == 1
+        assert summary.search_log_count == 1
+        assert summary.result_count == 1
+        assert profile_summary.feedback_count == 1
+        assert profile_summary.correct_count == 1
+        assert profile_summary.relevant_count == 1
+        assert profile_summary.average_rank == pytest.approx(1)
+        assert profile_summary.average_score == pytest.approx(0.88)
     finally:
         _cleanup_file(migrated_database_url, file_id)
 

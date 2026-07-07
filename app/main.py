@@ -50,11 +50,13 @@ from app.core.search_compare import (
 )
 from app.core.search_logs import (
     InvalidSearchLogError,
+    SearchFeedbackProfileSummaryRecord,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
     create_search_result_feedback,
     get_search_log,
     get_search_log_result,
+    summarize_search_feedback,
 )
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 
@@ -269,6 +271,37 @@ def search_feedback_payload(feedback: SearchResultFeedbackRecord) -> dict[str, o
         "created_by": feedback.created_by,
         "created_by_user_id": feedback.created_by_user_id,
         "created_at": _datetime_response(feedback.created_at),
+    }
+
+
+def search_feedback_profile_summary_payload(
+    profile: SearchFeedbackProfileSummaryRecord,
+) -> dict[str, object]:
+    correct_rate = (
+        round(profile.correct_count / profile.feedback_count, 4) if profile.feedback_count else None
+    )
+    relevant_rate = (
+        round(profile.relevant_count / profile.feedback_count, 4)
+        if profile.feedback_count
+        else None
+    )
+    return {
+        "profile_name": profile.profile_name,
+        "feedback_count": profile.feedback_count,
+        "search_log_count": profile.search_log_count,
+        "result_count": profile.result_count,
+        "correct_count": profile.correct_count,
+        "partial_count": profile.partial_count,
+        "wrong_count": profile.wrong_count,
+        "duplicate_count": profile.duplicate_count,
+        "insufficient_context_count": profile.insufficient_context_count,
+        "relevant_count": profile.relevant_count,
+        "correct_rate": correct_rate,
+        "relevant_rate": relevant_rate,
+        "average_rank": profile.average_rank,
+        "average_score": profile.average_score,
+        "average_profile_elapsed_ms": profile.average_profile_elapsed_ms,
+        "latest_feedback_at": _datetime_response(profile.latest_feedback_at),
     }
 
 
@@ -550,6 +583,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
             content={"feedback": search_feedback_payload(feedback)},
+        )
+
+    @app.get("/api/search/feedback/summary")
+    def api_search_feedback_summary(document_group: str | None = None) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            summary = summarize_search_feedback(
+                settings.database_url,
+                document_group=document_group,
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "feedback_count": summary.feedback_count,
+                "search_log_count": summary.search_log_count,
+                "result_count": summary.result_count,
+                "latest_feedback_at": _datetime_response(summary.latest_feedback_at),
+                "profiles": [
+                    search_feedback_profile_summary_payload(profile) for profile in summary.profiles
+                ],
+            },
         )
 
     @app.get("/files/upload", response_class=HTMLResponse)

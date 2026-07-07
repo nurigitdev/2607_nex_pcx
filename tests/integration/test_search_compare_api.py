@@ -220,8 +220,13 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                     "relevance_label": "correct",
                 },
             )
+            summary_response = client.get(
+                "/api/search/feedback/summary",
+                params={"document_group": document_group},
+            )
 
         feedback_body = feedback_response.json()
+        summary_body = summary_response.json()
         feedback_count = fetch_one(
             migrated_database_url,
             """
@@ -250,6 +255,16 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert feedback_body["feedback"]["created_by"] == "search-compare-ui"
         assert feedback_body["feedback"]["created_by_user_id"] == ids["alice.member"]
         assert feedback_count["count"] == 1
+        assert summary_response.status_code == 200
+        assert summary_body["feedback_count"] == 1
+        assert summary_body["search_log_count"] == 1
+        assert summary_body["result_count"] == 1
+        profile_summary = {profile["profile_name"]: profile for profile in summary_body["profiles"]}
+        assert profile_summary["kure_v1_1024"]["feedback_count"] == 1
+        assert profile_summary["kure_v1_1024"]["correct_count"] == 1
+        assert profile_summary["kure_v1_1024"]["relevant_count"] == 1
+        assert profile_summary["kure_v1_1024"]["correct_rate"] == 1
+        assert profile_summary["bge_m3_1024"]["feedback_count"] == 0
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
 
