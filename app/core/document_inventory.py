@@ -5,7 +5,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from psycopg.types.json import Json
+
 from app.core.database import connect
+from app.core.file_metadata import DOCUMENT_ACCESS_SCOPES
 
 DOCUMENT_PARSE_STATUSES = {"pending", "running", "succeeded", "failed"}
 
@@ -44,6 +47,14 @@ class DocumentInventoryItem:
     updated_at: datetime
 
 
+@dataclass(frozen=True)
+class DocumentPermissionUpdateInput:
+    owner_user_id: int | None = None
+    owner_org_unit_id: int | None = None
+    access_scope: str = "personal"
+    updated_by_user_id: int | None = None
+
+
 class InvalidDocumentInventoryError(ValueError):
     """Raised when document inventory query input is invalid."""
 
@@ -59,6 +70,42 @@ def _validate_limit(limit: int, *, max_limit: int = 500) -> int:
 def _require_positive_id(value: int | None, field_name: str) -> None:
     if value is None or value <= 0:
         raise InvalidDocumentInventoryError(f"{field_name} must be greater than 0")
+
+
+def _validate_optional_positive_id(value: int | None, field_name: str) -> None:
+    if value is not None and value <= 0:
+        raise InvalidDocumentInventoryError(f"{field_name} must be greater than 0")
+
+
+def _validate_access_scope(access_scope: str) -> str:
+    normalized = access_scope.strip()
+    if normalized not in DOCUMENT_ACCESS_SCOPES:
+        raise InvalidDocumentInventoryError(f"Unsupported access_scope: {access_scope}")
+    return normalized
+
+
+def _ensure_reference_exists(
+    cursor,
+    *,
+    table_name: str,
+    id_column: str,
+    id_value: int | None,
+    field_name: str,
+) -> None:
+    if id_value is None:
+        return
+    cursor.execute(
+        f"""
+        SELECT EXISTS(
+            SELECT 1
+            FROM {table_name}
+            WHERE {id_column} = %s
+        ) AS exists
+        """,
+        (id_value,),
+    )
+    if not cursor.fetchone()["exists"]:
+        raise InvalidDocumentInventoryError(f"{field_name} was not found: {id_value}")
 
 
 def _validate_parse_status(parse_status: str | None) -> str | None:
@@ -288,3 +335,67 @@ def get_document_inventory_item(
             )
             row = cursor.fetchone()
     return _row_to_document_inventory_item(dict(row)) if row else None
+
+
+def update_document_permission(
+    database_url: str,
+    document_id: int,
+    permission_input: DocumentPermissionUpdateInput,
+) -> DocumentInventoryItem | None:
+    _require_positive_id(document_id, "document_id")
+    _validate_optional_positive_id(permission_input.owner_user_id, "owner_user_id")
+    _validate_optional_positive_id(permission_input.owner_org_unit_id, "owner_org_unit_id")
+    _validate_optional_positive_id(permission_input.updated_by_user_id, "updated_by_user_id")
+    access_scope = _validate_access_scope(permission_input.access_scope)
+
+    permission_metadata_patch = {
+        "permission_update_source": "document_permission_edit",
+        "updated_by_user_id": permission_input.updated_by_user_id,
+        "owner_user_id": permission_input.owner_user_id,
+        "owner_org_unit_id": permission_input.owner_org_unit_id,
+        "access_scope": access_scope,
+    }
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            _ensure_reference_exists(
+                cursor,
+                table_name="app_users",
+                id_column="user_id",
+                id_value=permission_input.owner_user_id,
+                field_name="owner_user_id",
+            )
+            _ensure_reference_exists(
+                cursor,
+                table_name="org_units",
+                id_column="org_unit_id",
+                id_value=permission_input.owner_org_unit_id,
+                field_name="owner_org_unit_id",
+            )
+            _ensure_reference_exists(
+                cursor,
+                table_name="app_users",
+                id_column="user_id",
+                id_value=permission_input.updated_by_user_id,
+                field_name="updated_by_user_id",
+            )
+            cursor.execute(
+                """
+                UPDATE documents
+                SET owner_user_id = %s,
+                    owner_org_unit_id = %s,
+                    access_scope = %s,
+                    permission_metadata = permission_metadata || %s::jsonb,
+                    updated_at = now()
+                WHERE document_id = %s
+                """,
+                (
+                    permission_input.owner_user_id,
+                    permission_input.owner_org_unit_id,
+                    access_scope,
+                    Json(permission_metadata_patch),
+                    document_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                return None
+    return get_document_inventory_item(database_url, document_id)

@@ -30,9 +30,11 @@ from app.core.config import Settings, get_settings
 from app.core.database import connect
 from app.core.document_inventory import (
     DocumentInventoryItem,
+    DocumentPermissionUpdateInput,
     InvalidDocumentInventoryError,
     get_document_inventory_item,
     list_document_inventory,
+    update_document_permission,
 )
 from app.core.embedding_jobs import (
     EmbeddingJobRecord,
@@ -185,6 +187,7 @@ UPLOADED_BY_USER_ID_FORM = Form(None)
 OWNER_USER_ID_FORM = Form(None)
 OWNER_ORG_UNIT_ID_FORM = Form(None)
 ACCESS_SCOPE_FORM = Form("personal")
+UPDATED_BY_USER_ID_FORM = Form(None)
 EVALUATION_EXPORT_VERSION = 1
 
 
@@ -203,6 +206,13 @@ class SearchFeedbackRequest(BaseModel):
     search_log_result_id: int = Field(ge=1)
     relevance_label: str
     comment: str | None = None
+
+
+class DocumentPermissionUpdateRequest(BaseModel):
+    owner_user_id: int | None = Field(default=None, ge=1)
+    owner_org_unit_id: int | None = Field(default=None, ge=1)
+    access_scope: str = "personal"
+    updated_by_user_id: int | None = Field(default=None, ge=1)
 
 
 class GoldenQuestionSetRequest(BaseModel):
@@ -1262,6 +1272,17 @@ def permission_inventory_payload(inventory: PermissionInventory) -> dict[str, ob
     }
 
 
+def document_permission_update_input_from_request(
+    payload: DocumentPermissionUpdateRequest,
+) -> DocumentPermissionUpdateInput:
+    return DocumentPermissionUpdateInput(
+        owner_user_id=payload.owner_user_id,
+        owner_org_unit_id=payload.owner_org_unit_id,
+        access_scope=payload.access_scope,
+        updated_by_user_id=payload.updated_by_user_id,
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -1537,6 +1558,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "chunks": [chunk_payload(chunk) for chunk in chunks],
             },
         )
+
+    @app.put("/api/documents/{document_id}/permissions")
+    def api_update_document_permission(
+        document_id: int,
+        payload: DocumentPermissionUpdateRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = update_document_permission(
+                settings.database_url,
+                document_id,
+                document_permission_update_input_from_request(payload),
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found.",
+            )
+
+        return JSONResponse(content={"document": document_inventory_item_payload(document)})
 
     def upload_template_context(
         request: Request,
@@ -2713,12 +2761,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> HTMLResponse:
         document: DocumentInventoryItem | None = None
         chunks: list[ChunkRecord] = []
+        permission_users: tuple[PermissionUserInventoryRecord, ...] = ()
+        permission_org_units: tuple[PermissionOrgUnitInventoryRecord, ...] = ()
         error_message = None
 
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
+                permission_users = tuple(list_permission_users(settings.database_url))
+                permission_org_units = tuple(list_permission_org_units(settings.database_url))
                 document = get_document_inventory_item(settings.database_url, document_id)
                 if document is None:
                     error_message = f"Document not found: {document_id}"
@@ -2728,7 +2780,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         document_id,
                         chunk_policy_name=chunk_policy_name,
                     )
-            except (InvalidDocumentInventoryError, InvalidChunkError) as exc:
+            except (
+                InvalidDocumentInventoryError,
+                InvalidChunkError,
+                InvalidPermissionInventoryError,
+            ) as exc:
                 error_message = str(exc)
             except Exception as exc:
                 error_message = str(exc)
@@ -2742,7 +2798,102 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 document=document,
                 chunks=chunks,
                 selected_chunk_policy_name=chunk_policy_name,
+                access_scope_options=tuple(
+                    scope
+                    for scope in ("personal", "team", "org_tree", "company")
+                    if scope in DOCUMENT_ACCESS_SCOPES
+                ),
+                permission_user_options=[
+                    upload_permission_user_option_payload(user) for user in permission_users
+                ],
+                permission_org_unit_options=[
+                    upload_permission_org_unit_option_payload(org_unit)
+                    for org_unit in permission_org_units
+                ],
                 error_message=error_message,
+            ),
+        )
+
+    @app.post("/documents/{document_id}/permissions", response_class=HTMLResponse)
+    def submit_document_permission_update(
+        request: Request,
+        document_id: int,
+        owner_user_id: str | None = OWNER_USER_ID_FORM,
+        owner_org_unit_id: str | None = OWNER_ORG_UNIT_ID_FORM,
+        access_scope: str = ACCESS_SCOPE_FORM,
+        updated_by_user_id: str | None = UPDATED_BY_USER_ID_FORM,
+    ) -> HTMLResponse:
+        document: DocumentInventoryItem | None = None
+        chunks: list[ChunkRecord] = []
+        permission_users: tuple[PermissionUserInventoryRecord, ...] = ()
+        permission_org_units: tuple[PermissionOrgUnitInventoryRecord, ...] = ()
+        error_message = None
+        success_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                permission_users = tuple(list_permission_users(settings.database_url))
+                permission_org_units = tuple(list_permission_org_units(settings.database_url))
+                document = update_document_permission(
+                    settings.database_url,
+                    document_id,
+                    DocumentPermissionUpdateInput(
+                        owner_user_id=parse_optional_positive_int_form(
+                            owner_user_id,
+                            "owner_user_id",
+                        ),
+                        owner_org_unit_id=parse_optional_positive_int_form(
+                            owner_org_unit_id,
+                            "owner_org_unit_id",
+                        ),
+                        access_scope=access_scope.strip() or "personal",
+                        updated_by_user_id=parse_optional_positive_int_form(
+                            updated_by_user_id,
+                            "updated_by_user_id",
+                        ),
+                    ),
+                )
+                if document is None:
+                    error_message = f"Document not found: {document_id}"
+                else:
+                    chunks = list_document_chunks(settings.database_url, document_id)
+                    success_message = "document_permissions.updated"
+            except (
+                InvalidDocumentInventoryError,
+                InvalidChunkError,
+                InvalidPermissionInventoryError,
+                InvalidFileMetadataError,
+            ) as exc:
+                error_message = str(exc)
+                document = get_document_inventory_item(settings.database_url, document_id)
+                if document is not None:
+                    chunks = list_document_chunks(settings.database_url, document_id)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "document_detail.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                document=document,
+                chunks=chunks,
+                selected_chunk_policy_name="",
+                access_scope_options=tuple(
+                    scope
+                    for scope in ("personal", "team", "org_tree", "company")
+                    if scope in DOCUMENT_ACCESS_SCOPES
+                ),
+                permission_user_options=[
+                    upload_permission_user_option_payload(user) for user in permission_users
+                ],
+                permission_org_unit_options=[
+                    upload_permission_org_unit_option_payload(org_unit)
+                    for org_unit in permission_org_units
+                ],
+                error_message=error_message,
+                success_message=success_message,
             ),
         )
 

@@ -120,5 +120,11 @@
     "access_scope": "Access Scope",
     "same_as_uploader": "Same as uploader",
     "help": "Selected values are stored on file and document metadata for permission-aware search pre-filtering."
+  },
+  "document_permissions": {
+    "title": "Document Permission Edit",
+    "updated_by": "Updated By",
+    "save": "Save Permissions",
+    "updated": "Document permission metadata was saved."
   }
 }

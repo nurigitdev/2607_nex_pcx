@@ -16,6 +16,9 @@
 {% if error_message %}
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
+{% if success_message %}
+<div class="alert alert-success" role="alert">{{ t(success_message) }}</div>
+{% endif %}
 
 {% if document %}
 <section class="document-detail-grid mb-4">
@@ -70,6 +73,61 @@
         <dt>Updated</dt>
         <dd>{{ document.updated_at.strftime("%Y-%m-%d %H:%M") }}</dd>
       </dl>
+    </section>
+    <section class="metric-card bg-white p-3 mt-3">
+      <h2 class="h5 mb-3">{{ t("document_permissions.title") }}</h2>
+      <form method="post" action="/documents/{{ document.document_id }}/permissions">
+        <div class="mb-3">
+          <label class="form-label" for="owner_user_id">{{ t("upload_permissions.owner_user") }}</label>
+          <select class="form-select" id="owner_user_id" name="owner_user_id">
+            <option value="">{{ t("permissions.none") }}</option>
+            {% for user in permission_user_options %}
+            <option
+              value="{{ user.user_id }}"
+              {% if document.owner_user_id == user.user_id %}selected{% endif %}
+            >
+              {{ user.display_name }} · {{ user.login_id }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="owner_org_unit_id">{{ t("upload_permissions.owner_org") }}</label>
+          <select class="form-select" id="owner_org_unit_id" name="owner_org_unit_id">
+            <option value="">{{ t("permissions.none") }}</option>
+            {% for org_unit in permission_org_unit_options %}
+            <option
+              value="{{ org_unit.org_unit_id }}"
+              {% if document.owner_org_unit_id == org_unit.org_unit_id %}selected{% endif %}
+            >
+              {{ org_unit.org_path }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="access_scope">{{ t("upload_permissions.access_scope") }}</label>
+          <select class="form-select" id="access_scope" name="access_scope">
+            {% for scope in access_scope_options %}
+            <option value="{{ scope }}" {% if document.access_scope == scope %}selected{% endif %}>
+              {{ t("access_scope." ~ scope) }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="updated_by_user_id">{{ t("document_permissions.updated_by") }}</label>
+          <select class="form-select" id="updated_by_user_id" name="updated_by_user_id">
+            <option value="">{{ t("permissions.none") }}</option>
+            {% for user in permission_user_options %}
+            <option value="{{ user.user_id }}">{{ user.display_name }} · {{ user.login_id }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="d-flex justify-content-end">
+          <button class="btn btn-primary" type="submit">{{ t("document_permissions.save") }}</button>
+        </div>
+      </form>
     </section>
   </div>
   <div class="col-12 col-xl-7">

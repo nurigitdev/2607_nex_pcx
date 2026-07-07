@@ -13,6 +13,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("permissions.title") == "Permission Simulation"
     assert korean("upload_permissions.fieldset") == "권한 Metadata"
     assert english("upload_permissions.fieldset") == "Permission Metadata"
+    assert korean("document_permissions.title") == "문서 권한 편집"
+    assert english("document_permissions.title") == "Document Permission Edit"
 
 
 def test_translator_falls_back_to_key_when_missing() -> None:

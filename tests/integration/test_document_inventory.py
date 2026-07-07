@@ -122,8 +122,27 @@ def _cleanup_document_fixture(database_url: str, fixture: dict[str, object]) -> 
             )
 
 
+def _permission_ids(database_url: str) -> dict[str, int]:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT login_id, user_id
+                FROM app_users
+                WHERE login_id IN ('alice.member', 'bob.member', 'pcx.admin')
+                """)
+            users = {row["login_id"]: int(row["user_id"]) for row in cursor.fetchall()}
+            cursor.execute("""
+                SELECT org_unit_name, org_unit_id
+                FROM org_units
+                WHERE org_unit_name IN ('Platform Team', 'Business Team')
+                """)
+            orgs = {row["org_unit_name"]: int(row["org_unit_id"]) for row in cursor.fetchall()}
+    return {**users, **orgs}
+
+
 def test_document_inventory_repository_api_and_page(migrated_database_url: str) -> None:
     fixture = _create_document_fixture(migrated_database_url)
+    ids = _permission_ids(migrated_database_url)
     app = create_app(Settings(database_url=migrated_database_url))
     try:
         documents = list_document_inventory(
@@ -152,10 +171,37 @@ def test_document_inventory_repository_api_and_page(migrated_database_url: str) 
                 "/documents",
                 params={"document_group": fixture["document_group"]},
             )
+            api_permission_update_response = client.put(
+                f"/api/documents/{fixture['document_id']}/permissions",
+                json={
+                    "owner_user_id": ids["bob.member"],
+                    "owner_org_unit_id": ids["Business Team"],
+                    "access_scope": "org_tree",
+                    "updated_by_user_id": ids["pcx.admin"],
+                },
+            )
+            html_permission_update_response = client.post(
+                f"/documents/{fixture['document_id']}/permissions",
+                data={
+                    "owner_user_id": str(ids["alice.member"]),
+                    "owner_org_unit_id": str(ids["Platform Team"]),
+                    "access_scope": "company",
+                    "updated_by_user_id": str(ids["pcx.admin"]),
+                },
+            )
+            invalid_permission_update_response = client.put(
+                f"/api/documents/{fixture['document_id']}/permissions",
+                json={"access_scope": "private"},
+            )
+            missing_permission_update_response = client.put(
+                "/api/documents/999999999/permissions",
+                json={"access_scope": "personal"},
+            )
 
         item = documents[0]
         payload = api_response.json()["documents"][0]
         detail_payload = detail_response.json()
+        api_permission_payload = api_permission_update_response.json()["document"]
 
         assert len(documents) == 1
         assert item.document_id == fixture["document_id"]
@@ -190,6 +236,16 @@ def test_document_inventory_repository_api_and_page(migrated_database_url: str) 
         assert detail_page_response.status_code == 200
         assert "Metadata" in detail_page_response.text
         assert "Chunks" in detail_page_response.text
+        assert "문서 권한 편집" in detail_page_response.text
         assert "Inventory first chunk" in detail_page_response.text
+        assert api_permission_update_response.status_code == 200
+        assert api_permission_payload["owner_login_id"] == "bob.member"
+        assert api_permission_payload["owner_org_unit_name"] == "Business Team"
+        assert api_permission_payload["access_scope"] == "org_tree"
+        assert html_permission_update_response.status_code == 200
+        assert "문서 권한 metadata가 저장되었습니다." in html_permission_update_response.text
+        assert "company" in html_permission_update_response.text
+        assert invalid_permission_update_response.status_code == 400
+        assert missing_permission_update_response.status_code == 404
     finally:
         _cleanup_document_fixture(migrated_database_url, fixture)

@@ -120,5 +120,11 @@
     "access_scope": "접근 범위",
     "same_as_uploader": "업로드 사용자와 동일",
     "help": "선택한 값은 파일과 문서 metadata에 저장되고 권한 기반 검색 pre-filter에 사용됩니다."
+  },
+  "document_permissions": {
+    "title": "문서 권한 편집",
+    "updated_by": "수정 사용자",
+    "save": "권한 저장",
+    "updated": "문서 권한 metadata가 저장되었습니다."
   }
 }

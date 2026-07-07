@@ -26,3 +26,18 @@ def test_document_detail_api_requires_database(client) -> None:
     response = client.get("/api/documents/1")
 
     assert response.status_code == 503
+
+
+def test_document_permission_edit_requires_database(client) -> None:
+    page_response = client.post(
+        "/documents/1/permissions",
+        data={"access_scope": "personal"},
+    )
+    api_response = client.put(
+        "/api/documents/1/permissions",
+        json={"access_scope": "personal"},
+    )
+
+    assert page_response.status_code == 200
+    assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
+    assert api_response.status_code == 503
