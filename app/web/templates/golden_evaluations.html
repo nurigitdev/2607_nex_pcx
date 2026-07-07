@@ -203,6 +203,65 @@
 </section>
 {% endif %}
 
+{% if selected_run %}
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="evaluation-report-header p-3">
+    <div>
+      <h2 class="h5 mb-1">Permission Audit</h2>
+      <div class="text-secondary">Actor scope, effective filter, and hidden-result violations</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="/api/evaluations/runs/{{ selected_run.evaluation_run_id }}/permission-audit">API</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 evaluation-permission-audit-table">
+      <thead>
+        <tr>
+          <th scope="col">Question</th>
+          <th scope="col">Actor</th>
+          <th scope="col">Requested</th>
+          <th scope="col">Effective</th>
+          <th scope="col">Retrieved</th>
+          <th scope="col">Matched</th>
+          <th scope="col">Hidden</th>
+          <th scope="col">Search Log</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for audit in selected_permission_audit %}
+        <tr>
+          <td>
+            #{{ audit.question_id }}
+            <div class="text-secondary small">{{ audit.question_text }}</div>
+          </td>
+          <td>{{ audit.actor_display_name or audit.actor_login_id or "" }}</td>
+          <td>{{ audit.requested_search_scope or "" }}</td>
+          <td>{{ audit.effective_search_scope or "" }}</td>
+          <td>{{ audit.retrieved_count }}</td>
+          <td>{{ audit.matched_visible_count }} / {{ audit.visible_expected_count }}</td>
+          <td>
+            <span class="badge {% if audit.hidden_violation_count %}text-bg-danger{% else %}text-bg-light border{% endif %}">
+              {{ audit.hidden_violation_count }}
+            </span>
+          </td>
+          <td>
+            {% if audit.search_log_id %}
+            <a class="job-link" href="/search/logs?search_log_id={{ audit.search_log_id }}">#{{ audit.search_log_id }}</a>
+            {% else %}
+            <span class="text-secondary">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="8">No permission audit rows found</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0 job-table evaluation-run-table">

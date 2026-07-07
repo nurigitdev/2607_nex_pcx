@@ -212,6 +212,7 @@ def _create_execute_fixture(database_url: str) -> dict[str, object]:
         "question_set_id": question_set.question_set_id,
         "question_id": question.question_id,
         "query_text": query_text,
+        "alice_user_id": ids["alice.member"],
     }
 
 
@@ -250,6 +251,9 @@ def test_golden_evaluation_execute_api_runs_search_and_persists_results(
 
         with TestClient(app) as client:
             detail_response = client.get(f"/api/evaluations/runs/{run['evaluation_run_id']}")
+            permission_audit_response = client.get(
+                f"/api/evaluations/runs/{run['evaluation_run_id']}/permission-audit"
+            )
 
         assert response.status_code == 201
         assert run["status"] == "succeeded"
@@ -269,6 +273,16 @@ def test_golden_evaluation_execute_api_runs_search_and_persists_results(
         assert detail_response.status_code == 200
         assert detail_response.json()["run"]["evaluation_run_id"] == run["evaluation_run_id"]
         assert detail_response.json()["results"][0]["matched_chunk_ids"] == [fixture["chunk_id"]]
+        assert permission_audit_response.status_code == 200
+        audit = permission_audit_response.json()["audit"][0]
+        assert audit["question_id"] == fixture["question_id"]
+        assert audit["actor_login_id"] == "alice.member"
+        assert audit["requested_search_scope"] == "company"
+        assert audit["effective_search_scope"] == "company"
+        assert audit["permission_filter_metadata"]["actor_user_id"] == fixture["alice_user_id"]
+        assert audit["search_log_id"] == search_log_mapping[str(fixture["question_id"])]
+        assert audit["hidden_violation_count"] == 0
+        assert audit["permission_status"] == "clean"
     finally:
         _cleanup_question_set(migrated_database_url, fixture["question_set_id"])
         _cleanup_files(migrated_database_url, [fixture["file_id"]])

@@ -63,8 +63,10 @@ from app.core.evaluation_executor import (
     execute_golden_evaluation,
 )
 from app.core.evaluation_reports import (
+    EvaluationPermissionAuditRecord,
     InvalidEvaluationReportError,
     ProfileComparisonRecord,
+    get_evaluation_permission_audit,
     get_latest_profile_comparison,
 )
 from app.core.evaluation_runs import (
@@ -1088,6 +1090,33 @@ def profile_comparison_payload(comparison: ProfileComparisonRecord) -> dict[str,
         "no_answer_success_rate": comparison.no_answer_success_rate,
         "finished_at": _datetime_response(comparison.finished_at),
         "created_at": _datetime_response(comparison.created_at),
+    }
+
+
+def evaluation_permission_audit_payload(
+    audit: EvaluationPermissionAuditRecord,
+) -> dict[str, object]:
+    return {
+        "evaluation_result_id": audit.evaluation_result_id,
+        "evaluation_run_id": audit.evaluation_run_id,
+        "question_id": audit.question_id,
+        "question_text": audit.question_text,
+        "actor_user_id": audit.actor_user_id,
+        "actor_login_id": audit.actor_login_id,
+        "actor_display_name": audit.actor_display_name,
+        "requested_search_scope": audit.requested_search_scope,
+        "effective_search_scope": audit.effective_search_scope,
+        "permission_filter_metadata": audit.permission_filter_metadata,
+        "search_log_id": audit.search_log_id,
+        "top_k": audit.top_k,
+        "retrieved_count": audit.retrieved_count,
+        "visible_expected_count": audit.visible_expected_count,
+        "matched_visible_count": audit.matched_visible_count,
+        "hidden_violation_count": audit.hidden_violation_count,
+        "matched_chunk_ids": list(audit.matched_chunk_ids),
+        "hidden_violation_chunk_ids": list(audit.hidden_violation_chunk_ids),
+        "no_answer_success": audit.no_answer_success,
+        "permission_status": "violation" if audit.hidden_violation_count else "clean",
     }
 
 
@@ -2583,6 +2612,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.get("/api/evaluations/runs/{evaluation_run_id}/permission-audit")
+    def api_get_evaluation_permission_audit(
+        evaluation_run_id: int,
+        limit: int = 500,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            run = get_evaluation_run(settings.database_url, evaluation_run_id)
+            if run is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Evaluation run not found.",
+                )
+            audit = get_evaluation_permission_audit(
+                settings.database_url,
+                evaluation_run_id,
+                limit=limit,
+            )
+        except InvalidEvaluationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidEvaluationReportError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "run": evaluation_run_payload(run),
+                "audit": [evaluation_permission_audit_payload(item) for item in audit],
+            },
+        )
+
     @app.get("/api/evaluations/runs/{evaluation_run_id}/export")
     def api_export_evaluation_run(
         evaluation_run_id: int,
@@ -3133,6 +3197,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected_run: EvaluationRunRecord | None = None
         selected_question_set: GoldenQuestionSetRecord | None = None
         selected_results: list[EvaluationResultRecord] = []
+        selected_permission_audit: list[EvaluationPermissionAuditRecord] = []
         error_message = None
         profile_value = profile_name.strip() if profile_name else None
         if profile_value == "":
@@ -3175,6 +3240,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             settings.database_url,
                             selected_run.evaluation_run_id,
                         )
+                        selected_permission_audit = get_evaluation_permission_audit(
+                            settings.database_url,
+                            selected_run.evaluation_run_id,
+                        )
             except (
                 InvalidEvaluationRunError,
                 InvalidEvaluationReportError,
@@ -3199,6 +3268,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_run=selected_run,
                 selected_question_set=selected_question_set,
                 selected_results=selected_results,
+                selected_permission_audit=selected_permission_audit,
                 selected_question_set_id=question_set_id,
                 selected_profile_name=profile_value or "",
                 selected_status=status_filter or "",

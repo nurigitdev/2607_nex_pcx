@@ -28,6 +28,29 @@ class ProfileComparisonRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class EvaluationPermissionAuditRecord:
+    evaluation_result_id: int
+    evaluation_run_id: int
+    question_id: int
+    question_text: str
+    actor_user_id: int | None
+    actor_login_id: str | None
+    actor_display_name: str | None
+    requested_search_scope: str | None
+    effective_search_scope: str | None
+    permission_filter_metadata: dict[str, Any]
+    search_log_id: int | None
+    top_k: int
+    retrieved_count: int
+    visible_expected_count: int
+    matched_visible_count: int
+    hidden_violation_count: int
+    matched_chunk_ids: tuple[int, ...]
+    hidden_violation_chunk_ids: tuple[int, ...]
+    no_answer_success: bool | None
+
+
 class InvalidEvaluationReportError(ValueError):
     """Raised when evaluation report input is invalid before reaching the DB."""
 
@@ -71,6 +94,33 @@ def _row_to_profile_comparison_record(row: dict[str, Any]) -> ProfileComparisonR
     )
 
 
+def _row_to_permission_audit_record(row: dict[str, Any]) -> EvaluationPermissionAuditRecord:
+    requested_search_scope = (
+        row["search_requested_search_scope"] or row["question_requested_search_scope"]
+    )
+    return EvaluationPermissionAuditRecord(
+        evaluation_result_id=int(row["evaluation_result_id"]),
+        evaluation_run_id=int(row["evaluation_run_id"]),
+        question_id=int(row["question_id"]),
+        question_text=str(row["question_text"]),
+        actor_user_id=int(row["actor_user_id"]) if row["actor_user_id"] is not None else None,
+        actor_login_id=row["actor_login_id"],
+        actor_display_name=row["actor_display_name"],
+        requested_search_scope=requested_search_scope,
+        effective_search_scope=row["effective_search_scope"] or requested_search_scope,
+        permission_filter_metadata=dict(row["permission_filter_metadata"] or {}),
+        search_log_id=int(row["search_log_id"]) if row["search_log_id"] is not None else None,
+        top_k=int(row["top_k"]),
+        retrieved_count=int(row["retrieved_count"]),
+        visible_expected_count=int(row["visible_expected_count"]),
+        matched_visible_count=int(row["matched_visible_count"]),
+        hidden_violation_count=int(row["hidden_violation_count"]),
+        matched_chunk_ids=tuple(row["matched_chunk_ids"] or ()),
+        hidden_violation_chunk_ids=tuple(row["hidden_violation_chunk_ids"] or ()),
+        no_answer_success=row["no_answer_success"],
+    )
+
+
 def get_latest_profile_comparison(
     database_url: str,
     question_set_id: int,
@@ -107,3 +157,51 @@ def get_latest_profile_comparison(
             )
             rows = cursor.fetchall()
     return [_row_to_profile_comparison_record(dict(row)) for row in rows]
+
+
+def get_evaluation_permission_audit(
+    database_url: str,
+    evaluation_run_id: int,
+    *,
+    limit: int = 500,
+) -> list[EvaluationPermissionAuditRecord]:
+    _require_positive_id(evaluation_run_id, "evaluation_run_id")
+    validated_limit = _validate_limit(limit, max_limit=500)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    ger.evaluation_result_id,
+                    ger.evaluation_run_id,
+                    ger.question_id,
+                    gq.question_text,
+                    gq.actor_user_id,
+                    au.login_id AS actor_login_id,
+                    au.display_name AS actor_display_name,
+                    gq.requested_search_scope AS question_requested_search_scope,
+                    sl.requested_search_scope AS search_requested_search_scope,
+                    sl.effective_search_scope,
+                    sl.permission_filter_metadata,
+                    ger.search_log_id,
+                    ger.top_k,
+                    ger.retrieved_count,
+                    ger.visible_expected_count,
+                    ger.matched_visible_count,
+                    ger.hidden_violation_count,
+                    ger.matched_chunk_ids,
+                    ger.hidden_violation_chunk_ids,
+                    ger.no_answer_success
+                FROM golden_evaluation_results ger
+                JOIN golden_questions gq ON gq.question_id = ger.question_id
+                LEFT JOIN app_users au ON au.user_id = gq.actor_user_id
+                LEFT JOIN search_logs sl ON sl.search_log_id = ger.search_log_id
+                WHERE ger.evaluation_run_id = %s
+                ORDER BY ger.hidden_violation_count DESC,
+                         ger.question_id ASC
+                LIMIT %s
+                """,
+                (evaluation_run_id, validated_limit),
+            )
+            rows = cursor.fetchall()
+    return [_row_to_permission_audit_record(dict(row)) for row in rows]

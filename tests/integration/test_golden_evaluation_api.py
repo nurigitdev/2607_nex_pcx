@@ -131,6 +131,9 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
                 },
             )
             detail_response = client.get(f"/api/evaluations/runs/{fixture['evaluation_run_id']}")
+            permission_audit_response = client.get(
+                f"/api/evaluations/runs/{fixture['evaluation_run_id']}/permission-audit"
+            )
             export_json_response = client.get(
                 f"/api/evaluations/runs/{fixture['evaluation_run_id']}/export",
             )
@@ -158,6 +161,11 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
                 params={"question_set_id": fixture["question_set_id"], "limit": 0},
             )
             missing_response = client.get("/api/evaluations/runs/999999999")
+            missing_audit_response = client.get("/api/evaluations/runs/999999999/permission-audit")
+            bad_audit_response = client.get(
+                f"/api/evaluations/runs/{fixture['evaluation_run_id']}/permission-audit",
+                params={"limit": 0},
+            )
             missing_export_response = client.get("/api/evaluations/runs/999999999/export")
             bad_export_response = client.get(
                 f"/api/evaluations/runs/{fixture['evaluation_run_id']}/export",
@@ -168,6 +176,7 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         question_sets = question_sets_response.json()["question_sets"]
         runs = runs_response.json()["runs"]
         detail = detail_response.json()
+        permission_audit = permission_audit_response.json()["audit"]
         export_json = export_json_response.json()
         export_csv = export_csv_response.text
         result = detail["results"][0]
@@ -186,6 +195,13 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         assert result["evaluation_result_id"] == fixture["evaluation_result_id"]
         assert result["question_id"] == fixture["question_id"]
         assert result["no_answer_success"] is True
+        assert permission_audit_response.status_code == 200
+        assert permission_audit[0]["evaluation_result_id"] == fixture["evaluation_result_id"]
+        assert permission_audit[0]["question_id"] == fixture["question_id"]
+        assert permission_audit[0]["actor_login_id"] == "alice.member"
+        assert permission_audit[0]["requested_search_scope"] == "company"
+        assert permission_audit[0]["effective_search_scope"] == "company"
+        assert permission_audit[0]["search_log_id"] is None
         assert export_json_response.status_code == 200
         assert export_json_response.headers["content-disposition"].endswith('.json"')
         assert export_json["version"] == 1
@@ -206,7 +222,11 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         assert "Golden Evaluation Monitor" in page_response.text
         assert "Run Evaluation" in page_response.text
         assert "Profile Comparison" in page_response.text
+        assert "Permission Audit" in page_response.text
         assert "/api/evaluations/profile-comparison" in page_response.text
+        assert f"/api/evaluations/runs/{fixture['evaluation_run_id']}/permission-audit" in (
+            page_response.text
+        )
         assert 'id="evaluation-execute-form"' in page_response.text
         assert "/api/evaluations/runs/execute" in page_response.text
         assert f"#{fixture['evaluation_run_id']}" in page_response.text
@@ -221,6 +241,8 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         assert missing_comparison_response.status_code == 404
         assert bad_comparison_response.status_code == 400
         assert missing_response.status_code == 404
+        assert missing_audit_response.status_code == 404
+        assert bad_audit_response.status_code == 400
         assert missing_export_response.status_code == 404
         assert bad_export_response.status_code == 400
         assert bad_request_response.status_code == 400

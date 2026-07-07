@@ -10,6 +10,7 @@ from app.core.evaluation_reports import (
 def test_validate_limit_accepts_boundary_values() -> None:
     assert _validate_limit(1) == 1
     assert _validate_limit(100) == 100
+    assert _validate_limit(500, max_limit=500) == 500
 
 
 @pytest.mark.parametrize("value", [None, 0, -1])

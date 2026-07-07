@@ -707,6 +707,21 @@ main.container-fluid {
   min-width: 14rem;
 }
 
+.evaluation-permission-audit-table td:nth-child(3),
+.evaluation-permission-audit-table td:nth-child(4),
+.evaluation-permission-audit-table td:nth-child(5),
+.evaluation-permission-audit-table td:nth-child(6),
+.evaluation-permission-audit-table td:nth-child(7),
+.evaluation-permission-audit-table td:nth-child(8) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.evaluation-permission-audit-table td:first-child {
+  min-width: 18rem;
+  overflow-wrap: anywhere;
+}
+
 .dashboard-panel-header {
   align-items: center;
   border-bottom: 1px solid var(--pcx-border);
