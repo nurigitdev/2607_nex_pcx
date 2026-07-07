@@ -1,0 +1,811 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">Golden Questions</h1>
+    <p class="text-secondary mb-0">Question sets, benchmark questions, and expected retrieval targets</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/evaluations">Monitor</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<div id="golden-question-alert" class="alert alert-info" role="alert" hidden></div>
+
+<div class="golden-question-layout">
+  <section class="metric-card bg-white p-3 golden-manager-panel">
+    <div class="golden-panel-header">
+      <div>
+        <h2 class="h5 mb-1">Question Sets</h2>
+        <div class="text-secondary" id="question-set-count">{{ question_sets|length }} sets</div>
+      </div>
+      <button class="btn btn-outline-secondary" id="question-set-new" type="button" {% if not database_configured %}disabled{% endif %}>New</button>
+    </div>
+
+    <form id="question-set-form" class="golden-form-grid">
+      <fieldset class="golden-fieldset" {% if not database_configured %}disabled{% endif %}>
+        <input id="question_set_id" name="question_set_id" type="hidden">
+        <div class="golden-form-span">
+          <label class="form-label" for="set_name">Set Name</label>
+          <input class="form-control" id="set_name" name="set_name" type="text" required>
+        </div>
+        <div class="golden-form-span">
+          <label class="form-label" for="set_description">Description</label>
+          <textarea class="form-control" id="set_description" name="description" rows="2"></textarea>
+        </div>
+        <div>
+          <label class="form-label" for="set_created_by_user_id">Owner</label>
+          <select class="form-select" id="set_created_by_user_id" name="created_by_user_id">
+            <option value="">None</option>
+            {% for actor in actor_options %}
+            <option value="{{ actor.user_id }}">{{ actor.display_name }} / {{ actor.login_id }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <label class="golden-check-option">
+          <input class="form-check-input" id="set_is_active" name="is_active" type="checkbox" checked>
+          <span>Active</span>
+        </label>
+        <div class="golden-form-span">
+          <label class="form-label" for="set_metadata">Metadata JSON</label>
+          <textarea class="form-control golden-json-field" id="set_metadata" name="metadata" rows="3">{}</textarea>
+        </div>
+        <div class="golden-form-actions golden-form-span">
+          <button class="btn btn-primary" id="question-set-save" type="submit">Save Set</button>
+          <button class="btn btn-outline-secondary" id="question-set-delete" type="button" disabled>Delete</button>
+        </div>
+      </fieldset>
+    </form>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 golden-question-set-table">
+        <thead>
+          <tr>
+            <th scope="col">Set</th>
+            <th scope="col">Status</th>
+            <th scope="col">Updated</th>
+          </tr>
+        </thead>
+        <tbody id="question-set-table-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="metric-card bg-white p-3 golden-manager-panel">
+    <div class="golden-panel-header">
+      <div>
+        <h2 class="h5 mb-1">Questions</h2>
+        <div class="text-secondary" id="selected-set-label">No set selected</div>
+      </div>
+      <button class="btn btn-outline-secondary" id="question-new" type="button" {% if not database_configured %}disabled{% endif %}>New</button>
+    </div>
+
+    <form id="question-form" class="golden-form-grid">
+      <fieldset class="golden-fieldset" {% if not database_configured %}disabled{% endif %}>
+        <input id="question_id" name="question_id" type="hidden">
+        <div class="golden-form-span">
+          <label class="form-label" for="question_text">Question</label>
+          <textarea class="form-control" id="question_text" name="question_text" rows="2" required></textarea>
+        </div>
+        <div>
+          <label class="form-label" for="question_type">Type</label>
+          <select class="form-select" id="question_type" name="question_type">
+            {% for question_type in ["single_fact", "section", "comparison", "no_answer", "table_figure"] %}
+            <option value="{{ question_type }}">{{ question_type }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="requested_search_scope">Scope</label>
+          <select class="form-select" id="requested_search_scope" name="requested_search_scope">
+            {% for scope in ["mine", "team", "managed_org", "company"] %}
+            <option value="{{ scope }}" {% if scope == "company" %}selected{% endif %}>{{ scope }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="actor_user_id">Actor</label>
+          <select class="form-select" id="actor_user_id" name="actor_user_id">
+            <option value="">None</option>
+            {% for actor in actor_options %}
+            <option value="{{ actor.user_id }}">{{ actor.display_name }} / {{ actor.login_id }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="question_created_by_user_id">Created By</label>
+          <select class="form-select" id="question_created_by_user_id" name="created_by_user_id">
+            <option value="">None</option>
+            {% for actor in actor_options %}
+            <option value="{{ actor.user_id }}">{{ actor.display_name }} / {{ actor.login_id }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="top_k">Top K</label>
+          <input class="form-control" id="top_k" name="top_k" type="number" min="1" max="50" value="5">
+        </div>
+        <div>
+          <label class="form-label" for="document_group">Group</label>
+          <input class="form-control" id="document_group" name="document_group" type="text">
+        </div>
+        <div>
+          <label class="form-label" for="file_type">File Type</label>
+          <input class="form-control" id="file_type" name="file_type" type="text" placeholder=".md">
+        </div>
+        <div>
+          <label class="form-label" for="chunk_policy_name">Chunk Policy</label>
+          <input class="form-control" id="chunk_policy_name" name="chunk_policy_name" type="text" placeholder="heading_512_64">
+        </div>
+        <div class="golden-form-span">
+          <label class="form-label" for="question_metadata">Metadata JSON</label>
+          <textarea class="form-control golden-json-field" id="question_metadata" name="metadata" rows="3">{}</textarea>
+        </div>
+        <div class="golden-form-actions golden-form-span">
+          <button class="btn btn-primary" id="question-save" type="submit">Save Question</button>
+          <button class="btn btn-outline-secondary" id="question-delete" type="button" disabled>Delete</button>
+        </div>
+      </fieldset>
+    </form>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 golden-question-table">
+        <thead>
+          <tr>
+            <th scope="col">Question</th>
+            <th scope="col">Scope</th>
+            <th scope="col">Top K</th>
+          </tr>
+        </thead>
+        <tbody id="question-table-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="metric-card bg-white p-3 golden-manager-panel golden-target-panel">
+    <div class="golden-panel-header">
+      <div>
+        <h2 class="h5 mb-1">Expected Targets</h2>
+        <div class="text-secondary" id="selected-question-label">No question selected</div>
+      </div>
+      <button class="btn btn-outline-secondary" id="target-new" type="button" {% if not database_configured %}disabled{% endif %}>New</button>
+    </div>
+
+    <form id="target-form" class="golden-form-grid golden-target-form">
+      <fieldset class="golden-fieldset" {% if not database_configured %}disabled{% endif %}>
+        <input id="expected_target_id" name="expected_target_id" type="hidden">
+        <div>
+          <label class="form-label" for="target_chunk_id">Chunk ID</label>
+          <input class="form-control" id="target_chunk_id" name="chunk_id" type="number" min="1">
+        </div>
+        <div class="golden-form-span">
+          <label class="form-label" for="expected_heading_path">Heading Path</label>
+          <input class="form-control" id="expected_heading_path" name="expected_heading_path" type="text" placeholder="Policy / Scope">
+        </div>
+        <div>
+          <label class="form-label" for="expectation_type">Expectation</label>
+          <select class="form-select" id="expectation_type" name="expectation_type">
+            {% for expectation_type in ["visible", "hidden"] %}
+            <option value="{{ expectation_type }}">{{ expectation_type }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="relevance_grade">Grade</label>
+          <input class="form-control" id="relevance_grade" name="relevance_grade" type="number" min="0" max="3" value="3">
+        </div>
+        <div class="golden-form-span">
+          <label class="form-label" for="target_notes">Notes</label>
+          <textarea class="form-control" id="target_notes" name="notes" rows="2"></textarea>
+        </div>
+        <div class="golden-form-span">
+          <label class="form-label" for="target_metadata">Metadata JSON</label>
+          <textarea class="form-control golden-json-field" id="target_metadata" name="metadata" rows="3">{}</textarea>
+        </div>
+        <div class="golden-form-actions golden-form-span">
+          <button class="btn btn-primary" id="target-save" type="submit">Save Target</button>
+          <button class="btn btn-outline-secondary" id="target-delete" type="button" disabled>Delete</button>
+        </div>
+      </fieldset>
+    </form>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 golden-target-table">
+        <thead>
+          <tr>
+            <th scope="col">Target</th>
+            <th scope="col">Expectation</th>
+            <th scope="col">Grade</th>
+          </tr>
+        </thead>
+        <tbody id="target-table-body"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const databaseConfigured = {{ "true" if database_configured else "false" }};
+  const defaultActorId = {{ default_actor_id|tojson }};
+  let questionSets = {{ question_sets_payload|tojson }};
+  let questions = [];
+  let targets = [];
+  let selectedSetId = questionSets[0]?.question_set_id || null;
+  let selectedQuestionId = null;
+  let selectedTargetId = null;
+
+  const alertEl = document.getElementById("golden-question-alert");
+  const questionSetBody = document.getElementById("question-set-table-body");
+  const questionBody = document.getElementById("question-table-body");
+  const targetBody = document.getElementById("target-table-body");
+  const setCount = document.getElementById("question-set-count");
+  const selectedSetLabel = document.getElementById("selected-set-label");
+  const selectedQuestionLabel = document.getElementById("selected-question-label");
+
+  const setForm = document.getElementById("question-set-form");
+  const questionForm = document.getElementById("question-form");
+  const targetForm = document.getElementById("target-form");
+  const setDeleteButton = document.getElementById("question-set-delete");
+  const questionDeleteButton = document.getElementById("question-delete");
+  const targetDeleteButton = document.getElementById("target-delete");
+
+  const setAlert = (message, variant = "info") => {
+    alertEl.hidden = !message;
+    alertEl.className = `alert alert-${variant}`;
+    alertEl.textContent = message || "";
+  };
+
+  const asIntOrNull = (value) => {
+    const trimmed = String(value || "").trim();
+    return trimmed ? Number(trimmed) : null;
+  };
+
+  const asTextOrNull = (value) => {
+    const trimmed = String(value || "").trim();
+    return trimmed ? trimmed : null;
+  };
+
+  const parseMetadata = (element) => {
+    const raw = element.value.trim();
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error("Metadata must be a JSON object.");
+    }
+    return parsed;
+  };
+
+  const metadataText = (metadata) => JSON.stringify(metadata || {}, null, 2);
+
+  const headingPathFromText = (value) =>
+    String(value || "")
+      .split("/")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const shortDate = (value) => {
+    if (!value) {
+      return "";
+    }
+    return value.slice(0, 16).replace("T", " ");
+  };
+
+  const optionText = (row) => `${row.display_name} / ${row.login_id}`;
+
+  const setSelectValue = (id, value) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.value = value === null || value === undefined ? "" : String(value);
+    }
+  };
+
+  const apiRequest = async (url, options = {}) => {
+    const response = await fetch(url, {
+      headers: {"Content-Type": "application/json"},
+      ...options,
+    });
+    if (response.status === 204) {
+      return null;
+    }
+    const body = await response.json();
+    if (!response.ok) {
+      throw new Error(body.detail || "Request failed.");
+    }
+    return body;
+  };
+
+  const makeEmptyRow = (message, colspan) => {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-5";
+    cell.colSpan = colspan;
+    cell.textContent = message;
+    row.append(cell);
+    return row;
+  };
+
+  const makeButtonRow = (cells, selected, onSelect) => {
+    const row = document.createElement("tr");
+    row.className = selected ? "table-active" : "";
+    row.addEventListener("click", onSelect);
+    cells.forEach((cellValue) => {
+      const cell = document.createElement("td");
+      if (cellValue instanceof Node) {
+        cell.append(cellValue);
+      } else {
+        cell.textContent = cellValue;
+      }
+      row.append(cell);
+    });
+    return row;
+  };
+
+  const renderQuestionSets = () => {
+    questionSetBody.replaceChildren();
+    setCount.textContent = `${questionSets.length} sets`;
+    if (questionSets.length === 0) {
+      questionSetBody.append(makeEmptyRow("No question sets", 3));
+      return;
+    }
+    questionSets.forEach((item) => {
+      const title = document.createElement("div");
+      title.className = "golden-row-title";
+      title.textContent = item.set_name;
+      if (item.description) {
+        const description = document.createElement("div");
+        description.className = "text-secondary small";
+        description.textContent = item.description;
+        title.append(description);
+      }
+      const status = document.createElement("span");
+      status.className = item.is_active
+        ? "badge status-badge status-succeeded"
+        : "badge status-badge status-skipped";
+      status.textContent = item.is_active ? "active" : "inactive";
+      questionSetBody.append(
+        makeButtonRow(
+          [title, status, shortDate(item.updated_at)],
+          item.question_set_id === selectedSetId,
+          () => selectQuestionSet(item.question_set_id),
+        ),
+      );
+    });
+  };
+
+  const resetQuestionSetForm = () => {
+    setForm.reset();
+    document.getElementById("question_set_id").value = "";
+    document.getElementById("set_metadata").value = "{}";
+    document.getElementById("set_is_active").checked = true;
+    setSelectValue("set_created_by_user_id", defaultActorId);
+    setDeleteButton.disabled = true;
+  };
+
+  const fillQuestionSetForm = (item) => {
+    document.getElementById("question_set_id").value = item.question_set_id;
+    document.getElementById("set_name").value = item.set_name || "";
+    document.getElementById("set_description").value = item.description || "";
+    document.getElementById("set_is_active").checked = Boolean(item.is_active);
+    document.getElementById("set_metadata").value = metadataText(item.metadata);
+    setSelectValue("set_created_by_user_id", item.created_by_user_id);
+    setDeleteButton.disabled = false;
+  };
+
+  const resetQuestionForm = () => {
+    questionForm.reset();
+    document.getElementById("question_id").value = "";
+    document.getElementById("question_metadata").value = "{}";
+    document.getElementById("top_k").value = "5";
+    setSelectValue("actor_user_id", defaultActorId);
+    setSelectValue("question_created_by_user_id", defaultActorId);
+    questionDeleteButton.disabled = true;
+  };
+
+  const fillQuestionForm = (item) => {
+    document.getElementById("question_id").value = item.question_id;
+    document.getElementById("question_text").value = item.question_text || "";
+    setSelectValue("question_type", item.question_type);
+    setSelectValue("requested_search_scope", item.requested_search_scope);
+    setSelectValue("actor_user_id", item.actor_user_id);
+    setSelectValue("question_created_by_user_id", item.created_by_user_id);
+    document.getElementById("top_k").value = item.top_k || 5;
+    document.getElementById("document_group").value = item.document_group || "";
+    document.getElementById("file_type").value = item.file_type || "";
+    document.getElementById("chunk_policy_name").value = item.chunk_policy_name || "";
+    document.getElementById("question_metadata").value = metadataText(item.metadata);
+    questionDeleteButton.disabled = false;
+  };
+
+  const resetTargetForm = () => {
+    targetForm.reset();
+    document.getElementById("expected_target_id").value = "";
+    document.getElementById("target_metadata").value = "{}";
+    document.getElementById("relevance_grade").value = "3";
+    targetDeleteButton.disabled = true;
+  };
+
+  const fillTargetForm = (item) => {
+    document.getElementById("expected_target_id").value = item.expected_target_id;
+    document.getElementById("target_chunk_id").value = item.chunk_id || "";
+    document.getElementById("expected_heading_path").value =
+      (item.expected_heading_path || []).join(" / ");
+    setSelectValue("expectation_type", item.expectation_type);
+    document.getElementById("relevance_grade").value = item.relevance_grade ?? 3;
+    document.getElementById("target_notes").value = item.notes || "";
+    document.getElementById("target_metadata").value = metadataText(item.metadata);
+    targetDeleteButton.disabled = false;
+  };
+
+  const renderQuestions = () => {
+    questionBody.replaceChildren();
+    const selectedSet = questionSets.find((item) => item.question_set_id === selectedSetId);
+    selectedSetLabel.textContent = selectedSet ? selectedSet.set_name : "No set selected";
+    if (!selectedSetId) {
+      questionBody.append(makeEmptyRow("Select a question set", 3));
+      return;
+    }
+    if (questions.length === 0) {
+      questionBody.append(makeEmptyRow("No questions", 3));
+      return;
+    }
+    questions.forEach((item) => {
+      const title = document.createElement("div");
+      title.className = "golden-row-title";
+      title.textContent = item.question_text;
+      const type = document.createElement("div");
+      type.className = "text-secondary small";
+      type.textContent = item.question_type;
+      title.append(type);
+      questionBody.append(
+        makeButtonRow(
+          [title, item.requested_search_scope, String(item.top_k)],
+          item.question_id === selectedQuestionId,
+          () => selectQuestion(item.question_id),
+        ),
+      );
+    });
+  };
+
+  const renderTargets = () => {
+    targetBody.replaceChildren();
+    const selectedQuestion = questions.find((item) => item.question_id === selectedQuestionId);
+    selectedQuestionLabel.textContent = selectedQuestion
+      ? `#${selectedQuestion.question_id} ${selectedQuestion.question_text}`
+      : "No question selected";
+    if (!selectedQuestionId) {
+      targetBody.append(makeEmptyRow("Select a question", 3));
+      return;
+    }
+    if (targets.length === 0) {
+      targetBody.append(makeEmptyRow("No expected targets", 3));
+      return;
+    }
+    targets.forEach((item) => {
+      const target = document.createElement("div");
+      target.className = "golden-row-title";
+      target.textContent =
+        item.chunk_id ? `chunk #${item.chunk_id}` : (item.expected_heading_path || []).join(" / ");
+      if (item.notes) {
+        const notes = document.createElement("div");
+        notes.className = "text-secondary small";
+        notes.textContent = item.notes;
+        target.append(notes);
+      }
+      targetBody.append(
+        makeButtonRow(
+          [target, item.expectation_type, String(item.relevance_grade)],
+          item.expected_target_id === selectedTargetId,
+          () => selectTarget(item.expected_target_id),
+        ),
+      );
+    });
+  };
+
+  const loadQuestions = async (questionSetId) => {
+    questions = [];
+    targets = [];
+    selectedQuestionId = null;
+    selectedTargetId = null;
+    resetQuestionForm();
+    resetTargetForm();
+    renderQuestions();
+    renderTargets();
+    if (!questionSetId || !databaseConfigured) {
+      return;
+    }
+    const payload = await apiRequest(`/api/evaluations/question-sets/${questionSetId}/questions`);
+    questions = payload.questions;
+    renderQuestions();
+  };
+
+  const loadTargets = async (questionId) => {
+    targets = [];
+    selectedTargetId = null;
+    resetTargetForm();
+    renderTargets();
+    if (!questionId || !databaseConfigured) {
+      return;
+    }
+    const payload = await apiRequest(`/api/evaluations/questions/${questionId}`);
+    const question = payload.question;
+    questions = questions.map((item) => (item.question_id === question.question_id ? question : item));
+    targets = payload.expected_targets;
+    fillQuestionForm(question);
+    renderQuestions();
+    renderTargets();
+  };
+
+  const selectQuestionSet = async (questionSetId) => {
+    selectedSetId = Number(questionSetId);
+    selectedQuestionId = null;
+    selectedTargetId = null;
+    const item = questionSets.find((entry) => entry.question_set_id === selectedSetId);
+    if (item) {
+      fillQuestionSetForm(item);
+    }
+    renderQuestionSets();
+    await loadQuestions(selectedSetId);
+  };
+
+  const selectQuestion = async (questionId) => {
+    selectedQuestionId = Number(questionId);
+    selectedTargetId = null;
+    const item = questions.find((entry) => entry.question_id === selectedQuestionId);
+    if (item) {
+      fillQuestionForm(item);
+    }
+    renderQuestions();
+    await loadTargets(selectedQuestionId);
+  };
+
+  const selectTarget = (expectedTargetId) => {
+    selectedTargetId = Number(expectedTargetId);
+    const item = targets.find((entry) => entry.expected_target_id === selectedTargetId);
+    if (item) {
+      fillTargetForm(item);
+    }
+    renderTargets();
+  };
+
+  const questionSetPayload = () => ({
+    set_name: document.getElementById("set_name").value,
+    description: asTextOrNull(document.getElementById("set_description").value),
+    is_active: document.getElementById("set_is_active").checked,
+    created_by_user_id: asIntOrNull(document.getElementById("set_created_by_user_id").value),
+    metadata: parseMetadata(document.getElementById("set_metadata")),
+  });
+
+  const questionPayload = () => ({
+    question_set_id: selectedSetId,
+    question_text: document.getElementById("question_text").value,
+    question_type: document.getElementById("question_type").value,
+    actor_user_id: asIntOrNull(document.getElementById("actor_user_id").value),
+    requested_search_scope: document.getElementById("requested_search_scope").value,
+    document_group: asTextOrNull(document.getElementById("document_group").value),
+    file_type: asTextOrNull(document.getElementById("file_type").value),
+    chunk_policy_name: asTextOrNull(document.getElementById("chunk_policy_name").value),
+    top_k: Number(document.getElementById("top_k").value || 5),
+    metadata: parseMetadata(document.getElementById("question_metadata")),
+    created_by_user_id: asIntOrNull(document.getElementById("question_created_by_user_id").value),
+  });
+
+  const targetPayload = () => ({
+    question_id: selectedQuestionId,
+    chunk_id: asIntOrNull(document.getElementById("target_chunk_id").value),
+    expected_heading_path: headingPathFromText(
+      document.getElementById("expected_heading_path").value,
+    ),
+    expectation_type: document.getElementById("expectation_type").value,
+    relevance_grade: Number(document.getElementById("relevance_grade").value || 0),
+    notes: asTextOrNull(document.getElementById("target_notes").value),
+    metadata: parseMetadata(document.getElementById("target_metadata")),
+  });
+
+  setForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!databaseConfigured) {
+      return;
+    }
+    try {
+      const questionSetId = asIntOrNull(document.getElementById("question_set_id").value);
+      const response = questionSetId
+        ? await apiRequest(`/api/evaluations/question-sets/${questionSetId}`, {
+            method: "PUT",
+            body: JSON.stringify(questionSetPayload()),
+          })
+        : await apiRequest("/api/evaluations/question-sets", {
+            method: "POST",
+            body: JSON.stringify(questionSetPayload()),
+          });
+      const questionSet = response.question_set;
+      const existingIndex = questionSets.findIndex(
+        (item) => item.question_set_id === questionSet.question_set_id,
+      );
+      if (existingIndex >= 0) {
+        questionSets[existingIndex] = questionSet;
+      } else {
+        questionSets = [questionSet, ...questionSets];
+      }
+      setAlert("Question set saved.", "success");
+      await selectQuestionSet(questionSet.question_set_id);
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Save failed.", "warning");
+    }
+  });
+
+  questionForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!databaseConfigured || !selectedSetId) {
+      setAlert("Select a question set first.", "warning");
+      return;
+    }
+    try {
+      const questionId = asIntOrNull(document.getElementById("question_id").value);
+      const response = questionId
+        ? await apiRequest(`/api/evaluations/questions/${questionId}`, {
+            method: "PUT",
+            body: JSON.stringify(questionPayload()),
+          })
+        : await apiRequest("/api/evaluations/questions", {
+            method: "POST",
+            body: JSON.stringify(questionPayload()),
+          });
+      const question = response.question;
+      const existingIndex = questions.findIndex((item) => item.question_id === question.question_id);
+      if (existingIndex >= 0) {
+        questions[existingIndex] = question;
+      } else {
+        questions = [...questions, question];
+      }
+      setAlert("Question saved.", "success");
+      await selectQuestion(question.question_id);
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Save failed.", "warning");
+    }
+  });
+
+  targetForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!databaseConfigured || !selectedQuestionId) {
+      setAlert("Select a question first.", "warning");
+      return;
+    }
+    try {
+      const expectedTargetId = asIntOrNull(document.getElementById("expected_target_id").value);
+      const response = expectedTargetId
+        ? await apiRequest(`/api/evaluations/expected-targets/${expectedTargetId}`, {
+            method: "PUT",
+            body: JSON.stringify(targetPayload()),
+          })
+        : await apiRequest("/api/evaluations/expected-targets", {
+            method: "POST",
+            body: JSON.stringify(targetPayload()),
+          });
+      const target = response.expected_target;
+      const existingIndex = targets.findIndex(
+        (item) => item.expected_target_id === target.expected_target_id,
+      );
+      if (existingIndex >= 0) {
+        targets[existingIndex] = target;
+      } else {
+        targets = [...targets, target];
+      }
+      setAlert("Expected target saved.", "success");
+      selectTarget(target.expected_target_id);
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Save failed.", "warning");
+    }
+  });
+
+  document.getElementById("question-set-new").addEventListener("click", () => {
+    selectedSetId = null;
+    selectedQuestionId = null;
+    selectedTargetId = null;
+    questions = [];
+    targets = [];
+    resetQuestionSetForm();
+    resetQuestionForm();
+    resetTargetForm();
+    renderQuestionSets();
+    renderQuestions();
+    renderTargets();
+  });
+
+  document.getElementById("question-new").addEventListener("click", () => {
+    selectedQuestionId = null;
+    selectedTargetId = null;
+    targets = [];
+    resetQuestionForm();
+    resetTargetForm();
+    renderQuestions();
+    renderTargets();
+  });
+
+  document.getElementById("target-new").addEventListener("click", () => {
+    selectedTargetId = null;
+    resetTargetForm();
+    renderTargets();
+  });
+
+  setDeleteButton.addEventListener("click", async () => {
+    if (!selectedSetId || !window.confirm("Delete this question set?")) {
+      return;
+    }
+    try {
+      await apiRequest(`/api/evaluations/question-sets/${selectedSetId}`, {method: "DELETE"});
+      questionSets = questionSets.filter((item) => item.question_set_id !== selectedSetId);
+      selectedSetId = questionSets[0]?.question_set_id || null;
+      setAlert("Question set deleted.", "success");
+      renderQuestionSets();
+      if (selectedSetId) {
+        await selectQuestionSet(selectedSetId);
+      } else {
+        resetQuestionSetForm();
+        await loadQuestions(null);
+      }
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Delete failed.", "warning");
+    }
+  });
+
+  questionDeleteButton.addEventListener("click", async () => {
+    if (!selectedQuestionId || !window.confirm("Delete this question?")) {
+      return;
+    }
+    try {
+      await apiRequest(`/api/evaluations/questions/${selectedQuestionId}`, {method: "DELETE"});
+      questions = questions.filter((item) => item.question_id !== selectedQuestionId);
+      selectedQuestionId = questions[0]?.question_id || null;
+      setAlert("Question deleted.", "success");
+      resetQuestionForm();
+      renderQuestions();
+      if (selectedQuestionId) {
+        await selectQuestion(selectedQuestionId);
+      } else {
+        await loadTargets(null);
+      }
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Delete failed.", "warning");
+    }
+  });
+
+  targetDeleteButton.addEventListener("click", async () => {
+    if (!selectedTargetId || !window.confirm("Delete this expected target?")) {
+      return;
+    }
+    try {
+      await apiRequest(`/api/evaluations/expected-targets/${selectedTargetId}`, {method: "DELETE"});
+      targets = targets.filter((item) => item.expected_target_id !== selectedTargetId);
+      selectedTargetId = targets[0]?.expected_target_id || null;
+      setAlert("Expected target deleted.", "success");
+      resetTargetForm();
+      renderTargets();
+      if (selectedTargetId) {
+        selectTarget(selectedTargetId);
+      }
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Delete failed.", "warning");
+    }
+  });
+
+  resetQuestionSetForm();
+  resetQuestionForm();
+  resetTargetForm();
+  renderQuestionSets();
+  renderQuestions();
+  renderTargets();
+
+  if (databaseConfigured && selectedSetId) {
+    selectQuestionSet(selectedSetId);
+  }
+})();
+</script>
+{% endblock %}

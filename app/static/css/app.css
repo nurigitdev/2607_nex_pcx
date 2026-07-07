@@ -934,6 +934,93 @@ main.container-fluid {
   padding-top: 0.75rem;
 }
 
+.golden-question-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(20rem, 0.9fr) minmax(24rem, 1.1fr);
+}
+
+.golden-manager-panel {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.golden-target-panel {
+  grid-column: 1 / -1;
+}
+
+.golden-panel-header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.golden-fieldset {
+  border: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.golden-form-span {
+  grid-column: 1 / -1;
+}
+
+.golden-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.golden-check-option {
+  align-items: center;
+  align-self: end;
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 600;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.625rem;
+}
+
+.golden-json-field {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  font-size: 0.8125rem;
+}
+
+.golden-question-set-table tbody tr,
+.golden-question-table tbody tr,
+.golden-target-table tbody tr {
+  cursor: pointer;
+}
+
+.golden-question-set-table td,
+.golden-question-table td,
+.golden-target-table td {
+  vertical-align: middle;
+}
+
+.golden-row-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .search-feedback {
   border-top: 1px solid var(--pcx-border);
   display: grid;
@@ -1054,6 +1141,8 @@ main.container-fluid {
 
   .evaluation-summary-grid,
   .feedback-summary-grid,
+  .golden-fieldset,
+  .golden-question-layout,
   .search-form-grid,
   .search-history-filter,
   .search-history-results,
@@ -1070,12 +1159,17 @@ main.container-fluid {
   }
 
   .search-form-actions .btn,
+  .golden-form-actions .btn,
   .search-history-filter-actions .btn {
     width: 100%;
   }
 }
 
 @media (min-width: 576px) and (max-width: 1199.98px) {
+  .golden-question-layout {
+    grid-template-columns: 1fr;
+  }
+
   .search-form-grid,
   .search-history-filter {
     grid-template-columns: repeat(2, minmax(0, 1fr));

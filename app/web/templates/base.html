@@ -28,7 +28,8 @@
           <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">Upload</a>
           <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">Search</a>
           <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">History</a>
-          <a class="nav-link {% if current_path.startswith('/evaluations') %}active{% endif %}" href="/evaluations">Evaluations</a>
+          <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">Evaluations</a>
+          <a class="nav-link {% if current_path.startswith('/evaluations/questions') %}active{% endif %}" href="/evaluations/questions">Golden Q</a>
           <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">Jobs</a>
           <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">Embeddings</a>
           <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">Logs</a>
@@ -51,7 +52,8 @@
               <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">Upload</a>
               <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">Search</a>
               <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">History</a>
-              <a class="nav-link {% if current_path.startswith('/evaluations') %}active{% endif %}" href="/evaluations">Evaluations</a>
+              <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">Evaluations</a>
+              <a class="nav-link {% if current_path.startswith('/evaluations/questions') %}active{% endif %}" href="/evaluations/questions">Golden Q</a>
               <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">Jobs</a>
               <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">Embeddings</a>
               <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">Logs</a>

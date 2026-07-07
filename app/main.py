@@ -1557,6 +1557,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
         )
 
+    @app.get("/evaluations/questions", response_class=HTMLResponse)
+    def golden_questions_page(request: Request) -> HTMLResponse:
+        question_sets: list[GoldenQuestionSetRecord] = []
+        actor_options: list[dict[str, object]] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                question_sets = list_golden_question_sets(
+                    settings.database_url,
+                    active_only=False,
+                )
+                actor_options = list_search_actor_options(settings.database_url)
+            except Exception as exc:
+                error_message = str(exc)
+
+        question_set_payloads = [
+            golden_question_set_payload(question_set) for question_set in question_sets
+        ]
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "golden_questions.html",
+            template_context(
+                request,
+                question_sets=question_sets,
+                question_sets_payload=question_set_payloads,
+                actor_options=actor_options,
+                default_actor_id=actor_options[0]["user_id"] if actor_options else "",
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
     @app.get("/evaluations", response_class=HTMLResponse)
     def golden_evaluations_page(
         request: Request,
