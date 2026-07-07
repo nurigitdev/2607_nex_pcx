@@ -77,6 +77,45 @@ def test_evaluation_question_sets_api_requires_database_url() -> None:
     assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
 
 
+def test_evaluation_question_set_create_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/evaluations/question-sets",
+            json={"set_name": "baseline"},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
+def test_evaluation_question_create_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/evaluations/questions",
+            json={"question_set_id": 1, "question_text": "hello"},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
+def test_evaluation_expected_target_create_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/evaluations/expected-targets",
+            json={"question_id": 1, "expected_heading_path": ["Policy"]},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
 def test_evaluation_runs_api_requires_database_url() -> None:
     app = create_app(Settings(database_url=None))
 

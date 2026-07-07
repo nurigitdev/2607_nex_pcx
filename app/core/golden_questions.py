@@ -356,6 +356,51 @@ def list_golden_question_sets(
     return [_row_to_question_set_record(dict(row)) for row in rows]
 
 
+def update_golden_question_set(
+    database_url: str,
+    question_set_id: int,
+    question_set_input: GoldenQuestionSetInput,
+) -> GoldenQuestionSetRecord | None:
+    _require_positive_id(question_set_id, "question_set_id")
+    validated = validate_golden_question_set_input(question_set_input)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE golden_question_sets
+                SET set_name = %s,
+                    description = %s,
+                    is_active = %s,
+                    metadata = %s,
+                    created_by_user_id = %s,
+                    updated_at = now()
+                WHERE question_set_id = %s
+                RETURNING *
+                """,
+                (
+                    validated.set_name,
+                    validated.description,
+                    validated.is_active,
+                    Json(validated.metadata),
+                    validated.created_by_user_id,
+                    question_set_id,
+                ),
+            )
+            row = cursor.fetchone()
+    return _row_to_question_set_record(dict(row)) if row else None
+
+
+def delete_golden_question_set(database_url: str, question_set_id: int) -> bool:
+    _require_positive_id(question_set_id, "question_set_id")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM golden_question_sets WHERE question_set_id = %s",
+                (question_set_id,),
+            )
+            return cursor.rowcount > 0
+
+
 def create_golden_question_in_connection(
     connection: Connection,
     question_input: GoldenQuestionInput,
@@ -458,6 +503,65 @@ def list_golden_questions(
     return [_row_to_question_record(dict(row)) for row in rows]
 
 
+def update_golden_question(
+    database_url: str,
+    question_id: int,
+    question_input: GoldenQuestionInput,
+) -> GoldenQuestionRecord | None:
+    _require_positive_id(question_id, "question_id")
+    validated = validate_golden_question_input(question_input)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE golden_questions
+                SET question_set_id = %s,
+                    question_text = %s,
+                    normalized_question_text = %s,
+                    question_type = %s,
+                    actor_user_id = %s,
+                    requested_search_scope = %s,
+                    document_group = %s,
+                    file_type = %s,
+                    chunk_policy_name = %s,
+                    top_k = %s,
+                    metadata = %s,
+                    created_by_user_id = %s,
+                    updated_at = now()
+                WHERE question_id = %s
+                RETURNING *
+                """,
+                (
+                    validated.question_set_id,
+                    validated.question_text,
+                    validated.normalized_question_text,
+                    validated.question_type,
+                    validated.actor_user_id,
+                    validated.requested_search_scope,
+                    validated.document_group,
+                    validated.file_type,
+                    validated.chunk_policy_name,
+                    validated.top_k,
+                    Json(validated.metadata),
+                    validated.created_by_user_id,
+                    question_id,
+                ),
+            )
+            row = cursor.fetchone()
+    return _row_to_question_record(dict(row)) if row else None
+
+
+def delete_golden_question(database_url: str, question_id: int) -> bool:
+    _require_positive_id(question_id, "question_id")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM golden_questions WHERE question_id = %s",
+                (question_id,),
+            )
+            return cursor.rowcount > 0
+
+
 def create_expected_target_in_connection(
     connection: Connection,
     target_input: GoldenQuestionExpectedTargetInput,
@@ -517,6 +621,76 @@ def list_expected_targets(
             )
             rows = cursor.fetchall()
     return [_row_to_expected_target_record(dict(row)) for row in rows]
+
+
+def get_expected_target(
+    database_url: str,
+    expected_target_id: int,
+) -> GoldenQuestionExpectedTargetRecord | None:
+    _require_positive_id(expected_target_id, "expected_target_id")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM golden_question_expected_targets
+                WHERE expected_target_id = %s
+                """,
+                (expected_target_id,),
+            )
+            row = cursor.fetchone()
+    return _row_to_expected_target_record(dict(row)) if row else None
+
+
+def update_expected_target(
+    database_url: str,
+    expected_target_id: int,
+    target_input: GoldenQuestionExpectedTargetInput,
+) -> GoldenQuestionExpectedTargetRecord | None:
+    _require_positive_id(expected_target_id, "expected_target_id")
+    validated = validate_expected_target_input(target_input)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE golden_question_expected_targets
+                SET question_id = %s,
+                    chunk_id = %s,
+                    expected_heading_path = %s,
+                    expectation_type = %s,
+                    relevance_grade = %s,
+                    notes = %s,
+                    metadata = %s
+                WHERE expected_target_id = %s
+                RETURNING *
+                """,
+                (
+                    validated.question_id,
+                    validated.chunk_id,
+                    list(validated.expected_heading_path) or None,
+                    validated.expectation_type,
+                    validated.relevance_grade,
+                    validated.notes,
+                    Json(validated.metadata),
+                    expected_target_id,
+                ),
+            )
+            row = cursor.fetchone()
+    return _row_to_expected_target_record(dict(row)) if row else None
+
+
+def delete_expected_target(database_url: str, expected_target_id: int) -> bool:
+    _require_positive_id(expected_target_id, "expected_target_id")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM golden_question_expected_targets
+                WHERE expected_target_id = %s
+                """,
+                (expected_target_id,),
+            )
+            return cursor.rowcount > 0
 
 
 def get_golden_question_detail(

@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -40,10 +40,29 @@ from app.core.file_metadata import (
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
 from app.core.golden_questions import (
+    GoldenQuestionDetailRecord,
+    GoldenQuestionExpectedTargetInput,
+    GoldenQuestionExpectedTargetRecord,
+    GoldenQuestionInput,
+    GoldenQuestionRecord,
+    GoldenQuestionSetInput,
     GoldenQuestionSetRecord,
     InvalidGoldenQuestionError,
+    create_expected_target,
+    create_golden_question,
+    create_golden_question_set,
+    delete_expected_target,
+    delete_golden_question,
+    delete_golden_question_set,
+    get_expected_target,
+    get_golden_question_detail,
     get_golden_question_set,
+    list_expected_targets,
     list_golden_question_sets,
+    list_golden_questions,
+    update_expected_target,
+    update_golden_question,
+    update_golden_question_set,
 )
 from app.core.permissions import InvalidPermissionError
 from app.core.pipeline_jobs import (
@@ -102,6 +121,39 @@ class SearchFeedbackRequest(BaseModel):
     search_log_result_id: int = Field(ge=1)
     relevance_label: str
     comment: str | None = None
+
+
+class GoldenQuestionSetRequest(BaseModel):
+    set_name: str
+    description: str | None = None
+    is_active: bool = True
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class GoldenQuestionRequest(BaseModel):
+    question_set_id: int = Field(ge=1)
+    question_text: str
+    normalized_question_text: str | None = None
+    question_type: str = "single_fact"
+    actor_user_id: int | None = Field(default=None, ge=1)
+    requested_search_scope: str = "company"
+    document_group: str | None = None
+    file_type: str | None = None
+    chunk_policy_name: str | None = None
+    top_k: int = Field(default=5, ge=1)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class ExpectedTargetRequest(BaseModel):
+    question_id: int = Field(ge=1)
+    chunk_id: int | None = Field(default=None, ge=1)
+    expected_heading_path: list[str] = Field(default_factory=list)
+    expectation_type: str = "visible"
+    relevance_grade: int = Field(default=3, ge=0, le=3)
+    notes: str | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
@@ -449,6 +501,90 @@ def golden_question_set_payload(question_set: GoldenQuestionSetRecord) -> dict[s
         "created_at": _datetime_response(question_set.created_at),
         "updated_at": _datetime_response(question_set.updated_at),
     }
+
+
+def golden_question_payload(question: GoldenQuestionRecord) -> dict[str, object]:
+    return {
+        "question_id": question.question_id,
+        "question_set_id": question.question_set_id,
+        "question_text": question.question_text,
+        "normalized_question_text": question.normalized_question_text,
+        "question_type": question.question_type,
+        "actor_user_id": question.actor_user_id,
+        "requested_search_scope": question.requested_search_scope,
+        "document_group": question.document_group,
+        "file_type": question.file_type,
+        "chunk_policy_name": question.chunk_policy_name,
+        "top_k": question.top_k,
+        "metadata": question.metadata,
+        "created_by_user_id": question.created_by_user_id,
+        "created_at": _datetime_response(question.created_at),
+        "updated_at": _datetime_response(question.updated_at),
+    }
+
+
+def expected_target_payload(target: GoldenQuestionExpectedTargetRecord) -> dict[str, object]:
+    return {
+        "expected_target_id": target.expected_target_id,
+        "question_id": target.question_id,
+        "chunk_id": target.chunk_id,
+        "expected_heading_path": list(target.expected_heading_path),
+        "expectation_type": target.expectation_type,
+        "relevance_grade": target.relevance_grade,
+        "notes": target.notes,
+        "metadata": target.metadata,
+        "created_at": _datetime_response(target.created_at),
+    }
+
+
+def golden_question_detail_payload(detail: GoldenQuestionDetailRecord) -> dict[str, object]:
+    return {
+        "question": golden_question_payload(detail.question),
+        "expected_targets": [expected_target_payload(target) for target in detail.expected_targets],
+    }
+
+
+def golden_question_set_input_from_request(
+    payload: GoldenQuestionSetRequest,
+) -> GoldenQuestionSetInput:
+    return GoldenQuestionSetInput(
+        set_name=payload.set_name,
+        description=payload.description,
+        is_active=payload.is_active,
+        metadata=dict(payload.metadata),
+        created_by_user_id=payload.created_by_user_id,
+    )
+
+
+def golden_question_input_from_request(payload: GoldenQuestionRequest) -> GoldenQuestionInput:
+    return GoldenQuestionInput(
+        question_set_id=payload.question_set_id,
+        question_text=payload.question_text,
+        normalized_question_text=payload.normalized_question_text,
+        question_type=payload.question_type,
+        actor_user_id=payload.actor_user_id,
+        requested_search_scope=payload.requested_search_scope,
+        document_group=payload.document_group,
+        file_type=payload.file_type,
+        chunk_policy_name=payload.chunk_policy_name,
+        top_k=payload.top_k,
+        metadata=dict(payload.metadata),
+        created_by_user_id=payload.created_by_user_id,
+    )
+
+
+def expected_target_input_from_request(
+    payload: ExpectedTargetRequest,
+) -> GoldenQuestionExpectedTargetInput:
+    return GoldenQuestionExpectedTargetInput(
+        question_id=payload.question_id,
+        chunk_id=payload.chunk_id,
+        expected_heading_path=tuple(payload.expected_heading_path),
+        expectation_type=payload.expectation_type,
+        relevance_grade=payload.relevance_grade,
+        notes=payload.notes,
+        metadata=dict(payload.metadata),
+    )
 
 
 def evaluation_run_payload(run: EvaluationRunRecord) -> dict[str, object]:
@@ -884,6 +1020,315 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ],
             },
         )
+
+    @app.post("/api/evaluations/question-sets")
+    def api_create_golden_question_set(payload: GoldenQuestionSetRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            question_set = create_golden_question_set(
+                settings.database_url,
+                golden_question_set_input_from_request(payload),
+            )
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"question_set": golden_question_set_payload(question_set)},
+        )
+
+    @app.get("/api/evaluations/question-sets/{question_set_id}")
+    def api_get_golden_question_set(question_set_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            question_set = get_golden_question_set(settings.database_url, question_set_id)
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if question_set is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question set not found.",
+            )
+
+        return JSONResponse(content={"question_set": golden_question_set_payload(question_set)})
+
+    @app.put("/api/evaluations/question-sets/{question_set_id}")
+    def api_update_golden_question_set(
+        question_set_id: int,
+        payload: GoldenQuestionSetRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            question_set = update_golden_question_set(
+                settings.database_url,
+                question_set_id,
+                golden_question_set_input_from_request(payload),
+            )
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if question_set is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question set not found.",
+            )
+
+        return JSONResponse(content={"question_set": golden_question_set_payload(question_set)})
+
+    @app.delete("/api/evaluations/question-sets/{question_set_id}")
+    def api_delete_golden_question_set(question_set_id: int) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            deleted = delete_golden_question_set(settings.database_url, question_set_id)
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question set not found.",
+            )
+
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get("/api/evaluations/question-sets/{question_set_id}/questions")
+    def api_list_golden_questions(
+        question_set_id: int,
+        actor_user_id: int | None = None,
+        requested_search_scope: str | None = None,
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            questions = list_golden_questions(
+                settings.database_url,
+                question_set_id,
+                actor_user_id=actor_user_id,
+                requested_search_scope=requested_search_scope,
+                limit=limit,
+            )
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={"questions": [golden_question_payload(question) for question in questions]},
+        )
+
+    @app.post("/api/evaluations/questions")
+    def api_create_golden_question(payload: GoldenQuestionRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            question = create_golden_question(
+                settings.database_url,
+                golden_question_input_from_request(payload),
+            )
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"question": golden_question_payload(question)},
+        )
+
+    @app.get("/api/evaluations/questions/{question_id}")
+    def api_get_golden_question(question_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_golden_question_detail(settings.database_url, question_id)
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question not found.",
+            )
+
+        return JSONResponse(content=golden_question_detail_payload(detail))
+
+    @app.put("/api/evaluations/questions/{question_id}")
+    def api_update_golden_question(
+        question_id: int,
+        payload: GoldenQuestionRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            question = update_golden_question(
+                settings.database_url,
+                question_id,
+                golden_question_input_from_request(payload),
+            )
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if question is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question not found.",
+            )
+
+        return JSONResponse(content={"question": golden_question_payload(question)})
+
+    @app.delete("/api/evaluations/questions/{question_id}")
+    def api_delete_golden_question(question_id: int) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            deleted = delete_golden_question(settings.database_url, question_id)
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question not found.",
+            )
+
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get("/api/evaluations/questions/{question_id}/expected-targets")
+    def api_list_expected_targets(question_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            targets = list_expected_targets(settings.database_url, question_id)
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={"expected_targets": [expected_target_payload(target) for target in targets]},
+        )
+
+    @app.post("/api/evaluations/expected-targets")
+    def api_create_expected_target(payload: ExpectedTargetRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            target = create_expected_target(
+                settings.database_url,
+                expected_target_input_from_request(payload),
+            )
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"expected_target": expected_target_payload(target)},
+        )
+
+    @app.get("/api/evaluations/expected-targets/{expected_target_id}")
+    def api_get_expected_target(expected_target_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            target = get_expected_target(settings.database_url, expected_target_id)
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Expected target not found.",
+            )
+
+        return JSONResponse(content={"expected_target": expected_target_payload(target)})
+
+    @app.put("/api/evaluations/expected-targets/{expected_target_id}")
+    def api_update_expected_target(
+        expected_target_id: int,
+        payload: ExpectedTargetRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            target = update_expected_target(
+                settings.database_url,
+                expected_target_id,
+                expected_target_input_from_request(payload),
+            )
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Expected target not found.",
+            )
+
+        return JSONResponse(content={"expected_target": expected_target_payload(target)})
+
+    @app.delete("/api/evaluations/expected-targets/{expected_target_id}")
+    def api_delete_expected_target(expected_target_id: int) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            deleted = delete_expected_target(settings.database_url, expected_target_id)
+        except InvalidGoldenQuestionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Expected target not found.",
+            )
+
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/api/evaluations/runs")
     def api_list_evaluation_runs(
