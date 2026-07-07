@@ -11,11 +11,17 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.core.admin_logging import list_logs, log_event
+from app.core.chunks import (
+    ChunkRecord,
+    InvalidChunkError,
+    list_document_chunks,
+)
 from app.core.config import Settings, get_settings
 from app.core.database import connect
 from app.core.document_inventory import (
     DocumentInventoryItem,
     InvalidDocumentInventoryError,
+    get_document_inventory_item,
     list_document_inventory,
 )
 from app.core.embedding_jobs import (
@@ -950,6 +956,29 @@ def document_inventory_item_payload(item: DocumentInventoryItem) -> dict[str, ob
     }
 
 
+def chunk_payload(chunk: ChunkRecord) -> dict[str, object]:
+    return {
+        "chunk_id": chunk.chunk_id,
+        "document_id": chunk.document_id,
+        "chunk_seq": chunk.chunk_seq,
+        "chunk_text": chunk.chunk_text,
+        "content_hash": chunk.content_hash,
+        "chunk_policy_name": chunk.chunk_policy_name,
+        "parser_name": chunk.parser_name,
+        "parser_version": chunk.parser_version,
+        "heading_path": list(chunk.heading_path),
+        "page_no": chunk.page_no,
+        "slide_no": chunk.slide_no,
+        "sheet_name": chunk.sheet_name,
+        "cell_range": chunk.cell_range,
+        "token_count": chunk.token_count,
+        "char_count": chunk.char_count,
+        "prev_chunk_id": chunk.prev_chunk_id,
+        "next_chunk_id": chunk.next_chunk_id,
+        "metadata": chunk.metadata,
+    }
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -1033,6 +1062,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             content={
                 "documents": [document_inventory_item_payload(document) for document in documents],
+            },
+        )
+
+    @app.get("/api/documents/{document_id}")
+    def api_get_document_detail(
+        document_id: int,
+        chunk_policy_name: str | None = None,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            chunks = list_document_chunks(
+                settings.database_url,
+                document_id,
+                chunk_policy_name=chunk_policy_name,
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidChunkError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "document": document_inventory_item_payload(document),
+                "chunks": [chunk_payload(chunk) for chunk in chunks],
             },
         )
 
@@ -2017,6 +2081,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 documents=documents,
                 selected_parse_status=parse_status,
                 selected_document_group=document_group,
+                error_message=error_message,
+            ),
+        )
+
+    @app.get("/documents/{document_id}", response_class=HTMLResponse)
+    def document_detail_page(
+        request: Request,
+        document_id: int,
+        chunk_policy_name: str | None = None,
+    ) -> HTMLResponse:
+        document: DocumentInventoryItem | None = None
+        chunks: list[ChunkRecord] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                document = get_document_inventory_item(settings.database_url, document_id)
+                if document is None:
+                    error_message = f"Document not found: {document_id}"
+                else:
+                    chunks = list_document_chunks(
+                        settings.database_url,
+                        document_id,
+                        chunk_policy_name=chunk_policy_name,
+                    )
+            except (InvalidDocumentInventoryError, InvalidChunkError) as exc:
+                error_message = str(exc)
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "document_detail.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                document=document,
+                chunks=chunks,
+                selected_chunk_policy_name=chunk_policy_name,
                 error_message=error_message,
             ),
         )

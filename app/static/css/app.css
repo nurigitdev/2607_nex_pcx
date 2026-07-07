@@ -737,6 +737,77 @@ main.container-fluid {
   white-space: nowrap;
 }
 
+.document-detail-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.document-chunk-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.document-chunk-filter {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.document-chunk-filter .form-control {
+  min-width: 9rem;
+  width: 12rem;
+}
+
+.document-chunk-list {
+  display: grid;
+  gap: 0.875rem;
+}
+
+.document-chunk-item {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 0.875rem;
+}
+
+.document-chunk-meta {
+  align-items: center;
+  color: var(--pcx-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.document-chunk-preview {
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  color: var(--pcx-ink);
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  margin: 0;
+  max-height: 14rem;
+  overflow: auto;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
+
 .metric-label {
   color: var(--pcx-muted);
   font-size: 0.875rem;
@@ -1294,7 +1365,15 @@ main.container-fluid {
 
   .document-filter-form .form-control,
   .document-filter-form .form-select,
-  .document-filter-form .btn {
+  .document-filter-form .btn,
+  .document-chunk-filter .form-control,
+  .document-chunk-filter .btn {
+    width: 100%;
+  }
+
+  .document-chunk-filter {
+    align-items: stretch;
+    flex-direction: column;
     width: 100%;
   }
 
@@ -1322,6 +1401,7 @@ main.container-fluid {
   .evaluation-summary-grid,
   .evaluation-execute-form,
   .dashboard-status-grid,
+  .document-detail-grid,
   .feedback-summary-grid,
   .golden-fieldset,
   .golden-question-layout,
@@ -1380,6 +1460,7 @@ main.container-fluid {
 
   .evaluation-summary-grid,
   .dashboard-status-grid,
+  .document-detail-grid,
   .feedback-summary-grid {
     grid-template-columns: repeat(2, minmax(16rem, 1fr));
   }

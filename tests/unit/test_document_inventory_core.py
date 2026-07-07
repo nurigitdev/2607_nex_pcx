@@ -2,6 +2,7 @@ import pytest
 
 from app.core.document_inventory import (
     InvalidDocumentInventoryError,
+    get_document_inventory_item,
     list_document_inventory,
 )
 
@@ -20,3 +21,8 @@ def test_document_inventory_validates_filters_before_db_connection() -> None:
 
     with pytest.raises(InvalidDocumentInventoryError, match="document_group"):
         list_document_inventory("postgresql://unused", document_group=" ")
+
+
+def test_document_inventory_validates_document_id_before_db_connection() -> None:
+    with pytest.raises(InvalidDocumentInventoryError, match="document_id"):
+        get_document_inventory_item("postgresql://unused", 0)

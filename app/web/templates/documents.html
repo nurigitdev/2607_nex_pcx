@@ -49,7 +49,9 @@
         {% for document in documents %}
         <tr>
           <td>
-            <div class="document-title">{{ document.document_title or document.original_file_name }}</div>
+            <a class="document-title" href="/documents/{{ document.document_id }}">
+              {{ document.document_title or document.original_file_name }}
+            </a>
             <div class="text-secondary small">
               #{{ document.document_id }} · {{ document.original_file_name }} · {{ document.file_ext or "" }}
             </div>

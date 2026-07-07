@@ -56,6 +56,11 @@ def _validate_limit(limit: int, *, max_limit: int = 500) -> int:
     return limit
 
 
+def _require_positive_id(value: int | None, field_name: str) -> None:
+    if value is None or value <= 0:
+        raise InvalidDocumentInventoryError(f"{field_name} must be greater than 0")
+
+
 def _validate_parse_status(parse_status: str | None) -> str | None:
     if parse_status is None:
         return None
@@ -210,3 +215,76 @@ def list_document_inventory(
             )
             rows = cursor.fetchall()
     return [_row_to_document_inventory_item(dict(row)) for row in rows]
+
+
+def get_document_inventory_item(
+    database_url: str,
+    document_id: int,
+) -> DocumentInventoryItem | None:
+    _require_positive_id(document_id, "document_id")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    d.document_id,
+                    d.file_id,
+                    d.document_title,
+                    d.document_group,
+                    d.security_level,
+                    d.document_status,
+                    d.owner_user_id,
+                    owner.login_id AS owner_login_id,
+                    owner.display_name AS owner_display_name,
+                    d.owner_org_unit_id,
+                    org.org_unit_name AS owner_org_unit_name,
+                    d.access_scope,
+                    f.original_file_name,
+                    f.file_ext,
+                    f.mime_type,
+                    f.file_size_bytes,
+                    f.parse_status,
+                    f.uploaded_by,
+                    f.uploaded_by_user_id,
+                    uploader.login_id AS uploaded_by_login_id,
+                    uploader.display_name AS uploaded_by_display_name,
+                    COALESCE(chunk_stats.chunk_count, 0) AS chunk_count,
+                    chunk_stats.total_token_count,
+                    COALESCE(chunk_stats.total_char_count, 0) AS total_char_count,
+                    latest_job.job_id AS latest_pipeline_job_id,
+                    latest_job.status AS latest_pipeline_status,
+                    latest_job.stage AS latest_pipeline_stage,
+                    latest_job.progress_percent AS latest_pipeline_progress_percent,
+                    f.uploaded_at,
+                    GREATEST(f.updated_at, d.updated_at) AS updated_at
+                FROM documents d
+                JOIN files f ON f.file_id = d.file_id
+                LEFT JOIN app_users owner ON owner.user_id = d.owner_user_id
+                LEFT JOIN app_users uploader ON uploader.user_id = f.uploaded_by_user_id
+                LEFT JOIN org_units org ON org.org_unit_id = d.owner_org_unit_id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        count(*) AS chunk_count,
+                        sum(token_count) AS total_token_count,
+                        sum(char_count) AS total_char_count
+                    FROM chunks c
+                    WHERE c.document_id = d.document_id
+                ) chunk_stats ON true
+                LEFT JOIN LATERAL (
+                    SELECT
+                        pj.job_id,
+                        pj.status,
+                        pj.stage,
+                        pj.progress_percent
+                    FROM pipeline_jobs pj
+                    WHERE pj.document_id = d.document_id
+                       OR pj.file_id = f.file_id
+                    ORDER BY pj.queued_at DESC, pj.job_id DESC
+                    LIMIT 1
+                ) latest_job ON true
+                WHERE d.document_id = %s
+                """,
+                (document_id,),
+            )
+            row = cursor.fetchone()
+    return _row_to_document_inventory_item(dict(row)) if row else None

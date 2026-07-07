@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">
+      {% if document %}{{ document.document_title or document.original_file_name }}{% else %}Document Detail{% endif %}
+    </h1>
+    <p class="text-secondary mb-0">
+      {% if document %}#{{ document.document_id }} · {{ document.original_file_name }}{% else %}Chunk preview and metadata{% endif %}
+    </p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/documents">Documents</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if document %}
+<section class="document-detail-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">Parse Status</div>
+    <div class="mt-3">
+      <span class="badge status-badge status-{{ document.parse_status }}">{{ document.parse_status }}</span>
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">Chunks</div>
+    <div class="metric-value">{{ document.chunk_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">Tokens</div>
+    <div class="metric-value">{{ document.total_token_count or 0 }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">Access</div>
+    <div class="mt-3">
+      <span class="badge text-bg-light border">{{ document.access_scope }}</span>
+    </div>
+  </div>
+</section>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-xl-5">
+    <section class="metric-card bg-white p-3">
+      <h2 class="h5 mb-3">Metadata</h2>
+      <dl class="job-detail-list mb-0">
+        <dt>File</dt>
+        <dd>{{ document.original_file_name }}</dd>
+        <dt>Group</dt>
+        <dd>{{ document.document_group }}</dd>
+        <dt>Security</dt>
+        <dd>{{ document.security_level }}</dd>
+        <dt>Owner</dt>
+        <dd>{{ document.owner_display_name or document.uploaded_by_display_name or document.uploaded_by or "" }}</dd>
+        <dt>Org</dt>
+        <dd>{{ document.owner_org_unit_name or "" }}</dd>
+        <dt>Pipeline</dt>
+        <dd>
+          {% if document.latest_pipeline_job_id %}
+          <a class="job-link" href="/admin/jobs?job_id={{ document.latest_pipeline_job_id }}">#{{ document.latest_pipeline_job_id }}</a>
+          <span class="badge status-badge status-{{ document.latest_pipeline_status }}">{{ document.latest_pipeline_status }}</span>
+          {% else %}
+          <span class="text-secondary">No job</span>
+          {% endif %}
+        </dd>
+        <dt>Uploaded</dt>
+        <dd>{{ document.uploaded_at.strftime("%Y-%m-%d %H:%M") }}</dd>
+        <dt>Updated</dt>
+        <dd>{{ document.updated_at.strftime("%Y-%m-%d %H:%M") }}</dd>
+      </dl>
+    </section>
+  </div>
+  <div class="col-12 col-xl-7">
+    <section class="metric-card bg-white p-3">
+      <div class="document-chunk-header">
+        <div>
+          <h2 class="h5 mb-1">Chunks</h2>
+          <div class="text-secondary">{{ chunks|length }} visible chunks</div>
+        </div>
+        <form class="document-chunk-filter" method="get">
+          <label class="form-label mb-0 text-secondary" for="chunk_policy_name">Policy</label>
+          <input
+            class="form-control form-control-sm"
+            id="chunk_policy_name"
+            name="chunk_policy_name"
+            type="text"
+            value="{{ selected_chunk_policy_name or '' }}"
+            placeholder="all"
+          >
+          <button class="btn btn-outline-secondary" type="submit">Filter</button>
+        </form>
+      </div>
+      <div class="document-chunk-list">
+        {% for chunk in chunks %}
+        <article class="document-chunk-item">
+          <div class="document-chunk-meta">
+            <span class="badge text-bg-light border">#{{ chunk.chunk_seq }}</span>
+            <span>{{ chunk.chunk_policy_name }}</span>
+            <span>{{ chunk.token_count or 0 }} tokens</span>
+            {% if chunk.heading_path %}
+            <span>{{ chunk.heading_path|join(" / ") }}</span>
+            {% endif %}
+          </div>
+          <pre class="document-chunk-preview">{{ chunk.chunk_text }}</pre>
+        </article>
+        {% else %}
+        <div class="text-secondary text-center py-5">No chunks found</div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

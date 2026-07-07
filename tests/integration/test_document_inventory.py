@@ -136,6 +136,13 @@ def test_document_inventory_repository_api_and_page(migrated_database_url: str) 
                 "/api/documents",
                 params={"document_group": fixture["document_group"]},
             )
+            detail_response = client.get(f"/api/documents/{fixture['document_id']}")
+            detail_page_response = client.get(f"/documents/{fixture['document_id']}")
+            bad_detail_response = client.get(
+                f"/api/documents/{fixture['document_id']}",
+                params={"chunk_policy_name": " "},
+            )
+            missing_detail_response = client.get("/api/documents/999999999")
             filtered_response = client.get(
                 "/api/documents",
                 params={"parse_status": "failed", "document_group": fixture["document_group"]},
@@ -148,6 +155,7 @@ def test_document_inventory_repository_api_and_page(migrated_database_url: str) 
 
         item = documents[0]
         payload = api_response.json()["documents"][0]
+        detail_payload = detail_response.json()
 
         assert len(documents) == 1
         assert item.document_id == fixture["document_id"]
@@ -165,6 +173,12 @@ def test_document_inventory_repository_api_and_page(migrated_database_url: str) 
         assert payload["document_id"] == fixture["document_id"]
         assert payload["chunk_count"] == 2
         assert payload["latest_pipeline_status"] == "succeeded"
+        assert detail_response.status_code == 200
+        assert detail_payload["document"]["document_id"] == fixture["document_id"]
+        assert [chunk["chunk_seq"] for chunk in detail_payload["chunks"]] == [0, 1]
+        assert detail_payload["chunks"][0]["chunk_text"] == "Inventory first chunk"
+        assert bad_detail_response.status_code == 400
+        assert missing_detail_response.status_code == 404
         assert filtered_response.status_code == 200
         assert filtered_response.json()["documents"] == []
         assert bad_response.status_code == 400
@@ -172,6 +186,10 @@ def test_document_inventory_repository_api_and_page(migrated_database_url: str) 
         assert "Documents" in page_response.text
         assert "Inventory Document" in page_response.text
         assert str(fixture["job_id"]) in page_response.text
-        assert "/api/documents" not in page_response.text
+        assert f'href="/documents/{fixture["document_id"]}"' in page_response.text
+        assert detail_page_response.status_code == 200
+        assert "Metadata" in detail_page_response.text
+        assert "Chunks" in detail_page_response.text
+        assert "Inventory first chunk" in detail_page_response.text
     finally:
         _cleanup_document_fixture(migrated_database_url, fixture)
