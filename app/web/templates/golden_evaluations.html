@@ -37,6 +37,100 @@
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
 
+<section class="metric-card bg-white p-3 mb-4">
+  <div class="evaluation-execute-header">
+    <div>
+      <h2 class="h5 mb-1">Run Evaluation</h2>
+      <div class="text-secondary" id="evaluation-execute-status">Ready</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="/evaluations/questions">Golden Q</a>
+  </div>
+  <form id="evaluation-execute-form" class="evaluation-execute-form">
+    <div>
+      <label class="form-label" for="execute_question_set_id">Set</label>
+      <select
+        class="form-select"
+        id="execute_question_set_id"
+        name="question_set_id"
+        required
+        {% if not database_configured or not question_sets %}disabled{% endif %}
+      >
+        <option value="">Select</option>
+        {% for question_set in question_sets %}
+        <option value="{{ question_set.question_set_id }}" {% if selected_question_set_id == question_set.question_set_id %}selected{% endif %}>
+          {{ question_set.set_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="execute_profile_name">Profile</label>
+      <select
+        class="form-select"
+        id="execute_profile_name"
+        name="profile_name"
+        required
+        {% if not database_configured or not profile_options %}disabled{% endif %}
+      >
+        <option value="">Select</option>
+        {% for profile in profile_options %}
+        <option value="{{ profile }}" {% if selected_profile_name == profile %}selected{% endif %}>{{ profile }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="execute_top_k">Top K</label>
+      <input
+        class="form-control"
+        id="execute_top_k"
+        name="top_k"
+        type="number"
+        min="1"
+        max="50"
+        value="5"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div>
+      <label class="form-label" for="execute_chunk_policy_name">Chunk Policy</label>
+      <input
+        class="form-control"
+        id="execute_chunk_policy_name"
+        name="chunk_policy_name"
+        type="text"
+        placeholder="per question"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div class="evaluation-execute-run-name">
+      <label class="form-label" for="execute_run_name">Run Name</label>
+      <input
+        class="form-control"
+        id="execute_run_name"
+        name="run_name"
+        type="text"
+        placeholder="auto"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div class="evaluation-execute-actions">
+      <button
+        class="btn btn-primary"
+        id="evaluation-execute-submit"
+        type="submit"
+        {% if not database_configured or not question_sets or not profile_options %}disabled{% endif %}
+      >
+        Run
+      </button>
+    </div>
+  </form>
+</section>
+
 {% if selected_run %}
 <section class="evaluation-summary-grid mb-4">
   <div class="metric-card bg-white p-3">
@@ -171,4 +265,84 @@
   </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const form = document.getElementById("evaluation-execute-form");
+  if (!form) {
+    return;
+  }
+
+  const statusEl = document.getElementById("evaluation-execute-status");
+  const submitButton = document.getElementById("evaluation-execute-submit");
+  const canExecute = {{ "true" if database_configured else "false" }};
+
+  const fieldValue = (name) => {
+    const value = new FormData(form).get(name);
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
+
+  const setStatus = (message, href = null) => {
+    statusEl.replaceChildren();
+    if (!href) {
+      statusEl.textContent = message;
+      return;
+    }
+    const span = document.createElement("span");
+    span.textContent = `${message} `;
+    const link = document.createElement("a");
+    link.href = href;
+    link.textContent = "Open";
+    statusEl.append(span, link);
+  };
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!canExecute) {
+      setStatus("Database unavailable");
+      return;
+    }
+
+    const formData = new FormData(form);
+    const questionSetId = Number(formData.get("question_set_id"));
+    const profileName = fieldValue("profile_name");
+    if (!questionSetId || !profileName) {
+      setStatus("Select set and profile.");
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent = "Running";
+    setStatus("Running search and metrics");
+    try {
+      const response = await fetch("/api/evaluations/runs/execute", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          question_set_id: questionSetId,
+          profile_name: profileName,
+          run_name: fieldValue("run_name"),
+          chunk_policy_name: fieldValue("chunk_policy_name"),
+          top_k: Number(formData.get("top_k") || 5),
+          runtime_metadata: {trigger: "evaluation_monitor_ui"},
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        setStatus(body.detail || "Execution failed.");
+        return;
+      }
+      const runId = body.execution.run.evaluation_run_id;
+      setStatus(`Completed run #${runId}.`, `/evaluations?evaluation_run_id=${runId}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Execution failed.");
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = "Run";
+    }
+  });
+})();
+</script>
 {% endblock %}

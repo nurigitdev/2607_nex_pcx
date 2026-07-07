@@ -157,6 +157,9 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         assert result["no_answer_success"] is True
         assert page_response.status_code == 200
         assert "Golden Evaluation Monitor" in page_response.text
+        assert "Run Evaluation" in page_response.text
+        assert 'id="evaluation-execute-form"' in page_response.text
+        assert "/api/evaluations/runs/execute" in page_response.text
         assert f"#{fixture['evaluation_run_id']}" in page_response.text
         assert fixture["set_name"] in page_response.text
         assert "kure_v1_1024" in page_response.text

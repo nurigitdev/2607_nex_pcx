@@ -602,6 +602,36 @@ main.container-fluid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.evaluation-execute-header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.evaluation-execute-form {
+  align-items: end;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns:
+    minmax(12rem, 1fr)
+    minmax(10rem, 0.9fr)
+    minmax(5rem, 0.35fr)
+    minmax(10rem, 0.8fr)
+    minmax(12rem, 1fr)
+    auto;
+}
+
+.evaluation-execute-run-name {
+  min-width: 0;
+}
+
+.evaluation-execute-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .metric-label {
   color: var(--pcx-muted);
   font-size: 0.875rem;
@@ -1159,6 +1189,7 @@ main.container-fluid {
   }
 
   .evaluation-summary-grid,
+  .evaluation-execute-form,
   .feedback-summary-grid,
   .golden-fieldset,
   .golden-question-layout,
@@ -1179,6 +1210,7 @@ main.container-fluid {
   }
 
   .search-form-actions .btn,
+  .evaluation-execute-actions .btn,
   .golden-form-actions .btn,
   .search-history-filter-actions .btn,
   .search-history-promotion-row .btn {
@@ -1189,6 +1221,15 @@ main.container-fluid {
 @media (min-width: 576px) and (max-width: 1199.98px) {
   .golden-question-layout {
     grid-template-columns: 1fr;
+  }
+
+  .evaluation-execute-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .evaluation-execute-run-name,
+  .evaluation-execute-actions {
+    grid-column: 1 / -1;
   }
 
   .search-form-grid,

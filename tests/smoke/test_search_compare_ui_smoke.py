@@ -38,3 +38,5 @@ def test_golden_evaluation_page_shows_configuration_message_without_database_url
     assert "Golden Evaluation Monitor" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert 'href="/evaluations"' in response.text
+    assert 'id="evaluation-execute-form"' in response.text
+    assert "/api/evaluations/runs/execute" in response.text
