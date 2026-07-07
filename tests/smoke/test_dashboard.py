@@ -2,14 +2,37 @@ def test_dashboard_renders_empty_state(client) -> None:
     response = client.get("/")
 
     assert response.status_code == 200
+    assert 'lang="ko"' in response.text
+    assert "대시보드" in response.text
+    assert "RAG 실험 벤치 운영 현황" in response.text
+    assert "문서" in response.text
+    assert "골든 평가 스냅샷" in response.text
+    assert "활성 질문 세트" in response.text
+    assert "/api/dashboard/evaluations" in response.text
+    assert "업로드" in response.text
+    assert "로그" in response.text
+
+
+def test_dashboard_supports_english_language_switch(client) -> None:
+    response = client.get("/?lang=en")
+
+    assert response.status_code == 200
+    assert response.cookies.get("nex_pcx_lang") == "en"
+    assert 'lang="en"' in response.text
     assert "Dashboard" in response.text
     assert "RAG experiment bench operations" in response.text
-    assert "Documents" in response.text
-    assert "Golden Evaluation Snapshot" in response.text
-    assert "Active Question Sets" in response.text
-    assert "/api/dashboard/evaluations" in response.text
     assert "Upload" in response.text
     assert "Logs" in response.text
+
+
+def test_dashboard_uses_language_cookie(client) -> None:
+    client.cookies.set("nex_pcx_lang", "en")
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'lang="en"' in response.text
+    assert "Dashboard" in response.text
 
 
 def test_dashboard_evaluation_api_requires_database(client) -> None:

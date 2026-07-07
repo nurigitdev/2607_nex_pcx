@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="{{ current_language }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -23,22 +23,32 @@
           </a>
           <div class="sidebar-version">v{{ app_version }} / {{ environment }}</div>
         </div>
-        <nav class="sidebar-nav nav nav-pills flex-column gap-1" aria-label="Primary navigation">
-          <a class="nav-link {% if current_path == '/' %}active{% endif %}" href="/">Dashboard</a>
-          <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">Upload</a>
-          <a class="nav-link {% if current_path.startswith('/documents') %}active{% endif %}" href="/documents">Documents</a>
-          <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">Search</a>
-          <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">History</a>
-          <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">Evaluations</a>
-          <a class="nav-link {% if current_path.startswith('/evaluations/questions') %}active{% endif %}" href="/evaluations/questions">Golden Q</a>
-          <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">Jobs</a>
-          <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">Embeddings</a>
-          <a class="nav-link {% if current_path.startswith('/admin/chunk-policies') %}active{% endif %}" href="/admin/chunk-policies">Chunk Policies</a>
-          <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">Logs</a>
+        <nav class="sidebar-nav nav nav-pills flex-column gap-1" aria-label="{{ t('app.primary_navigation') }}">
+          <a class="nav-link {% if current_path == '/' %}active{% endif %}" href="/">{{ t("nav.dashboard") }}</a>
+          <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">{{ t("nav.upload") }}</a>
+          <a class="nav-link {% if current_path.startswith('/documents') %}active{% endif %}" href="/documents">{{ t("nav.documents") }}</a>
+          <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">{{ t("nav.search") }}</a>
+          <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">{{ t("nav.history") }}</a>
+          <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">{{ t("nav.evaluations") }}</a>
+          <a class="nav-link {% if current_path.startswith('/evaluations/questions') %}active{% endif %}" href="/evaluations/questions">{{ t("nav.golden_q") }}</a>
+          <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">{{ t("nav.jobs") }}</a>
+          <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">{{ t("nav.embeddings") }}</a>
+          <a class="nav-link {% if current_path.startswith('/admin/chunk-policies') %}active{% endif %}" href="/admin/chunk-policies">{{ t("nav.chunk_policies") }}</a>
+          <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">{{ t("nav.logs") }}</a>
         </nav>
+        <div class="language-switcher" aria-label="{{ t('app.language') }}">
+          {% for option in language_options %}
+          <a
+            class="language-link {% if current_language == option.code %}active{% endif %}"
+            href="{{ language_url(option.code) }}"
+          >
+            {{ option.label }}
+          </a>
+          {% endfor %}
+        </div>
         <div class="sidebar-footer">
           <span class="status-dot" aria-hidden="true"></span>
-          <span>Ready</span>
+          <span>{{ t("app.ready") }}</span>
         </div>
       </aside>
 
@@ -50,17 +60,22 @@
           </div>
           <div class="container-fluid px-3 pb-2">
             <div class="nav nav-pills mobile-nav gap-1">
-              <a class="nav-link {% if current_path == '/' %}active{% endif %}" href="/">Dashboard</a>
-              <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">Upload</a>
-              <a class="nav-link {% if current_path.startswith('/documents') %}active{% endif %}" href="/documents">Documents</a>
-              <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">Search</a>
-              <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">History</a>
-              <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">Evaluations</a>
-              <a class="nav-link {% if current_path.startswith('/evaluations/questions') %}active{% endif %}" href="/evaluations/questions">Golden Q</a>
-              <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">Jobs</a>
-              <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">Embeddings</a>
-              <a class="nav-link {% if current_path.startswith('/admin/chunk-policies') %}active{% endif %}" href="/admin/chunk-policies">Chunk Policies</a>
-              <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">Logs</a>
+              <a class="nav-link {% if current_path == '/' %}active{% endif %}" href="/">{{ t("nav.dashboard") }}</a>
+              <a class="nav-link {% if current_path.startswith('/files') %}active{% endif %}" href="/files/upload">{{ t("nav.upload") }}</a>
+              <a class="nav-link {% if current_path.startswith('/documents') %}active{% endif %}" href="/documents">{{ t("nav.documents") }}</a>
+              <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">{{ t("nav.search") }}</a>
+              <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">{{ t("nav.history") }}</a>
+              <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">{{ t("nav.evaluations") }}</a>
+              <a class="nav-link {% if current_path.startswith('/evaluations/questions') %}active{% endif %}" href="/evaluations/questions">{{ t("nav.golden_q") }}</a>
+              <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">{{ t("nav.jobs") }}</a>
+              <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">{{ t("nav.embeddings") }}</a>
+              <a class="nav-link {% if current_path.startswith('/admin/chunk-policies') %}active{% endif %}" href="/admin/chunk-policies">{{ t("nav.chunk_policies") }}</a>
+              <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">{{ t("nav.logs") }}</a>
+              {% for option in language_options %}
+              <a class="nav-link language-mobile-link {% if current_language == option.code %}active{% endif %}" href="{{ language_url(option.code) }}">
+                {{ option.label }}
+              </a>
+              {% endfor %}
             </div>
           </div>
         </nav>

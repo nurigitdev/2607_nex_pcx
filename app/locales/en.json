@@ -1,0 +1,55 @@
+{
+  "app": {
+    "language": "Language",
+    "ready": "Ready",
+    "primary_navigation": "Primary navigation"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "upload": "Upload",
+    "documents": "Documents",
+    "search": "Search",
+    "history": "History",
+    "evaluations": "Evaluations",
+    "golden_q": "Golden Q",
+    "jobs": "Jobs",
+    "embeddings": "Embeddings",
+    "chunk_policies": "Chunk Policies",
+    "logs": "Logs"
+  },
+  "common": {
+    "api": "API",
+    "no_database": "No database configured"
+  },
+  "status": {
+    "pending": "pending",
+    "running": "running",
+    "succeeded": "succeeded",
+    "failed": "failed",
+    "queued": "queued",
+    "canceled": "canceled",
+    "skipped": "skipped"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "RAG experiment bench operations",
+    "documents": "Documents",
+    "chunks": "Chunks",
+    "embedding_jobs": "Embedding Jobs",
+    "search_logs": "Search Logs",
+    "active_question_sets": "Active Question Sets",
+    "golden_questions": "Golden Questions",
+    "expected_targets": "Expected Targets",
+    "evaluation_runs": "Evaluation Runs",
+    "evaluation_snapshot": "Golden Evaluation Snapshot",
+    "evaluation_snapshot_subtitle": "Run status, recent metrics, and benchmark health",
+    "run": "Run",
+    "set": "Set",
+    "profile": "Profile",
+    "status": "Status",
+    "recall": "Recall",
+    "ndcg": "nDCG",
+    "hidden": "Hidden",
+    "no_evaluation_runs": "No evaluation runs found"
+  }
+}

@@ -159,3 +159,13 @@ Slice 012 connects file upload success to the pipeline queue. New uploads create
 `document_ingestion` job in `queued` status and return `pipeline_job_id` plus a compact
 `pipeline_job` payload from `/api/files`. Duplicate checksum uploads keep returning the
 existing file metadata and do not enqueue another pipeline job.
+
+## UI i18n Foundation
+
+Slice 054 adds a JSON-backed UI translation foundation. Korean is the default language,
+and English is available through `?lang=en` or the `nex_pcx_lang` cookie. Shared templates
+receive `t("translation.key")`, `current_language`, `language_options`, and `language_url`
+from the FastAPI template context.
+
+Locale files live under `app/locales/`. New UI work should add labels to both
+`ko.json` and `en.json` and render user-facing text through `t()`.

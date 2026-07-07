@@ -167,8 +167,8 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert fixture["succeeded_run_id"] in api_recent_run_ids
         assert bad_response.status_code == 400
         assert page_response.status_code == 200
-        assert "Golden Evaluation Snapshot" in page_response.text
-        assert "Active Question Sets" in page_response.text
+        assert "골든 평가 스냅샷" in page_response.text
+        assert "활성 질문 세트" in page_response.text
         assert fixture["set_name"] in page_response.text
         assert f"#{fixture['succeeded_run_id']}" in page_response.text
         assert "/api/dashboard/evaluations" in page_response.text

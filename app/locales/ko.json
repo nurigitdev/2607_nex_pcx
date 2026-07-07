@@ -1,0 +1,55 @@
+{
+  "app": {
+    "language": "언어",
+    "ready": "준비됨",
+    "primary_navigation": "주요 메뉴"
+  },
+  "nav": {
+    "dashboard": "대시보드",
+    "upload": "업로드",
+    "documents": "문서",
+    "search": "검색",
+    "history": "검색 이력",
+    "evaluations": "평가",
+    "golden_q": "골든 질문",
+    "jobs": "작업",
+    "embeddings": "임베딩",
+    "chunk_policies": "Chunk 정책",
+    "logs": "로그"
+  },
+  "common": {
+    "api": "API",
+    "no_database": "데이터베이스가 설정되지 않았습니다."
+  },
+  "status": {
+    "pending": "대기",
+    "running": "실행 중",
+    "succeeded": "성공",
+    "failed": "실패",
+    "queued": "대기열",
+    "canceled": "취소",
+    "skipped": "건너뜀"
+  },
+  "dashboard": {
+    "title": "대시보드",
+    "subtitle": "RAG 실험 벤치 운영 현황",
+    "documents": "문서",
+    "chunks": "Chunks",
+    "embedding_jobs": "임베딩 작업",
+    "search_logs": "검색 로그",
+    "active_question_sets": "활성 질문 세트",
+    "golden_questions": "골든 질문",
+    "expected_targets": "기대 정답",
+    "evaluation_runs": "평가 실행",
+    "evaluation_snapshot": "골든 평가 스냅샷",
+    "evaluation_snapshot_subtitle": "실행 상태, 최근 지표, 벤치마크 상태",
+    "run": "실행",
+    "set": "세트",
+    "profile": "프로필",
+    "status": "상태",
+    "recall": "Recall",
+    "ndcg": "nDCG",
+    "hidden": "숨김",
+    "no_evaluation_runs": "평가 실행이 없습니다."
+  }
+}

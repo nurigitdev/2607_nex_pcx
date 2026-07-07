@@ -5,6 +5,7 @@ import io
 import traceback as traceback_module
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -117,6 +118,13 @@ from app.core.golden_questions import (
     update_expected_target,
     update_golden_question,
     update_golden_question_set,
+)
+from app.core.i18n import (
+    LANGUAGE_COOKIE_NAME,
+    LANGUAGE_OPTIONS,
+    get_translator,
+    normalize_language,
+    resolve_language,
 )
 from app.core.permissions import InvalidPermissionError
 from app.core.pipeline_jobs import (
@@ -1103,12 +1111,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title=settings.app_name, version=settings.app_version)
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
+    @app.middleware("http")
+    async def language_middleware(request: Request, call_next):
+        language = resolve_language(
+            query_language=request.query_params.get("lang"),
+            cookie_language=request.cookies.get(LANGUAGE_COOKIE_NAME),
+        )
+        request.state.language = language
+        response = await call_next(request)
+        try:
+            query_language = normalize_language(request.query_params.get("lang"))
+        except ValueError:
+            query_language = None
+        if query_language is not None:
+            response.set_cookie(
+                LANGUAGE_COOKIE_NAME,
+                query_language,
+                max_age=60 * 60 * 24 * 365,
+                samesite="lax",
+            )
+        return response
+
     def template_context(request: Request, **context: object) -> dict[str, object]:
+        language = getattr(
+            request.state,
+            "language",
+            resolve_language(
+                query_language=request.query_params.get("lang"),
+                cookie_language=request.cookies.get(LANGUAGE_COOKIE_NAME),
+            ),
+        )
+        translator = get_translator(language)
+
+        def language_url(language_code: str) -> str:
+            query_items = [
+                (key, value) for key, value in request.query_params.multi_items() if key != "lang"
+            ]
+            query_items.append(("lang", language_code))
+            return f"{request.url.path}?{urlencode(query_items)}"
+
         return {
             "request": request,
             "app_name": settings.app_name,
             "app_version": settings.app_version,
             "environment": settings.environment,
+            "current_language": language,
+            "language_options": LANGUAGE_OPTIONS,
+            "language_url": language_url,
+            "t": translator,
             **context,
         }
 
