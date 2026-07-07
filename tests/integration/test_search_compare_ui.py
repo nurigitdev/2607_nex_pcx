@@ -26,6 +26,9 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert "search-feedback-button" in response.text
     assert "/api/search/feedback" in response.text
     assert "/api/search/feedback/summary" in response.text
+    assert "권한 검색 Matrix" in response.text
+    assert 'id="permission-matrix-form"' in response.text
+    assert "/api/search/permission-matrix" in response.text
 
 
 def test_search_history_page_renders_filters_and_log_table(

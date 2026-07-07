@@ -158,6 +158,11 @@ from app.core.search_compare import (
     SearchCompareInput,
     SearchCompareProfileResult,
     SearchCompareResult,
+    SearchPermissionMatrixEntryInput,
+    SearchPermissionMatrixEntryResult,
+    SearchPermissionMatrixInput,
+    SearchPermissionMatrixResult,
+    run_permission_search_matrix,
     run_search_compare,
 )
 from app.core.search_logs import (
@@ -195,6 +200,21 @@ class SearchCompareRequest(BaseModel):
     query_text: str
     actor_user_id: int
     requested_search_scope: str = "company"
+    top_k: int = Field(default=5, ge=1)
+    profiles: list[str] | None = None
+    chunk_policy_name: str | None = None
+    document_group: str | None = None
+    file_type: str | None = None
+
+
+class SearchPermissionMatrixEntryRequest(BaseModel):
+    actor_user_id: int = Field(ge=1)
+    requested_search_scope: str = "company"
+
+
+class SearchPermissionMatrixRequest(BaseModel):
+    query_text: str
+    entries: list[SearchPermissionMatrixEntryRequest]
     top_k: int = Field(default=5, ge=1)
     profiles: list[str] | None = None
     chunk_policy_name: str | None = None
@@ -513,6 +533,36 @@ def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
         "top_k": result.top_k,
         "total_elapsed_ms": result.total_elapsed_ms,
         "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
+    }
+
+
+def search_permission_matrix_entry_payload(
+    entry: SearchPermissionMatrixEntryResult,
+) -> dict[str, object]:
+    return {
+        "search_log_id": entry.search_log_id,
+        "actor_user_id": entry.actor_user_id,
+        "requested_search_scope": entry.requested_search_scope,
+        "effective_search_scope": entry.effective_search_scope,
+        "permission_filter_metadata": entry.permission_filter.metadata,
+        "result_count": entry.result_count,
+        "unique_chunk_count": entry.unique_chunk_count,
+        "top_result": (
+            vector_search_result_payload(entry.top_result) if entry.top_result is not None else None
+        ),
+        "profiles": [search_compare_profile_payload(profile) for profile in entry.profiles],
+        "total_elapsed_ms": entry.total_elapsed_ms,
+    }
+
+
+def search_permission_matrix_payload(
+    result: SearchPermissionMatrixResult,
+) -> dict[str, object]:
+    return {
+        "query_text": result.query_text,
+        "top_k": result.top_k,
+        "total_elapsed_ms": result.total_elapsed_ms,
+        "entries": [search_permission_matrix_entry_payload(entry) for entry in result.entries],
     }
 
 
@@ -1880,6 +1930,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content=search_compare_payload(result))
+
+    @app.post("/api/search/permission-matrix")
+    def api_search_permission_matrix(payload: SearchPermissionMatrixRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            result = run_permission_search_matrix(
+                settings.database_url,
+                SearchPermissionMatrixInput(
+                    query_text=payload.query_text,
+                    entries=tuple(
+                        SearchPermissionMatrixEntryInput(
+                            actor_user_id=entry.actor_user_id,
+                            requested_search_scope=entry.requested_search_scope,
+                        )
+                        for entry in payload.entries
+                    ),
+                    top_k=payload.top_k,
+                    profiles=tuple(payload.profiles) if payload.profiles is not None else None,
+                    chunk_policy_name=payload.chunk_policy_name,
+                    document_group=payload.document_group,
+                    file_type=payload.file_type,
+                ),
+            )
+        except (
+            InvalidSearchCompareError,
+            InvalidPermissionError,
+            InvalidVectorSearchError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=search_permission_matrix_payload(result))
 
     @app.get("/api/search/logs")
     def api_list_search_logs(

@@ -13,6 +13,8 @@ from app.core.search_logs import (
 )
 from app.core.vector_search import VectorSearchInput, VectorSearchResult, search_similar_chunks
 
+MAX_PERMISSION_MATRIX_ENTRIES = 12
+
 
 @dataclass(frozen=True)
 class SearchCompareInput:
@@ -49,6 +51,45 @@ class SearchCompareResult:
     permission_filter: PermissionSearchFilter
     top_k: int
     profiles: tuple[SearchCompareProfileResult, ...]
+    total_elapsed_ms: int
+
+
+@dataclass(frozen=True)
+class SearchPermissionMatrixEntryInput:
+    actor_user_id: int
+    requested_search_scope: str
+
+
+@dataclass(frozen=True)
+class SearchPermissionMatrixInput:
+    query_text: str
+    entries: tuple[SearchPermissionMatrixEntryInput, ...]
+    top_k: int = 5
+    profiles: tuple[str, ...] | None = None
+    chunk_policy_name: str | None = None
+    document_group: str | None = None
+    file_type: str | None = None
+
+
+@dataclass(frozen=True)
+class SearchPermissionMatrixEntryResult:
+    search_log_id: int
+    actor_user_id: int
+    requested_search_scope: str
+    effective_search_scope: str
+    permission_filter: PermissionSearchFilter
+    result_count: int
+    unique_chunk_count: int
+    top_result: VectorSearchResult | None
+    profiles: tuple[SearchCompareProfileResult, ...]
+    total_elapsed_ms: int
+
+
+@dataclass(frozen=True)
+class SearchPermissionMatrixResult:
+    query_text: str
+    top_k: int
+    entries: tuple[SearchPermissionMatrixEntryResult, ...]
     total_elapsed_ms: int
 
 
@@ -93,6 +134,58 @@ def _validate_search_compare_input(search_input: SearchCompareInput) -> SearchCo
         chunk_policy_name=_validate_nonblank(search_input.chunk_policy_name, "chunk_policy_name"),
         document_group=_validate_nonblank(search_input.document_group, "document_group"),
         file_type=_validate_nonblank(search_input.file_type, "file_type"),
+    )
+
+
+def _validate_permission_matrix_input(
+    matrix_input: SearchPermissionMatrixInput,
+) -> SearchPermissionMatrixInput:
+    if not matrix_input.entries:
+        raise InvalidSearchCompareError("entries must not be empty")
+    if len(matrix_input.entries) > MAX_PERMISSION_MATRIX_ENTRIES:
+        raise InvalidSearchCompareError(f"entries must be {MAX_PERMISSION_MATRIX_ENTRIES} or fewer")
+
+    normalized_entries: list[SearchPermissionMatrixEntryInput] = []
+    seen_entries: set[tuple[int, str]] = set()
+    for entry in matrix_input.entries:
+        if entry.actor_user_id <= 0:
+            raise InvalidSearchCompareError("actor_user_id must be greater than 0")
+        requested_scope = (
+            _validate_nonblank(entry.requested_search_scope, "requested_search_scope")
+            or entry.requested_search_scope
+        )
+        normalized_key = (entry.actor_user_id, requested_scope)
+        if normalized_key in seen_entries:
+            raise InvalidSearchCompareError("entries must be unique by actor and scope")
+        seen_entries.add(normalized_key)
+        normalized_entries.append(
+            SearchPermissionMatrixEntryInput(
+                actor_user_id=entry.actor_user_id,
+                requested_search_scope=requested_scope,
+            )
+        )
+
+    first_entry = normalized_entries[0]
+    common = _validate_search_compare_input(
+        SearchCompareInput(
+            query_text=matrix_input.query_text,
+            actor_user_id=first_entry.actor_user_id,
+            requested_search_scope=first_entry.requested_search_scope,
+            top_k=matrix_input.top_k,
+            profiles=matrix_input.profiles,
+            chunk_policy_name=matrix_input.chunk_policy_name,
+            document_group=matrix_input.document_group,
+            file_type=matrix_input.file_type,
+        )
+    )
+    return SearchPermissionMatrixInput(
+        query_text=common.query_text,
+        entries=tuple(normalized_entries),
+        top_k=common.top_k,
+        profiles=common.profiles,
+        chunk_policy_name=common.chunk_policy_name,
+        document_group=common.document_group,
+        file_type=common.file_type,
     )
 
 
@@ -208,4 +301,65 @@ def run_search_compare(
         top_k=validated.top_k,
         profiles=tuple(profile_results),
         total_elapsed_ms=total_elapsed_ms,
+    )
+
+
+def _first_profile_top_result(
+    profiles: tuple[SearchCompareProfileResult, ...],
+) -> VectorSearchResult | None:
+    for profile in profiles:
+        if profile.results:
+            return profile.results[0].vector_result
+    return None
+
+
+def run_permission_search_matrix(
+    database_url: str,
+    matrix_input: SearchPermissionMatrixInput,
+) -> SearchPermissionMatrixResult:
+    validated = _validate_permission_matrix_input(matrix_input)
+    profiles = validated.profiles or _default_profiles(database_url)
+
+    started_at = perf_counter()
+    entry_results: list[SearchPermissionMatrixEntryResult] = []
+    for entry in validated.entries:
+        compare_result = run_search_compare(
+            database_url,
+            SearchCompareInput(
+                query_text=validated.query_text,
+                actor_user_id=entry.actor_user_id,
+                requested_search_scope=entry.requested_search_scope,
+                top_k=validated.top_k,
+                profiles=profiles,
+                chunk_policy_name=validated.chunk_policy_name,
+                document_group=validated.document_group,
+                file_type=validated.file_type,
+            ),
+        )
+        chunk_ids = {
+            result.vector_result.chunk_id
+            for profile in compare_result.profiles
+            for result in profile.results
+        }
+        result_count = sum(len(profile.results) for profile in compare_result.profiles)
+        entry_results.append(
+            SearchPermissionMatrixEntryResult(
+                search_log_id=compare_result.search_log_id,
+                actor_user_id=compare_result.actor_user_id,
+                requested_search_scope=compare_result.requested_search_scope,
+                effective_search_scope=compare_result.effective_search_scope,
+                permission_filter=compare_result.permission_filter,
+                result_count=result_count,
+                unique_chunk_count=len(chunk_ids),
+                top_result=_first_profile_top_result(compare_result.profiles),
+                profiles=compare_result.profiles,
+                total_elapsed_ms=compare_result.total_elapsed_ms,
+            )
+        )
+
+    return SearchPermissionMatrixResult(
+        query_text=validated.query_text,
+        top_k=validated.top_k,
+        entries=tuple(entry_results),
+        total_elapsed_ms=max(0, int((perf_counter() - started_at) * 1000)),
     )

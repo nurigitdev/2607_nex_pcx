@@ -1211,6 +1211,66 @@ main.container-fluid {
   justify-content: space-between;
 }
 
+.search-permission-matrix-panel {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 1rem;
+}
+
+.search-permission-matrix-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.search-permission-matrix-form {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 2fr) minmax(15rem, 1fr);
+}
+
+.search-matrix-option-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.search-matrix-option {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 0.45rem;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.65rem;
+}
+
+.search-matrix-option span {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.search-permission-matrix-results {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.search-permission-matrix-table td:nth-child(4),
+.search-permission-matrix-table td:nth-child(5),
+.search-permission-matrix-table td:nth-child(7) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.search-permission-matrix-top-result {
+  min-width: 16rem;
+  overflow-wrap: anywhere;
+}
+
 .feedback-summary-grid {
   display: grid;
   gap: 1rem;
@@ -1537,6 +1597,7 @@ main.container-fluid {
   .search-history-filter,
   .search-history-promotion-row,
   .search-history-results,
+  .search-permission-matrix-form,
   .search-results-grid {
     grid-template-columns: 1fr;
   }
@@ -1552,6 +1613,7 @@ main.container-fluid {
   .search-form-actions .btn,
   .evaluation-execute-actions .btn,
   .golden-form-actions .btn,
+  .search-permission-matrix-header .btn,
   .search-history-filter-actions .btn,
   .search-history-promotion-row .btn {
     width: 100%;

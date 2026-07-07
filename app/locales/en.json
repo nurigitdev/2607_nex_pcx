@@ -75,6 +75,12 @@
     "org_tree": "Org Tree",
     "company": "Company"
   },
+  "search_scope": {
+    "mine": "Mine",
+    "team": "Team",
+    "managed_org": "Managed Org",
+    "company": "Company"
+  },
   "permissions": {
     "title": "Permission Simulation",
     "subtitle": "Search-scope inventory from users, org units, memberships, and document ownership",
@@ -126,5 +132,26 @@
     "updated_by": "Updated By",
     "save": "Save Permissions",
     "updated": "Document permission metadata was saved."
+  },
+  "search_matrix": {
+    "title": "Permission Search Matrix",
+    "subtitle": "Compare the same query across user and search-scope combinations.",
+    "actors": "Actors",
+    "scopes": "Search Scopes",
+    "run": "Run Matrix",
+    "running": "Running Matrix",
+    "failed": "Matrix failed",
+    "query_required": "Enter a query first.",
+    "entries_required": "Select at least one actor and scope.",
+    "too_many_entries": "Matrix runs are limited to 12 combinations at a time.",
+    "profiles_required": "Select at least one profile.",
+    "actor": "Actor",
+    "requested_scope": "Requested Scope",
+    "effective_scope": "Effective Scope",
+    "results": "Results",
+    "unique_chunks": "Unique Chunks",
+    "top_result": "Top Result",
+    "log": "Log",
+    "no_results": "No results"
   }
 }

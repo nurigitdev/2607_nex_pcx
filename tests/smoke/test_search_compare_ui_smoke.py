@@ -14,6 +14,9 @@ def test_search_compare_page_shows_configuration_message_without_database_url() 
     assert "Search Compare" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert 'href="/search"' in response.text
+    assert "권한 검색 Matrix" in response.text
+    assert 'id="permission-matrix-submit"' in response.text
+    assert "/api/search/permission-matrix" in response.text
 
 
 def test_search_history_page_shows_configuration_message_without_database_url() -> None:

@@ -54,7 +54,7 @@
         {% if not database_configured %}disabled{% endif %}
       >
         {% for scope in ["mine", "team", "managed_org", "company"] %}
-        <option value="{{ scope }}" {% if scope == "company" %}selected{% endif %}>{{ scope }}</option>
+        <option value="{{ scope }}" {% if scope == "company" %}selected{% endif %}>{{ t("search_scope." ~ scope) }}</option>
         {% endfor %}
       </select>
     </div>
@@ -132,6 +132,68 @@
   </form>
 </section>
 
+<section class="search-permission-matrix-panel bg-white p-3 mb-4">
+  <div class="search-permission-matrix-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_matrix.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("search_matrix.subtitle") }}</p>
+    </div>
+    <button
+      class="btn btn-outline-primary"
+      id="permission-matrix-submit"
+      type="button"
+      {% if not database_configured %}disabled{% endif %}
+    >
+      {{ t("search_matrix.run") }}
+    </button>
+  </div>
+
+  <form id="permission-matrix-form" class="search-permission-matrix-form">
+    <fieldset>
+      <legend class="form-label">{{ t("search_matrix.actors") }}</legend>
+      <div class="search-matrix-option-list">
+        {% for actor in actor_options %}
+        <label class="search-matrix-option">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            name="matrix_actor_user_ids"
+            value="{{ actor.user_id }}"
+            data-label="{{ actor.display_name }} / {{ actor.login_id }}"
+            {% if loop.index <= 3 %}checked{% endif %}
+            {% if not database_configured %}disabled{% endif %}
+          >
+          <span>{{ actor.display_name }} / {{ actor.login_id }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend class="form-label">{{ t("search_matrix.scopes") }}</legend>
+      <div class="search-matrix-option-list">
+        {% for scope in ["mine", "team", "managed_org", "company"] %}
+        <label class="search-matrix-option">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            name="matrix_scopes"
+            value="{{ scope }}"
+            data-label="{{ t('search_scope.' ~ scope) }}"
+            checked
+            {% if not database_configured %}disabled{% endif %}
+          >
+          <span>{{ t("search_scope." ~ scope) }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+  </form>
+
+  <div id="permission-matrix-status" class="text-secondary small" aria-live="polite"></div>
+  <div id="permission-matrix-results" class="search-permission-matrix-results"></div>
+</section>
+
 <section class="search-feedback-summary-panel mb-4">
   <div class="search-feedback-summary-header">
     <div>
@@ -167,10 +229,15 @@
   const resultsEl = document.getElementById("search-results");
   const summaryEl = document.getElementById("search-summary");
   const submitButton = document.getElementById("search-submit");
+  const matrixForm = document.getElementById("permission-matrix-form");
+  const matrixSubmit = document.getElementById("permission-matrix-submit");
+  const matrixStatus = document.getElementById("permission-matrix-status");
+  const matrixResults = document.getElementById("permission-matrix-results");
   const feedbackSummaryGrid = document.getElementById("feedback-summary-grid");
   const feedbackSummaryMeta = document.getElementById("feedback-summary-meta");
   const feedbackSummaryRefresh = document.getElementById("feedback-summary-refresh");
   const canLoadFeedbackSummary = {{ "true" if database_configured else "false" }};
+  const matrixLimit = 12;
   const feedbackOptions = [
     {label: "Correct", value: "correct"},
     {label: "Partial", value: "partial"},
@@ -193,6 +260,31 @@
     const value = new FormData(form).get(name);
     return typeof value === "string" && value.trim() ? value.trim() : null;
   };
+
+  const matrixCheckedOptions = (name) => {
+    if (!matrixForm) {
+      return [];
+    }
+    return Array.from(
+      matrixForm.querySelectorAll(`input[name="${name}"]:checked`),
+    );
+  };
+
+  const selectedMatrixEntries = () => {
+    const actors = matrixCheckedOptions("matrix_actor_user_ids");
+    const scopes = matrixCheckedOptions("matrix_scopes");
+    return actors.flatMap((actor) =>
+      scopes.map((scope) => ({
+        actor_user_id: Number(actor.value),
+        requested_search_scope: scope.value,
+        actor_label: actor.dataset.label || actor.value,
+        scope_label: scope.dataset.label || scope.value,
+      })),
+    );
+  };
+
+  const selectedProfiles = () =>
+    new FormData(form).getAll("profiles").filter(Boolean);
 
   const makeCell = (label, value) => {
     const row = document.createElement("div");
@@ -275,6 +367,138 @@
       item.append(header, counts, footer);
       feedbackSummaryGrid.append(item);
     });
+  };
+
+  const renderPermissionMatrix = (payload, selectedEntries) => {
+    matrixResults.replaceChildren();
+    matrixStatus.textContent =
+      `${payload.entries.length} matrix rows / ${payload.total_elapsed_ms} ms`;
+
+    const labelsByKey = new Map(
+      selectedEntries.map((entry) => [
+        `${entry.actor_user_id}:${entry.requested_search_scope}`,
+        entry,
+      ]),
+    );
+
+    const tableWrapper = document.createElement("div");
+    tableWrapper.className = "table-responsive";
+    const table = document.createElement("table");
+    table.className = "table table-sm align-middle mb-0 search-permission-matrix-table";
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    [
+      "{{ t('search_matrix.actor') }}",
+      "{{ t('search_matrix.requested_scope') }}",
+      "{{ t('search_matrix.effective_scope') }}",
+      "{{ t('search_matrix.results') }}",
+      "{{ t('search_matrix.unique_chunks') }}",
+      "{{ t('search_matrix.top_result') }}",
+      "{{ t('search_matrix.log') }}",
+    ].forEach((label) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = label;
+      headerRow.append(th);
+    });
+    thead.append(headerRow);
+
+    const tbody = document.createElement("tbody");
+    payload.entries.forEach((entry) => {
+      const key = `${entry.actor_user_id}:${entry.requested_search_scope}`;
+      const selected = labelsByKey.get(key) || {};
+      const row = document.createElement("tr");
+      const topResult = entry.top_result;
+      const topText = topResult
+        ? `${topResult.document_title || topResult.original_file_name || "Untitled"} · #${topResult.chunk_id} · ${Number(topResult.score).toFixed(4)}`
+        : "{{ t('search_matrix.no_results') }}";
+      [
+        selected.actor_label ||
+          entry.permission_filter_metadata.display_name ||
+          entry.permission_filter_metadata.login_id ||
+          String(entry.actor_user_id),
+        selected.scope_label || entry.requested_search_scope,
+        entry.effective_search_scope,
+        String(entry.result_count),
+        String(entry.unique_chunk_count),
+        topText,
+        `#${entry.search_log_id}`,
+      ].forEach((value, index) => {
+        const td = document.createElement("td");
+        td.textContent = value;
+        if (index === 5) {
+          td.className = "search-permission-matrix-top-result";
+        }
+        row.append(td);
+      });
+      tbody.append(row);
+    });
+
+    table.append(thead, tbody);
+    tableWrapper.append(table);
+    matrixResults.append(tableWrapper);
+  };
+
+  const runPermissionMatrix = async () => {
+    if (!matrixForm || !matrixSubmit) {
+      return;
+    }
+    matrixResults.replaceChildren();
+    const entries = selectedMatrixEntries();
+    const profiles = selectedProfiles();
+    if (!fieldValue("query_text")) {
+      matrixStatus.textContent = "{{ t('search_matrix.query_required') }}";
+      return;
+    }
+    if (entries.length === 0) {
+      matrixStatus.textContent = "{{ t('search_matrix.entries_required') }}";
+      return;
+    }
+    if (entries.length > matrixLimit) {
+      matrixStatus.textContent = "{{ t('search_matrix.too_many_entries') }}";
+      return;
+    }
+    if (profiles.length === 0) {
+      matrixStatus.textContent = "{{ t('search_matrix.profiles_required') }}";
+      return;
+    }
+
+    const payload = {
+      query_text: fieldValue("query_text"),
+      top_k: Number(new FormData(form).get("top_k") || 5),
+      profiles,
+      document_group: fieldValue("document_group"),
+      file_type: fieldValue("file_type"),
+      entries: entries.map((entry) => ({
+        actor_user_id: entry.actor_user_id,
+        requested_search_scope: entry.requested_search_scope,
+      })),
+    };
+
+    matrixSubmit.disabled = true;
+    matrixSubmit.textContent = "{{ t('search_matrix.running') }}";
+    matrixStatus.textContent = "{{ t('search_matrix.running') }}";
+    try {
+      const response = await fetch("/api/search/permission-matrix", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        matrixStatus.textContent = body.detail || "{{ t('search_matrix.failed') }}";
+        return;
+      }
+      renderPermissionMatrix(body, entries);
+      loadFeedbackSummary();
+    } catch (error) {
+      matrixStatus.textContent =
+        error instanceof Error ? error.message : "{{ t('search_matrix.failed') }}";
+    } finally {
+      matrixSubmit.disabled = false;
+      matrixSubmit.textContent = "{{ t('search_matrix.run') }}";
+    }
   };
 
   const loadFeedbackSummary = async () => {
@@ -460,7 +684,7 @@
     clearResults();
 
     const formData = new FormData(form);
-    const profiles = formData.getAll("profiles").filter(Boolean);
+    const profiles = selectedProfiles();
     if (profiles.length === 0) {
       setAlert("At least one profile is required.");
       return;
@@ -501,6 +725,10 @@
 
   feedbackSummaryRefresh?.addEventListener("click", () => {
     loadFeedbackSummary();
+  });
+
+  matrixSubmit?.addEventListener("click", () => {
+    runPermissionMatrix();
   });
 
   loadFeedbackSummary();

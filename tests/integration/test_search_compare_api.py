@@ -193,8 +193,28 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                     "document_group": document_group,
                 },
             )
+            matrix_response = client.post(
+                "/api/search/permission-matrix",
+                json={
+                    "query_text": query_text,
+                    "top_k": 5,
+                    "profiles": ["kure_v1_1024"],
+                    "document_group": document_group,
+                    "entries": [
+                        {
+                            "actor_user_id": ids["alice.member"],
+                            "requested_search_scope": "company",
+                        },
+                        {
+                            "actor_user_id": ids["bob.member"],
+                            "requested_search_scope": "company",
+                        },
+                    ],
+                },
+            )
 
         body = response.json()
+        matrix_body = matrix_response.json()
         profile_results = {
             profile["profile_name"]: profile["results"] for profile in body["profiles"]
         }
@@ -245,6 +265,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         )
 
         assert response.status_code == 200
+        assert matrix_response.status_code == 200
         assert body["requested_search_scope"] == "company"
         assert body["effective_search_scope"] == "company"
         assert body["permission_filter_metadata"]["actor_user_id"] == ids["alice.member"]
@@ -256,6 +277,18 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             "search_log_result_id" in result
             for results in profile_results.values()
             for result in results
+        )
+        matrix_by_actor = {entry["actor_user_id"]: entry for entry in matrix_body["entries"]}
+        assert matrix_body["query_text"] == query_text
+        assert matrix_body["top_k"] == 5
+        assert matrix_by_actor[ids["alice.member"]]["result_count"] == 1
+        assert matrix_by_actor[ids["alice.member"]]["unique_chunk_count"] == 1
+        assert matrix_by_actor[ids["alice.member"]]["top_result"]["chunk_id"] == visible_chunk_id
+        assert matrix_by_actor[ids["bob.member"]]["result_count"] == 2
+        assert matrix_by_actor[ids["bob.member"]]["unique_chunk_count"] == 2
+        assert matrix_by_actor[ids["bob.member"]]["effective_search_scope"] == "company"
+        assert matrix_by_actor[ids["bob.member"]]["permission_filter_metadata"]["login_id"] == (
+            "bob.member"
         )
         assert feedback_response.status_code == 201
         assert feedback_body["feedback"]["relevance_label"] == "correct"
@@ -273,10 +306,12 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert profile_summary["kure_v1_1024"]["correct_rate"] == 1
         assert profile_summary["bge_m3_1024"]["feedback_count"] == 0
         assert logs_response.status_code == 200
-        assert len(logs_body["logs"]) == 1
-        assert logs_body["logs"][0]["search_log_id"] == body["search_log_id"]
-        assert logs_body["logs"][0]["result_count"] == 2
-        assert logs_body["logs"][0]["feedback_count"] == 1
+        assert len(logs_body["logs"]) == 3
+        logs_by_id = {log["search_log_id"]: log for log in logs_body["logs"]}
+        matrix_log_ids = {entry["search_log_id"] for entry in matrix_body["entries"]}
+        assert {body["search_log_id"], *matrix_log_ids} == set(logs_by_id)
+        assert logs_by_id[body["search_log_id"]]["result_count"] == 2
+        assert logs_by_id[body["search_log_id"]]["feedback_count"] == 1
         assert detail_response.status_code == 200
         assert detail_body["search_log"]["search_log_id"] == body["search_log_id"]
         assert detail_body["search_log"]["actor_login_id"] == "alice.member"
@@ -306,6 +341,28 @@ def test_search_compare_api_handles_invalid_scope(
 
     assert response.status_code == 400
     assert "requested_search_scope" in response.json()["detail"]
+
+    with TestClient(app) as client:
+        matrix_response = client.post(
+            "/api/search/permission-matrix",
+            json={
+                "query_text": "hello",
+                "top_k": 5,
+                "entries": [
+                    {
+                        "actor_user_id": ids["alice.member"],
+                        "requested_search_scope": "company",
+                    },
+                    {
+                        "actor_user_id": ids["alice.member"],
+                        "requested_search_scope": "company",
+                    },
+                ],
+            },
+        )
+
+    assert matrix_response.status_code == 400
+    assert "entries must be unique" in matrix_response.json()["detail"]
 
 
 def test_search_feedback_api_returns_not_found_for_missing_result(
