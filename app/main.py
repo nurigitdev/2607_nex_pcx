@@ -126,6 +126,19 @@ from app.core.i18n import (
     normalize_language,
     resolve_language,
 )
+from app.core.permission_inventory import (
+    InvalidPermissionInventoryError,
+    PermissionInventory,
+    PermissionInventorySummary,
+    PermissionMembershipInventoryRecord,
+    PermissionOrgUnitInventoryRecord,
+    PermissionUserInventoryRecord,
+    get_permission_inventory,
+    get_permission_inventory_summary,
+    list_permission_memberships,
+    list_permission_org_units,
+    list_permission_users,
+)
 from app.core.permissions import InvalidPermissionError
 from app.core.pipeline_jobs import (
     InvalidPipelineJobError,
@@ -1106,6 +1119,102 @@ def chunk_policy_summary_payload(policy: ChunkPolicySummaryRecord) -> dict[str, 
     }
 
 
+def permission_inventory_summary_payload(
+    summary: PermissionInventorySummary,
+) -> dict[str, object]:
+    return {
+        "active_user_count": summary.active_user_count,
+        "inactive_user_count": summary.inactive_user_count,
+        "org_unit_count": summary.org_unit_count,
+        "active_org_unit_count": summary.active_org_unit_count,
+        "membership_count": summary.membership_count,
+        "document_count": summary.document_count,
+        "access_scope_counts": [
+            {
+                "access_scope": access_scope.access_scope,
+                "document_count": access_scope.document_count,
+            }
+            for access_scope in summary.access_scope_counts
+        ],
+    }
+
+
+def permission_user_inventory_payload(
+    user: PermissionUserInventoryRecord,
+) -> dict[str, object]:
+    return {
+        "user_id": user.user_id,
+        "login_id": user.login_id,
+        "display_name": user.display_name,
+        "email": user.email,
+        "is_active": user.is_active,
+        "primary_role_name": user.primary_role_name,
+        "primary_org_unit_id": user.primary_org_unit_id,
+        "primary_org_unit_name": user.primary_org_unit_name,
+        "primary_org_unit_type": user.primary_org_unit_type,
+        "membership_count": user.membership_count,
+        "uploaded_file_count": user.uploaded_file_count,
+        "owned_document_count": user.owned_document_count,
+        "managed_org_unit_count": user.managed_org_unit_count,
+        "ancestor_org_unit_count": user.ancestor_org_unit_count,
+        "created_at": _datetime_response(user.created_at),
+        "updated_at": _datetime_response(user.updated_at),
+    }
+
+
+def permission_org_unit_inventory_payload(
+    org_unit: PermissionOrgUnitInventoryRecord,
+) -> dict[str, object]:
+    return {
+        "org_unit_id": org_unit.org_unit_id,
+        "parent_org_unit_id": org_unit.parent_org_unit_id,
+        "parent_org_unit_name": org_unit.parent_org_unit_name,
+        "org_unit_name": org_unit.org_unit_name,
+        "org_unit_type": org_unit.org_unit_type,
+        "is_active": org_unit.is_active,
+        "depth": org_unit.depth,
+        "org_path": org_unit.org_path,
+        "membership_count": org_unit.membership_count,
+        "primary_membership_count": org_unit.primary_membership_count,
+        "owned_document_count": org_unit.owned_document_count,
+        "child_org_unit_count": org_unit.child_org_unit_count,
+        "created_at": _datetime_response(org_unit.created_at),
+        "updated_at": _datetime_response(org_unit.updated_at),
+    }
+
+
+def permission_membership_inventory_payload(
+    membership: PermissionMembershipInventoryRecord,
+) -> dict[str, object]:
+    return {
+        "membership_id": membership.membership_id,
+        "user_id": membership.user_id,
+        "login_id": membership.login_id,
+        "display_name": membership.display_name,
+        "org_unit_id": membership.org_unit_id,
+        "org_unit_name": membership.org_unit_name,
+        "org_unit_type": membership.org_unit_type,
+        "role_name": membership.role_name,
+        "is_primary": membership.is_primary,
+        "created_at": _datetime_response(membership.created_at),
+        "updated_at": _datetime_response(membership.updated_at),
+    }
+
+
+def permission_inventory_payload(inventory: PermissionInventory) -> dict[str, object]:
+    return {
+        "summary": permission_inventory_summary_payload(inventory.summary),
+        "users": [permission_user_inventory_payload(user) for user in inventory.users],
+        "org_units": [
+            permission_org_unit_inventory_payload(org_unit) for org_unit in inventory.org_units
+        ],
+        "memberships": [
+            permission_membership_inventory_payload(membership)
+            for membership in inventory.memberships
+        ],
+    }
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -1241,6 +1350,83 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return JSONResponse(content={"chunk_policy": chunk_policy_summary_payload(policy)})
+
+    @app.get("/api/admin/permissions")
+    def api_get_permission_inventory() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            inventory = get_permission_inventory(settings.database_url)
+        except InvalidPermissionInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={"permission_inventory": permission_inventory_payload(inventory)}
+        )
+
+    @app.get("/api/admin/permissions/users")
+    def api_list_permission_users(limit: int = 100) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            users = list_permission_users(settings.database_url, limit=limit)
+        except InvalidPermissionInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={"users": [permission_user_inventory_payload(user) for user in users]},
+        )
+
+    @app.get("/api/admin/permissions/org-units")
+    def api_list_permission_org_units(limit: int = 100) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            org_units = list_permission_org_units(settings.database_url, limit=limit)
+        except InvalidPermissionInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "org_units": [
+                    permission_org_unit_inventory_payload(org_unit) for org_unit in org_units
+                ],
+            },
+        )
+
+    @app.get("/api/admin/permissions/memberships")
+    def api_list_permission_memberships(limit: int = 200) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            memberships = list_permission_memberships(settings.database_url, limit=limit)
+        except InvalidPermissionInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "memberships": [
+                    permission_membership_inventory_payload(membership)
+                    for membership in memberships
+                ],
+            },
+        )
 
     @app.get("/api/documents")
     def api_list_documents(
@@ -2655,6 +2841,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_profile_name=profile_value or "",
                 selected_status=status_filter or "",
                 selected_evaluation_run_id=evaluation_run_id,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/permissions", response_class=HTMLResponse)
+    def permission_inventory_page(request: Request) -> HTMLResponse:
+        summary: PermissionInventorySummary | None = None
+        users: tuple[PermissionUserInventoryRecord, ...] = ()
+        org_units: tuple[PermissionOrgUnitInventoryRecord, ...] = ()
+        memberships: tuple[PermissionMembershipInventoryRecord, ...] = ()
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                summary = get_permission_inventory_summary(settings.database_url)
+                users = tuple(list_permission_users(settings.database_url))
+                org_units = tuple(list_permission_org_units(settings.database_url))
+                memberships = tuple(list_permission_memberships(settings.database_url))
+            except InvalidPermissionInventoryError as exc:
+                error_message = str(exc)
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "permission_inventory.html",
+            template_context(
+                request,
+                summary=summary,
+                users=users,
+                org_units=org_units,
+                memberships=memberships,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

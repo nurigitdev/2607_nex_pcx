@@ -12,6 +12,7 @@
     "history": "History",
     "evaluations": "Evaluations",
     "golden_q": "Golden Q",
+    "permissions": "Permissions",
     "jobs": "Jobs",
     "embeddings": "Embeddings",
     "chunk_policies": "Chunk Policies",
@@ -19,7 +20,11 @@
   },
   "common": {
     "api": "API",
-    "no_database": "No database configured"
+    "no_database": "No database configured",
+    "active": "Active",
+    "inactive": "Inactive",
+    "yes": "Yes",
+    "no": "No"
   },
   "status": {
     "pending": "pending",
@@ -51,5 +56,60 @@
     "ndcg": "nDCG",
     "hidden": "Hidden",
     "no_evaluation_runs": "No evaluation runs found"
+  },
+  "role": {
+    "admin": "Admin",
+    "group_lead": "Group Lead",
+    "team_lead": "Team Lead",
+    "member": "Member"
+  },
+  "org_type": {
+    "company": "Company",
+    "division": "Division",
+    "group": "Group",
+    "team": "Team"
+  },
+  "access_scope": {
+    "personal": "Personal",
+    "team": "Team",
+    "org_tree": "Org Tree",
+    "company": "Company"
+  },
+  "permissions": {
+    "title": "Permission Simulation",
+    "subtitle": "Search-scope inventory from users, org units, memberships, and document ownership",
+    "summary": "Permission summary",
+    "active_users": "Active Users",
+    "inactive_users": "Inactive",
+    "org_units": "Org Units",
+    "total": "Total",
+    "memberships": "Memberships",
+    "role_bindings": "Role bindings",
+    "documents": "Documents",
+    "no_documents": "No documents",
+    "users_title": "User Permission Simulation",
+    "users_subtitle": "Calculates search-scope hints from each user's primary role and org unit.",
+    "org_units_title": "Org Unit Inventory",
+    "org_units_subtitle": "Review the org hierarchy and document ownership footprint.",
+    "memberships_title": "Memberships",
+    "memberships_subtitle": "Role bindings between users and org units.",
+    "user": "User",
+    "primary_role": "Primary Role",
+    "primary_org": "Primary Org",
+    "simulated_scope": "Simulated Scope",
+    "status": "Status",
+    "none": "None",
+    "managed_orgs": "Managed orgs",
+    "ancestor_orgs": "Ancestor orgs",
+    "uploaded": "Uploaded",
+    "org_unit": "Org Unit",
+    "parent_org": "Parent Org",
+    "root_org": "Root",
+    "primary": "Primary",
+    "children": "Children",
+    "role": "Role",
+    "no_users": "No users found",
+    "no_org_units": "No org units found",
+    "no_memberships": "No memberships found"
   }
 }

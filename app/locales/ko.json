@@ -12,6 +12,7 @@
     "history": "검색 이력",
     "evaluations": "평가",
     "golden_q": "골든 질문",
+    "permissions": "권한",
     "jobs": "작업",
     "embeddings": "임베딩",
     "chunk_policies": "Chunk 정책",
@@ -19,7 +20,11 @@
   },
   "common": {
     "api": "API",
-    "no_database": "데이터베이스가 설정되지 않았습니다."
+    "no_database": "데이터베이스가 설정되지 않았습니다.",
+    "active": "활성",
+    "inactive": "비활성",
+    "yes": "예",
+    "no": "아니오"
   },
   "status": {
     "pending": "대기",
@@ -51,5 +56,60 @@
     "ndcg": "nDCG",
     "hidden": "숨김",
     "no_evaluation_runs": "평가 실행이 없습니다."
+  },
+  "role": {
+    "admin": "관리자",
+    "group_lead": "그룹장",
+    "team_lead": "팀장",
+    "member": "멤버"
+  },
+  "org_type": {
+    "company": "회사",
+    "division": "본부",
+    "group": "그룹",
+    "team": "팀"
+  },
+  "access_scope": {
+    "personal": "개인",
+    "team": "팀",
+    "org_tree": "조직 트리",
+    "company": "회사 공통"
+  },
+  "permissions": {
+    "title": "권한 시뮬레이션",
+    "subtitle": "사용자, 조직, 멤버십, 문서 소유권 기준의 검색 범위 인벤토리",
+    "summary": "권한 요약",
+    "active_users": "활성 사용자",
+    "inactive_users": "비활성",
+    "org_units": "조직",
+    "total": "전체",
+    "memberships": "멤버십",
+    "role_bindings": "역할 연결",
+    "documents": "문서",
+    "no_documents": "등록 문서 없음",
+    "users_title": "사용자 권한 시뮬레이션",
+    "users_subtitle": "기본 역할과 조직 기준으로 검색 가능한 범위 힌트를 계산합니다.",
+    "org_units_title": "조직 인벤토리",
+    "org_units_subtitle": "조직 계층과 문서 소유 현황을 확인합니다.",
+    "memberships_title": "멤버십",
+    "memberships_subtitle": "사용자와 조직 단위 사이의 역할 연결입니다.",
+    "user": "사용자",
+    "primary_role": "기본 역할",
+    "primary_org": "기본 조직",
+    "simulated_scope": "시뮬레이션 범위",
+    "status": "상태",
+    "none": "없음",
+    "managed_orgs": "관리 조직",
+    "ancestor_orgs": "상위 조직",
+    "uploaded": "업로드",
+    "org_unit": "조직",
+    "parent_org": "상위 조직",
+    "root_org": "최상위",
+    "primary": "기본",
+    "children": "하위",
+    "role": "역할",
+    "no_users": "사용자가 없습니다.",
+    "no_org_units": "조직이 없습니다.",
+    "no_memberships": "멤버십이 없습니다."
   }
 }

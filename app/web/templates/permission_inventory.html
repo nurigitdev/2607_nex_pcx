@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% macro active_badge(is_active) -%}
+  {% if is_active %}
+  <span class="badge text-bg-success">{{ t("common.active") }}</span>
+  {% else %}
+  <span class="badge text-bg-light border">{{ t("common.inactive") }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("permissions.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("permissions.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/api/admin/permissions">{{ t("common.api") }}</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">
+  {% if database_configured %}{{ error_message }}{% else %}{{ t("common.no_database") }}{% endif %}
+</div>
+{% endif %}
+
+{% if summary %}
+<section class="permission-summary-grid mb-4" aria-label="{{ t('permissions.summary') }}">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("permissions.active_users") }}</div>
+    <div class="metric-value">{{ summary.active_user_count }}</div>
+    <div class="text-secondary small">{{ t("permissions.inactive_users") }} {{ summary.inactive_user_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("permissions.org_units") }}</div>
+    <div class="metric-value">{{ summary.active_org_unit_count }}</div>
+    <div class="text-secondary small">{{ t("permissions.total") }} {{ summary.org_unit_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("permissions.memberships") }}</div>
+    <div class="metric-value">{{ summary.membership_count }}</div>
+    <div class="text-secondary small">{{ t("permissions.role_bindings") }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("permissions.documents") }}</div>
+    <div class="metric-value">{{ summary.document_count }}</div>
+    <div class="permission-scope-list">
+      {% for scope in summary.access_scope_counts %}
+      <span class="badge text-bg-light border">{{ t("access_scope." ~ scope.access_scope) }} {{ scope.document_count }}</span>
+      {% else %}
+      <span class="text-secondary small">{{ t("permissions.no_documents") }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="permission-section-heading">
+    <div>
+      <h2 class="h5 mb-1">{{ t("permissions.users_title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("permissions.users_subtitle") }}</p>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 permission-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("permissions.user") }}</th>
+          <th scope="col">{{ t("permissions.primary_role") }}</th>
+          <th scope="col">{{ t("permissions.primary_org") }}</th>
+          <th scope="col">{{ t("permissions.simulated_scope") }}</th>
+          <th scope="col">{{ t("permissions.documents") }}</th>
+          <th scope="col">{{ t("permissions.status") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>
+            <span class="permission-name">{{ user.display_name }}</span>
+            <div class="text-secondary small">{{ user.login_id }}</div>
+            {% if user.email %}
+            <div class="text-secondary small text-break">{{ user.email }}</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if user.primary_role_name %}
+            <span class="badge text-bg-light border">{{ t("role." ~ user.primary_role_name) }}</span>
+            {% else %}
+            <span class="text-secondary">{{ t("permissions.none") }}</span>
+            {% endif %}
+            <div class="text-secondary small">{{ t("permissions.memberships") }} {{ user.membership_count }}</div>
+          </td>
+          <td>
+            {% if user.primary_org_unit_name %}
+            <span>{{ user.primary_org_unit_name }}</span>
+            <div class="text-secondary small">{{ t("org_type." ~ user.primary_org_unit_type) }}</div>
+            {% else %}
+            <span class="text-secondary">{{ t("permissions.none") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge text-bg-light border">{{ t("permissions.managed_orgs") }} {{ user.managed_org_unit_count }}</span>
+            <span class="badge text-bg-light border">{{ t("permissions.ancestor_orgs") }} {{ user.ancestor_org_unit_count }}</span>
+          </td>
+          <td>
+            <strong>{{ user.owned_document_count }}</strong>
+            <div class="text-secondary small">{{ t("permissions.uploaded") }} {{ user.uploaded_file_count }}</div>
+          </td>
+          <td>{{ active_badge(user.is_active) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="6">
+            {% if database_configured %}{{ t("permissions.no_users") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="permission-section-heading">
+    <div>
+      <h2 class="h5 mb-1">{{ t("permissions.org_units_title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("permissions.org_units_subtitle") }}</p>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 permission-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("permissions.org_unit") }}</th>
+          <th scope="col">{{ t("permissions.parent_org") }}</th>
+          <th scope="col">{{ t("permissions.memberships") }}</th>
+          <th scope="col">{{ t("permissions.documents") }}</th>
+          <th scope="col">{{ t("permissions.status") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for org_unit in org_units %}
+        <tr>
+          <td>
+            <div class="permission-org-indent" style="--permission-depth: {{ org_unit.depth }}">
+              <span class="permission-name">{{ org_unit.org_unit_name }}</span>
+              <div class="text-secondary small">{{ t("org_type." ~ org_unit.org_unit_type) }} · {{ org_unit.org_path }}</div>
+            </div>
+          </td>
+          <td>{{ org_unit.parent_org_unit_name or t("permissions.root_org") }}</td>
+          <td>
+            <strong>{{ org_unit.membership_count }}</strong>
+            <div class="text-secondary small">{{ t("permissions.primary") }} {{ org_unit.primary_membership_count }}</div>
+          </td>
+          <td>
+            <strong>{{ org_unit.owned_document_count }}</strong>
+            <div class="text-secondary small">{{ t("permissions.children") }} {{ org_unit.child_org_unit_count }}</div>
+          </td>
+          <td>{{ active_badge(org_unit.is_active) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="5">
+            {% if database_configured %}{{ t("permissions.no_org_units") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="permission-section-heading">
+    <div>
+      <h2 class="h5 mb-1">{{ t("permissions.memberships_title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("permissions.memberships_subtitle") }}</p>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 permission-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("permissions.user") }}</th>
+          <th scope="col">{{ t("permissions.org_unit") }}</th>
+          <th scope="col">{{ t("permissions.role") }}</th>
+          <th scope="col">{{ t("permissions.primary") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for membership in memberships %}
+        <tr>
+          <td>
+            <span class="permission-name">{{ membership.display_name }}</span>
+            <div class="text-secondary small">{{ membership.login_id }}</div>
+          </td>
+          <td>
+            {{ membership.org_unit_name }}
+            <div class="text-secondary small">{{ t("org_type." ~ membership.org_unit_type) }}</div>
+          </td>
+          <td><span class="badge text-bg-light border">{{ t("role." ~ membership.role_name) }}</span></td>
+          <td>
+            {% if membership.is_primary %}
+            <span class="badge text-bg-primary">{{ t("common.yes") }}</span>
+            {% else %}
+            <span class="badge text-bg-light border">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="4">
+            {% if database_configured %}{{ t("permissions.no_memberships") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

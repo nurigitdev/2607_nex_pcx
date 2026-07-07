@@ -785,6 +785,50 @@ main.container-fluid {
   white-space: nowrap;
 }
 
+.permission-summary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.permission-section-heading {
+  align-items: center;
+  border-bottom: 1px solid var(--pcx-border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.permission-table td:nth-child(2),
+.permission-table td:nth-child(4),
+.permission-table td:nth-child(5),
+.permission-table td:nth-child(6) {
+  white-space: nowrap;
+}
+
+.permission-table td:first-child {
+  min-width: 14rem;
+}
+
+.permission-name {
+  display: inline-block;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.permission-org-indent {
+  padding-left: calc(var(--permission-depth, 0) * 1rem);
+}
+
+.permission-scope-list {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
 .policy-name {
   display: inline-block;
   font-weight: 700;
@@ -1471,6 +1515,7 @@ main.container-fluid {
   .feedback-summary-grid,
   .golden-fieldset,
   .golden-question-layout,
+  .permission-summary-grid,
   .search-form-grid,
   .search-history-filter,
   .search-history-promotion-row,
@@ -1527,7 +1572,8 @@ main.container-fluid {
   .evaluation-summary-grid,
   .dashboard-status-grid,
   .document-detail-grid,
-  .feedback-summary-grid {
+  .feedback-summary-grid,
+  .permission-summary-grid {
     grid-template-columns: repeat(2, minmax(16rem, 1fr));
   }
 

@@ -31,6 +31,7 @@
           <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">{{ t("nav.history") }}</a>
           <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">{{ t("nav.evaluations") }}</a>
           <a class="nav-link {% if current_path.startswith('/evaluations/questions') %}active{% endif %}" href="/evaluations/questions">{{ t("nav.golden_q") }}</a>
+          <a class="nav-link {% if current_path.startswith('/admin/permissions') %}active{% endif %}" href="/admin/permissions">{{ t("nav.permissions") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">{{ t("nav.jobs") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">{{ t("nav.embeddings") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/chunk-policies') %}active{% endif %}" href="/admin/chunk-policies">{{ t("nav.chunk_policies") }}</a>
@@ -67,6 +68,7 @@
               <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">{{ t("nav.history") }}</a>
               <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">{{ t("nav.evaluations") }}</a>
               <a class="nav-link {% if current_path.startswith('/evaluations/questions') %}active{% endif %}" href="/evaluations/questions">{{ t("nav.golden_q") }}</a>
+              <a class="nav-link {% if current_path.startswith('/admin/permissions') %}active{% endif %}" href="/admin/permissions">{{ t("nav.permissions") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">{{ t("nav.jobs") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">{{ t("nav.embeddings") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/chunk-policies') %}active{% endif %}" href="/admin/chunk-policies">{{ t("nav.chunk_policies") }}</a>
