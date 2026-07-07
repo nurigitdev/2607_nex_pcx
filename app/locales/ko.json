@@ -111,5 +111,14 @@
     "no_users": "사용자가 없습니다.",
     "no_org_units": "조직이 없습니다.",
     "no_memberships": "멤버십이 없습니다."
+  },
+  "upload_permissions": {
+    "fieldset": "권한 Metadata",
+    "uploaded_by_user": "업로드 사용자",
+    "owner_user": "소유 사용자",
+    "owner_org": "소유 조직",
+    "access_scope": "접근 범위",
+    "same_as_uploader": "업로드 사용자와 동일",
+    "help": "선택한 값은 파일과 문서 metadata에 저장되고 권한 기반 검색 pre-filter에 사용됩니다."
   }
 }

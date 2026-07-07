@@ -86,12 +86,17 @@ def create_upload_metadata_and_pipeline_job(
                 job_type="document_ingestion",
                 file_id=metadata_result.file.file_id,
                 document_id=metadata_result.file.document_id,
+                requested_by_user_id=metadata.uploaded_by_user_id,
                 metadata={
                     "original_file_name": metadata_result.file.original_file_name,
                     "document_group": metadata_result.file.document_group,
                     "security_level": metadata_result.file.security_level,
                     "sha256_checksum": metadata_result.file.sha256_checksum,
                     "uploaded_by": metadata.uploaded_by,
+                    "uploaded_by_user_id": metadata.uploaded_by_user_id,
+                    "owner_user_id": metadata.owner_user_id,
+                    "owner_org_unit_id": metadata.owner_org_unit_id,
+                    "access_scope": metadata.access_scope,
                 },
             ),
         )
@@ -112,6 +117,10 @@ def store_upload(
     document_group: str = "default",
     security_level: str = "internal",
     uploaded_by: str | None = None,
+    uploaded_by_user_id: int | None = None,
+    owner_user_id: int | None = None,
+    owner_org_unit_id: int | None = None,
+    access_scope: str = "personal",
 ) -> FileUploadResult:
     safe_file_name = sanitize_upload_file_name(original_file_name)
     stored_file_name = build_stored_file_name(safe_file_name)
@@ -131,6 +140,19 @@ def store_upload(
             security_level=security_level,
             uploaded_by=uploaded_by,
             document_title=Path(safe_file_name).stem,
+            uploaded_by_user_id=uploaded_by_user_id,
+            owner_user_id=owner_user_id if owner_user_id is not None else uploaded_by_user_id,
+            owner_org_unit_id=owner_org_unit_id,
+            access_scope=access_scope,
+            permission_metadata={
+                "source": "upload",
+                "uploaded_by_user_id": uploaded_by_user_id,
+                "owner_user_id": (
+                    owner_user_id if owner_user_id is not None else uploaded_by_user_id
+                ),
+                "owner_org_unit_id": owner_org_unit_id,
+                "access_scope": access_scope,
+            },
         )
         upload_result = create_upload_metadata_and_pipeline_job(database_url, metadata)
         if upload_result.duplicate:

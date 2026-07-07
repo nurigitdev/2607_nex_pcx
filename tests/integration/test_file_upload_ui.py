@@ -14,14 +14,41 @@ def cleanup_checksum(database_url: str, checksum: str) -> None:
             cursor.execute("DELETE FROM files WHERE sha256_checksum = %s", (checksum,))
 
 
-def post_upload_form(client: TestClient, *, file_name: str, content: bytes, mime_type: str):
+def seed_permission_ids(database_url: str) -> dict[str, int]:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT login_id, user_id
+                FROM app_users
+                WHERE login_id IN ('alice.member', 'chloe.teamlead')
+                """)
+            users = {row["login_id"]: int(row["user_id"]) for row in cursor.fetchall()}
+            cursor.execute("""
+                SELECT org_unit_name, org_unit_id
+                FROM org_units
+                WHERE org_unit_name = 'Platform Team'
+                """)
+            orgs = {row["org_unit_name"]: int(row["org_unit_id"]) for row in cursor.fetchall()}
+    return {**users, **orgs}
+
+
+def post_upload_form(
+    client: TestClient,
+    *,
+    file_name: str,
+    content: bytes,
+    mime_type: str,
+    data_overrides: dict[str, str] | None = None,
+):
+    data = {
+        "document_group": "ui-slice-007",
+        "security_level": "restricted",
+        "uploaded_by": "ui-test",
+    }
+    data.update(data_overrides or {})
     return client.post(
         "/files/upload",
-        data={
-            "document_group": "ui-slice-007",
-            "security_level": "restricted",
-            "uploaded_by": "ui-test",
-        },
+        data=data,
         files={"file": (file_name, content, mime_type)},
     )
 
@@ -32,6 +59,7 @@ def test_file_upload_ui_stores_file_and_shows_result(
 ) -> None:
     content = b"# Slice 007\n\nUpload UI test."
     checksum = sha256(content).hexdigest()
+    ids = seed_permission_ids(migrated_database_url)
     app = create_app(
         Settings(database_url=migrated_database_url, upload_storage_dir=tmp_path),
     )
@@ -43,6 +71,12 @@ def test_file_upload_ui_stores_file_and_shows_result(
                 file_name="slice-007.md",
                 content=content,
                 mime_type="text/markdown",
+                data_overrides={
+                    "uploaded_by_user_id": str(ids["alice.member"]),
+                    "owner_user_id": str(ids["chloe.teamlead"]),
+                    "owner_org_unit_id": str(ids["Platform Team"]),
+                    "access_scope": "team",
+                },
             )
 
         db_row = fetch_one(
@@ -53,8 +87,13 @@ def test_file_upload_ui_stores_file_and_shows_result(
                 f.sha256_checksum,
                 f.document_group,
                 f.security_level,
+                f.uploaded_by_user_id,
+                d.owner_user_id,
+                d.owner_org_unit_id,
+                d.access_scope,
                 pj.job_id AS pipeline_job_id
             FROM files f
+            JOIN documents d ON d.file_id = f.file_id
             JOIN pipeline_jobs pj ON pj.file_id = f.file_id
             WHERE f.sha256_checksum = %s
             """,
@@ -70,8 +109,16 @@ def test_file_upload_ui_stores_file_and_shows_result(
         assert str(db_row["pipeline_job_id"]) in response.text
         assert "slice-007.md" in response.text
         assert checksum in response.text
+        assert "접근 범위" in response.text
+        assert str(ids["alice.member"]) in response.text
+        assert str(ids["chloe.teamlead"]) in response.text
+        assert str(ids["Platform Team"]) in response.text
         assert db_row["document_group"] == "ui-slice-007"
         assert db_row["security_level"] == "restricted"
+        assert db_row["uploaded_by_user_id"] == ids["alice.member"]
+        assert db_row["owner_user_id"] == ids["chloe.teamlead"]
+        assert db_row["owner_org_unit_id"] == ids["Platform Team"]
+        assert db_row["access_scope"] == "team"
         assert len(list(tmp_path.iterdir())) == 1
     finally:
         cleanup_checksum(migrated_database_url, checksum)

@@ -403,6 +403,23 @@ main.container-fluid {
   display: none;
 }
 
+.upload-permission-fieldset {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  margin: 0;
+  padding: 0.875rem;
+}
+
+.upload-permission-fieldset legend {
+  color: var(--pcx-ink);
+  float: none;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  padding: 0;
+  width: auto;
+}
+
 .progress {
   background: #e5edf5;
   border-radius: 8px;

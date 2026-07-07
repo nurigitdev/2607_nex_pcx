@@ -76,6 +76,20 @@ def test_validate_file_metadata_rejects_unsupported_extension() -> None:
         validate_file_metadata(make_metadata(original_file_name="script.exe"))
 
 
+def test_validate_file_metadata_rejects_invalid_permission_metadata() -> None:
+    with pytest.raises(InvalidFileMetadataError, match="uploaded_by_user_id"):
+        validate_file_metadata(make_metadata(uploaded_by_user_id=0))
+
+    with pytest.raises(InvalidFileMetadataError, match="owner_user_id"):
+        validate_file_metadata(make_metadata(owner_user_id=-1))
+
+    with pytest.raises(InvalidFileMetadataError, match="owner_org_unit_id"):
+        validate_file_metadata(make_metadata(owner_org_unit_id=0))
+
+    with pytest.raises(InvalidFileMetadataError, match="Unsupported access_scope"):
+        validate_file_metadata(make_metadata(access_scope="private"))
+
+
 def test_get_file_metadata_rejects_non_positive_id_before_db() -> None:
     with pytest.raises(InvalidFileMetadataError, match="file_id"):
         get_file_metadata_in_connection(None, 0)  # type: ignore[arg-type]

@@ -1,15 +1,17 @@
 """File metadata persistence and duplicate detection."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 from psycopg import Connection
+from psycopg.types.json import Json
 
 from app.core.database import connect
 
 SUPPORTED_FILE_EXTENSIONS = {".pdf", ".docx", ".hwpx", ".pptx", ".xlsx", ".md"}
+DOCUMENT_ACCESS_SCOPES = {"personal", "team", "org_tree", "company"}
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,11 @@ class FileMetadataInput:
     security_level: str = "internal"
     uploaded_by: str | None = None
     document_title: str | None = None
+    uploaded_by_user_id: int | None = None
+    owner_user_id: int | None = None
+    owner_org_unit_id: int | None = None
+    access_scope: str = "personal"
+    permission_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -40,6 +47,10 @@ class FileMetadataRecord:
     document_group: str
     security_level: str
     parse_status: str
+    uploaded_by_user_id: int | None = None
+    owner_user_id: int | None = None
+    owner_org_unit_id: int | None = None
+    access_scope: str = "personal"
 
 
 @dataclass(frozen=True)
@@ -58,6 +69,11 @@ class InvalidFileMetadataError(ValueError):
 
 def _require_positive_id(value: int, field_name: str) -> None:
     if value <= 0:
+        raise InvalidFileMetadataError(f"{field_name} must be greater than 0")
+
+
+def _validate_optional_positive_id(value: int | None, field_name: str) -> None:
+    if value is not None and value <= 0:
         raise InvalidFileMetadataError(f"{field_name} must be greater than 0")
 
 
@@ -84,6 +100,11 @@ def validate_file_metadata(metadata: FileMetadataInput) -> str:
         raise InvalidFileMetadataError("sha256_checksum is required")
     if not metadata.storage_path.strip():
         raise InvalidFileMetadataError("storage_path is required")
+    _validate_optional_positive_id(metadata.uploaded_by_user_id, "uploaded_by_user_id")
+    _validate_optional_positive_id(metadata.owner_user_id, "owner_user_id")
+    _validate_optional_positive_id(metadata.owner_org_unit_id, "owner_org_unit_id")
+    if metadata.access_scope not in DOCUMENT_ACCESS_SCOPES:
+        raise InvalidFileMetadataError(f"Unsupported access_scope: {metadata.access_scope}")
 
     file_ext = normalize_file_ext(metadata.original_file_name)
     if file_ext not in SUPPORTED_FILE_EXTENSIONS:
@@ -105,6 +126,14 @@ def row_to_file_metadata_record(row: dict[str, Any]) -> FileMetadataRecord:
         document_group=str(row["document_group"]),
         security_level=str(row["security_level"]),
         parse_status=str(row["parse_status"]),
+        uploaded_by_user_id=(
+            int(row["uploaded_by_user_id"]) if row.get("uploaded_by_user_id") is not None else None
+        ),
+        owner_user_id=int(row["owner_user_id"]) if row.get("owner_user_id") is not None else None,
+        owner_org_unit_id=(
+            int(row["owner_org_unit_id"]) if row.get("owner_org_unit_id") is not None else None
+        ),
+        access_scope=str(row.get("access_scope") or "personal"),
     )
 
 
@@ -124,7 +153,11 @@ def find_file_by_checksum(connection: Connection, checksum: str) -> FileMetadata
                 f.storage_path,
                 f.document_group,
                 f.security_level,
-                f.parse_status
+                f.parse_status,
+                f.uploaded_by_user_id,
+                d.owner_user_id,
+                d.owner_org_unit_id,
+                d.access_scope
             FROM files f
             LEFT JOIN documents d ON d.file_id = f.file_id
             WHERE f.sha256_checksum = %s
@@ -157,7 +190,11 @@ def get_file_metadata_in_connection(
                 f.storage_path,
                 f.document_group,
                 f.security_level,
-                f.parse_status
+                f.parse_status,
+                f.uploaded_by_user_id,
+                d.owner_user_id,
+                d.owner_org_unit_id,
+                d.access_scope
             FROM files f
             LEFT JOIN documents d ON d.file_id = f.file_id
             WHERE f.file_id = %s
@@ -355,9 +392,10 @@ def create_file_metadata_in_connection(
                 storage_path,
                 document_group,
                 security_level,
-                uploaded_by
+                uploaded_by,
+                uploaded_by_user_id
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (sha256_checksum) DO NOTHING
             RETURNING
                 file_id,
@@ -370,7 +408,8 @@ def create_file_metadata_in_connection(
                 storage_path,
                 document_group,
                 security_level,
-                parse_status
+                parse_status,
+                uploaded_by_user_id
             """,
             (
                 metadata.original_file_name,
@@ -383,6 +422,7 @@ def create_file_metadata_in_connection(
                 metadata.document_group,
                 metadata.security_level,
                 metadata.uploaded_by,
+                metadata.uploaded_by_user_id,
             ),
         )
         inserted_file_row = cursor.fetchone()
@@ -402,21 +442,32 @@ def create_file_metadata_in_connection(
                 file_id,
                 document_title,
                 document_group,
-                security_level
+                security_level,
+                owner_user_id,
+                owner_org_unit_id,
+                access_scope,
+                permission_metadata
             )
-            VALUES (%s, %s, %s, %s)
-            RETURNING document_id
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING document_id, owner_user_id, owner_org_unit_id, access_scope
             """,
             (
                 file_row["file_id"],
                 metadata.document_title or metadata.original_file_name,
                 metadata.document_group,
                 metadata.security_level,
+                metadata.owner_user_id,
+                metadata.owner_org_unit_id,
+                metadata.access_scope,
+                Json(metadata.permission_metadata),
             ),
         )
         document_row = cursor.fetchone()
 
     file_row["document_id"] = document_row["document_id"]
+    file_row["owner_user_id"] = document_row["owner_user_id"]
+    file_row["owner_org_unit_id"] = document_row["owner_org_unit_id"]
+    file_row["access_scope"] = document_row["access_scope"]
     return CreateFileMetadataResult(
         file=row_to_file_metadata_record(file_row),
         duplicate=False,

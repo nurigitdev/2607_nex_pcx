@@ -103,12 +103,20 @@ def test_store_upload_creates_metadata_and_file(monkeypatch, tmp_path) -> None:
         document_group="docs",
         security_level="restricted",
         uploaded_by="tester",
+        uploaded_by_user_id=10,
+        owner_org_unit_id=20,
+        access_scope="team",
     )
 
     assert not result.duplicate
     assert captured_metadata is not None
     assert captured_metadata.document_title == "example"
     assert captured_metadata.uploaded_by == "tester"
+    assert captured_metadata.uploaded_by_user_id == 10
+    assert captured_metadata.owner_user_id == 10
+    assert captured_metadata.owner_org_unit_id == 20
+    assert captured_metadata.access_scope == "team"
+    assert captured_metadata.permission_metadata["source"] == "upload"
     assert (tmp_path / captured_metadata.stored_file_name).read_bytes() == b"hello upload"
 
 

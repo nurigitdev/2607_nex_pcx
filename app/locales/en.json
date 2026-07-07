@@ -111,5 +111,14 @@
     "no_users": "No users found",
     "no_org_units": "No org units found",
     "no_memberships": "No memberships found"
+  },
+  "upload_permissions": {
+    "fieldset": "Permission Metadata",
+    "uploaded_by_user": "Uploaded By User",
+    "owner_user": "Owner User",
+    "owner_org": "Owner Org",
+    "access_scope": "Access Scope",
+    "same_as_uploader": "Same as uploader",
+    "help": "Selected values are stored on file and document metadata for permission-aware search pre-filtering."
   }
 }

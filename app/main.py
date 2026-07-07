@@ -74,6 +74,7 @@ from app.core.evaluation_runs import (
     list_evaluation_runs,
 )
 from app.core.file_metadata import (
+    DOCUMENT_ACCESS_SCOPES,
     SUPPORTED_FILE_EXTENSIONS,
     InvalidFileMetadataError,
     UnsupportedFileExtensionError,
@@ -180,6 +181,10 @@ UPLOAD_FILE_FORM = File(...)
 DOCUMENT_GROUP_FORM = Form("default")
 SECURITY_LEVEL_FORM = Form("internal")
 UPLOADED_BY_FORM = Form(None)
+UPLOADED_BY_USER_ID_FORM = Form(None)
+OWNER_USER_ID_FORM = Form(None)
+OWNER_ORG_UNIT_ID_FORM = Form(None)
+ACCESS_SCOPE_FORM = Form("personal")
 EVALUATION_EXPORT_VERSION = 1
 
 
@@ -299,6 +304,48 @@ def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
                 }
                 for row in cursor.fetchall()
             ]
+
+
+def parse_optional_positive_int_form(value: str | int | None, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        parsed = value
+    else:
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = int(stripped)
+        except ValueError as exc:
+            raise InvalidFileMetadataError(f"{field_name} must be an integer") from exc
+    if parsed <= 0:
+        raise InvalidFileMetadataError(f"{field_name} must be greater than 0")
+    return parsed
+
+
+def upload_permission_user_option_payload(
+    user: PermissionUserInventoryRecord,
+) -> dict[str, object]:
+    return {
+        "user_id": user.user_id,
+        "login_id": user.login_id,
+        "display_name": user.display_name,
+        "primary_role_name": user.primary_role_name,
+        "primary_org_unit_id": user.primary_org_unit_id,
+        "primary_org_unit_name": user.primary_org_unit_name,
+    }
+
+
+def upload_permission_org_unit_option_payload(
+    org_unit: PermissionOrgUnitInventoryRecord,
+) -> dict[str, object]:
+    return {
+        "org_unit_id": org_unit.org_unit_id,
+        "org_unit_name": org_unit.org_unit_name,
+        "org_unit_type": org_unit.org_unit_type,
+        "org_path": org_unit.org_path,
+    }
 
 
 def pipeline_job_response_payload(
@@ -1498,11 +1545,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         duplicate: bool = False,
         error_message: str | None = None,
         form_values: dict[str, str] | None = None,
+        permission_users: tuple[PermissionUserInventoryRecord, ...] = (),
+        permission_org_units: tuple[PermissionOrgUnitInventoryRecord, ...] = (),
     ) -> dict[str, object]:
         return template_context(
             request,
             database_configured=bool(settings.database_url),
             supported_file_extensions=sorted(SUPPORTED_FILE_EXTENSIONS),
+            access_scope_options=tuple(
+                scope
+                for scope in ("personal", "team", "org_tree", "company")
+                if scope in DOCUMENT_ACCESS_SCOPES
+            ),
+            permission_user_options=[
+                upload_permission_user_option_payload(user) for user in permission_users
+            ],
+            permission_org_unit_options=[
+                upload_permission_org_unit_option_payload(org_unit)
+                for org_unit in permission_org_units
+            ],
             result=result,
             duplicate=duplicate,
             error_message=error_message,
@@ -1511,6 +1572,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "document_group": "default",
                 "security_level": "internal",
                 "uploaded_by": "",
+                "uploaded_by_user_id": "",
+                "owner_user_id": "",
+                "owner_org_unit_id": "",
+                "access_scope": "personal",
             },
         )
 
@@ -1520,6 +1585,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         document_group: str = DOCUMENT_GROUP_FORM,
         security_level: str = SECURITY_LEVEL_FORM,
         uploaded_by: str | None = UPLOADED_BY_FORM,
+        uploaded_by_user_id: str | None = UPLOADED_BY_USER_ID_FORM,
+        owner_user_id: str | None = OWNER_USER_ID_FORM,
+        owner_org_unit_id: str | None = OWNER_ORG_UNIT_ID_FORM,
+        access_scope: str = ACCESS_SCOPE_FORM,
     ) -> JSONResponse:
         if not settings.database_url:
             raise HTTPException(
@@ -1528,6 +1597,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         try:
+            access_scope_value = access_scope.strip() or "personal"
             result = store_upload(
                 database_url=settings.database_url,
                 upload_stream=file.file,
@@ -1537,6 +1607,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 document_group=document_group.strip() or "default",
                 security_level=security_level.strip() or "internal",
                 uploaded_by=uploaded_by.strip() if uploaded_by and uploaded_by.strip() else None,
+                uploaded_by_user_id=parse_optional_positive_int_form(
+                    uploaded_by_user_id,
+                    "uploaded_by_user_id",
+                ),
+                owner_user_id=parse_optional_positive_int_form(
+                    owner_user_id,
+                    "owner_user_id",
+                ),
+                owner_org_unit_id=parse_optional_positive_int_form(
+                    owner_org_unit_id,
+                    "owner_org_unit_id",
+                ),
+                access_scope=access_scope_value,
             )
         except UnsupportedFileExtensionError as exc:
             raise HTTPException(
@@ -2449,13 +2532,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/files/upload", response_class=HTMLResponse)
     def upload_file_page(request: Request) -> HTMLResponse:
         error_message = None
+        permission_users: tuple[PermissionUserInventoryRecord, ...] = ()
+        permission_org_units: tuple[PermissionOrgUnitInventoryRecord, ...] = ()
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                permission_users = tuple(list_permission_users(settings.database_url))
+                permission_org_units = tuple(list_permission_org_units(settings.database_url))
+            except InvalidPermissionInventoryError as exc:
+                error_message = str(exc)
 
         return TEMPLATES.TemplateResponse(
             request,
             "file_upload.html",
-            upload_template_context(request, error_message=error_message),
+            upload_template_context(
+                request,
+                error_message=error_message,
+                permission_users=permission_users,
+                permission_org_units=permission_org_units,
+            ),
         )
 
     @app.post("/files/upload", response_class=HTMLResponse)
@@ -2465,12 +2561,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         document_group: str = DOCUMENT_GROUP_FORM,
         security_level: str = SECURITY_LEVEL_FORM,
         uploaded_by: str | None = UPLOADED_BY_FORM,
+        uploaded_by_user_id: str | None = UPLOADED_BY_USER_ID_FORM,
+        owner_user_id: str | None = OWNER_USER_ID_FORM,
+        owner_org_unit_id: str | None = OWNER_ORG_UNIT_ID_FORM,
+        access_scope: str = ACCESS_SCOPE_FORM,
     ) -> HTMLResponse:
         form_values = {
             "document_group": document_group.strip() or "default",
             "security_level": security_level.strip() or "internal",
             "uploaded_by": uploaded_by.strip() if uploaded_by and uploaded_by.strip() else "",
+            "uploaded_by_user_id": (uploaded_by_user_id.strip() if uploaded_by_user_id else ""),
+            "owner_user_id": owner_user_id.strip() if owner_user_id else "",
+            "owner_org_unit_id": owner_org_unit_id.strip() if owner_org_unit_id else "",
+            "access_scope": access_scope.strip() or "personal",
         }
+        permission_users: tuple[PermissionUserInventoryRecord, ...] = ()
+        permission_org_units: tuple[PermissionOrgUnitInventoryRecord, ...] = ()
         result_payload = None
         duplicate = False
         error_message = None
@@ -2488,7 +2594,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     document_group=form_values["document_group"],
                     security_level=form_values["security_level"],
                     uploaded_by=form_values["uploaded_by"] or None,
+                    uploaded_by_user_id=parse_optional_positive_int_form(
+                        form_values["uploaded_by_user_id"],
+                        "uploaded_by_user_id",
+                    ),
+                    owner_user_id=parse_optional_positive_int_form(
+                        form_values["owner_user_id"],
+                        "owner_user_id",
+                    ),
+                    owner_org_unit_id=parse_optional_positive_int_form(
+                        form_values["owner_org_unit_id"],
+                        "owner_org_unit_id",
+                    ),
+                    access_scope=form_values["access_scope"],
                 )
+                permission_users = tuple(list_permission_users(settings.database_url))
+                permission_org_units = tuple(list_permission_org_units(settings.database_url))
                 result_payload = asdict(result.file)
                 result_payload["pipeline_job"] = pipeline_job_response_payload(
                     result.pipeline_job,
@@ -2501,6 +2622,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 UnsupportedFileExtensionError,
                 InvalidUploadFileNameError,
                 InvalidFileMetadataError,
+                InvalidPermissionInventoryError,
             ) as exc:
                 error_message = str(exc)
 
@@ -2513,6 +2635,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 duplicate=duplicate,
                 error_message=error_message,
                 form_values=form_values,
+                permission_users=permission_users,
+                permission_org_units=permission_org_units,
             ),
         )
 
