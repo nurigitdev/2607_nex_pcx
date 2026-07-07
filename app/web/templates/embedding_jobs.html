@@ -77,8 +77,21 @@
     <section class="metric-card bg-white p-3">
       <div class="d-flex align-items-center justify-content-between mb-3">
         <h2 class="h5 mb-0">Embedding Job #{{ selected_job.job_id }}</h2>
-        <span class="badge status-badge status-{{ selected_job.status }}">{{ selected_job.status }}</span>
+        <div class="job-detail-actions">
+          {% if selected_job.status == "failed" and selected_job.attempts < selected_job.max_attempts %}
+          <button
+            class="btn btn-outline-secondary"
+            id="embedding-retry-button"
+            type="button"
+            data-job-id="{{ selected_job.job_id }}"
+          >
+            Retry
+          </button>
+          {% endif %}
+          <span class="badge status-badge status-{{ selected_job.status }}">{{ selected_job.status }}</span>
+        </div>
       </div>
+      <div class="alert alert-info" id="embedding-retry-status" hidden></div>
       <dl class="job-detail-list mb-0">
         <dt>Chunk ID</dt>
         <dd>{{ selected_job.chunk_id }}</dd>
@@ -120,4 +133,43 @@
   </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const embeddingRetryButton = document.getElementById("embedding-retry-button");
+  const embeddingRetryStatus = document.getElementById("embedding-retry-status");
+
+  function setEmbeddingRetryStatus(message, level = "info") {
+    if (!embeddingRetryStatus) return;
+    embeddingRetryStatus.hidden = false;
+    embeddingRetryStatus.className = `alert alert-${level}`;
+    embeddingRetryStatus.textContent = message;
+  }
+
+  if (embeddingRetryButton) {
+    embeddingRetryButton.addEventListener("click", async () => {
+      const jobId = embeddingRetryButton.dataset.jobId;
+      embeddingRetryButton.disabled = true;
+      setEmbeddingRetryStatus("Retrying...");
+      try {
+        const response = await fetch(`/api/embedding/jobs/${jobId}/retry`, {
+          method: "POST",
+          headers: { Accept: "application/json" },
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body.detail || "Retry failed.");
+        }
+        setEmbeddingRetryStatus("Queued for retry.", "success");
+        window.setTimeout(() => {
+          window.location.href = `/admin/embedding-jobs?job_id=${jobId}`;
+        }, 500);
+      } catch (error) {
+        setEmbeddingRetryStatus(error instanceof Error ? error.message : "Retry failed.", "warning");
+        embeddingRetryButton.disabled = false;
+      }
+    });
+  }
+</script>
 {% endblock %}

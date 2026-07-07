@@ -23,3 +23,13 @@ def test_pipeline_job_api_requires_database_url() -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
+
+
+def test_pipeline_job_retry_api_requires_database_url() -> None:
+    app = create_app(Settings())
+
+    with TestClient(app) as client:
+        response = client.post("/api/pipeline/jobs/1/retry")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."

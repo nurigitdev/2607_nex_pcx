@@ -30,6 +30,7 @@ from app.core.embedding_jobs import (
     get_embedding_job,
     list_active_embedding_profiles,
     list_embedding_jobs,
+    retry_embedding_job,
 )
 from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
@@ -117,6 +118,7 @@ from app.core.pipeline_jobs import (
     get_pipeline_job,
     list_pipeline_job_events,
     list_pipeline_jobs,
+    retry_pipeline_job,
 )
 from app.core.search_compare import (
     InvalidSearchCompareError,
@@ -1215,6 +1217,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
+    @app.post("/api/pipeline/jobs/{job_id}/retry")
+    def api_retry_pipeline_job(job_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            existing = get_pipeline_job(settings.database_url, job_id)
+            if existing is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Pipeline job not found.",
+                )
+            retried = retry_pipeline_job(
+                settings.database_url,
+                job_id,
+                message="Manual retry requested",
+            )
+        except InvalidPipelineJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        if retried is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Pipeline job is not retryable.",
+            )
+        return JSONResponse(content={"job": pipeline_job_detail_payload(retried)})
+
     @app.get("/api/embedding/jobs")
     def api_list_embedding_jobs(
         status_filter: str | None = Query(default=None, alias="status"),
@@ -1270,6 +1302,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "embedding": embedding_vector_payload(vector),
             },
         )
+
+    @app.post("/api/embedding/jobs/{job_id}/retry")
+    def api_retry_embedding_job(job_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            existing = get_embedding_job(settings.database_url, job_id)
+            if existing is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Embedding job not found.",
+                )
+            retried = retry_embedding_job(settings.database_url, job_id)
+        except InvalidEmbeddingJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        if retried is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Embedding job is not retryable.",
+            )
+        return JSONResponse(content={"job": embedding_job_payload(retried)})
 
     @app.post("/api/search/compare")
     def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:

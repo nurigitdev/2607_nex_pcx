@@ -435,6 +435,14 @@ main.container-fluid {
   overflow-wrap: anywhere;
 }
 
+.job-detail-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .event-timeline {
   display: grid;
   gap: 0.75rem;
