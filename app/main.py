@@ -1112,6 +1112,86 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
         )
 
+    @app.get("/evaluations", response_class=HTMLResponse)
+    def golden_evaluations_page(
+        request: Request,
+        question_set_id: int | None = None,
+        profile_name: str | None = None,
+        status_filter: str | None = Query(default=None, alias="status"),
+        evaluation_run_id: int | None = None,
+        limit: int = 100,
+    ) -> HTMLResponse:
+        question_sets: list[GoldenQuestionSetRecord] = []
+        profile_options: list[str] = []
+        runs: list[EvaluationRunRecord] = []
+        selected_run: EvaluationRunRecord | None = None
+        selected_question_set: GoldenQuestionSetRecord | None = None
+        selected_results: list[EvaluationResultRecord] = []
+        error_message = None
+        profile_value = profile_name.strip() if profile_name else None
+        if profile_value == "":
+            profile_value = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                question_sets = list_golden_question_sets(
+                    settings.database_url,
+                    active_only=False,
+                )
+                profile_options = [
+                    profile.profile_name
+                    for profile in list_active_embedding_profiles(settings.database_url)
+                ]
+                runs = list_evaluation_runs(
+                    settings.database_url,
+                    question_set_id=question_set_id,
+                    profile_name=profile_value,
+                    status=status_filter,
+                    limit=limit,
+                )
+                if evaluation_run_id is not None:
+                    selected_run = get_evaluation_run(settings.database_url, evaluation_run_id)
+                    if selected_run is None:
+                        error_message = f"Evaluation run not found: {evaluation_run_id}"
+                    else:
+                        selected_question_set = get_golden_question_set(
+                            settings.database_url,
+                            selected_run.question_set_id,
+                        )
+                        selected_results = list_evaluation_results(
+                            settings.database_url,
+                            selected_run.evaluation_run_id,
+                        )
+            except (InvalidEvaluationRunError, InvalidGoldenQuestionError) as exc:
+                error_message = str(exc)
+
+        question_set_names = {
+            question_set.question_set_id: question_set.set_name for question_set in question_sets
+        }
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "golden_evaluations.html",
+            template_context(
+                request,
+                question_sets=question_sets,
+                question_set_names=question_set_names,
+                profile_options=profile_options,
+                runs=runs,
+                selected_run=selected_run,
+                selected_question_set=selected_question_set,
+                selected_results=selected_results,
+                selected_question_set_id=question_set_id,
+                selected_profile_name=profile_value or "",
+                selected_status=status_filter or "",
+                selected_evaluation_run_id=evaluation_run_id,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
     @app.get("/admin/jobs", response_class=HTMLResponse)
     def pipeline_jobs_page(
         request: Request,

@@ -131,6 +131,9 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
                 },
             )
             detail_response = client.get(f"/api/evaluations/runs/{fixture['evaluation_run_id']}")
+            page_response = client.get(
+                f"/evaluations?evaluation_run_id={fixture['evaluation_run_id']}"
+            )
             missing_response = client.get("/api/evaluations/runs/999999999")
             bad_request_response = client.get("/api/evaluations/runs", params={"limit": 0})
 
@@ -152,6 +155,11 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         assert result["evaluation_result_id"] == fixture["evaluation_result_id"]
         assert result["question_id"] == fixture["question_id"]
         assert result["no_answer_success"] is True
+        assert page_response.status_code == 200
+        assert "Golden Evaluation Monitor" in page_response.text
+        assert f"#{fixture['evaluation_run_id']}" in page_response.text
+        assert fixture["set_name"] in page_response.text
+        assert "kure_v1_1024" in page_response.text
         assert missing_response.status_code == 404
         assert bad_request_response.status_code == 400
     finally:

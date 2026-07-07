@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">Golden Evaluation Monitor</h1>
+    <p class="text-secondary mb-0">Question set benchmark runs, profile metrics, and per-question results</p>
+  </div>
+  <form class="job-filter-form d-flex align-items-center gap-2" method="get">
+    <label class="form-label mb-0 text-secondary" for="question_set_id">Set</label>
+    <select class="form-select form-select-sm" id="question_set_id" name="question_set_id" onchange="this.form.submit()">
+      <option value="" {% if not selected_question_set_id %}selected{% endif %}>All</option>
+      {% for question_set in question_sets %}
+      <option value="{{ question_set.question_set_id }}" {% if selected_question_set_id == question_set.question_set_id %}selected{% endif %}>
+        {{ question_set.set_name }}
+      </option>
+      {% endfor %}
+    </select>
+    <label class="form-label mb-0 text-secondary" for="profile_name">Profile</label>
+    <select class="form-select form-select-sm" id="profile_name" name="profile_name" onchange="this.form.submit()">
+      <option value="" {% if not selected_profile_name %}selected{% endif %}>All</option>
+      {% for profile in profile_options %}
+      <option value="{{ profile }}" {% if selected_profile_name == profile %}selected{% endif %}>{{ profile }}</option>
+      {% endfor %}
+    </select>
+    <label class="form-label mb-0 text-secondary" for="status">Status</label>
+    <select class="form-select form-select-sm" id="status" name="status" onchange="this.form.submit()">
+      <option value="" {% if not selected_status %}selected{% endif %}>All</option>
+      {% for status in ["pending", "running", "succeeded", "failed"] %}
+      <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if selected_run %}
+<section class="evaluation-summary-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">Recall@{{ selected_run.top_k }}</div>
+    <div class="metric-value">{{ "%.2f"|format((selected_run.mean_recall_at_k or 0) * 100) }}%</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">MRR</div>
+    <div class="metric-value">{{ "%.2f"|format((selected_run.mean_reciprocal_rank or 0) * 100) }}%</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">nDCG</div>
+    <div class="metric-value">{{ "%.2f"|format((selected_run.mean_ndcg or 0) * 100) }}%</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">Hidden Violations</div>
+    <div class="metric-value">{{ selected_run.hidden_violation_count }}</div>
+  </div>
+</section>
+{% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 job-table evaluation-run-table">
+      <thead>
+        <tr>
+          <th scope="col">Run</th>
+          <th scope="col">Question Set</th>
+          <th scope="col">Profile</th>
+          <th scope="col">Status</th>
+          <th scope="col">Questions</th>
+          <th scope="col">Recall</th>
+          <th scope="col">nDCG</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr class="{% if selected_run and selected_run.evaluation_run_id == run.evaluation_run_id %}table-active{% endif %}">
+          <td>
+            <a class="job-link" href="/evaluations?evaluation_run_id={{ run.evaluation_run_id }}{% if selected_question_set_id %}&question_set_id={{ selected_question_set_id }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">
+              #{{ run.evaluation_run_id }}
+            </a>
+            <div class="text-secondary small">{{ run.run_name }}</div>
+          </td>
+          <td class="text-break">
+            {% set question_set_name = question_set_names.get(run.question_set_id, "#" ~ run.question_set_id) %}
+            {{ question_set_name }}
+          </td>
+          <td class="text-nowrap">{{ run.profile_name }}</td>
+          <td><span class="badge status-badge status-{{ run.status }}">{{ run.status }}</span></td>
+          <td>{{ run.question_count }}</td>
+          <td>{{ "%.2f"|format((run.mean_recall_at_k or 0) * 100) }}%</td>
+          <td>{{ "%.2f"|format((run.mean_ndcg or 0) * 100) }}%</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="7">
+            {% if database_configured %}No evaluation runs found{% else %}No database configured{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if selected_run %}
+<div class="row g-3">
+  <div class="col-12 col-xl-4">
+    <section class="metric-card bg-white p-3">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="h5 mb-0">Run #{{ selected_run.evaluation_run_id }}</h2>
+        <span class="badge status-badge status-{{ selected_run.status }}">{{ selected_run.status }}</span>
+      </div>
+      <dl class="job-detail-list mb-0">
+        <dt>Run Name</dt>
+        <dd>{{ selected_run.run_name }}</dd>
+        <dt>Question Set</dt>
+        <dd>{{ selected_question_set.set_name if selected_question_set else selected_run.question_set_id }}</dd>
+        <dt>Profile</dt>
+        <dd>{{ selected_run.profile_name }}</dd>
+        <dt>Top K</dt>
+        <dd>{{ selected_run.top_k }}</dd>
+        <dt>Recall Questions</dt>
+        <dd>{{ selected_run.recall_question_count }}</dd>
+        <dt>No Answer</dt>
+        <dd>{{ "%.2f"|format((selected_run.no_answer_success_rate or 0) * 100) }}%</dd>
+        <dt>Started</dt>
+        <dd>{{ selected_run.started_at or "" }}</dd>
+        <dt>Finished</dt>
+        <dd>{{ selected_run.finished_at or "" }}</dd>
+      </dl>
+    </section>
+  </div>
+  <div class="col-12 col-xl-8">
+    <section class="metric-card bg-white p-0 overflow-hidden">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 job-table evaluation-result-table">
+          <thead>
+            <tr>
+              <th scope="col">Question</th>
+              <th scope="col">Retrieved</th>
+              <th scope="col">Matched</th>
+              <th scope="col">Recall</th>
+              <th scope="col">MRR</th>
+              <th scope="col">nDCG</th>
+              <th scope="col">Hidden</th>
+              <th scope="col">No Answer</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for result in selected_results %}
+            <tr>
+              <td>#{{ result.question_id }}</td>
+              <td>{{ result.retrieved_count }}</td>
+              <td>{{ result.matched_visible_count }} / {{ result.visible_expected_count }}</td>
+              <td>{{ "%.2f"|format((result.recall_at_k or 0) * 100) }}%</td>
+              <td>{{ "%.2f"|format((result.reciprocal_rank or 0) * 100) }}%</td>
+              <td>{{ "%.2f"|format((result.ndcg or 0) * 100) }}%</td>
+              <td>{{ result.hidden_violation_count }}</td>
+              <td>{{ "yes" if result.no_answer_success else "" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-5" colspan="8">No evaluation results found</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
