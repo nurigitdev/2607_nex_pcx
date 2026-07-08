@@ -335,9 +335,14 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert {body["search_log_id"], *matrix_log_ids} == set(logs_by_id)
         assert logs_by_id[body["search_log_id"]]["result_count"] == 2
         assert logs_by_id[body["search_log_id"]]["feedback_count"] == 1
+        assert (
+            logs_by_id[body["search_log_id"]]["permission_summary"]["excluded_document_count"] == 1
+        )
         assert detail_response.status_code == 200
         assert detail_body["search_log"]["search_log_id"] == body["search_log_id"]
         assert detail_body["search_log"]["actor_login_id"] == "alice.member"
+        assert detail_body["search_log"]["permission_summary"]["visible_document_count"] == 1
+        assert detail_body["search_log"]["permission_summary"]["excluded_document_count"] == 1
         assert (
             detail_body["search_log"]["permission_filter_metadata"]["permission_explainability"][
                 "excluded_document_count"

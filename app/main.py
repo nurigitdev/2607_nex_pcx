@@ -591,6 +591,11 @@ def search_feedback_payload(feedback: SearchResultFeedbackRecord) -> dict[str, o
     }
 
 
+def permission_summary_from_metadata(metadata: dict[str, object]) -> dict[str, object]:
+    summary = metadata.get("permission_explainability", {})
+    return dict(summary) if isinstance(summary, dict) else {}
+
+
 def search_log_record_payload(item: SearchLogListItem) -> dict[str, object]:
     search_log = item.search_log
     return {
@@ -603,6 +608,9 @@ def search_log_record_payload(item: SearchLogListItem) -> dict[str, object]:
         "requested_search_scope": search_log.requested_search_scope,
         "effective_search_scope": search_log.effective_search_scope,
         "permission_filter_metadata": search_log.permission_filter_metadata,
+        "permission_summary": permission_summary_from_metadata(
+            search_log.permission_filter_metadata
+        ),
         "document_group": search_log.document_group,
         "file_type": search_log.file_type,
         "chunk_policy_name": search_log.chunk_policy_name,

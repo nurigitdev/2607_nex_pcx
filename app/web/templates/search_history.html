@@ -130,6 +130,8 @@
 </section>
 
 {% if selected_log %}
+{% set metadata = selected_log.search_log.permission_filter_metadata or {} %}
+{% set permission_summary = metadata.get("permission_explainability", {}) %}
 <div class="search-history-detail">
   <section class="metric-card bg-white p-3">
     <div class="d-flex align-items-center justify-content-between mb-3">
@@ -155,6 +157,113 @@
       <dd>{{ selected_log.search_log.created_at }}</dd>
     </dl>
   </section>
+
+  {% if permission_summary %}
+  <section class="search-permission-summary-panel bg-white p-3">
+    <div class="search-permission-summary-header">
+      <div>
+        <h2 class="h5 mb-1">{{ t("search_permission.title") }}</h2>
+        <p class="text-secondary mb-0">{{ t("search_permission.subtitle") }}</p>
+      </div>
+    </div>
+    <div class="search-permission-summary-grid">
+      <article class="search-permission-summary-item">
+        <h3 class="h6 mb-0">{{ t("search_permission.actor") }}</h3>
+        <div class="search-permission-summary-body">
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.actor") }}</span>
+            <strong>{{ permission_summary.get("actor_display_name") or selected_log.actor_display_name or permission_summary.get("actor_login_id") or selected_log.actor_login_id or "" }}</strong>
+          </div>
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.role") }}</span>
+            <strong>{{ t("role." ~ permission_summary.get("role_name")) if permission_summary.get("role_name") else "" }}</strong>
+          </div>
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.primary_org") }}</span>
+            <strong>{{ permission_summary.get("primary_org_unit_name") or "" }}</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="search-permission-summary-item">
+        <h3 class="h6 mb-0">{{ t("search_permission.scope") }}</h3>
+        <div class="search-permission-summary-body">
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.requested_scope") }}</span>
+            <strong>{{ t("search_scope." ~ permission_summary.get("requested_search_scope")) if permission_summary.get("requested_search_scope") else "" }}</strong>
+          </div>
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.effective_scope") }}</span>
+            <strong>{{ t("search_scope." ~ permission_summary.get("effective_search_scope")) if permission_summary.get("effective_search_scope") else "" }}</strong>
+          </div>
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.downgraded") }}</span>
+            <strong>{{ t("common.yes") if permission_summary.get("scope_was_downgraded") else t("common.no") }}</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="search-permission-summary-item">
+        <h3 class="h6 mb-0">{{ t("search_permission.visibility") }}</h3>
+        <div class="search-permission-summary-body">
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.visible_documents") }}</span>
+            <strong>{{ permission_summary.get("visible_document_count", 0) }} / {{ permission_summary.get("candidate_document_count", 0) }}</strong>
+          </div>
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.excluded_documents") }}</span>
+            <strong>{{ permission_summary.get("excluded_document_count", 0) }}</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="search-permission-summary-item">
+        <h3 class="h6 mb-0">{{ t("search_permission.access_scopes") }}</h3>
+        <div class="search-permission-scope-badges">
+          {% set access_counts = permission_summary.get("visible_access_scope_counts", {}) %}
+          {% for scope in ["personal", "team", "org_tree", "company"] %}
+          {% if access_counts.get(scope, 0) %}
+          <span class="search-permission-scope-badge">
+            {{ t("access_scope." ~ scope) }} {{ access_counts.get(scope) }}
+          </span>
+          {% endif %}
+          {% endfor %}
+          {% if not permission_summary.get("included_access_scopes") %}
+          <span class="text-secondary small">{{ t("permissions.none") }}</span>
+          {% endif %}
+        </div>
+      </article>
+
+      <article class="search-permission-summary-item">
+        <h3 class="h6 mb-0">{{ t("search_permission.org_context") }}</h3>
+        <div class="search-permission-summary-body">
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.ancestor_orgs") }}</span>
+            <strong>{{ permission_summary.get("ancestor_org_unit_count", 0) }}</strong>
+          </div>
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.managed_orgs") }}</span>
+            <strong>{{ permission_summary.get("managed_org_unit_count", 0) }}</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="search-permission-summary-item">
+        <h3 class="h6 mb-0">{{ t("search_permission.filter") }}</h3>
+        <div class="search-permission-summary-body">
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.clause_count") }}</span>
+            <strong>{{ permission_summary.get("filter_clause_count", 0) }}</strong>
+          </div>
+          <div class="search-permission-summary-row">
+            <span class="text-secondary">{{ t("search_permission.includes_company") }}</span>
+            <strong>{{ t("common.yes") if permission_summary.get("includes_company_documents") else t("common.no") }}</strong>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+  {% endif %}
 
   <section class="search-history-results">
     {% for result in selected_log.results %}
