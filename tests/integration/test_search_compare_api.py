@@ -269,6 +269,20 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert body["requested_search_scope"] == "company"
         assert body["effective_search_scope"] == "company"
         assert body["permission_filter_metadata"]["actor_user_id"] == ids["alice.member"]
+        assert body["permission_summary"]["actor_user_id"] == ids["alice.member"]
+        assert body["permission_summary"]["actor_login_id"] == "alice.member"
+        assert body["permission_summary"]["requested_search_scope"] == "company"
+        assert body["permission_summary"]["effective_search_scope"] == "company"
+        assert body["permission_summary"]["scope_was_downgraded"] is False
+        assert body["permission_summary"]["candidate_document_count"] == 2
+        assert body["permission_summary"]["visible_document_count"] == 1
+        assert body["permission_summary"]["excluded_document_count"] == 1
+        assert body["permission_summary"]["visible_access_scope_counts"]["company"] == 1
+        assert "hidden bob personal fixture" not in str(body["permission_summary"])
+        assert (
+            body["permission_filter_metadata"]["permission_explainability"]
+            == body["permission_summary"]
+        )
         assert set(profile_results) == {"kure_v1_1024", "bge_m3_1024"}
         assert result_chunk_ids == {visible_chunk_id}
         assert hidden_chunk_id not in result_chunk_ids
@@ -289,6 +303,15 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert matrix_by_actor[ids["bob.member"]]["effective_search_scope"] == "company"
         assert matrix_by_actor[ids["bob.member"]]["permission_filter_metadata"]["login_id"] == (
             "bob.member"
+        )
+        assert (
+            matrix_by_actor[ids["bob.member"]]["permission_summary"]["excluded_document_count"] == 0
+        )
+        assert (
+            matrix_by_actor[ids["bob.member"]]["permission_summary"]["visible_access_scope_counts"][
+                "personal"
+            ]
+            == 1
         )
         assert feedback_response.status_code == 201
         assert feedback_body["feedback"]["relevance_label"] == "correct"
@@ -315,6 +338,12 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert detail_response.status_code == 200
         assert detail_body["search_log"]["search_log_id"] == body["search_log_id"]
         assert detail_body["search_log"]["actor_login_id"] == "alice.member"
+        assert (
+            detail_body["search_log"]["permission_filter_metadata"]["permission_explainability"][
+                "excluded_document_count"
+            ]
+            == 1
+        )
         assert len(detail_body["results"]) == 2
         assert detail_body["results"][0]["document_group"] == document_group
         detail_results = {result["profile_name"]: result for result in detail_body["results"]}

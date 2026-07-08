@@ -81,6 +81,28 @@
     "managed_org": "관리 조직",
     "company": "회사 전체"
   },
+  "search_permission": {
+    "title": "검색 권한 설명",
+    "subtitle": "현재 검색에 적용된 사용자, 범위, 문서 visibility aggregate",
+    "actor": "사용자",
+    "role": "역할",
+    "primary_org": "기본 조직",
+    "scope": "검색 범위",
+    "requested_scope": "요청 범위",
+    "effective_scope": "적용 범위",
+    "downgraded": "범위 조정",
+    "visibility": "문서 Visibility",
+    "visible_documents": "접근 가능 문서",
+    "candidate_documents": "후보 문서",
+    "excluded_documents": "제외 문서",
+    "access_scopes": "접근 범위",
+    "org_context": "조직 Context",
+    "ancestor_orgs": "상위 조직",
+    "managed_orgs": "관리 조직",
+    "filter": "필터",
+    "clause_count": "조건 수",
+    "includes_company": "회사 공통 포함"
+  },
   "permissions": {
     "title": "권한 시뮬레이션",
     "subtitle": "사용자, 조직, 멤버십, 문서 소유권 기준의 검색 범위 인벤토리",

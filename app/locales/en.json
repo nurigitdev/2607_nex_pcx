@@ -81,6 +81,28 @@
     "managed_org": "Managed Org",
     "company": "Company"
   },
+  "search_permission": {
+    "title": "Search Permission Explainability",
+    "subtitle": "Actor, scope, and document visibility aggregates applied to this search",
+    "actor": "Actor",
+    "role": "Role",
+    "primary_org": "Primary Org",
+    "scope": "Search Scope",
+    "requested_scope": "Requested Scope",
+    "effective_scope": "Effective Scope",
+    "downgraded": "Scope Adjusted",
+    "visibility": "Document Visibility",
+    "visible_documents": "Visible Documents",
+    "candidate_documents": "Candidate Documents",
+    "excluded_documents": "Excluded Documents",
+    "access_scopes": "Access Scopes",
+    "org_context": "Org Context",
+    "ancestor_orgs": "Ancestor Orgs",
+    "managed_orgs": "Managed Orgs",
+    "filter": "Filter",
+    "clause_count": "Clause Count",
+    "includes_company": "Includes Company"
+  },
   "permissions": {
     "title": "Permission Simulation",
     "subtitle": "Search-scope inventory from users, org units, memberships, and document ownership",

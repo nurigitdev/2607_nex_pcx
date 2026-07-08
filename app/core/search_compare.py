@@ -1,8 +1,10 @@
 """Search compare service for profile-by-profile vector retrieval."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import perf_counter
+from typing import Any
 
+from app.core.database import connect
 from app.core.embedding_jobs import list_active_embedding_profiles
 from app.core.permissions import PermissionSearchFilter, resolve_permission_search_filter
 from app.core.search_logs import (
@@ -14,6 +16,7 @@ from app.core.search_logs import (
 from app.core.vector_search import VectorSearchInput, VectorSearchResult, search_similar_chunks
 
 MAX_PERMISSION_MATRIX_ENTRIES = 12
+ACCESS_SCOPE_ORDER = ("personal", "team", "org_tree", "company")
 
 
 @dataclass(frozen=True)
@@ -198,6 +201,118 @@ def _default_profiles(database_url: str) -> tuple[str, ...]:
     return profiles
 
 
+def _document_visibility_filters(
+    search_input: SearchCompareInput,
+) -> tuple[str, list[object]]:
+    where_clauses = ["d.document_status = 'active'"]
+    params: list[object] = []
+
+    if search_input.document_group is not None:
+        where_clauses.append("d.document_group = %s")
+        params.append(search_input.document_group)
+    if search_input.file_type is not None:
+        where_clauses.append("f.file_ext = %s")
+        params.append(search_input.file_type)
+    if search_input.chunk_policy_name is not None:
+        where_clauses.append("""
+            EXISTS (
+                SELECT 1
+                FROM chunks visibility_chunk
+                WHERE visibility_chunk.document_id = d.document_id
+                  AND visibility_chunk.chunk_policy_name = %s
+            )
+            """)
+        params.append(search_input.chunk_policy_name)
+
+    return " AND ".join(where_clauses), params
+
+
+def _permission_explainability_summary(
+    database_url: str,
+    search_input: SearchCompareInput,
+    permission_filter: PermissionSearchFilter,
+) -> dict[str, Any]:
+    base_where_sql, base_params = _document_visibility_filters(search_input)
+    visibility_params = [*base_params, *permission_filter.params]
+    access_scope_counts = dict.fromkeys(ACCESS_SCOPE_ORDER, 0)
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*) AS count
+                FROM documents d
+                JOIN files f ON f.file_id = d.file_id
+                WHERE {base_where_sql}
+                """,
+                tuple(base_params),
+            )
+            candidate_document_count = int(cursor.fetchone()["count"])
+
+            cursor.execute(
+                f"""
+                SELECT d.access_scope, count(*) AS count
+                FROM documents d
+                JOIN files f ON f.file_id = d.file_id
+                WHERE {base_where_sql}
+                  AND {permission_filter.where_sql}
+                GROUP BY d.access_scope
+                """,
+                tuple(visibility_params),
+            )
+            for row in cursor.fetchall():
+                access_scope = str(row["access_scope"])
+                if access_scope in access_scope_counts:
+                    access_scope_counts[access_scope] = int(row["count"])
+
+    visible_document_count = sum(access_scope_counts.values())
+    return {
+        "actor_user_id": permission_filter.metadata["actor_user_id"],
+        "actor_login_id": permission_filter.metadata["login_id"],
+        "actor_display_name": permission_filter.metadata.get("display_name"),
+        "role_name": permission_filter.metadata["role_name"],
+        "primary_org_unit_id": permission_filter.metadata["primary_org_unit_id"],
+        "primary_org_unit_name": permission_filter.metadata["primary_org_unit_name"],
+        "requested_search_scope": permission_filter.requested_search_scope,
+        "effective_search_scope": permission_filter.effective_search_scope,
+        "scope_was_downgraded": (
+            permission_filter.requested_search_scope != permission_filter.effective_search_scope
+        ),
+        "ancestor_org_unit_count": len(permission_filter.metadata.get("ancestor_org_unit_ids", ())),
+        "managed_org_unit_count": len(permission_filter.metadata.get("managed_org_unit_ids", ())),
+        "includes_company_documents": permission_filter.metadata["includes_company_documents"],
+        "filter_clause_count": permission_filter.metadata["filter_clause_count"],
+        "candidate_document_count": candidate_document_count,
+        "visible_document_count": visible_document_count,
+        "excluded_document_count": max(
+            0,
+            candidate_document_count - visible_document_count,
+        ),
+        "visible_access_scope_counts": access_scope_counts,
+        "included_access_scopes": [
+            scope for scope, count in access_scope_counts.items() if count > 0
+        ],
+    }
+
+
+def _with_permission_explainability(
+    database_url: str,
+    search_input: SearchCompareInput,
+    permission_filter: PermissionSearchFilter,
+) -> PermissionSearchFilter:
+    summary = _permission_explainability_summary(
+        database_url,
+        search_input,
+        permission_filter,
+    )
+    metadata = {
+        **permission_filter.metadata,
+        "included_access_scopes": summary["included_access_scopes"],
+        "permission_explainability": summary,
+    }
+    return replace(permission_filter, metadata=metadata)
+
+
 def run_search_compare(
     database_url: str,
     search_input: SearchCompareInput,
@@ -208,6 +323,11 @@ def run_search_compare(
         database_url,
         actor_user_id=validated.actor_user_id,
         requested_search_scope=validated.requested_search_scope,
+    )
+    permission_filter = _with_permission_explainability(
+        database_url,
+        validated,
+        permission_filter,
     )
 
     started_at = perf_counter()

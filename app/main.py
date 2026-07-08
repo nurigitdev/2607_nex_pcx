@@ -535,6 +535,10 @@ def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
         "requested_search_scope": result.requested_search_scope,
         "effective_search_scope": result.effective_search_scope,
         "permission_filter_metadata": result.permission_filter.metadata,
+        "permission_summary": result.permission_filter.metadata.get(
+            "permission_explainability",
+            {},
+        ),
         "top_k": result.top_k,
         "total_elapsed_ms": result.total_elapsed_ms,
         "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
@@ -550,6 +554,10 @@ def search_permission_matrix_entry_payload(
         "requested_search_scope": entry.requested_search_scope,
         "effective_search_scope": entry.effective_search_scope,
         "permission_filter_metadata": entry.permission_filter.metadata,
+        "permission_summary": entry.permission_filter.metadata.get(
+            "permission_explainability",
+            {},
+        ),
         "result_count": entry.result_count,
         "unique_chunk_count": entry.unique_chunk_count,
         "top_result": (

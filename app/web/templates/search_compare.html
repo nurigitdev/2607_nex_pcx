@@ -132,6 +132,24 @@
   </form>
 </section>
 
+<section
+  class="search-permission-summary-panel bg-white p-3 mb-4"
+  id="search-permission-summary"
+  hidden
+>
+  <div class="search-permission-summary-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_permission.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("search_permission.subtitle") }}</p>
+    </div>
+  </div>
+  <div
+    class="search-permission-summary-grid"
+    id="search-permission-summary-grid"
+    aria-live="polite"
+  ></div>
+</section>
+
 <section class="search-permission-matrix-panel bg-white p-3 mb-4">
   <div class="search-permission-matrix-header">
     <div>
@@ -229,6 +247,8 @@
   const resultsEl = document.getElementById("search-results");
   const summaryEl = document.getElementById("search-summary");
   const submitButton = document.getElementById("search-submit");
+  const permissionSummaryPanel = document.getElementById("search-permission-summary");
+  const permissionSummaryGrid = document.getElementById("search-permission-summary-grid");
   const matrixForm = document.getElementById("permission-matrix-form");
   const matrixSubmit = document.getElementById("permission-matrix-submit");
   const matrixStatus = document.getElementById("permission-matrix-status");
@@ -245,6 +265,48 @@
     {label: "Duplicate", value: "duplicate"},
     {label: "Insufficient", value: "insufficient_context"},
   ];
+  const searchScopeLabels = {
+    mine: "{{ t('search_scope.mine') }}",
+    team: "{{ t('search_scope.team') }}",
+    managed_org: "{{ t('search_scope.managed_org') }}",
+    company: "{{ t('search_scope.company') }}",
+  };
+  const accessScopeLabels = {
+    personal: "{{ t('access_scope.personal') }}",
+    team: "{{ t('access_scope.team') }}",
+    org_tree: "{{ t('access_scope.org_tree') }}",
+    company: "{{ t('access_scope.company') }}",
+  };
+  const roleLabels = {
+    admin: "{{ t('role.admin') }}",
+    group_lead: "{{ t('role.group_lead') }}",
+    team_lead: "{{ t('role.team_lead') }}",
+    member: "{{ t('role.member') }}",
+  };
+  const permissionLabels = {
+    actor: "{{ t('search_permission.actor') }}",
+    role: "{{ t('search_permission.role') }}",
+    primaryOrg: "{{ t('search_permission.primary_org') }}",
+    scope: "{{ t('search_permission.scope') }}",
+    requestedScope: "{{ t('search_permission.requested_scope') }}",
+    effectiveScope: "{{ t('search_permission.effective_scope') }}",
+    downgraded: "{{ t('search_permission.downgraded') }}",
+    visibility: "{{ t('search_permission.visibility') }}",
+    visibleDocuments: "{{ t('search_permission.visible_documents') }}",
+    candidateDocuments: "{{ t('search_permission.candidate_documents') }}",
+    excludedDocuments: "{{ t('search_permission.excluded_documents') }}",
+    accessScopes: "{{ t('search_permission.access_scopes') }}",
+    orgContext: "{{ t('search_permission.org_context') }}",
+    ancestorOrgs: "{{ t('search_permission.ancestor_orgs') }}",
+    managedOrgs: "{{ t('search_permission.managed_orgs') }}",
+    filter: "{{ t('search_permission.filter') }}",
+    clauseCount: "{{ t('search_permission.clause_count') }}",
+    includesCompany: "{{ t('search_permission.includes_company') }}",
+    yes: "{{ t('common.yes') }}",
+    no: "{{ t('common.no') }}",
+    none: "{{ t('permissions.none') }}",
+    documents: "{{ t('permissions.documents') }}",
+  };
 
   const setAlert = (message) => {
     alertEl.hidden = !message;
@@ -254,6 +316,10 @@
   const clearResults = () => {
     resultsEl.replaceChildren();
     summaryEl.textContent = "";
+    permissionSummaryGrid?.replaceChildren();
+    if (permissionSummaryPanel) {
+      permissionSummaryPanel.hidden = true;
+    }
   };
 
   const fieldValue = (name) => {
@@ -310,6 +376,121 @@
       return "-";
     }
     return Number(value).toFixed(digits);
+  };
+
+  const formatInteger = (value) =>
+    Number(value || 0).toLocaleString(undefined, {maximumFractionDigits: 0});
+
+  const formatSearchScope = (scope) => searchScopeLabels[scope] || scope || "-";
+  const formatAccessScope = (scope) => accessScopeLabels[scope] || scope || "-";
+  const formatRole = (role) => roleLabels[role] || role || "-";
+
+  const renderPermissionSummaryRow = (label, value) => {
+    const row = document.createElement("div");
+    row.className = "search-permission-summary-row";
+    const term = document.createElement("span");
+    term.className = "text-secondary";
+    term.textContent = label;
+    const detail = document.createElement("strong");
+    detail.textContent = value || "-";
+    row.append(term, detail);
+    return row;
+  };
+
+  const renderPermissionSummaryCard = (title, rows) => {
+    const card = document.createElement("article");
+    card.className = "search-permission-summary-item";
+    const heading = document.createElement("h3");
+    heading.className = "h6 mb-0";
+    heading.textContent = title;
+    const body = document.createElement("div");
+    body.className = "search-permission-summary-body";
+    rows.forEach(([label, value]) => {
+      body.append(renderPermissionSummaryRow(label, value));
+    });
+    card.append(heading, body);
+    return card;
+  };
+
+  const renderVisibleAccessScopes = (summary) => {
+    const card = document.createElement("article");
+    card.className = "search-permission-summary-item";
+    const heading = document.createElement("h3");
+    heading.className = "h6 mb-0";
+    heading.textContent = permissionLabels.accessScopes;
+    const badges = document.createElement("div");
+    badges.className = "search-permission-scope-badges";
+    const counts = summary.visible_access_scope_counts || {};
+    Object.entries(counts)
+      .filter(([, count]) => Number(count) > 0)
+      .forEach(([scope, count]) => {
+        const badge = document.createElement("span");
+        badge.className = "search-permission-scope-badge";
+        badge.textContent = `${formatAccessScope(scope)} ${formatInteger(count)}`;
+        badges.append(badge);
+      });
+    if (!badges.childElementCount) {
+      const empty = document.createElement("span");
+      empty.className = "text-secondary small";
+      empty.textContent = permissionLabels.none;
+      badges.append(empty);
+    }
+    card.append(heading, badges);
+    return card;
+  };
+
+  const renderPermissionSummary = (summary) => {
+    if (!permissionSummaryPanel || !permissionSummaryGrid) {
+      return;
+    }
+    permissionSummaryGrid.replaceChildren();
+    if (!summary || !summary.actor_user_id) {
+      permissionSummaryPanel.hidden = true;
+      return;
+    }
+
+    const actorText = summary.actor_display_name
+      ? `${summary.actor_display_name} / ${summary.actor_login_id || ""}`.trim()
+      : summary.actor_login_id || `#${summary.actor_user_id}`;
+    const scopeText = summary.scope_was_downgraded
+      ? `${formatSearchScope(summary.requested_search_scope)} -> ${formatSearchScope(summary.effective_search_scope)}`
+      : formatSearchScope(summary.effective_search_scope);
+
+    permissionSummaryGrid.append(
+      renderPermissionSummaryCard(permissionLabels.actor, [
+        [permissionLabels.actor, actorText],
+        [permissionLabels.role, formatRole(summary.role_name)],
+        [permissionLabels.primaryOrg, summary.primary_org_unit_name],
+      ]),
+      renderPermissionSummaryCard(permissionLabels.scope, [
+        [permissionLabels.requestedScope, formatSearchScope(summary.requested_search_scope)],
+        [permissionLabels.effectiveScope, scopeText],
+        [
+          permissionLabels.downgraded,
+          summary.scope_was_downgraded ? permissionLabels.yes : permissionLabels.no,
+        ],
+      ]),
+      renderPermissionSummaryCard(permissionLabels.visibility, [
+        [
+          permissionLabels.visibleDocuments,
+          `${formatInteger(summary.visible_document_count)} / ${formatInteger(summary.candidate_document_count)}`,
+        ],
+        [permissionLabels.excludedDocuments, formatInteger(summary.excluded_document_count)],
+      ]),
+      renderVisibleAccessScopes(summary),
+      renderPermissionSummaryCard(permissionLabels.orgContext, [
+        [permissionLabels.ancestorOrgs, formatInteger(summary.ancestor_org_unit_count)],
+        [permissionLabels.managedOrgs, formatInteger(summary.managed_org_unit_count)],
+      ]),
+      renderPermissionSummaryCard(permissionLabels.filter, [
+        [permissionLabels.clauseCount, formatInteger(summary.filter_clause_count)],
+        [
+          permissionLabels.includesCompany,
+          summary.includes_company_documents ? permissionLabels.yes : permissionLabels.no,
+        ],
+      ]),
+    );
+    permissionSummaryPanel.hidden = false;
   };
 
   const renderSummaryCount = (label, value) => {
@@ -675,6 +856,7 @@
   const renderResponse = (payload) => {
     clearResults();
     summaryEl.textContent = `log #${payload.search_log_id} / ${payload.effective_search_scope} / ${payload.total_elapsed_ms} ms`;
+    renderPermissionSummary(payload.permission_summary);
     payload.profiles.forEach((profile) => resultsEl.append(renderProfile(profile)));
   };
 

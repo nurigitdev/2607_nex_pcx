@@ -257,6 +257,7 @@ def resolve_permission_search_filter(
     metadata = {
         "actor_user_id": context.user_id,
         "login_id": context.login_id,
+        "display_name": context.display_name,
         "primary_org_unit_id": context.primary_org_unit_id,
         "primary_org_unit_name": context.primary_org_unit_name,
         "role_name": context.role_name,
