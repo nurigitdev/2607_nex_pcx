@@ -147,6 +147,26 @@ class SearchFeedbackSummaryRecord:
 
 
 @dataclass(frozen=True)
+class SearchFeedbackCommentRecord:
+    feedback_id: int
+    search_log_result_id: int
+    search_log_id: int
+    query_text: str
+    document_group: str | None
+    actor_login_id: str | None
+    actor_display_name: str | None
+    profile_name: str
+    rank: int
+    chunk_id: int
+    document_title: str | None
+    original_file_name: str
+    relevance_label: str
+    comment: str
+    created_by_user_id: int | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class SearchLogListItem:
     search_log: SearchLogRecord
     actor_login_id: str | None
@@ -440,6 +460,29 @@ def _row_to_search_feedback_profile_summary_record(
         average_score=_optional_float(row["average_score"]),
         average_profile_elapsed_ms=_optional_float(row["average_profile_elapsed_ms"]),
         latest_feedback_at=row["latest_feedback_at"],
+    )
+
+
+def _row_to_search_feedback_comment_record(row: dict[str, Any]) -> SearchFeedbackCommentRecord:
+    return SearchFeedbackCommentRecord(
+        feedback_id=int(row["feedback_id"]),
+        search_log_result_id=int(row["search_log_result_id"]),
+        search_log_id=int(row["search_log_id"]),
+        query_text=str(row["query_text"]),
+        document_group=row["document_group"],
+        actor_login_id=row["actor_login_id"],
+        actor_display_name=row["actor_display_name"],
+        profile_name=str(row["profile_name"]),
+        rank=int(row["rank"]),
+        chunk_id=int(row["chunk_id"]),
+        document_title=row["document_title"],
+        original_file_name=str(row["original_file_name"]),
+        relevance_label=str(row["relevance_label"]),
+        comment=str(row["comment"]),
+        created_by_user_id=(
+            int(row["created_by_user_id"]) if row["created_by_user_id"] is not None else None
+        ),
+        created_at=row["created_at"],
     )
 
 
@@ -884,6 +927,56 @@ def _feedback_summary_filter_clause(
     if not clauses:
         return "", params
     return f"WHERE {' AND '.join(clauses)}", params
+
+
+def list_search_feedback_comments(
+    database_url: str,
+    *,
+    document_group: str | None = None,
+    limit: int = 20,
+) -> list[SearchFeedbackCommentRecord]:
+    validated_limit = _validate_limit(limit, max_limit=100)
+    where_clause, params = _feedback_summary_filter_clause(document_group=document_group)
+    comment_filter_clause = where_clause.replace("WHERE", "AND", 1)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    srf.feedback_id,
+                    srf.search_log_result_id,
+                    srf.relevance_label,
+                    srf.comment,
+                    srf.created_by_user_id,
+                    srf.created_at,
+                    sl.search_log_id,
+                    sl.query_text,
+                    sl.document_group,
+                    au.login_id AS actor_login_id,
+                    au.display_name AS actor_display_name,
+                    slr.profile_name,
+                    slr.rank,
+                    slr.chunk_id,
+                    d.document_title,
+                    f.original_file_name
+                FROM search_result_feedback srf
+                JOIN search_log_results slr
+                  ON slr.search_log_result_id = srf.search_log_result_id
+                JOIN search_logs sl ON sl.search_log_id = slr.search_log_id
+                LEFT JOIN app_users au ON au.user_id = sl.actor_user_id
+                JOIN chunks c ON c.chunk_id = slr.chunk_id
+                JOIN documents d ON d.document_id = c.document_id
+                JOIN files f ON f.file_id = d.file_id
+                WHERE srf.comment IS NOT NULL
+                  AND length(btrim(srf.comment)) > 0
+                {comment_filter_clause}
+                ORDER BY srf.created_at DESC, srf.feedback_id DESC
+                LIMIT %s
+                """,
+                [*params, validated_limit],
+            )
+            rows = cursor.fetchall()
+    return [_row_to_search_feedback_comment_record(dict(row)) for row in rows]
 
 
 def summarize_search_feedback(

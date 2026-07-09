@@ -245,6 +245,10 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                 "/api/search/feedback/summary",
                 params={"document_group": document_group},
             )
+            comments_response = client.get(
+                "/api/search/feedback/comments",
+                params={"document_group": document_group},
+            )
             logs_response = client.get(
                 "/api/search/logs",
                 params={"document_group": document_group},
@@ -262,6 +266,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
 
         feedback_body = feedback_response.json()
         summary_body = summary_response.json()
+        comments_body = comments_response.json()
         logs_body = logs_response.json()
         detail_body = detail_response.json()
         export_body = export_response.json()
@@ -408,6 +413,12 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert profile_summary["kure_v1_1024"]["relevant_count"] == 1
         assert profile_summary["kure_v1_1024"]["correct_rate"] == 1
         assert profile_summary["bge_m3_1024"]["feedback_count"] == 0
+        assert comments_response.status_code == 200
+        assert len(comments_body["comments"]) == 1
+        assert comments_body["comments"][0]["comment"] == "Visible fixture matched the query."
+        assert comments_body["comments"][0]["search_log_id"] == body["search_log_id"]
+        assert comments_body["comments"][0]["document_title"] == "visible company fixture"
+        assert comments_body["comments"][0]["relevance_label"] == "correct"
         assert logs_response.status_code == 200
         assert len(logs_body["logs"]) == 3
         logs_by_id = {log["search_log_id"]: log for log in logs_body["logs"]}

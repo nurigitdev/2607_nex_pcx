@@ -1844,6 +1844,57 @@ main.container-fluid {
   padding-top: 0.75rem;
 }
 
+.search-feedback-review-panel {
+  background: #fff;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.search-feedback-review-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pcx-space-3);
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.feedback-comment-list {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.feedback-comment-item,
+.feedback-comment-empty {
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  min-width: 0;
+  padding: 0.875rem;
+}
+
+.feedback-comment-header {
+  align-items: center;
+  display: flex;
+  gap: var(--pcx-space-2);
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.feedback-comment-body {
+  font-size: 0.875rem;
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.feedback-comment-meta,
+.feedback-comment-empty {
+  color: var(--pcx-muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
 .golden-question-layout {
   display: grid;
   gap: 1rem;
@@ -2109,6 +2160,7 @@ main.container-fluid {
   .design-principle-grid,
   .design-token-layout,
   .document-detail-grid,
+  .feedback-comment-list,
   .feedback-summary-grid,
   .golden-fieldset,
   .golden-question-layout,
@@ -2191,6 +2243,7 @@ main.container-fluid {
   .design-principle-grid,
   .design-token-layout,
   .document-detail-grid,
+  .feedback-comment-list,
   .feedback-summary-grid,
   .permission-summary-grid {
     grid-template-columns: repeat(2, minmax(16rem, 1fr));

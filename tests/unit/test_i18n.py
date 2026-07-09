@@ -43,6 +43,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("search_log_review.title") == "Search Log Review"
     assert korean("search_feedback.comment_placeholder") == "판정 이유 또는 재검토 메모"
     assert english("search_feedback.comment_placeholder") == "Reason or review note"
+    assert korean("search_feedback.comments_title") == "피드백 메모 리뷰"
+    assert english("search_feedback.comments_title") == "Feedback Comment Review"
 
 
 def test_translator_falls_back_to_key_when_missing() -> None:

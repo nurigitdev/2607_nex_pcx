@@ -251,6 +251,16 @@
   <div id="feedback-summary-grid" class="feedback-summary-grid" aria-live="polite"></div>
 </section>
 
+<section class="search-feedback-review-panel mb-4">
+  <div class="search-feedback-review-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_feedback.comments_title") }}</h2>
+      <div class="text-secondary" id="feedback-comments-meta">{{ t("search_feedback.loading") }}</div>
+    </div>
+  </div>
+  <div id="feedback-comments-list" class="feedback-comment-list" aria-live="polite"></div>
+</section>
+
 <div id="search-alert" class="alert alert-warning" role="alert" hidden></div>
 
 <section id="search-results" class="search-results-grid" aria-live="polite"></section>
@@ -277,6 +287,8 @@
   const feedbackSummaryGrid = document.getElementById("feedback-summary-grid");
   const feedbackSummaryMeta = document.getElementById("feedback-summary-meta");
   const feedbackSummaryRefresh = document.getElementById("feedback-summary-refresh");
+  const feedbackCommentsList = document.getElementById("feedback-comments-list");
+  const feedbackCommentsMeta = document.getElementById("feedback-comments-meta");
   const canLoadFeedbackSummary = {{ "true" if database_configured else "false" }};
   const matrixLimit = 12;
   const feedbackOptions = [
@@ -571,6 +583,52 @@
     });
   };
 
+  const renderFeedbackComments = (payload) => {
+    feedbackCommentsList.replaceChildren();
+    feedbackCommentsMeta.textContent =
+      `${payload.comments.length} {{ t('search_feedback.comments') }}`;
+
+    if (payload.comments.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "feedback-comment-empty";
+      empty.textContent = "{{ t('search_feedback.no_comments') }}";
+      feedbackCommentsList.append(empty);
+      return;
+    }
+
+    payload.comments.forEach((entry) => {
+      const item = document.createElement("article");
+      item.className = "feedback-comment-item";
+
+      const header = document.createElement("div");
+      header.className = "feedback-comment-header";
+      const label = document.createElement("span");
+      label.className = `badge feedback-label-${entry.relevance_label}`;
+      label.textContent = entry.relevance_label;
+      const link = document.createElement("a");
+      link.className = "job-link";
+      link.href = `/search/logs?search_log_id=${entry.search_log_id}`;
+      link.textContent = `#${entry.search_log_id}`;
+      header.append(label, link);
+
+      const body = document.createElement("p");
+      body.className = "feedback-comment-body";
+      body.textContent = entry.comment;
+
+      const meta = document.createElement("div");
+      meta.className = "feedback-comment-meta";
+      meta.textContent = [
+        entry.profile_name,
+        entry.document_title || entry.original_file_name || "Untitled",
+        entry.actor_display_name || entry.actor_login_id || "",
+        entry.created_at || "",
+      ].filter(Boolean).join(" · ");
+
+      item.append(header, body, meta);
+      feedbackCommentsList.append(item);
+    });
+  };
+
   const renderPermissionMatrix = (payload, selectedEntries) => {
     matrixResults.replaceChildren();
     matrixStatus.textContent =
@@ -695,6 +753,7 @@
       }
       renderPermissionMatrix(body, entries);
       loadFeedbackSummary();
+      loadFeedbackComments();
     } catch (error) {
       matrixStatus.textContent =
         error instanceof Error ? error.message : "{{ t('search_matrix.failed') }}";
@@ -729,6 +788,33 @@
     } catch (error) {
       feedbackSummaryMeta.textContent =
         error instanceof Error ? error.message : "Summary failed.";
+    }
+  };
+
+  const loadFeedbackComments = async () => {
+    if (!canLoadFeedbackSummary) {
+      feedbackCommentsMeta.textContent = "Database unavailable";
+      return;
+    }
+    const params = new URLSearchParams();
+    const documentGroup = fieldValue("document_group");
+    if (documentGroup) {
+      params.set("document_group", documentGroup);
+    }
+    params.set("limit", "10");
+    feedbackCommentsMeta.textContent = "{{ t('search_feedback.loading') }}";
+    try {
+      const response = await fetch(`/api/search/feedback/comments?${params.toString()}`);
+      const body = await response.json();
+      if (!response.ok) {
+        feedbackCommentsMeta.textContent =
+          body.detail || "{{ t('search_feedback.comments_failed') }}";
+        return;
+      }
+      renderFeedbackComments(body);
+    } catch (error) {
+      feedbackCommentsMeta.textContent =
+        error instanceof Error ? error.message : "{{ t('search_feedback.comments_failed') }}";
     }
   };
 
@@ -782,6 +868,7 @@
       markSelectedFeedback(actions, body.feedback.relevance_label);
       statusEl.textContent = `Saved ${body.feedback.relevance_label}`;
       loadFeedbackSummary();
+      loadFeedbackComments();
     } catch (error) {
       statusEl.textContent = error instanceof Error ? error.message : "Feedback failed.";
     } finally {
@@ -937,6 +1024,7 @@
       }
       renderResponse(body);
       loadFeedbackSummary();
+      loadFeedbackComments();
     } catch (error) {
       setAlert(error instanceof Error ? error.message : "Search failed.");
     } finally {
@@ -947,6 +1035,7 @@
 
   feedbackSummaryRefresh?.addEventListener("click", () => {
     loadFeedbackSummary();
+    loadFeedbackComments();
   });
 
   matrixSubmit?.addEventListener("click", () => {
@@ -954,6 +1043,7 @@
   });
 
   loadFeedbackSummary();
+  loadFeedbackComments();
 })();
 </script>
 {% endblock %}

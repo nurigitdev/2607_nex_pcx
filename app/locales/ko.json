@@ -162,7 +162,12 @@
   },
   "search_feedback": {
     "comment": "피드백 메모",
-    "comment_placeholder": "판정 이유 또는 재검토 메모"
+    "comment_placeholder": "판정 이유 또는 재검토 메모",
+    "comments_title": "피드백 메모 리뷰",
+    "comments": "메모",
+    "loading": "불러오는 중",
+    "no_comments": "피드백 메모 없음",
+    "comments_failed": "피드백 메모 조회 실패"
   },
   "permissions": {
     "title": "권한 시뮬레이션",

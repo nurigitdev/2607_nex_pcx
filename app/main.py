@@ -175,6 +175,7 @@ from app.core.search_compare import (
 )
 from app.core.search_logs import (
     InvalidSearchLogError,
+    SearchFeedbackCommentRecord,
     SearchFeedbackProfileSummaryRecord,
     SearchLogDetailRecord,
     SearchLogListItem,
@@ -187,6 +188,7 @@ from app.core.search_logs import (
     get_search_log,
     get_search_log_detail,
     get_search_log_result,
+    list_search_feedback_comments,
     list_search_logs,
     summarize_search_feedback,
     update_search_log_review_metadata,
@@ -1257,6 +1259,27 @@ def search_feedback_profile_summary_payload(
         "average_score": profile.average_score,
         "average_profile_elapsed_ms": profile.average_profile_elapsed_ms,
         "latest_feedback_at": _datetime_response(profile.latest_feedback_at),
+    }
+
+
+def search_feedback_comment_payload(comment: SearchFeedbackCommentRecord) -> dict[str, object]:
+    return {
+        "feedback_id": comment.feedback_id,
+        "search_log_result_id": comment.search_log_result_id,
+        "search_log_id": comment.search_log_id,
+        "query_text": comment.query_text,
+        "document_group": comment.document_group,
+        "actor_login_id": comment.actor_login_id,
+        "actor_display_name": comment.actor_display_name,
+        "profile_name": comment.profile_name,
+        "rank": comment.rank,
+        "chunk_id": comment.chunk_id,
+        "document_title": comment.document_title,
+        "original_file_name": comment.original_file_name,
+        "relevance_label": comment.relevance_label,
+        "comment": comment.comment,
+        "created_by_user_id": comment.created_by_user_id,
+        "created_at": _datetime_response(comment.created_at),
     }
 
 
@@ -2836,6 +2859,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "profiles": [
                     search_feedback_profile_summary_payload(profile) for profile in summary.profiles
                 ],
+            },
+        )
+
+    @app.get("/api/search/feedback/comments")
+    def api_search_feedback_comments(
+        document_group: str | None = None,
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            comments = list_search_feedback_comments(
+                settings.database_url,
+                document_group=document_group,
+                limit=limit,
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "comments": [search_feedback_comment_payload(comment) for comment in comments],
             },
         )
 

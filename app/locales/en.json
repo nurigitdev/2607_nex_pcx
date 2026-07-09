@@ -162,7 +162,12 @@
   },
   "search_feedback": {
     "comment": "Feedback comment",
-    "comment_placeholder": "Reason or review note"
+    "comment_placeholder": "Reason or review note",
+    "comments_title": "Feedback Comment Review",
+    "comments": "comments",
+    "loading": "Loading",
+    "no_comments": "No feedback comments",
+    "comments_failed": "Feedback comments failed"
   },
   "permissions": {
     "title": "Permission Simulation",
