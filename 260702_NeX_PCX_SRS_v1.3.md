@@ -29,6 +29,7 @@
 | 1.2 | 2026-07-05 | 계정, 조직 계층, 문서 접근 범위, permission-aware search, 권한 기반 평가 요구사항 보강 |
 | 1.3 | 2026-07-05 | 비동기 문서 처리 파이프라인, PostgreSQL job queue, worker 동시성, 진행 상태, 실패/재시도, 관리자 모니터링 요구사항 보강 |
 | 1.4 | 2026-07-06 | chunk size/overlap 실험 정책, 기본 운영 정책과 문서 구조 보존 원칙 보강 |
+| 1.5 | 2026-07-10 | embedding model 사전 다운로드, models bundle, 오프라인/고객사 설치 배포 정책 보강 |
 
 # 목차
 
@@ -162,6 +163,10 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 
 - Qwen3-Embedding-4B 2560 profile은 pgvector의 일반 vector type 차원 한계를 초과하므로 MVP에서는 halfvec(2560) 저장 방식을 사용한다.
 
+- 개발 환경에서는 명시적인 download script로 embedding model을 `models/` 하위 디렉토리에 내려받을 수 있다.
+
+- 운영 환경 또는 고객사 설치 환경에서는 앱 시작 시 public internet에서 model을 자동 다운로드하지 않고, 사전에 검증된 `models/` bundle을 배포한다.
+
 - 파일 업로드 후 embedding은 background job으로 수행하며, 대시보드에서 profile별 진행률을 확인할 수 있어야 한다.
 
 - MVP의 background queue는 Redis/Celery 등 외부 broker가 아니라 PostgreSQL 기반 pipeline job queue로 구현한다.
@@ -237,6 +242,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Embedding Workers | profile별 모델 로딩, embedding 생성, pgvector 저장 |
 | Search Service | query embedding 생성, pgvector 검색, 4개 profile 결과 병렬 반환 |
 | Statistics Service | 문서/chunk/vector/job/검색 통계 산출 |
+| Model Distribution Tooling | KURE, bge-m3, Qwen3 embedding model을 `models/` bundle로 사전 다운로드하고 설치 환경에서 검증 |
 | Quality/Test Framework | pytest, Playwright, coverage, 독립 test DB 기반 품질 검증 |
 
 ## 3.3 배포 구조
@@ -362,6 +368,14 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 ## 4.7 Embedding job lifecycle 요구사항
 
 - 파일 parsing과 chunk 생성이 완료되면 활성화된 embedding profile별로 chunk/profile 조합의 job을 생성한다.
+
+- embedding model은 worker 실행 중 자동 다운로드하지 않고, `NEX_PCX_MODELS_DIR` 또는 동등한 설정이 가리키는 local model bundle에서 로딩한다.
+
+- 개발자는 별도 download script를 실행하여 `models/kure_v1`, `models/bge_m3`, `models/qwen3_embedding_4b` 디렉토리를 구성할 수 있어야 한다.
+
+- 고객사 또는 폐쇄망 설치 시에는 사전 다운로드된 model bundle을 전달하고, 설치 후 manifest/revision/local path 검증을 수행해야 한다.
+
+- `qwen3_4b_1000`과 `qwen3_4b_2560` profile은 동일한 `Qwen/Qwen3-Embedding-4B` model directory를 공유하되 output dimension과 storage type 정책을 profile metadata로 분리한다.
 
 - job status는 pending, running, succeeded, failed, skipped 중 하나로 관리한다.
 

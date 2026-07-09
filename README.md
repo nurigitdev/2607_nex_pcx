@@ -169,3 +169,32 @@ from the FastAPI template context.
 
 Locale files live under `app/locales/`. New UI work should add labels to both
 `ko.json` and `en.json` and render user-facing text through `t()`.
+
+## Embedding Model Distribution
+
+Slice 082 adds the local model bundle foundation. Runtime workers should load models from
+`NEX_PCX_MODELS_DIR` instead of downloading them during application startup. The default
+bundle root is `models/`, and downloaded model files are ignored by git.
+
+Install the optional model tooling and inspect the download plan:
+
+```bash
+./.venv/bin/pip install -e ".[models]"
+./.venv/bin/python scripts/download_embedding_models.py --dry-run
+```
+
+Download all model repositories into the default bundle root:
+
+```bash
+./.venv/bin/python scripts/download_embedding_models.py
+```
+
+The 4 embedding profiles map to 3 downloaded model directories:
+
+- `models/kure_v1` for `nlpai-lab/KURE-v1` / `kure_v1_1024`
+- `models/bge_m3` for `BAAI/bge-m3` / `bge_m3_1024`
+- `models/qwen3_embedding_4b` for `Qwen/Qwen3-Embedding-4B` /
+  `qwen3_4b_1000`, `qwen3_4b_2560`
+
+Production and customer-site installs should receive a verified copy of `models/` and run
+workers in offline mode rather than downloading model files from the public internet.

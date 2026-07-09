@@ -15,6 +15,7 @@ class Settings:
     database_url: str | None = None
     test_database_url: str | None = None
     upload_storage_dir: Path = Path("storage/uploads")
+    embedding_models_dir: Path = Path("models")
 
 
 def get_settings() -> Settings:
@@ -25,4 +26,5 @@ def get_settings() -> Settings:
         database_url=getenv("NEX_PCX_DATABASE_URL"),
         test_database_url=getenv("NEX_PCX_TEST_DATABASE_URL"),
         upload_storage_dir=Path(getenv("NEX_PCX_UPLOAD_STORAGE_DIR", "storage/uploads")),
+        embedding_models_dir=Path(getenv("NEX_PCX_MODELS_DIR", "models")),
     )

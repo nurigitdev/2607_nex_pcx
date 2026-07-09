@@ -9,3 +9,6 @@ htmlcov/
 .env.*
 !.env.example
 storage/
+models/*
+!models/.gitkeep
+!models/README.md
