@@ -108,6 +108,7 @@
     "title": "Search Reproducibility Metadata",
     "subtitle": "Stored values for explaining and repeating this search experiment under the same conditions",
     "query": "Query",
+    "fingerprint": "Fingerprint",
     "query_text": "Query text",
     "normalized_query": "Normalized Query",
     "top_k": "Top K",

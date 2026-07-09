@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.database import connect
 from app.core.search_logs import SearchLogInput, create_search_log
-from app.main import create_app, search_log_replay_url
+from app.main import create_app, search_log_replay_url, search_reproducibility_fingerprint
 
 pytestmark = pytest.mark.integration
 
@@ -117,6 +117,7 @@ def test_search_history_detail_renders_permission_explainability(
     )
     app = create_app(Settings(database_url=migrated_database_url))
     replay_url = search_log_replay_url(search_log)
+    fingerprint = search_reproducibility_fingerprint(search_log)
     try:
         with TestClient(app) as client:
             response = client.get(f"/search/logs?search_log_id={search_log.search_log_id}")
@@ -133,6 +134,8 @@ def test_search_history_detail_renders_permission_explainability(
         assert "개인 1" in response.text
         assert "회사 공통 1" in response.text
         assert "검색 재현성 Metadata" in response.text
+        assert "Fingerprint" in response.text
+        assert fingerprint in response.text
         assert "heading_512_64" in response.text
         assert ".md" in response.text
         assert "cosine" in response.text

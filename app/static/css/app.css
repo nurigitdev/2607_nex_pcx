@@ -1354,6 +1354,13 @@ main.container-fluid {
   overflow-wrap: anywhere;
 }
 
+.search-reproducibility-fingerprint {
+  color: var(--pcx-ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .search-reproducibility-profile-list {
   display: flex;
   flex-wrap: wrap;

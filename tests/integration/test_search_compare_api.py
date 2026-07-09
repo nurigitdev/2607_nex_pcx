@@ -352,6 +352,12 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             "kure_v1_1024",
             "bge_m3_1024",
         ]
+        fingerprint = logs_by_id[body["search_log_id"]]["reproducibility_summary"]["fingerprint"]
+        assert len(fingerprint) == 16
+        assert (
+            logs_by_id[body["search_log_id"]]["reproducibility_summary"]["fingerprint_algorithm"]
+            == "sha256:16"
+        )
         assert (
             logs_by_id[body["search_log_id"]]["reproducibility_summary"]["query_runtime_metadata"][
                 "search_mode"
@@ -364,6 +370,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert detail_body["search_log"]["permission_summary"]["visible_document_count"] == 1
         assert detail_body["search_log"]["permission_summary"]["excluded_document_count"] == 1
         assert detail_body["search_log"]["reproducibility_summary"]["top_k"] == 5
+        assert detail_body["search_log"]["reproducibility_summary"]["fingerprint"] == fingerprint
         assert detail_body["search_log"]["reproducibility_summary"]["document_group"] == (
             document_group
         )

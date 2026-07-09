@@ -1,7 +1,9 @@
 """FastAPI application factory for NeX_PCX."""
 
 import csv
+import hashlib
 import io
+import json
 import traceback as traceback_module
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -604,6 +606,8 @@ def permission_summary_from_metadata(metadata: dict[str, object]) -> dict[str, o
 def search_reproducibility_payload(search_log: SearchLogRecord) -> dict[str, object]:
     runtime_metadata = dict(search_log.query_runtime_metadata)
     return {
+        "fingerprint": search_reproducibility_fingerprint(search_log),
+        "fingerprint_algorithm": "sha256:16",
         "query_text": search_log.query_text,
         "normalized_query_text": search_log.normalized_query_text,
         "top_k": search_log.top_k,
@@ -616,6 +620,32 @@ def search_reproducibility_payload(search_log: SearchLogRecord) -> dict[str, obj
         "query_runtime_metadata": runtime_metadata,
         "runtime_metadata_keys": sorted(str(key) for key in runtime_metadata),
     }
+
+
+def search_reproducibility_fingerprint(search_log: SearchLogRecord) -> str:
+    fingerprint_payload = {
+        "query_text": search_log.query_text,
+        "normalized_query_text": search_log.normalized_query_text,
+        "actor_user_id": search_log.actor_user_id,
+        "requested_search_scope": search_log.requested_search_scope,
+        "effective_search_scope": search_log.effective_search_scope,
+        "permission_filter_metadata": search_log.permission_filter_metadata,
+        "document_group": search_log.document_group,
+        "file_type": search_log.file_type,
+        "chunk_policy_name": search_log.chunk_policy_name,
+        "top_k": search_log.top_k,
+        "similarity_metric": search_log.similarity_metric,
+        "profiles": list(search_log.profiles),
+        "query_runtime_metadata": search_log.query_runtime_metadata,
+    }
+    canonical = json.dumps(
+        fingerprint_payload,
+        default=str,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 def search_log_replay_url(search_log: SearchLogRecord) -> str:
@@ -3405,6 +3435,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 question_sets=question_sets,
                 logs=logs,
                 selected_log=selected_log,
+                selected_log_reproducibility=(
+                    search_reproducibility_payload(selected_log.search_log) if selected_log else {}
+                ),
                 selected_log_replay_url=(
                     search_log_replay_url(selected_log.search_log) if selected_log else ""
                 ),

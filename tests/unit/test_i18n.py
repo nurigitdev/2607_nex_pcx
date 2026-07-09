@@ -25,6 +25,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("design_system.title") == "Design System"
     assert korean("search_reproducibility.title") == "검색 재현성 Metadata"
     assert english("search_reproducibility.title") == "Search Reproducibility Metadata"
+    assert korean("search_reproducibility.fingerprint") == "Fingerprint"
+    assert english("search_reproducibility.fingerprint") == "Fingerprint"
     assert korean("search_replay.action") == "동일 조건으로 재실행"
     assert english("search_replay.action") == "Replay Same Conditions"
     assert korean("search_export.action") == "JSON Export"

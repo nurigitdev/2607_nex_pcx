@@ -292,6 +292,12 @@
         <h3 class="h6 mb-0">{{ t("search_reproducibility.query") }}</h3>
         <div class="search-reproducibility-body">
           <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ t("search_reproducibility.fingerprint") }}</span>
+            <code class="search-reproducibility-fingerprint">
+              {{ selected_log_reproducibility.fingerprint }}
+            </code>
+          </div>
+          <div class="search-reproducibility-row">
             <span class="text-secondary">{{ t("search_reproducibility.query_text") }}</span>
             <strong>{{ selected_log.search_log.query_text }}</strong>
           </div>

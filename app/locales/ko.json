@@ -108,6 +108,7 @@
     "title": "검색 재현성 Metadata",
     "subtitle": "같은 조건으로 검색 실험을 다시 설명하고 재현하기 위한 저장값",
     "query": "Query",
+    "fingerprint": "Fingerprint",
     "query_text": "Query text",
     "normalized_query": "정규화 Query",
     "top_k": "Top K",
