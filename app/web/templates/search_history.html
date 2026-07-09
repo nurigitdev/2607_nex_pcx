@@ -141,6 +141,22 @@
       <button class="btn btn-outline-secondary" type="submit" {% if not database_configured %}disabled{% endif %}>
         Save Settings
       </button>
+      <button
+        class="btn btn-outline-secondary"
+        id="search-cleanup-preview"
+        type="button"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        Preview Cleanup
+      </button>
+      <button
+        class="btn btn-danger"
+        id="search-cleanup-run"
+        type="button"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        Run Cleanup
+      </button>
     </div>
   </form>
 </section>
@@ -696,6 +712,41 @@
     const daysInput = document.getElementById("search_retention_days");
     const batchInput = document.getElementById("search_cleanup_batch_size");
     const button = retentionForm.querySelector("button[type='submit']");
+    const previewButton = document.getElementById("search-cleanup-preview");
+    const runButton = document.getElementById("search-cleanup-run");
+
+    const renderCleanupResult = (cleanup) => {
+      const action = cleanup.dry_run ? "Preview" : "Cleanup";
+      const countText = cleanup.dry_run
+        ? `${cleanup.expired_count} expired logs`
+        : `${cleanup.deleted_count} deleted / ${cleanup.expired_count} expired logs`;
+      const disabledText = cleanup.enabled ? "" : "Retention disabled. ";
+      status.textContent =
+        `${disabledText}${action}: ${countText}. Cutoff ${cleanup.cutoff_at || ""}`;
+    };
+
+    const requestCleanup = async (dryRun) => {
+      const targetButton = dryRun ? previewButton : runButton;
+      targetButton.disabled = true;
+      status.textContent = dryRun ? "Previewing" : "Cleaning";
+      try {
+        const response = await fetch("/api/search/logs/cleanup", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({dry_run: dryRun}),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          status.textContent = body.detail || "Cleanup request failed.";
+          return;
+        }
+        renderCleanupResult(body.cleanup);
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : "Cleanup request failed.";
+      } finally {
+        targetButton.disabled = false;
+      }
+    };
 
     retentionForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -726,6 +777,14 @@
         status.textContent = error instanceof Error ? error.message : "Settings save failed.";
       } finally {
         button.disabled = false;
+      }
+    });
+
+    previewButton.addEventListener("click", () => requestCleanup(true));
+    runButton.addEventListener("click", () => {
+      const confirmed = window.confirm("Delete expired search logs now?");
+      if (confirmed) {
+        requestCleanup(false);
       }
     });
   }

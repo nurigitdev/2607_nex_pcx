@@ -196,6 +196,16 @@ def test_search_log_retention_settings_api_requires_database_url() -> None:
     assert update_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
 
 
+def test_search_log_cleanup_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.post("/api/search/logs/cleanup", json={"dry_run": True})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
 def test_evaluation_question_sets_api_requires_database_url() -> None:
     app = create_app(Settings(database_url=None))
 

@@ -182,6 +182,7 @@ from app.core.search_logs import (
     InvalidSearchLogError,
     SearchFeedbackCommentRecord,
     SearchFeedbackProfileSummaryRecord,
+    SearchLogCleanupResult,
     SearchLogDetailRecord,
     SearchLogListItem,
     SearchLogRecord,
@@ -191,6 +192,7 @@ from app.core.search_logs import (
     SearchLogReviewMetadataInput,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
+    cleanup_expired_search_logs,
     create_search_result_feedback,
     get_search_log,
     get_search_log_detail,
@@ -264,6 +266,10 @@ class SearchLogRetentionSettingsRequest(BaseModel):
     enabled: bool = True
     retention_days: int = Field(default=30, ge=1, le=3650)
     cleanup_batch_size: int = Field(default=1000, ge=1, le=100000)
+
+
+class SearchLogCleanupRequest(BaseModel):
+    dry_run: bool = True
 
 
 class DocumentPermissionUpdateRequest(BaseModel):
@@ -646,6 +652,18 @@ def search_log_retention_settings_input_from_request(
         retention_days=payload.retention_days,
         cleanup_batch_size=payload.cleanup_batch_size,
     )
+
+
+def search_log_cleanup_result_payload(result: SearchLogCleanupResult) -> dict[str, object]:
+    return {
+        "enabled": result.enabled,
+        "dry_run": result.dry_run,
+        "retention_days": result.retention_days,
+        "cleanup_batch_size": result.cleanup_batch_size,
+        "expired_count": result.expired_count,
+        "deleted_count": result.deleted_count,
+        "cutoff_at": _datetime_response(result.cutoff_at),
+    }
 
 
 def permission_summary_from_metadata(metadata: dict[str, object]) -> dict[str, object]:
@@ -2796,6 +2814,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "settings": search_log_retention_settings_payload(retention_settings),
             },
         )
+
+    @app.post("/api/search/logs/cleanup")
+    def api_cleanup_search_logs(payload: SearchLogCleanupRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            result = cleanup_expired_search_logs(settings.database_url, dry_run=payload.dry_run)
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"cleanup": search_log_cleanup_result_payload(result)})
 
     @app.get("/api/search/logs/{search_log_id}")
     def api_get_search_log_detail(search_log_id: int) -> JSONResponse:

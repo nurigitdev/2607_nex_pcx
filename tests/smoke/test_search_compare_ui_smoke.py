@@ -32,6 +32,8 @@ def test_search_history_page_shows_configuration_message_without_database_url() 
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert 'href="/search/logs"' in response.text
     assert 'id="search-retention-form"' in response.text
+    assert 'id="search-cleanup-preview"' in response.text
+    assert 'id="search-cleanup-run"' in response.text
 
 
 def test_golden_evaluation_page_shows_configuration_message_without_database_url() -> None:

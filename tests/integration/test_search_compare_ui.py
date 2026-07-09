@@ -70,7 +70,10 @@ def test_search_history_page_renders_filters_and_log_table(
     assert "Alice Member / alice.member" in response.text
     assert "Search Log Retention" in response.text
     assert 'id="search-retention-form"' in response.text
+    assert 'id="search-cleanup-preview"' in response.text
+    assert 'id="search-cleanup-run"' in response.text
     assert "/api/search/logs/retention-settings" in response.text
+    assert "/api/search/logs/cleanup" in response.text
     assert 'class="search-history-filter"' in response.text
     assert 'class="table table-sm align-middle mb-0 search-log-table"' in response.text
 

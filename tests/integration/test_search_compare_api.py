@@ -198,6 +198,123 @@ def test_search_log_retention_settings_api_round_trips(
             )
 
 
+def _create_cleanup_search_log(database_url: str, query_text: str, days_old: int) -> int:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO search_logs (
+                    query_text,
+                    normalized_query_text,
+                    top_k,
+                    profiles,
+                    created_by,
+                    created_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    5,
+                    '["kure_v1_1024"]'::jsonb,
+                    'cleanup-test',
+                    now() - (%s::int * interval '1 day')
+                )
+                RETURNING search_log_id
+                """,
+                (query_text, query_text.casefold(), days_old),
+            )
+            return int(cursor.fetchone()["search_log_id"])
+
+
+def _delete_search_logs(database_url: str, search_log_ids: list[int]) -> None:
+    if not search_log_ids:
+        return
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM search_logs WHERE search_log_id = ANY(%s)", (search_log_ids,)
+            )
+
+
+def test_search_log_cleanup_api_previews_and_deletes_expired_logs(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+    created_ids: list[int] = []
+
+    try:
+        with TestClient(app) as client:
+            client.put(
+                "/api/search/logs/retention-settings",
+                json={
+                    "enabled": True,
+                    "retention_days": 3650,
+                    "cleanup_batch_size": 1,
+                },
+            )
+            old_log_id = _create_cleanup_search_log(
+                migrated_database_url,
+                f"cleanup old {uuid4()}",
+                4000,
+            )
+            second_old_log_id = _create_cleanup_search_log(
+                migrated_database_url,
+                f"cleanup second old {uuid4()}",
+                3999,
+            )
+            recent_log_id = _create_cleanup_search_log(
+                migrated_database_url,
+                f"cleanup recent {uuid4()}",
+                1,
+            )
+            created_ids.extend([old_log_id, second_old_log_id, recent_log_id])
+
+            preview_response = client.post(
+                "/api/search/logs/cleanup",
+                json={"dry_run": True},
+            )
+            cleanup_response = client.post(
+                "/api/search/logs/cleanup",
+                json={"dry_run": False},
+            )
+
+        remaining = fetch_one(
+            migrated_database_url,
+            """
+            SELECT
+                count(*) FILTER (
+                    WHERE search_log_id IN (%s, %s)
+                ) AS old_count,
+                count(*) FILTER (
+                    WHERE search_log_id = %s
+                ) AS recent_count
+            FROM search_logs
+            """,
+            (old_log_id, second_old_log_id, recent_log_id),
+        )
+
+        assert preview_response.status_code == 200
+        assert preview_response.json()["cleanup"]["dry_run"] is True
+        assert preview_response.json()["cleanup"]["expired_count"] >= 2
+        assert preview_response.json()["cleanup"]["deleted_count"] == 0
+        assert cleanup_response.status_code == 200
+        assert cleanup_response.json()["cleanup"]["dry_run"] is False
+        assert cleanup_response.json()["cleanup"]["deleted_count"] == 1
+        assert remaining["old_count"] == 1
+        assert remaining["recent_count"] == 1
+    finally:
+        _delete_search_logs(migrated_database_url, created_ids)
+        with TestClient(app) as client:
+            client.put(
+                "/api/search/logs/retention-settings",
+                json={
+                    "enabled": True,
+                    "retention_days": 30,
+                    "cleanup_batch_size": 1000,
+                },
+            )
+
+
 def test_search_compare_api_returns_permission_filtered_profile_results(
     migrated_database_url: str,
 ) -> None:

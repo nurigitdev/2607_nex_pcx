@@ -120,6 +120,17 @@ class SearchLogRetentionSettingsInput:
 
 
 @dataclass(frozen=True)
+class SearchLogCleanupResult:
+    enabled: bool
+    dry_run: bool
+    retention_days: int
+    cleanup_batch_size: int
+    expired_count: int
+    deleted_count: int
+    cutoff_at: datetime
+
+
+@dataclass(frozen=True)
 class SearchResultFeedbackRecord:
     feedback_id: int
     search_log_result_id: int
@@ -672,6 +683,57 @@ def update_search_log_retention_settings(
         enabled=validated.enabled,
         retention_days=validated.retention_days,
         cleanup_batch_size=validated.cleanup_batch_size,
+    )
+
+
+def cleanup_expired_search_logs(
+    database_url: str, *, dry_run: bool = True
+) -> SearchLogCleanupResult:
+    retention_settings = load_search_log_retention_settings(database_url)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT now() - (%s::int * interval '1 day') AS cutoff_at
+                """,
+                (retention_settings.retention_days,),
+            )
+            cutoff_at = cursor.fetchone()["cutoff_at"]
+            cursor.execute(
+                """
+                SELECT count(*) AS expired_count
+                FROM search_logs
+                WHERE created_at < %s
+                """,
+                (cutoff_at,),
+            )
+            expired_count = int(cursor.fetchone()["expired_count"] or 0)
+            deleted_count = 0
+            if retention_settings.enabled and not dry_run:
+                cursor.execute(
+                    """
+                    WITH doomed AS (
+                        SELECT search_log_id
+                        FROM search_logs
+                        WHERE created_at < %s
+                        ORDER BY created_at ASC, search_log_id ASC
+                        LIMIT %s
+                    )
+                    DELETE FROM search_logs
+                    WHERE search_log_id IN (SELECT search_log_id FROM doomed)
+                    """,
+                    (cutoff_at, retention_settings.cleanup_batch_size),
+                )
+                deleted_count = cursor.rowcount or 0
+
+    return SearchLogCleanupResult(
+        enabled=retention_settings.enabled,
+        dry_run=dry_run,
+        retention_days=retention_settings.retention_days,
+        cleanup_batch_size=retention_settings.cleanup_batch_size,
+        expired_count=expired_count,
+        deleted_count=deleted_count,
+        cutoff_at=cutoff_at,
     )
 
 
