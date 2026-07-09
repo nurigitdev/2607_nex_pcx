@@ -180,6 +180,22 @@ def test_search_log_compare_api_requires_database_url() -> None:
     assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
 
 
+def test_search_log_retention_settings_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        get_response = client.get("/api/search/logs/retention-settings")
+        update_response = client.put(
+            "/api/search/logs/retention-settings",
+            json={"enabled": True, "retention_days": 30, "cleanup_batch_size": 1000},
+        )
+
+    assert get_response.status_code == 503
+    assert get_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+    assert update_response.status_code == 503
+    assert update_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
 def test_evaluation_question_sets_api_requires_database_url() -> None:
     app = create_app(Settings(database_url=None))
 

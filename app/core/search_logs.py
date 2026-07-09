@@ -106,6 +106,20 @@ class SearchLogReviewMetadataInput:
 
 
 @dataclass(frozen=True)
+class SearchLogRetentionSettings:
+    enabled: bool = True
+    retention_days: int = 30
+    cleanup_batch_size: int = 1000
+
+
+@dataclass(frozen=True)
+class SearchLogRetentionSettingsInput:
+    enabled: bool = True
+    retention_days: int = 30
+    cleanup_batch_size: int = 1000
+
+
+@dataclass(frozen=True)
 class SearchResultFeedbackRecord:
     feedback_id: int
     search_log_result_id: int
@@ -539,6 +553,126 @@ def _validate_limit(limit: int, *, max_limit: int = 200) -> int:
     if limit > max_limit:
         raise InvalidSearchLogError(f"limit must be less than or equal to {max_limit}")
     return limit
+
+
+def _parse_bool(value: str, default: bool) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _parse_positive_int(value: str, default: int) -> int:
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def search_log_retention_settings_from_rows(
+    rows: list[dict[str, Any]],
+) -> SearchLogRetentionSettings:
+    values = {row["setting_name"]: row["setting_value"] for row in rows}
+    defaults = SearchLogRetentionSettings()
+    return SearchLogRetentionSettings(
+        enabled=_parse_bool(
+            values.get("search_log_retention_enabled", str(defaults.enabled)),
+            defaults.enabled,
+        ),
+        retention_days=_parse_positive_int(
+            values.get("search_log_retention_days", str(defaults.retention_days)),
+            defaults.retention_days,
+        ),
+        cleanup_batch_size=_parse_positive_int(
+            values.get("search_log_cleanup_batch_size", str(defaults.cleanup_batch_size)),
+            defaults.cleanup_batch_size,
+        ),
+    )
+
+
+def validate_search_log_retention_settings_input(
+    settings_input: SearchLogRetentionSettingsInput,
+) -> SearchLogRetentionSettingsInput:
+    if settings_input.retention_days <= 0 or settings_input.retention_days > 3650:
+        raise InvalidSearchLogError("retention_days must be between 1 and 3650")
+    if settings_input.cleanup_batch_size <= 0 or settings_input.cleanup_batch_size > 100000:
+        raise InvalidSearchLogError("cleanup_batch_size must be between 1 and 100000")
+    return SearchLogRetentionSettingsInput(
+        enabled=bool(settings_input.enabled),
+        retention_days=settings_input.retention_days,
+        cleanup_batch_size=settings_input.cleanup_batch_size,
+    )
+
+
+def load_search_log_retention_settings(database_url: str) -> SearchLogRetentionSettings:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT setting_name, setting_value
+                FROM app_log_settings
+                WHERE setting_name IN (
+                    'search_log_retention_enabled',
+                    'search_log_retention_days',
+                    'search_log_cleanup_batch_size'
+                )
+                """)
+            rows = cursor.fetchall()
+    return search_log_retention_settings_from_rows([dict(row) for row in rows])
+
+
+def update_search_log_retention_settings(
+    database_url: str,
+    settings_input: SearchLogRetentionSettingsInput,
+) -> SearchLogRetentionSettings:
+    validated = validate_search_log_retention_settings_input(settings_input)
+    rows = (
+        (
+            "search_log_retention_enabled",
+            "true" if validated.enabled else "false",
+            "bool",
+            "Enable search log retention cleanup actions",
+        ),
+        (
+            "search_log_retention_days",
+            str(validated.retention_days),
+            "int",
+            "Number of days to retain search_logs and dependent rows",
+        ),
+        (
+            "search_log_cleanup_batch_size",
+            str(validated.cleanup_batch_size),
+            "int",
+            "Maximum search_logs rows cleaned up in one admin action",
+        ),
+    )
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                """
+                INSERT INTO app_log_settings (
+                    setting_name,
+                    setting_value,
+                    value_type,
+                    description,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, now())
+                ON CONFLICT (setting_name) DO UPDATE
+                SET setting_value = EXCLUDED.setting_value,
+                    value_type = EXCLUDED.value_type,
+                    description = EXCLUDED.description,
+                    updated_at = now()
+                """,
+                rows,
+            )
+    return SearchLogRetentionSettings(
+        enabled=validated.enabled,
+        retention_days=validated.retention_days,
+        cleanup_batch_size=validated.cleanup_batch_size,
+    )
 
 
 def create_search_log_in_connection(

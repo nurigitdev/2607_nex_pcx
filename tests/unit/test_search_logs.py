@@ -6,9 +6,13 @@ from app.core.search_logs import (
     InvalidSearchLogError,
     SearchLogInput,
     SearchLogResultInput,
+    SearchLogRetentionSettings,
+    SearchLogRetentionSettingsInput,
     SearchResultFeedbackInput,
+    search_log_retention_settings_from_rows,
     validate_search_log_input,
     validate_search_log_result_input,
+    validate_search_log_retention_settings_input,
     validate_search_result_feedback_input,
 )
 
@@ -127,3 +131,60 @@ def test_validate_search_result_feedback_input_rejects_invalid_values() -> None:
                 comment=" ",
             )
         )
+
+
+def test_search_log_retention_settings_from_rows_uses_defaults_and_db_values() -> None:
+    settings = search_log_retention_settings_from_rows(
+        [
+            {"setting_name": "search_log_retention_enabled", "setting_value": "false"},
+            {"setting_name": "search_log_retention_days", "setting_value": "45"},
+            {"setting_name": "search_log_cleanup_batch_size", "setting_value": "250"},
+        ]
+    )
+
+    assert settings == SearchLogRetentionSettings(
+        enabled=False,
+        retention_days=45,
+        cleanup_batch_size=250,
+    )
+
+
+def test_search_log_retention_settings_from_rows_falls_back_for_invalid_values() -> None:
+    settings = search_log_retention_settings_from_rows(
+        [
+            {"setting_name": "search_log_retention_enabled", "setting_value": "maybe"},
+            {"setting_name": "search_log_retention_days", "setting_value": "-1"},
+            {"setting_name": "search_log_cleanup_batch_size", "setting_value": "nope"},
+        ]
+    )
+
+    assert settings == SearchLogRetentionSettings()
+
+
+@pytest.mark.parametrize(
+    ("settings_input", "message"),
+    [
+        (
+            SearchLogRetentionSettingsInput(retention_days=0),
+            "retention_days",
+        ),
+        (
+            SearchLogRetentionSettingsInput(retention_days=3651),
+            "retention_days",
+        ),
+        (
+            SearchLogRetentionSettingsInput(cleanup_batch_size=0),
+            "cleanup_batch_size",
+        ),
+        (
+            SearchLogRetentionSettingsInput(cleanup_batch_size=100001),
+            "cleanup_batch_size",
+        ),
+    ],
+)
+def test_validate_search_log_retention_settings_input_rejects_invalid_values(
+    settings_input: SearchLogRetentionSettingsInput,
+    message: str,
+) -> None:
+    with pytest.raises(InvalidSearchLogError, match=message):
+        validate_search_log_retention_settings_input(settings_input)

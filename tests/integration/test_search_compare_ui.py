@@ -68,6 +68,9 @@ def test_search_history_page_renders_filters_and_log_table(
     assert response.status_code == 200
     assert "Search History" in response.text
     assert "Alice Member / alice.member" in response.text
+    assert "Search Log Retention" in response.text
+    assert 'id="search-retention-form"' in response.text
+    assert "/api/search/logs/retention-settings" in response.text
     assert 'class="search-history-filter"' in response.text
     assert 'class="table table-sm align-middle mb-0 search-log-table"' in response.text
 

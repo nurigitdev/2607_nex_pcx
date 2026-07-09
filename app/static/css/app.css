@@ -1230,6 +1230,31 @@ main.container-fluid {
   justify-content: flex-end;
 }
 
+.search-retention-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.search-retention-form {
+  align-items: end;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(8rem, 0.45fr) minmax(10rem, 0.8fr) minmax(12rem, 1fr) auto;
+}
+
+.search-retention-enabled {
+  align-self: end;
+}
+
+.search-retention-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .search-log-table td:nth-child(2) {
   min-width: 18rem;
 }
@@ -2228,6 +2253,7 @@ main.container-fluid {
   .search-log-compare-summary,
   .search-log-review-current,
   .search-log-review-form,
+  .search-retention-form,
   .search-permission-matrix-form,
   .search-permission-summary-grid,
   .search-reproducibility-grid,
@@ -2255,7 +2281,8 @@ main.container-fluid {
   .search-permission-matrix-header .btn,
   .search-history-filter-actions .btn,
   .search-history-promotion-row .btn,
-  .search-log-review-actions .btn {
+  .search-log-review-actions .btn,
+  .search-retention-actions .btn {
     width: 100%;
   }
 
@@ -2283,14 +2310,16 @@ main.container-fluid {
   .search-form-grid,
   .search-history-filter,
   .search-log-review-current,
-  .search-log-review-form {
+  .search-log-review-form,
+  .search-retention-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .search-query-field,
   .search-profile-field,
   .search-log-review-form > div:nth-child(2),
-  .search-log-review-actions {
+  .search-log-review-actions,
+  .search-retention-actions {
     grid-column: 1 / -1;
   }
 

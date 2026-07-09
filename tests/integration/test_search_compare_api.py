@@ -152,6 +152,52 @@ def _cleanup_files(database_url: str, file_ids: list[int]) -> None:
                 cursor.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
 
 
+def test_search_log_retention_settings_api_round_trips(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            update_response = client.put(
+                "/api/search/logs/retention-settings",
+                json={
+                    "enabled": False,
+                    "retention_days": 45,
+                    "cleanup_batch_size": 250,
+                },
+            )
+            get_response = client.get("/api/search/logs/retention-settings")
+            invalid_response = client.put(
+                "/api/search/logs/retention-settings",
+                json={
+                    "enabled": True,
+                    "retention_days": 0,
+                    "cleanup_batch_size": 250,
+                },
+            )
+
+        assert update_response.status_code == 200
+        assert update_response.json()["settings"] == {
+            "enabled": False,
+            "retention_days": 45,
+            "cleanup_batch_size": 250,
+        }
+        assert get_response.status_code == 200
+        assert get_response.json()["settings"] == update_response.json()["settings"]
+        assert invalid_response.status_code == 422
+    finally:
+        with TestClient(app) as client:
+            client.put(
+                "/api/search/logs/retention-settings",
+                json={
+                    "enabled": True,
+                    "retention_days": 30,
+                    "cleanup_batch_size": 1000,
+                },
+            )
+
+
 def test_search_compare_api_returns_permission_filtered_profile_results(
     migrated_database_url: str,
 ) -> None:

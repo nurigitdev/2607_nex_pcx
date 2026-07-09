@@ -140,10 +140,23 @@ def test_search_log_tables_and_indexes_exist(migrated_database_url: str) -> None
           )
         """,
     )
+    setting_count = fetch_one(
+        migrated_database_url,
+        """
+        SELECT count(*) AS count
+        FROM app_log_settings
+        WHERE setting_name IN (
+            'search_log_retention_enabled',
+            'search_log_retention_days',
+            'search_log_cleanup_batch_size'
+        )
+        """,
+    )
 
     assert table_count["count"] == 3
     assert index_count["count"] == 10
     assert column_count["count"] == 4
+    assert setting_count["count"] == 3
 
 
 def test_search_log_result_feedback_defaults_and_cascade(

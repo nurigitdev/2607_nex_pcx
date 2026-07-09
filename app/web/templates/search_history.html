@@ -91,6 +91,60 @@
   </form>
 </section>
 
+<section class="metric-card bg-white p-3 mb-4">
+  <div class="search-retention-header">
+    <div>
+      <h2 class="h5 mb-1">Search Log Retention</h2>
+      <p class="text-secondary mb-0">Retention settings used by search log cleanup actions</p>
+    </div>
+    <span class="text-secondary small" id="search-retention-status" aria-live="polite"></span>
+  </div>
+  <form class="search-retention-form" id="search-retention-form">
+    <label class="golden-check-option search-retention-enabled mb-0">
+      <input
+        class="form-check-input"
+        id="search_retention_enabled"
+        name="enabled"
+        type="checkbox"
+        {% if search_log_retention_settings.enabled %}checked{% endif %}
+        {% if not database_configured %}disabled{% endif %}
+      >
+      <span>Enabled</span>
+    </label>
+    <div>
+      <label class="form-label" for="search_retention_days">Retention Days</label>
+      <input
+        class="form-control"
+        id="search_retention_days"
+        name="retention_days"
+        type="number"
+        min="1"
+        max="3650"
+        value="{{ search_log_retention_settings.retention_days }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div>
+      <label class="form-label" for="search_cleanup_batch_size">Cleanup Batch Size</label>
+      <input
+        class="form-control"
+        id="search_cleanup_batch_size"
+        name="cleanup_batch_size"
+        type="number"
+        min="1"
+        max="100000"
+        value="{{ search_log_retention_settings.cleanup_batch_size }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="search-retention-actions">
+      <button class="btn btn-outline-secondary" type="submit" {% if not database_configured %}disabled{% endif %}>
+        Save Settings
+      </button>
+    </div>
+  </form>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0 search-log-table">
@@ -635,6 +689,47 @@
 {% block scripts %}
 <script>
 (() => {
+  const retentionForm = document.getElementById("search-retention-form");
+  if (retentionForm) {
+    const status = document.getElementById("search-retention-status");
+    const enabledInput = document.getElementById("search_retention_enabled");
+    const daysInput = document.getElementById("search_retention_days");
+    const batchInput = document.getElementById("search_cleanup_batch_size");
+    const button = retentionForm.querySelector("button[type='submit']");
+
+    retentionForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const payload = {
+        enabled: enabledInput.checked,
+        retention_days: Number(daysInput.value || 30),
+        cleanup_batch_size: Number(batchInput.value || 1000),
+      };
+
+      button.disabled = true;
+      status.textContent = "Saving";
+      try {
+        const response = await fetch("/api/search/logs/retention-settings", {
+          method: "PUT",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          status.textContent = body.detail || "Settings save failed.";
+          return;
+        }
+        enabledInput.checked = Boolean(body.settings.enabled);
+        daysInput.value = body.settings.retention_days;
+        batchInput.value = body.settings.cleanup_batch_size;
+        status.textContent = "Saved";
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : "Settings save failed.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
   const reviewForm = document.querySelector(".search-log-review-form");
   if (reviewForm) {
     const logId = reviewForm.dataset.searchLogId;

@@ -9,7 +9,16 @@ pytestmark = pytest.mark.integration
 def test_admin_logging_tables_and_default_settings(migrated_database_url: str) -> None:
     settings_count = fetch_one(
         migrated_database_url,
-        "SELECT count(*) AS count FROM app_log_settings",
+        """
+        SELECT count(*) AS count
+        FROM app_log_settings
+        WHERE setting_name IN (
+            'logging_enabled',
+            'min_log_level',
+            'log_retention_days',
+            'admin_log_page_size'
+        )
+        """,
     )
     retention = fetch_one(
         migrated_database_url,

@@ -186,6 +186,8 @@ from app.core.search_logs import (
     SearchLogListItem,
     SearchLogRecord,
     SearchLogResultDetailRecord,
+    SearchLogRetentionSettings,
+    SearchLogRetentionSettingsInput,
     SearchLogReviewMetadataInput,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
@@ -195,7 +197,9 @@ from app.core.search_logs import (
     get_search_log_result,
     list_search_feedback_comments,
     list_search_logs,
+    load_search_log_retention_settings,
     summarize_search_feedback,
+    update_search_log_retention_settings,
     update_search_log_review_metadata,
 )
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
@@ -254,6 +258,12 @@ class SearchLogReviewMetadataRequest(BaseModel):
     review_tags: list[str] = Field(default_factory=list, max_length=12)
     review_memo: str | None = Field(default=None, max_length=2000)
     reviewed_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class SearchLogRetentionSettingsRequest(BaseModel):
+    enabled: bool = True
+    retention_days: int = Field(default=30, ge=1, le=3650)
+    cleanup_batch_size: int = Field(default=1000, ge=1, le=100000)
 
 
 class DocumentPermissionUpdateRequest(BaseModel):
@@ -616,6 +626,26 @@ def search_feedback_payload(feedback: SearchResultFeedbackRecord) -> dict[str, o
         "created_by_user_id": feedback.created_by_user_id,
         "created_at": _datetime_response(feedback.created_at),
     }
+
+
+def search_log_retention_settings_payload(
+    retention_settings: SearchLogRetentionSettings,
+) -> dict[str, object]:
+    return {
+        "enabled": retention_settings.enabled,
+        "retention_days": retention_settings.retention_days,
+        "cleanup_batch_size": retention_settings.cleanup_batch_size,
+    }
+
+
+def search_log_retention_settings_input_from_request(
+    payload: SearchLogRetentionSettingsRequest,
+) -> SearchLogRetentionSettingsInput:
+    return SearchLogRetentionSettingsInput(
+        enabled=payload.enabled,
+        retention_days=payload.retention_days,
+        cleanup_batch_size=payload.cleanup_batch_size,
+    )
 
 
 def permission_summary_from_metadata(metadata: dict[str, object]) -> dict[str, object]:
@@ -2728,6 +2758,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=search_log_comparison_payload(left, right))
 
+    @app.get("/api/search/logs/retention-settings")
+    def api_get_search_log_retention_settings() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        retention_settings = load_search_log_retention_settings(settings.database_url)
+        return JSONResponse(
+            content={
+                "settings": search_log_retention_settings_payload(retention_settings),
+            },
+        )
+
+    @app.put("/api/search/logs/retention-settings")
+    def api_update_search_log_retention_settings(
+        payload: SearchLogRetentionSettingsRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            retention_settings = update_search_log_retention_settings(
+                settings.database_url,
+                search_log_retention_settings_input_from_request(payload),
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "settings": search_log_retention_settings_payload(retention_settings),
+            },
+        )
+
     @app.get("/api/search/logs/{search_log_id}")
     def api_get_search_log_detail(search_log_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -4009,6 +4078,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logs: list[SearchLogListItem] = []
         selected_log: SearchLogDetailRecord | None = None
         selected_log_comparison: dict[str, object] | None = None
+        retention_settings = SearchLogRetentionSettings()
         comparison_error_message = None
         error_message = None
         actor_user_id_value: int | None = None
@@ -4031,6 +4101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.database_url,
                     active_only=True,
                 )
+                retention_settings = load_search_log_retention_settings(settings.database_url)
                 logs = list_search_logs(
                     settings.database_url,
                     actor_user_id=actor_user_id_value,
@@ -4074,6 +4145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_log_replay_url=(
                     search_log_replay_url(selected_log.search_log) if selected_log else ""
                 ),
+                search_log_retention_settings=retention_settings,
                 selected_actor_user_id=actor_user_id_value or "",
                 selected_scope=scope_value or "",
                 selected_document_group=document_group_value or "",
