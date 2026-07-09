@@ -4,6 +4,17 @@
   --pcx-ink: #172033;
   --pcx-muted: #687386;
   --pcx-accent: #0f766e;
+  --pcx-success: #166534;
+  --pcx-warning: #92400e;
+  --pcx-danger: #991b1b;
+  --pcx-surface: #ffffff;
+  --pcx-radius: 8px;
+  --pcx-shadow: 0 0.25rem 1rem rgb(23 32 51 / 0.04);
+  --pcx-space-1: 0.25rem;
+  --pcx-space-2: 0.5rem;
+  --pcx-space-3: 0.75rem;
+  --pcx-space-4: 1rem;
+  --pcx-space-6: 1.5rem;
   --pcx-sidebar: #ffffff;
   --pcx-sidebar-width: 16rem;
 }
@@ -987,6 +998,176 @@ main.container-fluid {
   width: 10rem;
 }
 
+.design-section {
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  display: grid;
+  gap: var(--pcx-space-4);
+}
+
+.design-section-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pcx-space-3);
+  justify-content: space-between;
+}
+
+.design-principle-grid,
+.design-token-layout,
+.design-component-grid,
+.design-doc-grid {
+  display: grid;
+  gap: var(--pcx-space-4);
+}
+
+.design-principle-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.design-principle-item,
+.design-token-card,
+.design-component-card,
+.design-doc-card {
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  display: grid;
+  gap: var(--pcx-space-3);
+  min-width: 0;
+  padding: 0.875rem;
+}
+
+.design-principle-index {
+  color: var(--pcx-accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.design-principle-item p,
+.design-doc-card p {
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.design-token-layout,
+.design-component-grid,
+.design-doc-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.design-color-grid {
+  display: grid;
+  gap: var(--pcx-space-2);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.design-color-swatch {
+  align-items: flex-end;
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  display: flex;
+  min-height: 4.5rem;
+  overflow: hidden;
+  padding: var(--pcx-space-2);
+}
+
+.design-color-swatch span {
+  background: rgb(255 255 255 / 0.88);
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  color: var(--pcx-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.4rem;
+}
+
+.design-color-ink {
+  background: var(--pcx-ink);
+}
+
+.design-color-muted {
+  background: var(--pcx-muted);
+}
+
+.design-color-accent {
+  background: var(--pcx-accent);
+}
+
+.design-color-bg {
+  background: var(--pcx-bg);
+}
+
+.design-color-border {
+  background: var(--pcx-border);
+}
+
+.design-color-surface {
+  background: var(--pcx-surface);
+}
+
+.design-scale-list,
+.design-type-stack,
+.design-shape-list,
+.design-inline-demo {
+  display: grid;
+  gap: var(--pcx-space-2);
+}
+
+.design-scale-list div {
+  align-items: center;
+  display: grid;
+  gap: var(--pcx-space-2);
+  grid-template-columns: 4rem minmax(0, 1fr);
+}
+
+.design-scale-list span {
+  background: var(--pcx-accent);
+  border-radius: var(--pcx-radius);
+  display: block;
+  height: 0.75rem;
+}
+
+.design-type-heading {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.design-shape-list {
+  align-items: start;
+}
+
+.design-shape-box,
+.design-shadow-box {
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 700;
+  justify-content: center;
+  padding: var(--pcx-space-3);
+}
+
+.design-shadow-box {
+  box-shadow: var(--pcx-shadow);
+}
+
+.design-component-card {
+  align-content: start;
+}
+
+.design-component-wide {
+  grid-column: 1 / -1;
+}
+
+.design-filter-demo {
+  align-items: end;
+  display: grid;
+  gap: var(--pcx-space-3);
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .search-form-grid {
   align-items: end;
   display: grid;
@@ -1699,6 +1880,10 @@ main.container-fluid {
   .evaluation-summary-grid,
   .evaluation-execute-form,
   .dashboard-status-grid,
+  .design-component-grid,
+  .design-doc-grid,
+  .design-principle-grid,
+  .design-token-layout,
   .document-detail-grid,
   .feedback-summary-grid,
   .golden-fieldset,
@@ -1767,6 +1952,10 @@ main.container-fluid {
 
   .evaluation-summary-grid,
   .dashboard-status-grid,
+  .design-component-grid,
+  .design-doc-grid,
+  .design-principle-grid,
+  .design-token-layout,
   .document-detail-grid,
   .feedback-summary-grid,
   .permission-summary-grid {

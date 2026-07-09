@@ -16,6 +16,7 @@
     "jobs": "작업",
     "embeddings": "임베딩",
     "chunk_policies": "Chunk 정책",
+    "design_system": "디자인 시스템",
     "logs": "로그"
   },
   "common": {
@@ -170,6 +171,59 @@
     "updated_by": "수정 사용자",
     "save": "권한 저장",
     "updated": "문서 권한 metadata가 저장되었습니다."
+  },
+  "design_system": {
+    "title": "디자인 시스템",
+    "subtitle": "NeX_PCX 화면을 일관되게 만드는 원칙, token, component 기준",
+    "living_badge": "Living Guide",
+    "principles": {
+      "title": "Design Principles",
+      "subtitle": "실험 도구와 운영 화면에 맞춘 판단 기준",
+      "p1_title": "Operational Clarity",
+      "p1_body": "상태, 수치, 실패 원인을 빠르게 스캔할 수 있게 정보 밀도를 유지합니다.",
+      "p2_title": "Reproducibility First",
+      "p2_body": "검색, 평가, worker 실행은 같은 조건으로 다시 확인할 수 있게 metadata를 드러냅니다.",
+      "p3_title": "Permission-aware Disclosure",
+      "p3_body": "권한으로 제외된 정보는 제목이나 preview 없이 aggregate 숫자로만 설명합니다.",
+      "p4_title": "Korean Default",
+      "p4_body": "한글을 기본으로 하되 영어 전환에서도 버튼, 표, 카드 문구가 넘치지 않게 설계합니다."
+    },
+    "tokens": {
+      "title": "Design Tokens",
+      "subtitle": "Bootstrap 위에 얹는 NeX_PCX 공통 시각 언어",
+      "color": "Color",
+      "spacing": "Spacing",
+      "type": "Typography",
+      "shape": "Shape",
+      "heading_sample": "섹션 제목",
+      "body_sample": "본문은 읽기 쉬운 운영 정보 밀도를 유지합니다.",
+      "small_sample": "보조 설명과 metadata는 muted 색상을 사용합니다.",
+      "radius": "8px radius",
+      "badge": "Badge",
+      "shadow": "Soft shadow"
+    },
+    "components": {
+      "title": "Component Library",
+      "subtitle": "현재 화면에서 반복 사용하는 UI 패턴",
+      "metric_card": "Metric Card",
+      "metric_hint": "대시보드와 요약 영역에서 사용",
+      "status_badges": "Status Badges",
+      "filter_form": "Filter Form",
+      "apply": "적용",
+      "detail_list": "Detail List",
+      "table": "Data Table",
+      "permission_panel": "Permission Summary Panel"
+    },
+    "documentation": {
+      "title": "Documentation Rules",
+      "subtitle": "새 화면을 만들 때 반복해서 확인할 기준",
+      "d1_title": "Screen Pattern",
+      "d1_body": "목록 화면은 header, filter, table, optional detail 순서로 구성합니다.",
+      "d2_title": "Content Pattern",
+      "d2_body": "사용법 설명 문구를 화면 안에 길게 두지 않고, 상태와 결과 중심의 짧은 label을 사용합니다.",
+      "d3_title": "Verification Pattern",
+      "d3_body": "UI Slice는 Playwright 캡처로 한글/영문 화면과 반응형 깨짐을 확인합니다."
+    }
   },
   "search_matrix": {
     "title": "권한 검색 Matrix",

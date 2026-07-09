@@ -35,6 +35,7 @@
           <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">{{ t("nav.jobs") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">{{ t("nav.embeddings") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/chunk-policies') %}active{% endif %}" href="/admin/chunk-policies">{{ t("nav.chunk_policies") }}</a>
+          <a class="nav-link {% if current_path.startswith('/admin/design-system') %}active{% endif %}" href="/admin/design-system">{{ t("nav.design_system") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">{{ t("nav.logs") }}</a>
         </nav>
         <div class="language-switcher" aria-label="{{ t('app.language') }}">
@@ -72,6 +73,7 @@
               <a class="nav-link {% if current_path.startswith('/admin/jobs') %}active{% endif %}" href="/admin/jobs">{{ t("nav.jobs") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/embedding-jobs') %}active{% endif %}" href="/admin/embedding-jobs">{{ t("nav.embeddings") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/chunk-policies') %}active{% endif %}" href="/admin/chunk-policies">{{ t("nav.chunk_policies") }}</a>
+              <a class="nav-link {% if current_path.startswith('/admin/design-system') %}active{% endif %}" href="/admin/design-system">{{ t("nav.design_system") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/logs') %}active{% endif %}" href="/admin/logs">{{ t("nav.logs") }}</a>
               {% for option in language_options %}
               <a class="nav-link language-mobile-link {% if current_language == option.code %}active{% endif %}" href="{{ language_url(option.code) }}">

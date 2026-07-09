@@ -16,6 +16,7 @@
     "jobs": "Jobs",
     "embeddings": "Embeddings",
     "chunk_policies": "Chunk Policies",
+    "design_system": "Design System",
     "logs": "Logs"
   },
   "common": {
@@ -170,6 +171,59 @@
     "updated_by": "Updated By",
     "save": "Save Permissions",
     "updated": "Document permission metadata was saved."
+  },
+  "design_system": {
+    "title": "Design System",
+    "subtitle": "Principles, tokens, and component rules for consistent NeX_PCX screens",
+    "living_badge": "Living Guide",
+    "principles": {
+      "title": "Design Principles",
+      "subtitle": "Decision rules for experiment and operations screens",
+      "p1_title": "Operational Clarity",
+      "p1_body": "Keep enough density for quick scanning of status, metrics, failures, and next actions.",
+      "p2_title": "Reproducibility First",
+      "p2_body": "Expose metadata that helps repeat searches, evaluations, and worker runs under the same conditions.",
+      "p3_title": "Permission-aware Disclosure",
+      "p3_body": "Explain excluded information with aggregate counts only, without hidden titles or previews.",
+      "p4_title": "Korean Default",
+      "p4_body": "Design for Korean by default while keeping English labels stable inside buttons, tables, and cards."
+    },
+    "tokens": {
+      "title": "Design Tokens",
+      "subtitle": "NeX_PCX visual language layered on Bootstrap",
+      "color": "Color",
+      "spacing": "Spacing",
+      "type": "Typography",
+      "shape": "Shape",
+      "heading_sample": "Section heading",
+      "body_sample": "Body text keeps operational information readable and compact.",
+      "small_sample": "Supporting metadata uses muted color.",
+      "radius": "8px radius",
+      "badge": "Badge",
+      "shadow": "Soft shadow"
+    },
+    "components": {
+      "title": "Component Library",
+      "subtitle": "Reusable UI patterns already used across the product",
+      "metric_card": "Metric Card",
+      "metric_hint": "Used in dashboards and summaries",
+      "status_badges": "Status Badges",
+      "filter_form": "Filter Form",
+      "apply": "Apply",
+      "detail_list": "Detail List",
+      "table": "Data Table",
+      "permission_panel": "Permission Summary Panel"
+    },
+    "documentation": {
+      "title": "Documentation Rules",
+      "subtitle": "Checks to repeat when adding new screens",
+      "d1_title": "Screen Pattern",
+      "d1_body": "List screens should flow as header, filter, table, then optional detail.",
+      "d2_title": "Content Pattern",
+      "d2_body": "Avoid long in-app instructions and prefer short labels focused on state and outcomes.",
+      "d3_title": "Verification Pattern",
+      "d3_body": "UI slices should use Playwright captures for Korean, English, and responsive layout checks."
+    }
   },
   "search_matrix": {
     "title": "Permission Search Matrix",

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("design_system.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("design_system.subtitle") }}</p>
+  </div>
+  <span class="badge text-bg-light border">{{ t("design_system.living_badge") }}</span>
+</div>
+
+<section class="design-section bg-white p-3 mb-4">
+  <div class="design-section-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("design_system.principles.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("design_system.principles.subtitle") }}</p>
+    </div>
+  </div>
+  <div class="design-principle-grid">
+    {% for index in [1, 2, 3, 4] %}
+    <article class="design-principle-item">
+      <span class="design-principle-index">0{{ index }}</span>
+      <h3 class="h6 mb-0">{{ t("design_system.principles.p" ~ index ~ "_title") }}</h3>
+      <p class="text-secondary mb-0">{{ t("design_system.principles.p" ~ index ~ "_body") }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="design-section bg-white p-3 mb-4">
+  <div class="design-section-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("design_system.tokens.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("design_system.tokens.subtitle") }}</p>
+    </div>
+  </div>
+
+  <div class="design-token-layout">
+    <div class="design-token-card">
+      <h3 class="h6 mb-0">{{ t("design_system.tokens.color") }}</h3>
+      <div class="design-color-grid">
+        <div class="design-color-swatch design-color-ink"><span>--pcx-ink</span></div>
+        <div class="design-color-swatch design-color-muted"><span>--pcx-muted</span></div>
+        <div class="design-color-swatch design-color-accent"><span>--pcx-accent</span></div>
+        <div class="design-color-swatch design-color-bg"><span>--pcx-bg</span></div>
+        <div class="design-color-swatch design-color-border"><span>--pcx-border</span></div>
+        <div class="design-color-swatch design-color-surface"><span>--pcx-surface</span></div>
+      </div>
+    </div>
+
+    <div class="design-token-card">
+      <h3 class="h6 mb-0">{{ t("design_system.tokens.spacing") }}</h3>
+      <div class="design-scale-list">
+        <div><span style="width: var(--pcx-space-1);"></span><strong>4px</strong></div>
+        <div><span style="width: var(--pcx-space-2);"></span><strong>8px</strong></div>
+        <div><span style="width: var(--pcx-space-3);"></span><strong>12px</strong></div>
+        <div><span style="width: var(--pcx-space-4);"></span><strong>16px</strong></div>
+        <div><span style="width: var(--pcx-space-6);"></span><strong>24px</strong></div>
+      </div>
+    </div>
+
+    <div class="design-token-card">
+      <h3 class="h6 mb-0">{{ t("design_system.tokens.type") }}</h3>
+      <div class="design-type-stack">
+        <div class="design-type-heading">{{ t("design_system.tokens.heading_sample") }}</div>
+        <div>{{ t("design_system.tokens.body_sample") }}</div>
+        <div class="text-secondary small">{{ t("design_system.tokens.small_sample") }}</div>
+      </div>
+    </div>
+
+    <div class="design-token-card">
+      <h3 class="h6 mb-0">{{ t("design_system.tokens.shape") }}</h3>
+      <div class="design-shape-list">
+        <span class="design-shape-box">{{ t("design_system.tokens.radius") }}</span>
+        <span class="badge text-bg-light border">{{ t("design_system.tokens.badge") }}</span>
+        <span class="design-shadow-box">{{ t("design_system.tokens.shadow") }}</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="design-section bg-white p-3 mb-4">
+  <div class="design-section-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("design_system.components.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("design_system.components.subtitle") }}</p>
+    </div>
+  </div>
+
+  <div class="design-component-grid">
+    <article class="design-component-card">
+      <h3 class="h6 mb-0">{{ t("design_system.components.metric_card") }}</h3>
+      <div class="metric-card p-3">
+        <div class="metric-label">{{ t("dashboard.documents") }}</div>
+        <div class="metric-value">128</div>
+        <div class="text-secondary small">{{ t("design_system.components.metric_hint") }}</div>
+      </div>
+    </article>
+
+    <article class="design-component-card">
+      <h3 class="h6 mb-0">{{ t("design_system.components.status_badges") }}</h3>
+      <div class="design-inline-demo">
+        <span class="badge text-bg-light border">{{ t("status.queued") }}</span>
+        <span class="badge feedback-label-correct">{{ t("status.succeeded") }}</span>
+        <span class="badge feedback-label-wrong">{{ t("status.failed") }}</span>
+      </div>
+    </article>
+
+    <article class="design-component-card">
+      <h3 class="h6 mb-0">{{ t("design_system.components.filter_form") }}</h3>
+      <form class="design-filter-demo">
+        <div>
+          <label class="form-label" for="design_scope">{{ t("search_permission.scope") }}</label>
+          <select class="form-select" id="design_scope">
+            <option>{{ t("search_scope.company") }}</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" type="button">{{ t("design_system.components.apply") }}</button>
+      </form>
+    </article>
+
+    <article class="design-component-card">
+      <h3 class="h6 mb-0">{{ t("design_system.components.detail_list") }}</h3>
+      <dl class="job-detail-list mb-0">
+        <dt>{{ t("search_permission.actor") }}</dt>
+        <dd>Alice Member</dd>
+        <dt>{{ t("search_permission.effective_scope") }}</dt>
+        <dd>{{ t("search_scope.company") }}</dd>
+      </dl>
+    </article>
+
+    <article class="design-component-card design-component-wide">
+      <h3 class="h6 mb-0">{{ t("design_system.components.table") }}</h3>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("nav.documents") }}</th>
+              <th scope="col">{{ t("upload_permissions.access_scope") }}</th>
+              <th scope="col">{{ t("status.succeeded") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>policy-guide.md</td>
+              <td>{{ t("access_scope.company") }}</td>
+              <td><span class="badge feedback-label-correct">{{ t("status.succeeded") }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="design-component-card design-component-wide">
+      <h3 class="h6 mb-0">{{ t("design_system.components.permission_panel") }}</h3>
+      <div class="search-permission-summary-grid">
+        <div class="search-permission-summary-item">
+          <h4 class="h6 mb-0">{{ t("search_permission.visibility") }}</h4>
+          <div class="search-permission-summary-body">
+            <div class="search-permission-summary-row">
+              <span class="text-secondary">{{ t("search_permission.visible_documents") }}</span>
+              <strong>42 / 58</strong>
+            </div>
+            <div class="search-permission-summary-row">
+              <span class="text-secondary">{{ t("search_permission.excluded_documents") }}</span>
+              <strong>16</strong>
+            </div>
+          </div>
+        </div>
+        <div class="search-permission-summary-item">
+          <h4 class="h6 mb-0">{{ t("search_permission.access_scopes") }}</h4>
+          <div class="search-permission-scope-badges">
+            <span class="search-permission-scope-badge">{{ t("access_scope.personal") }} 4</span>
+            <span class="search-permission-scope-badge">{{ t("access_scope.company") }} 38</span>
+          </div>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="design-section bg-white p-3">
+  <div class="design-section-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("design_system.documentation.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("design_system.documentation.subtitle") }}</p>
+    </div>
+  </div>
+  <div class="design-doc-grid">
+    {% for index in [1, 2, 3] %}
+    <article class="design-doc-card">
+      <h3 class="h6 mb-0">{{ t("design_system.documentation.d" ~ index ~ "_title") }}</h3>
+      <p class="text-secondary mb-0">{{ t("design_system.documentation.d" ~ index ~ "_body") }}</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

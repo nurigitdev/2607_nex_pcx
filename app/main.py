@@ -3501,6 +3501,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
         )
 
+    @app.get("/admin/design-system", response_class=HTMLResponse)
+    def design_system_page(request: Request) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request,
+            "design_system.html",
+            template_context(request),
+        )
+
     @app.get("/admin/logs", response_class=HTMLResponse)
     def admin_logs(request: Request, level: str | None = None) -> HTMLResponse:
         logs = []
