@@ -26,6 +26,7 @@ dev = [
 ]
 models = [
     "huggingface-hub>=0.23,<1.0",
+    "sentence-transformers>=3.0,<6.0",
 ]
 
 [tool.setuptools.packages.find]
