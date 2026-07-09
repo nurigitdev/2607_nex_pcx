@@ -250,6 +250,14 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             )
             detail_response = client.get(f"/api/search/logs/{body['search_log_id']}")
             export_response = client.get(f"/api/search/logs/{body['search_log_id']}/export")
+            export_csv_response = client.get(
+                f"/api/search/logs/{body['search_log_id']}/export",
+                params={"format": "csv"},
+            )
+            bad_export_response = client.get(
+                f"/api/search/logs/{body['search_log_id']}/export",
+                params={"format": "xlsx"},
+            )
 
         feedback_body = feedback_response.json()
         summary_body = summary_response.json()
@@ -381,6 +389,17 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert export_body["exported_at"]
         assert export_body["search_log"] == detail_body["search_log"]
         assert export_body["results"] == detail_body["results"]
+        assert export_csv_response.status_code == 200
+        assert export_csv_response.headers["content-type"].startswith("text/csv")
+        assert export_csv_response.headers["content-disposition"].endswith(
+            f'search-log-{body["search_log_id"]}.csv"'
+        )
+        assert "search_log_id,query_text,actor_login_id" in export_csv_response.text
+        assert str(body["search_log_id"]) in export_csv_response.text
+        assert "kure_v1_1024" in export_csv_response.text
+        assert "correct" in export_csv_response.text
+        assert bad_export_response.status_code == 400
+        assert bad_export_response.json() == {"detail": "format must be json or csv."}
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
 

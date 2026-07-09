@@ -125,7 +125,9 @@
     "applied_body": "Adjust the query or scope before searching again if needed."
   },
   "search_export": {
-    "action": "JSON Export"
+    "action": "JSON Export",
+    "json_action": "JSON Export",
+    "csv_action": "CSV Export"
   },
   "permissions": {
     "title": "Permission Simulation",

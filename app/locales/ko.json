@@ -125,7 +125,9 @@
     "applied_body": "필요하면 Query나 범위를 조정한 뒤 다시 검색할 수 있습니다."
   },
   "search_export": {
-    "action": "JSON Export"
+    "action": "JSON Export",
+    "json_action": "JSON Export",
+    "csv_action": "CSV Export"
   },
   "permissions": {
     "title": "권한 시뮬레이션",

@@ -805,6 +805,68 @@ def search_log_export_payload(detail: SearchLogDetailRecord) -> dict[str, object
     }
 
 
+def search_log_results_csv(detail: SearchLogDetailRecord) -> str:
+    fieldnames = [
+        "search_log_id",
+        "query_text",
+        "actor_login_id",
+        "requested_search_scope",
+        "effective_search_scope",
+        "document_group",
+        "file_type",
+        "chunk_policy_name",
+        "top_k",
+        "profile_name",
+        "rank",
+        "search_log_result_id",
+        "chunk_id",
+        "document_id",
+        "file_id",
+        "distance",
+        "score",
+        "profile_elapsed_ms",
+        "document_title",
+        "original_file_name",
+        "heading_path",
+        "feedback_count",
+        "feedback_labels",
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for result in detail.results:
+        payload = search_log_result_detail_payload(result)
+        feedback = payload["feedback"]
+        writer.writerow(
+            {
+                "search_log_id": detail.search_log.search_log_id,
+                "query_text": detail.search_log.query_text,
+                "actor_login_id": detail.actor_login_id or "",
+                "requested_search_scope": detail.search_log.requested_search_scope,
+                "effective_search_scope": detail.search_log.effective_search_scope,
+                "document_group": detail.search_log.document_group or "",
+                "file_type": detail.search_log.file_type or "",
+                "chunk_policy_name": detail.search_log.chunk_policy_name or "",
+                "top_k": detail.search_log.top_k,
+                "profile_name": payload["profile_name"],
+                "rank": payload["rank"],
+                "search_log_result_id": payload["search_log_result_id"],
+                "chunk_id": payload["chunk_id"],
+                "document_id": payload["document_id"],
+                "file_id": payload["file_id"],
+                "distance": payload["distance"],
+                "score": payload["score"],
+                "profile_elapsed_ms": payload["profile_elapsed_ms"],
+                "document_title": payload["document_title"] or "",
+                "original_file_name": payload["original_file_name"] or "",
+                "heading_path": " / ".join(payload["heading_path"]),
+                "feedback_count": len(feedback),
+                "feedback_labels": "|".join(item["relevance_label"] for item in feedback),
+            }
+        )
+    return output.getvalue()
+
+
 def search_feedback_profile_summary_payload(
     profile: SearchFeedbackProfileSummaryRecord,
 ) -> dict[str, object]:
@@ -2203,11 +2265,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(content=search_log_detail_payload(detail))
 
     @app.get("/api/search/logs/{search_log_id}/export")
-    def api_export_search_log(search_log_id: int) -> JSONResponse:
+    def api_export_search_log(
+        search_log_id: int,
+        export_format: str = Query(default="json", alias="format"),
+    ) -> Response:
         if not settings.database_url:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        normalized_format = export_format.strip().lower()
+        if normalized_format not in {"json", "csv"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="format must be json or csv.",
             )
 
         try:
@@ -2220,10 +2292,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Search log not found.",
             )
 
+        filename_base = f"search-log-{search_log_id}"
+        if normalized_format == "csv":
+            return Response(
+                content=search_log_results_csv(detail),
+                media_type="text/csv; charset=utf-8",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename_base}.csv"',
+                },
+            )
+
         return JSONResponse(
             content=search_log_export_payload(detail),
             headers={
-                "Content-Disposition": f'attachment; filename="search-log-{search_log_id}.json"',
+                "Content-Disposition": f'attachment; filename="{filename_base}.json"',
             },
         )
 

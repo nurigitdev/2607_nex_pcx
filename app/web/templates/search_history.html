@@ -142,7 +142,10 @@
       </div>
       <div class="search-history-detail-actions">
         <a class="btn btn-outline-secondary" href="/api/search/logs/{{ selected_log.search_log.search_log_id }}/export">
-          {{ t("search_export.action") }}
+          {{ t("search_export.json_action") }}
+        </a>
+        <a class="btn btn-outline-secondary" href="/api/search/logs/{{ selected_log.search_log.search_log_id }}/export?format=csv">
+          {{ t("search_export.csv_action") }}
         </a>
         <a class="btn btn-primary" href="{{ selected_log_replay_url }}">
           {{ t("search_replay.action") }}
