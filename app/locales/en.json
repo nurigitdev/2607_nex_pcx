@@ -147,6 +147,19 @@
     "same": "Same",
     "different": "Different"
   },
+  "search_log_review": {
+    "title": "Search Log Review",
+    "subtitle": "Add review tags and notes to experiment logs.",
+    "tags": "Tags",
+    "memo": "Memo",
+    "tags_placeholder": "baseline, permission-review",
+    "memo_placeholder": "Experiment result or reproducibility note",
+    "save": "Save",
+    "saving": "Saving",
+    "saved": "Saved.",
+    "save_failed": "Save failed",
+    "empty": "None"
+  },
   "permissions": {
     "title": "Permission Simulation",
     "subtitle": "Search-scope inventory from users, org units, memberships, and document ownership",

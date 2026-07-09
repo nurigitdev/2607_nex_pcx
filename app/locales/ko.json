@@ -147,6 +147,19 @@
     "same": "같음",
     "different": "다름"
   },
+  "search_log_review": {
+    "title": "검색 로그 리뷰",
+    "subtitle": "실험 로그에 검토용 태그와 메모를 남깁니다.",
+    "tags": "태그",
+    "memo": "메모",
+    "tags_placeholder": "baseline, 권한검토",
+    "memo_placeholder": "실험 결과나 재현 조건 메모",
+    "save": "저장",
+    "saving": "저장 중",
+    "saved": "저장되었습니다.",
+    "save_failed": "저장 실패",
+    "empty": "없음"
+  },
   "permissions": {
     "title": "권한 시뮬레이션",
     "subtitle": "사용자, 조직, 멤버십, 문서 소유권 기준의 검색 범위 인벤토리",

@@ -116,7 +116,16 @@
               #{{ item.search_log.search_log_id }}
             </a>
           </td>
-          <td class="text-break">{{ item.search_log.query_text }}</td>
+          <td class="text-break">
+            <div>{{ item.search_log.query_text }}</div>
+            {% if item.search_log.review_tags %}
+            <div class="search-log-tag-list mt-1">
+              {% for tag in item.search_log.review_tags %}
+              <span class="search-log-tag-badge">{{ tag }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
           <td>{{ item.actor_display_name or item.actor_login_id or "" }}</td>
           <td>{{ item.search_log.requested_search_scope or "" }}</td>
           <td>{{ item.search_log.document_group or "" }}</td>
@@ -201,6 +210,70 @@
       <dt>Created</dt>
       <dd>{{ selected_log.search_log.created_at }}</dd>
     </dl>
+  </section>
+
+  <section class="search-log-review-panel bg-white p-3">
+    <div class="search-log-review-header">
+      <div>
+        <h2 class="h5 mb-1">{{ t("search_log_review.title") }}</h2>
+        <p class="text-secondary mb-0">{{ t("search_log_review.subtitle") }}</p>
+      </div>
+    </div>
+
+    <div class="search-log-review-current">
+      <div>
+        <span class="text-secondary">{{ t("search_log_review.tags") }}</span>
+        <div class="search-log-tag-list" id="search-log-review-tags">
+          {% for tag in selected_log.search_log.review_tags %}
+          <span class="search-log-tag-badge">{{ tag }}</span>
+          {% else %}
+          <span class="text-secondary small">{{ t("search_log_review.empty") }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <span class="text-secondary">{{ t("search_log_review.memo") }}</span>
+        <p class="mb-0" id="search-log-review-memo">
+          {{ selected_log.search_log.review_memo or t("search_log_review.empty") }}
+        </p>
+      </div>
+    </div>
+
+    <form
+      class="search-log-review-form"
+      data-search-log-id="{{ selected_log.search_log.search_log_id }}"
+      data-reviewed-by-user-id="{{ selected_log.search_log.actor_user_id or '' }}"
+    >
+      <div>
+        <label class="form-label" for="search_log_review_tags_input">{{ t("search_log_review.tags") }}</label>
+        <input
+          class="form-control"
+          id="search_log_review_tags_input"
+          name="review_tags"
+          type="text"
+          value="{{ selected_log.search_log.review_tags | join(', ') }}"
+          placeholder="{{ t('search_log_review.tags_placeholder') }}"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div>
+        <label class="form-label" for="search_log_review_memo_input">{{ t("search_log_review.memo") }}</label>
+        <textarea
+          class="form-control"
+          id="search_log_review_memo_input"
+          name="review_memo"
+          rows="2"
+          placeholder="{{ t('search_log_review.memo_placeholder') }}"
+          {% if not database_configured %}disabled{% endif %}
+        >{{ selected_log.search_log.review_memo or "" }}</textarea>
+      </div>
+      <div class="search-log-review-actions">
+        <button class="btn btn-primary" type="submit" {% if not database_configured %}disabled{% endif %}>
+          {{ t("search_log_review.save") }}
+        </button>
+        <span class="search-log-review-status text-secondary" aria-live="polite"></span>
+      </div>
+    </form>
   </section>
 
   {% if permission_summary %}
@@ -562,6 +635,78 @@
 {% block scripts %}
 <script>
 (() => {
+  const reviewForm = document.querySelector(".search-log-review-form");
+  if (reviewForm) {
+    const logId = reviewForm.dataset.searchLogId;
+    const reviewedByUserId = reviewForm.dataset.reviewedByUserId;
+    const tagInput = reviewForm.querySelector("input[name='review_tags']");
+    const memoInput = reviewForm.querySelector("textarea[name='review_memo']");
+    const button = reviewForm.querySelector("button[type='submit']");
+    const status = reviewForm.querySelector(".search-log-review-status");
+    const tagList = document.getElementById("search-log-review-tags");
+    const memoText = document.getElementById("search-log-review-memo");
+
+    const renderTags = (tags) => {
+      if (!tagList) {
+        return;
+      }
+      tagList.replaceChildren();
+      if (!tags.length) {
+        const empty = document.createElement("span");
+        empty.className = "text-secondary small";
+        empty.textContent = "{{ t('search_log_review.empty') }}";
+        tagList.append(empty);
+        return;
+      }
+      tags.forEach((tag) => {
+        const badge = document.createElement("span");
+        badge.className = "search-log-tag-badge";
+        badge.textContent = tag;
+        tagList.append(badge);
+      });
+    };
+
+    reviewForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const reviewTags = tagInput.value
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      const payload = {
+        review_tags: reviewTags,
+        review_memo: memoInput.value,
+        reviewed_by_user_id: reviewedByUserId ? Number(reviewedByUserId) : null,
+      };
+
+      button.disabled = true;
+      status.textContent = "{{ t('search_log_review.saving') }}";
+      try {
+        const response = await fetch(`/api/search/logs/${logId}/metadata`, {
+          method: "PATCH",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          status.textContent = body.detail || "{{ t('search_log_review.save_failed') }}";
+          return;
+        }
+        const searchLog = body.search_log;
+        renderTags(searchLog.review_tags || []);
+        if (memoText) {
+          memoText.textContent =
+            searchLog.review_memo || "{{ t('search_log_review.empty') }}";
+        }
+        status.textContent = "{{ t('search_log_review.saved') }}";
+      } catch (error) {
+        status.textContent =
+          error instanceof Error ? error.message : "{{ t('search_log_review.save_failed') }}";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
   document.querySelectorAll(".search-history-promotion").forEach((form) => {
     const resultId = form.dataset.searchLogResultId;
     const select = form.querySelector("select[name='question_set_id']");

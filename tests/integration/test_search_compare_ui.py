@@ -3,7 +3,12 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.database import connect
-from app.core.search_logs import SearchLogInput, create_search_log
+from app.core.search_logs import (
+    SearchLogInput,
+    SearchLogReviewMetadataInput,
+    create_search_log,
+    update_search_log_review_metadata,
+)
 from app.main import create_app, search_log_replay_url, search_reproducibility_fingerprint
 
 pytestmark = pytest.mark.integration
@@ -163,6 +168,15 @@ def test_search_history_detail_renders_permission_explainability(
             created_by_user_id=user_id,
         ),
     )
+    update_search_log_review_metadata(
+        migrated_database_url,
+        SearchLogReviewMetadataInput(
+            search_log_id=search_log.search_log_id,
+            review_tags=("baseline", "permission-review"),
+            review_memo="UI review memo",
+            reviewed_by_user_id=user_id,
+        ),
+    )
     app = create_app(Settings(database_url=migrated_database_url))
     replay_url = search_log_replay_url(search_log)
     fingerprint = search_reproducibility_fingerprint(search_log)
@@ -203,6 +217,13 @@ def test_search_history_detail_renders_permission_explainability(
         assert "JSON Export" in response.text
         assert "CSV Export" in response.text
         assert "Report Export" in response.text
+        assert "검색 로그 리뷰" in response.text
+        assert "baseline" in response.text
+        assert "permission-review" in response.text
+        assert "UI review memo" in response.text
+        assert 'id="search_log_review_tags_input"' in response.text
+        assert 'value="baseline, permission-review"' in response.text
+        assert f'data-search-log-id="{search_log.search_log_id}"' in response.text
         assert f"/api/search/logs/{search_log.search_log_id}/export" in response.text
         assert f"/api/search/logs/{search_log.search_log_id}/export?format=csv" in response.text
         assert f"/api/search/logs/{search_log.search_log_id}/experiment-report" in response.text

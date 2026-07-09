@@ -1308,6 +1308,75 @@ main.container-fluid {
   min-height: 1rem;
 }
 
+.search-log-tag-list {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pcx-space-1);
+  min-width: 0;
+}
+
+.search-log-tag-badge {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: var(--pcx-radius);
+  color: #3730a3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0.22rem 0.45rem;
+}
+
+.search-log-review-panel {
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  display: grid;
+  gap: var(--pcx-space-4);
+}
+
+.search-log-review-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pcx-space-3);
+  justify-content: space-between;
+}
+
+.search-log-review-current {
+  display: grid;
+  gap: var(--pcx-space-3);
+  grid-template-columns: minmax(12rem, 0.45fr) minmax(0, 1fr);
+}
+
+.search-log-review-current > div {
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  display: grid;
+  gap: var(--pcx-space-2);
+  min-width: 0;
+  padding: 0.875rem;
+}
+
+.search-log-review-form {
+  align-items: end;
+  display: grid;
+  gap: var(--pcx-space-3);
+  grid-template-columns: minmax(12rem, 0.55fr) minmax(16rem, 1fr) auto;
+}
+
+.search-log-review-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pcx-space-2);
+  justify-content: flex-end;
+}
+
+.search-log-review-status {
+  font-size: 0.75rem;
+  min-height: 1rem;
+}
+
 .search-reproducibility-panel {
   border: 1px solid var(--pcx-border);
   border-radius: var(--pcx-radius);
@@ -2045,6 +2114,8 @@ main.container-fluid {
   .search-history-results,
   .search-log-compare-form,
   .search-log-compare-summary,
+  .search-log-review-current,
+  .search-log-review-form,
   .search-permission-matrix-form,
   .search-permission-summary-grid,
   .search-reproducibility-grid,
@@ -2069,7 +2140,8 @@ main.container-fluid {
   .golden-form-actions .btn,
   .search-permission-matrix-header .btn,
   .search-history-filter-actions .btn,
-  .search-history-promotion-row .btn {
+  .search-history-promotion-row .btn,
+  .search-log-review-actions .btn {
     width: 100%;
   }
 }
@@ -2089,12 +2161,16 @@ main.container-fluid {
   }
 
   .search-form-grid,
-  .search-history-filter {
+  .search-history-filter,
+  .search-log-review-current,
+  .search-log-review-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .search-query-field,
-  .search-profile-field {
+  .search-profile-field,
+  .search-log-review-form > div:nth-child(2),
+  .search-log-review-actions {
     grid-column: 1 / -1;
   }
 

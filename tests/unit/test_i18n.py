@@ -39,6 +39,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("search_log_compare.title") == "Search Log Compare"
     assert korean("search_log_compare.target_placeholder") == "비교할 로그를 선택하세요"
     assert english("search_log_compare.target_placeholder") == "Select a log to compare"
+    assert korean("search_log_review.title") == "검색 로그 리뷰"
+    assert english("search_log_review.title") == "Search Log Review"
 
 
 def test_translator_falls_back_to_key_when_missing() -> None:
