@@ -28,8 +28,11 @@ def test_golden_question_manager_page_renders_crud_shell(
     assert 'id="question-set-table-body"' in response.text
     assert 'id="question-table-body"' in response.text
     assert 'id="target-table-body"' in response.text
+    assert 'id="golden-candidate-table-body"' in response.text
+    assert "Search Log Candidates" in response.text
     assert "/api/evaluations/question-sets" in response.text
     assert "/api/evaluations/question-sets/import" in response.text
+    assert "/api/evaluations/golden-question-candidates" in response.text
     assert "/export" in response.text
     assert "/api/evaluations/questions" in response.text
     assert "/api/evaluations/expected-targets" in response.text

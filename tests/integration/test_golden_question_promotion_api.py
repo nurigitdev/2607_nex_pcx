@@ -152,6 +152,7 @@ def _create_promotion_fixture(database_url: str) -> dict[str, object]:
         "file_id": file_id,
         "question_set_id": question_set.question_set_id,
         "question_set_name": question_set.set_name,
+        "document_group": document_group,
         "search_log_id": search_log.search_log_id,
         "search_log_result_id": result.search_log_result_id,
         "chunk_id": chunk_id,
@@ -180,6 +181,10 @@ def test_search_result_can_be_promoted_to_golden_question(
     app = create_app(Settings(database_url=migrated_database_url))
     try:
         with TestClient(app) as client:
+            candidate_response = client.get(
+                "/api/evaluations/golden-question-candidates",
+                params={"document_group": fixture["document_group"]},
+            )
             response = client.post(
                 f"/api/search/results/{fixture['search_log_result_id']}/promote-golden-question",
                 json={
@@ -188,13 +193,37 @@ def test_search_result_can_be_promoted_to_golden_question(
                     "notes": "promoted from feedback",
                 },
             )
+            remaining_candidate_response = client.get(
+                "/api/evaluations/golden-question-candidates",
+                params={"document_group": fixture["document_group"]},
+            )
+            promoted_candidate_response = client.get(
+                "/api/evaluations/golden-question-candidates",
+                params={
+                    "document_group": fixture["document_group"],
+                    "include_promoted": True,
+                },
+            )
             page_response = client.get(f"/search/logs?search_log_id={fixture['search_log_id']}")
 
+        candidate = candidate_response.json()["candidates"][0]
         body = response.json()["promotion"]
         question = body["question"]
         target = body["expected_target"]
         detail = get_golden_question_detail(migrated_database_url, question["question_id"])
 
+        assert candidate_response.status_code == 200
+        assert candidate["search_log_result_id"] == fixture["search_log_result_id"]
+        assert candidate["search_log_id"] == fixture["search_log_id"]
+        assert candidate["query_text"] == "Which policy can be promoted?"
+        assert candidate["document_group"] == fixture["document_group"]
+        assert candidate["profile_name"] == "kure_v1_1024"
+        assert candidate["feedback_count"] == 1
+        assert candidate["correct_count"] == 1
+        assert candidate["partial_count"] == 0
+        assert candidate["feedback_labels"] == ["correct"]
+        assert candidate["latest_feedback_comment"] == "promote this"
+        assert candidate["already_promoted"] is False
         assert response.status_code == 201
         assert question["question_set_id"] == fixture["question_set_id"]
         assert question["question_text"] == "Which policy can be promoted?"
@@ -211,6 +240,10 @@ def test_search_result_can_be_promoted_to_golden_question(
         assert body["source"]["search_log_result_id"] == fixture["search_log_result_id"]
         assert detail is not None
         assert len(detail.expected_targets) == 1
+        assert remaining_candidate_response.status_code == 200
+        assert remaining_candidate_response.json()["candidates"] == []
+        assert promoted_candidate_response.status_code == 200
+        assert promoted_candidate_response.json()["candidates"][0]["already_promoted"] is True
         assert page_response.status_code == 200
         assert "search-history-promotion" in page_response.text
         assert "/promote-golden-question" in page_response.text

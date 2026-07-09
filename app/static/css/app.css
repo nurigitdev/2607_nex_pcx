@@ -1996,6 +1996,53 @@ main.container-fluid {
   overflow-wrap: anywhere;
 }
 
+.golden-candidate-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.golden-candidate-actions {
+  align-items: center;
+}
+
+.golden-candidate-actions .form-control {
+  min-width: 11rem;
+  width: 14rem;
+}
+
+.golden-candidate-check {
+  min-height: 1.9375rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.golden-candidate-table td {
+  vertical-align: middle;
+}
+
+.golden-candidate-query {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.golden-candidate-preview,
+.golden-candidate-comment {
+  max-width: 48rem;
+  overflow-wrap: anywhere;
+}
+
+.golden-candidate-comment {
+  border-left: 3px solid var(--pcx-accent);
+  margin-top: 0.375rem;
+  padding-left: 0.5rem;
+}
+
+.golden-candidate-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.375rem;
+}
+
 .search-feedback {
   border-top: 1px solid var(--pcx-border);
   display: grid;
@@ -2195,11 +2242,19 @@ main.container-fluid {
 
   .search-form-actions .btn,
   .evaluation-execute-actions .btn,
+  .golden-candidate-actions .btn,
+  .golden-candidate-actions .form-control,
   .golden-form-actions .btn,
   .search-permission-matrix-header .btn,
   .search-history-filter-actions .btn,
   .search-history-promotion-row .btn,
   .search-log-review-actions .btn {
+    width: 100%;
+  }
+
+  .golden-candidate-actions {
+    align-items: stretch;
+    flex-direction: column;
     width: 100%;
   }
 }

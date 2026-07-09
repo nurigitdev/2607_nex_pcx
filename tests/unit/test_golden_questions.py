@@ -1,5 +1,9 @@
 import pytest
 
+from app.core.golden_question_promotions import (
+    InvalidGoldenQuestionPromotionError,
+    list_golden_question_candidates,
+)
 from app.core.golden_questions import (
     GoldenQuestionExpectedTargetInput,
     GoldenQuestionInput,
@@ -183,3 +187,11 @@ def test_list_helpers_reject_invalid_limits_before_connecting() -> None:
 
     with pytest.raises(InvalidGoldenQuestionError, match="less than or equal"):
         list_golden_questions("postgresql://unused", 1, limit=501)
+
+    with pytest.raises(InvalidGoldenQuestionPromotionError, match="limit"):
+        list_golden_question_candidates("postgresql://unused", limit=0)
+
+
+def test_candidate_helper_rejects_blank_document_group_before_connecting() -> None:
+    with pytest.raises(InvalidGoldenQuestionPromotionError, match="document_group"):
+        list_golden_question_candidates("postgresql://unused", document_group=" ")

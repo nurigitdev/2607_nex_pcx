@@ -246,6 +246,52 @@
     </div>
   </section>
 </div>
+
+<section class="metric-card bg-white p-3 golden-candidate-panel mt-4">
+  <div class="golden-panel-header">
+    <div>
+      <h2 class="h5 mb-1">Search Log Candidates</h2>
+      <div class="text-secondary" id="golden-candidate-count">Feedback-backed results</div>
+    </div>
+    <div class="golden-panel-actions golden-candidate-actions">
+      <input
+        class="form-control form-control-sm"
+        id="golden-candidate-document-group"
+        type="text"
+        placeholder="Document group"
+        {% if not database_configured %}disabled{% endif %}
+      >
+      <label class="golden-check-option golden-candidate-check mb-0">
+        <input
+          class="form-check-input"
+          id="golden-candidate-include-promoted"
+          type="checkbox"
+          {% if not database_configured %}disabled{% endif %}
+        >
+        <span>Promoted</span>
+      </label>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        id="golden-candidate-refresh"
+        type="button"
+        {% if not database_configured %}disabled{% endif %}
+      >Refresh</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 golden-candidate-table">
+      <thead>
+        <tr>
+          <th scope="col">Candidate</th>
+          <th scope="col">Feedback</th>
+          <th scope="col">Source</th>
+          <th scope="col">Action</th>
+        </tr>
+      </thead>
+      <tbody id="golden-candidate-table-body"></tbody>
+    </table>
+  </div>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -256,6 +302,7 @@
   let questionSets = {{ question_sets_payload|tojson }};
   let questions = [];
   let targets = [];
+  let candidates = [];
   let selectedSetId = questionSets[0]?.question_set_id || null;
   let selectedQuestionId = null;
   let selectedTargetId = null;
@@ -264,7 +311,9 @@
   const questionSetBody = document.getElementById("question-set-table-body");
   const questionBody = document.getElementById("question-table-body");
   const targetBody = document.getElementById("target-table-body");
+  const candidateBody = document.getElementById("golden-candidate-table-body");
   const setCount = document.getElementById("question-set-count");
+  const candidateCount = document.getElementById("golden-candidate-count");
   const selectedSetLabel = document.getElementById("selected-set-label");
   const selectedQuestionLabel = document.getElementById("selected-question-label");
 
@@ -277,6 +326,9 @@
   const setExchangeJson = document.getElementById("question-set-exchange-json");
   const questionDeleteButton = document.getElementById("question-delete");
   const targetDeleteButton = document.getElementById("target-delete");
+  const candidateDocumentGroup = document.getElementById("golden-candidate-document-group");
+  const candidateIncludePromoted = document.getElementById("golden-candidate-include-promoted");
+  const candidateRefreshButton = document.getElementById("golden-candidate-refresh");
 
   const setAlert = (message, variant = "info") => {
     alertEl.hidden = !message;
@@ -322,6 +374,13 @@
   };
 
   const optionText = (row) => `${row.display_name} / ${row.login_id}`;
+
+  const feedbackBadge = (label) => {
+    const badge = document.createElement("span");
+    badge.className = `badge feedback-label-${label}`;
+    badge.textContent = label;
+    return badge;
+  };
 
   const setSelectValue = (id, value) => {
     const element = document.getElementById(id);
@@ -534,6 +593,128 @@
     });
   };
 
+  const renderCandidates = () => {
+    candidateBody.replaceChildren();
+    candidateCount.textContent = `${candidates.length} candidates`;
+    if (!databaseConfigured) {
+      candidateBody.append(makeEmptyRow("Database is not configured", 4));
+      return;
+    }
+    if (candidates.length === 0) {
+      candidateBody.append(makeEmptyRow("No feedback-backed candidates", 4));
+      return;
+    }
+    candidates.forEach((item) => {
+      const row = document.createElement("tr");
+
+      const candidateCell = document.createElement("td");
+      const query = document.createElement("div");
+      query.className = "golden-candidate-query";
+      query.textContent = item.query_text;
+      const preview = document.createElement("div");
+      preview.className = "text-secondary small golden-candidate-preview";
+      preview.textContent = item.chunk_preview;
+      candidateCell.append(query, preview);
+      if (item.latest_feedback_comment) {
+        const comment = document.createElement("div");
+        comment.className = "text-secondary small golden-candidate-comment";
+        comment.textContent = item.latest_feedback_comment;
+        candidateCell.append(comment);
+      }
+
+      const feedbackCell = document.createElement("td");
+      const feedbackBadges = document.createElement("div");
+      feedbackBadges.className = "golden-candidate-badges";
+      (item.feedback_labels || []).forEach((label) => feedbackBadges.append(feedbackBadge(label)));
+      const feedbackCounts = document.createElement("div");
+      feedbackCounts.className = "text-secondary small";
+      feedbackCounts.textContent = `${item.feedback_count} feedback / ${item.correct_count} correct / ${item.partial_count} partial`;
+      feedbackCell.append(feedbackBadges, feedbackCounts);
+
+      const sourceCell = document.createElement("td");
+      const sourceTitle = document.createElement("div");
+      sourceTitle.className = "golden-row-title";
+      sourceTitle.textContent = item.document_title || item.original_file_name;
+      const sourceMeta = document.createElement("div");
+      sourceMeta.className = "text-secondary small";
+      sourceMeta.textContent = [
+        item.profile_name,
+        `rank ${item.rank}`,
+        item.document_group,
+        item.actor_display_name || item.actor_login_id,
+        shortDate(item.latest_feedback_at),
+      ].filter(Boolean).join(" / ");
+      sourceCell.append(sourceTitle, sourceMeta);
+
+      const actionCell = document.createElement("td");
+      const promoteButton = document.createElement("button");
+      promoteButton.className = "btn btn-outline-primary btn-sm";
+      promoteButton.type = "button";
+      promoteButton.textContent = item.already_promoted ? "Promoted" : "Promote";
+      promoteButton.disabled = item.already_promoted || !selectedSetId;
+      promoteButton.addEventListener("click", async () => {
+        if (!selectedSetId) {
+          setAlert("Select a question set first.", "warning");
+          return;
+        }
+        promoteButton.disabled = true;
+        try {
+          const response = await apiRequest(
+            `/api/search/results/${item.search_log_result_id}/promote-golden-question`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                question_set_id: selectedSetId,
+                notes: item.latest_feedback_comment,
+                metadata: {source_panel: "golden_candidate_review"},
+              }),
+            },
+          );
+          setAlert("Candidate promoted.", "success");
+          const question = response.promotion.question;
+          if (question.question_set_id === selectedSetId) {
+            await loadQuestions(selectedSetId);
+            await selectQuestion(question.question_id);
+          }
+          await loadCandidates();
+        } catch (error) {
+          promoteButton.disabled = false;
+          setAlert(error instanceof Error ? error.message : "Promotion failed.", "warning");
+        }
+      });
+      actionCell.append(promoteButton);
+
+      row.append(candidateCell, feedbackCell, sourceCell, actionCell);
+      candidateBody.append(row);
+    });
+  };
+
+  const loadCandidates = async () => {
+    candidates = [];
+    renderCandidates();
+    if (!databaseConfigured) {
+      return;
+    }
+    try {
+      const params = new URLSearchParams({limit: "20"});
+      const documentGroup = candidateDocumentGroup.value.trim();
+      if (documentGroup) {
+        params.set("document_group", documentGroup);
+      }
+      if (candidateIncludePromoted.checked) {
+        params.set("include_promoted", "true");
+      }
+      const payload = await apiRequest(
+        `/api/evaluations/golden-question-candidates?${params.toString()}`,
+      );
+      candidates = payload.candidates;
+      renderCandidates();
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Candidate loading failed.", "warning");
+      renderCandidates();
+    }
+  };
+
   const loadQuestions = async (questionSetId) => {
     questions = [];
     targets = [];
@@ -578,6 +759,7 @@
     }
     renderQuestionSets();
     await loadQuestions(selectedSetId);
+    renderCandidates();
   };
 
   const selectQuestion = async (questionId) => {
@@ -817,6 +999,15 @@
     }
   });
 
+  candidateRefreshButton.addEventListener("click", loadCandidates);
+  candidateDocumentGroup.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      loadCandidates();
+    }
+  });
+  candidateIncludePromoted.addEventListener("change", loadCandidates);
+
   questionDeleteButton.addEventListener("click", async () => {
     if (!selectedQuestionId || !window.confirm("Delete this question?")) {
       return;
@@ -863,9 +1054,13 @@
   renderQuestionSets();
   renderQuestions();
   renderTargets();
+  renderCandidates();
 
   if (databaseConfigured && selectedSetId) {
     selectQuestionSet(selectedSetId);
+  }
+  if (databaseConfigured) {
+    loadCandidates();
   }
 })();
 </script>

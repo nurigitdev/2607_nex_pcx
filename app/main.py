@@ -97,9 +97,11 @@ from app.core.golden_question_exchange import (
     import_golden_question_set,
 )
 from app.core.golden_question_promotions import (
+    GoldenQuestionCandidateRecord,
     GoldenQuestionPromotionInput,
     GoldenQuestionPromotionRecord,
     InvalidGoldenQuestionPromotionError,
+    list_golden_question_candidates,
     promote_search_result_to_golden_question,
 )
 from app.core.golden_questions import (
@@ -1446,6 +1448,40 @@ def golden_question_promotion_payload(
             "profile_name": source_result.profile_name,
             "rank": source_result.rank,
         },
+    }
+
+
+def golden_question_candidate_payload(
+    candidate: GoldenQuestionCandidateRecord,
+) -> dict[str, object]:
+    return {
+        "search_log_result_id": candidate.search_log_result_id,
+        "search_log_id": candidate.search_log_id,
+        "query_text": candidate.query_text,
+        "actor_user_id": candidate.actor_user_id,
+        "actor_login_id": candidate.actor_login_id,
+        "actor_display_name": candidate.actor_display_name,
+        "requested_search_scope": candidate.requested_search_scope,
+        "document_group": candidate.document_group,
+        "file_type": candidate.file_type,
+        "chunk_policy_name": candidate.chunk_policy_name,
+        "top_k": candidate.top_k,
+        "profile_name": candidate.profile_name,
+        "rank": candidate.rank,
+        "chunk_id": candidate.chunk_id,
+        "score": candidate.score,
+        "document_id": candidate.document_id,
+        "document_title": candidate.document_title,
+        "original_file_name": candidate.original_file_name,
+        "heading_path": list(candidate.heading_path),
+        "chunk_preview": candidate.chunk_preview,
+        "feedback_count": candidate.feedback_count,
+        "correct_count": candidate.correct_count,
+        "partial_count": candidate.partial_count,
+        "feedback_labels": list(candidate.feedback_labels),
+        "latest_feedback_comment": candidate.latest_feedback_comment,
+        "latest_feedback_at": _datetime_response(candidate.latest_feedback_at),
+        "already_promoted": candidate.already_promoted,
     }
 
 
@@ -2885,6 +2921,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             content={
                 "comments": [search_feedback_comment_payload(comment) for comment in comments],
+            },
+        )
+
+    @app.get("/api/evaluations/golden-question-candidates")
+    def api_list_golden_question_candidates(
+        document_group: str | None = None,
+        include_promoted: bool = False,
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            candidates = list_golden_question_candidates(
+                settings.database_url,
+                document_group=document_group,
+                include_promoted=include_promoted,
+                limit=limit,
+            )
+        except InvalidGoldenQuestionPromotionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "candidates": [
+                    golden_question_candidate_payload(candidate) for candidate in candidates
+                ],
             },
         )
 

@@ -1,6 +1,7 @@
 """Promote curated search results into golden question fixtures."""
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from app.core.database import connect
@@ -42,6 +43,37 @@ class GoldenQuestionPromotionRecord:
     source_result: SearchLogResultDetailRecord
 
 
+@dataclass(frozen=True)
+class GoldenQuestionCandidateRecord:
+    search_log_result_id: int
+    search_log_id: int
+    query_text: str
+    actor_user_id: int | None
+    actor_login_id: str | None
+    actor_display_name: str | None
+    requested_search_scope: str | None
+    document_group: str | None
+    file_type: str | None
+    chunk_policy_name: str | None
+    top_k: int
+    profile_name: str
+    rank: int
+    chunk_id: int
+    score: float | None
+    document_id: int
+    document_title: str | None
+    original_file_name: str
+    heading_path: tuple[str, ...]
+    chunk_preview: str
+    feedback_count: int
+    correct_count: int
+    partial_count: int
+    feedback_labels: tuple[str, ...]
+    latest_feedback_comment: str | None
+    latest_feedback_at: datetime | None
+    already_promoted: bool
+
+
 class InvalidGoldenQuestionPromotionError(ValueError):
     """Raised when a search result cannot be promoted into a golden question."""
 
@@ -59,6 +91,16 @@ def _validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(metadata, dict):
         raise InvalidGoldenQuestionPromotionError("metadata must be a JSON object")
     return dict(metadata)
+
+
+def _validate_limit(limit: int, *, max_limit: int = 100) -> int:
+    if limit <= 0:
+        raise InvalidGoldenQuestionPromotionError("limit must be greater than 0")
+    if limit > max_limit:
+        raise InvalidGoldenQuestionPromotionError(
+            f"limit must be less than or equal to {max_limit}"
+        )
+    return limit
 
 
 def validate_golden_question_promotion_input(
@@ -111,6 +153,155 @@ def _promotion_metadata(
         "chunk_id": result.chunk_id,
         "feedback_labels": [feedback.relevance_label for feedback in source_result.feedback],
     }
+
+
+def _chunk_preview(chunk_text: str, limit: int = 220) -> str:
+    normalized = " ".join(chunk_text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 1].rstrip() + "..."
+
+
+def _row_to_golden_question_candidate_record(row: dict[str, Any]) -> GoldenQuestionCandidateRecord:
+    return GoldenQuestionCandidateRecord(
+        search_log_result_id=int(row["search_log_result_id"]),
+        search_log_id=int(row["search_log_id"]),
+        query_text=str(row["query_text"]),
+        actor_user_id=int(row["actor_user_id"]) if row["actor_user_id"] is not None else None,
+        actor_login_id=row["actor_login_id"],
+        actor_display_name=row["actor_display_name"],
+        requested_search_scope=row["requested_search_scope"],
+        document_group=row["document_group"],
+        file_type=row["file_type"],
+        chunk_policy_name=row["chunk_policy_name"],
+        top_k=int(row["top_k"]),
+        profile_name=str(row["profile_name"]),
+        rank=int(row["rank"]),
+        chunk_id=int(row["chunk_id"]),
+        score=float(row["score"]) if row["score"] is not None else None,
+        document_id=int(row["document_id"]),
+        document_title=row["document_title"],
+        original_file_name=str(row["original_file_name"]),
+        heading_path=tuple(row["heading_path"] or ()),
+        chunk_preview=_chunk_preview(str(row["chunk_text"])),
+        feedback_count=int(row["feedback_count"] or 0),
+        correct_count=int(row["correct_count"] or 0),
+        partial_count=int(row["partial_count"] or 0),
+        feedback_labels=tuple(row["feedback_labels"] or ()),
+        latest_feedback_comment=row["latest_feedback_comment"],
+        latest_feedback_at=row["latest_feedback_at"],
+        already_promoted=bool(row["already_promoted"]),
+    )
+
+
+def list_golden_question_candidates(
+    database_url: str,
+    *,
+    document_group: str | None = None,
+    include_promoted: bool = False,
+    limit: int = 20,
+) -> list[GoldenQuestionCandidateRecord]:
+    validated_limit = _validate_limit(limit)
+    filters = ["srf.relevance_label IN ('correct', 'partial')"]
+    params: list[object] = []
+    if document_group is not None:
+        normalized_document_group = document_group.strip()
+        if not normalized_document_group:
+            raise InvalidGoldenQuestionPromotionError("document_group must not be blank")
+        filters.append("sl.document_group = %s")
+        params.append(normalized_document_group)
+    if not include_promoted:
+        filters.append("""
+            NOT EXISTS (
+                SELECT 1
+                FROM golden_questions gq
+                WHERE gq.metadata #>> '{promotion,search_log_result_id}' =
+                      slr.search_log_result_id::text
+            )
+            """)
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    slr.search_log_result_id,
+                    sl.search_log_id,
+                    sl.query_text,
+                    sl.actor_user_id,
+                    au.login_id AS actor_login_id,
+                    au.display_name AS actor_display_name,
+                    sl.requested_search_scope,
+                    sl.document_group,
+                    sl.file_type,
+                    sl.chunk_policy_name,
+                    sl.top_k,
+                    slr.profile_name,
+                    slr.rank,
+                    slr.chunk_id,
+                    slr.score,
+                    c.document_id,
+                    c.chunk_text,
+                    c.heading_path,
+                    d.document_title,
+                    f.original_file_name,
+                    count(srf.feedback_id) AS feedback_count,
+                    count(srf.feedback_id) FILTER (
+                        WHERE srf.relevance_label = 'correct'
+                    ) AS correct_count,
+                    count(srf.feedback_id) FILTER (
+                        WHERE srf.relevance_label = 'partial'
+                    ) AS partial_count,
+                    array_agg(DISTINCT srf.relevance_label) AS feedback_labels,
+                    (
+                        array_agg(
+                            srf.comment
+                            ORDER BY srf.created_at DESC, srf.feedback_id DESC
+                        ) FILTER (
+                            WHERE srf.comment IS NOT NULL
+                              AND length(btrim(srf.comment)) > 0
+                        )
+                    )[1] AS latest_feedback_comment,
+                    max(srf.created_at) AS latest_feedback_at,
+                    EXISTS (
+                        SELECT 1
+                        FROM golden_questions gq
+                        WHERE gq.metadata #>> '{{promotion,search_log_result_id}}' =
+                              slr.search_log_result_id::text
+                    ) AS already_promoted
+                FROM search_result_feedback srf
+                JOIN search_log_results slr
+                  ON slr.search_log_result_id = srf.search_log_result_id
+                JOIN search_logs sl ON sl.search_log_id = slr.search_log_id
+                LEFT JOIN app_users au ON au.user_id = sl.actor_user_id
+                JOIN chunks c ON c.chunk_id = slr.chunk_id
+                JOIN documents d ON d.document_id = c.document_id
+                JOIN files f ON f.file_id = d.file_id
+                WHERE {' AND '.join(filters)}
+                GROUP BY
+                    slr.search_log_result_id,
+                    sl.search_log_id,
+                    au.login_id,
+                    au.display_name,
+                    c.document_id,
+                    c.chunk_text,
+                    c.heading_path,
+                    d.document_title,
+                    f.original_file_name
+                ORDER BY
+                    count(srf.feedback_id) FILTER (
+                        WHERE srf.relevance_label = 'correct'
+                    ) DESC,
+                    count(srf.feedback_id) DESC,
+                    max(srf.created_at) DESC,
+                    slr.rank ASC,
+                    slr.search_log_result_id DESC
+                LIMIT %s
+                """,
+                [*params, validated_limit],
+            )
+            rows = cursor.fetchall()
+    return [_row_to_golden_question_candidate_record(dict(row)) for row in rows]
 
 
 def promote_search_result_to_golden_question(

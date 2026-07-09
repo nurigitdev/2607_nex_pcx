@@ -16,3 +16,4 @@ def test_golden_question_page_shows_configuration_message_without_database_url()
     assert 'href="/evaluations/questions"' in response.text
     assert 'id="question-set-form"' in response.text
     assert 'id="question-set-exchange-json"' in response.text
+    assert 'id="golden-candidate-table-body"' in response.text
