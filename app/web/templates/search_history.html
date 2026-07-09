@@ -132,6 +132,7 @@
 {% if selected_log %}
 {% set metadata = selected_log.search_log.permission_filter_metadata or {} %}
 {% set permission_summary = metadata.get("permission_explainability", {}) %}
+{% set runtime_metadata = selected_log.search_log.query_runtime_metadata or {} %}
 <div class="search-history-detail">
   <section class="metric-card bg-white p-3">
     <div class="d-flex align-items-center justify-content-between mb-3">
@@ -264,6 +265,80 @@
     </div>
   </section>
   {% endif %}
+
+  <section class="search-reproducibility-panel bg-white p-3">
+    <div class="search-reproducibility-header">
+      <div>
+        <h2 class="h5 mb-1">{{ t("search_reproducibility.title") }}</h2>
+        <p class="text-secondary mb-0">{{ t("search_reproducibility.subtitle") }}</p>
+      </div>
+    </div>
+
+    <div class="search-reproducibility-grid">
+      <article class="search-reproducibility-item">
+        <h3 class="h6 mb-0">{{ t("search_reproducibility.query") }}</h3>
+        <div class="search-reproducibility-body">
+          <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ t("search_reproducibility.query_text") }}</span>
+            <strong>{{ selected_log.search_log.query_text }}</strong>
+          </div>
+          <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ t("search_reproducibility.normalized_query") }}</span>
+            <strong>{{ selected_log.search_log.normalized_query_text or t("permissions.none") }}</strong>
+          </div>
+          <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ t("search_reproducibility.top_k") }}</span>
+            <strong>{{ selected_log.search_log.top_k }}</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="search-reproducibility-item">
+        <h3 class="h6 mb-0">{{ t("search_reproducibility.conditions") }}</h3>
+        <div class="search-reproducibility-body">
+          <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ t("search_reproducibility.chunk_policy") }}</span>
+            <strong>{{ selected_log.search_log.chunk_policy_name or t("permissions.none") }}</strong>
+          </div>
+          <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ t("search_reproducibility.document_group") }}</span>
+            <strong>{{ selected_log.search_log.document_group or t("permissions.none") }}</strong>
+          </div>
+          <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ t("search_reproducibility.file_type") }}</span>
+            <strong>{{ selected_log.search_log.file_type or t("permissions.none") }}</strong>
+          </div>
+          <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ t("search_reproducibility.similarity_metric") }}</span>
+            <strong>{{ selected_log.search_log.similarity_metric }}</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="search-reproducibility-item">
+        <h3 class="h6 mb-0">{{ t("search_reproducibility.profiles") }}</h3>
+        <div class="search-reproducibility-profile-list">
+          {% for profile in selected_log.search_log.profiles %}
+          <span class="search-reproducibility-profile">{{ profile }}</span>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="search-reproducibility-item">
+        <h3 class="h6 mb-0">{{ t("search_reproducibility.runtime_metadata") }}</h3>
+        <div class="search-reproducibility-body">
+          {% for key, value in runtime_metadata.items() %}
+          <div class="search-reproducibility-row">
+            <span class="text-secondary">{{ key }}</span>
+            <strong>{{ value }}</strong>
+          </div>
+          {% else %}
+          <div class="text-secondary small">{{ t("permissions.none") }}</div>
+          {% endfor %}
+        </div>
+      </article>
+    </div>
+  </section>
 
   <section class="search-history-results">
     {% for result in selected_log.results %}

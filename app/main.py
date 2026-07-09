@@ -175,6 +175,7 @@ from app.core.search_logs import (
     SearchFeedbackProfileSummaryRecord,
     SearchLogDetailRecord,
     SearchLogListItem,
+    SearchLogRecord,
     SearchLogResultDetailRecord,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
@@ -596,6 +597,23 @@ def permission_summary_from_metadata(metadata: dict[str, object]) -> dict[str, o
     return dict(summary) if isinstance(summary, dict) else {}
 
 
+def search_reproducibility_payload(search_log: SearchLogRecord) -> dict[str, object]:
+    runtime_metadata = dict(search_log.query_runtime_metadata)
+    return {
+        "query_text": search_log.query_text,
+        "normalized_query_text": search_log.normalized_query_text,
+        "top_k": search_log.top_k,
+        "profiles": list(search_log.profiles),
+        "profile_count": len(search_log.profiles),
+        "chunk_policy_name": search_log.chunk_policy_name,
+        "document_group": search_log.document_group,
+        "file_type": search_log.file_type,
+        "similarity_metric": search_log.similarity_metric,
+        "query_runtime_metadata": runtime_metadata,
+        "runtime_metadata_keys": sorted(str(key) for key in runtime_metadata),
+    }
+
+
 def search_log_record_payload(item: SearchLogListItem) -> dict[str, object]:
     search_log = item.search_log
     return {
@@ -618,6 +636,7 @@ def search_log_record_payload(item: SearchLogListItem) -> dict[str, object]:
         "similarity_metric": search_log.similarity_metric,
         "profiles": list(search_log.profiles),
         "query_runtime_metadata": search_log.query_runtime_metadata,
+        "reproducibility_summary": search_reproducibility_payload(search_log),
         "total_elapsed_ms": search_log.total_elapsed_ms,
         "result_count": item.result_count,
         "feedback_count": item.feedback_count,

@@ -23,6 +23,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("permission_readiness.title") == "Permission Metadata Readiness"
     assert korean("nav.design_system") == "디자인 시스템"
     assert english("design_system.title") == "Design System"
+    assert korean("search_reproducibility.title") == "검색 재현성 Metadata"
+    assert english("search_reproducibility.title") == "Search Reproducibility Metadata"
 
 
 def test_translator_falls_back_to_key_when_missing() -> None:

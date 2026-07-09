@@ -338,11 +338,29 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert (
             logs_by_id[body["search_log_id"]]["permission_summary"]["excluded_document_count"] == 1
         )
+        assert logs_by_id[body["search_log_id"]]["reproducibility_summary"]["profiles"] == [
+            "kure_v1_1024",
+            "bge_m3_1024",
+        ]
+        assert (
+            logs_by_id[body["search_log_id"]]["reproducibility_summary"]["query_runtime_metadata"][
+                "search_mode"
+            ]
+            == "compare_mvp"
+        )
         assert detail_response.status_code == 200
         assert detail_body["search_log"]["search_log_id"] == body["search_log_id"]
         assert detail_body["search_log"]["actor_login_id"] == "alice.member"
         assert detail_body["search_log"]["permission_summary"]["visible_document_count"] == 1
         assert detail_body["search_log"]["permission_summary"]["excluded_document_count"] == 1
+        assert detail_body["search_log"]["reproducibility_summary"]["top_k"] == 5
+        assert detail_body["search_log"]["reproducibility_summary"]["document_group"] == (
+            document_group
+        )
+        assert (
+            "adapter"
+            in detail_body["search_log"]["reproducibility_summary"]["runtime_metadata_keys"]
+        )
         assert (
             detail_body["search_log"]["permission_filter_metadata"]["permission_explainability"][
                 "excluded_document_count"

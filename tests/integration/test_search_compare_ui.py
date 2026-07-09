@@ -102,9 +102,15 @@ def test_search_history_detail_renders_permission_explainability(
                 }
             },
             document_group="history-permission",
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
             top_k=5,
-            profiles=("kure_v1_1024",),
-            query_runtime_metadata={"adapter": "mock"},
+            profiles=("kure_v1_1024", "bge_m3_1024"),
+            query_runtime_metadata={
+                "adapter": "mock",
+                "search_mode": "history_reproducibility",
+                "query_instruction": "none",
+            },
             total_elapsed_ms=12,
             created_by_user_id=user_id,
         ),
@@ -124,6 +130,13 @@ def test_search_history_detail_renders_permission_explainability(
         assert "4" in response.text
         assert "개인 1" in response.text
         assert "회사 공통 1" in response.text
+        assert "검색 재현성 Metadata" in response.text
+        assert "heading_512_64" in response.text
+        assert ".md" in response.text
+        assert "cosine" in response.text
+        assert "bge_m3_1024" in response.text
+        assert "history_reproducibility" in response.text
+        assert "query_instruction" in response.text
         assert "No result rows found" in response.text
     finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)

@@ -104,6 +104,21 @@
     "clause_count": "Clause Count",
     "includes_company": "Includes Company"
   },
+  "search_reproducibility": {
+    "title": "Search Reproducibility Metadata",
+    "subtitle": "Stored values for explaining and repeating this search experiment under the same conditions",
+    "query": "Query",
+    "query_text": "Query text",
+    "normalized_query": "Normalized Query",
+    "top_k": "Top K",
+    "conditions": "Search Conditions",
+    "chunk_policy": "Chunk Policy",
+    "document_group": "Document Group",
+    "file_type": "File Type",
+    "similarity_metric": "Similarity Metric",
+    "profiles": "Profiles",
+    "runtime_metadata": "Runtime Metadata"
+  },
   "permissions": {
     "title": "Permission Simulation",
     "subtitle": "Search-scope inventory from users, org units, memberships, and document ownership",
