@@ -3534,12 +3534,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         document_group: str | None = None,
         fingerprint: str | None = None,
         search_log_id: int | None = None,
+        compare_search_log_id: int | None = None,
         limit: int = 50,
     ) -> HTMLResponse:
         actor_options: list[dict[str, object]] = []
         question_sets: list[GoldenQuestionSetRecord] = []
         logs: list[SearchLogListItem] = []
         selected_log: SearchLogDetailRecord | None = None
+        selected_log_comparison: dict[str, object] | None = None
+        comparison_error_message = None
         error_message = None
         actor_user_id_value: int | None = None
         scope_value = requested_search_scope.strip() if requested_search_scope else None
@@ -3573,6 +3576,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     selected_log = get_search_log_detail(settings.database_url, search_log_id)
                     if selected_log is None:
                         error_message = f"Search log not found: {search_log_id}"
+                if selected_log is not None and compare_search_log_id is not None:
+                    compare_log = get_search_log_detail(
+                        settings.database_url,
+                        compare_search_log_id,
+                    )
+                    if compare_log is None:
+                        comparison_error_message = f"Search log not found: {compare_search_log_id}"
+                    else:
+                        selected_log_comparison = search_log_comparison_payload(
+                            selected_log,
+                            compare_log,
+                        )
             except Exception as exc:
                 error_message = str(exc)
 
@@ -3585,6 +3600,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 question_sets=question_sets,
                 logs=logs,
                 selected_log=selected_log,
+                selected_log_comparison=selected_log_comparison,
                 selected_log_reproducibility=(
                     search_reproducibility_payload(selected_log.search_log) if selected_log else {}
                 ),
@@ -3596,7 +3612,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_document_group=document_group_value or "",
                 selected_fingerprint=fingerprint_value or "",
                 selected_search_log_id=search_log_id,
+                selected_compare_search_log_id=compare_search_log_id or "",
                 selected_limit=limit,
+                comparison_error_message=comparison_error_message,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

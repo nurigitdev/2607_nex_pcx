@@ -371,6 +371,90 @@
     </div>
   </section>
 
+  <section class="search-log-compare-panel bg-white p-3">
+    <div class="search-log-compare-header">
+      <div>
+        <h2 class="h5 mb-1">{{ t("search_log_compare.title") }}</h2>
+        <p class="text-secondary mb-0">{{ t("search_log_compare.subtitle") }}</p>
+      </div>
+    </div>
+
+    <form class="search-log-compare-form" method="get">
+      <input type="hidden" name="search_log_id" value="{{ selected_log.search_log.search_log_id }}">
+      <div>
+        <label class="form-label" for="compare_search_log_id">{{ t("search_log_compare.target") }}</label>
+        <input
+          class="form-control"
+          id="compare_search_log_id"
+          name="compare_search_log_id"
+          type="number"
+          min="1"
+          value="{{ selected_compare_search_log_id }}"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="search-log-compare-actions">
+        <button class="btn btn-primary" type="submit" {% if not database_configured %}disabled{% endif %}>
+          {{ t("search_log_compare.run") }}
+        </button>
+      </div>
+    </form>
+
+    {% if comparison_error_message %}
+    <div class="alert alert-warning mb-0" role="alert">{{ comparison_error_message }}</div>
+    {% endif %}
+
+    {% if selected_log_comparison %}
+    <div class="search-log-compare-summary">
+      <article class="search-log-compare-card">
+        <span class="text-secondary">{{ t("search_log_compare.fingerprint") }}</span>
+        <strong>
+          {{ t("common.yes") if selected_log_comparison.reproducibility.same_fingerprint else t("common.no") }}
+        </strong>
+      </article>
+      <article class="search-log-compare-card">
+        <span class="text-secondary">{{ t("search_log_compare.shared_chunks") }}</span>
+        <strong>{{ selected_log_comparison.result_overlap.shared_chunk_count }}</strong>
+      </article>
+      <article class="search-log-compare-card">
+        <span class="text-secondary">{{ t("search_log_compare.left_only") }}</span>
+        <strong>{{ selected_log_comparison.result_overlap.left_only_chunk_count }}</strong>
+      </article>
+      <article class="search-log-compare-card">
+        <span class="text-secondary">{{ t("search_log_compare.right_only") }}</span>
+        <strong>{{ selected_log_comparison.result_overlap.right_only_chunk_count }}</strong>
+      </article>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 search-log-compare-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("search_log_compare.field") }}</th>
+            <th scope="col">#{{ selected_log_comparison.left.search_log_id }}</th>
+            <th scope="col">#{{ selected_log_comparison.right.search_log_id }}</th>
+            <th scope="col">{{ t("search_log_compare.match") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for field in selected_log_comparison.reproducibility.fields %}
+          <tr>
+            <td>{{ field.field }}</td>
+            <td class="text-break">{{ field.left }}</td>
+            <td class="text-break">{{ field.right }}</td>
+            <td>
+              <span class="badge {% if field.matches %}text-bg-success{% else %}text-bg-warning{% endif %}">
+                {{ t("search_log_compare.same") if field.matches else t("search_log_compare.different") }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+
   <section class="search-history-results">
     {% for result in selected_log.results %}
     <article class="search-history-result bg-white">

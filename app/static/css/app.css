@@ -1385,6 +1385,63 @@ main.container-fluid {
   gap: var(--pcx-space-2);
 }
 
+.search-log-compare-panel {
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  display: grid;
+  gap: var(--pcx-space-4);
+}
+
+.search-log-compare-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pcx-space-3);
+  justify-content: space-between;
+}
+
+.search-log-compare-form {
+  align-items: end;
+  display: grid;
+  gap: var(--pcx-space-3);
+  grid-template-columns: minmax(10rem, 0.5fr) auto;
+}
+
+.search-log-compare-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.search-log-compare-summary {
+  display: grid;
+  gap: var(--pcx-space-3);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.search-log-compare-card {
+  border: 1px solid var(--pcx-border);
+  border-radius: var(--pcx-radius);
+  display: grid;
+  gap: var(--pcx-space-1);
+  min-width: 0;
+  padding: 0.875rem;
+}
+
+.search-log-compare-card strong {
+  font-size: 1.25rem;
+}
+
+.search-log-compare-table td,
+.search-log-compare-table th {
+  vertical-align: top;
+}
+
+.search-log-compare-table td:last-child,
+.search-log-compare-table th:last-child {
+  white-space: nowrap;
+  width: 6rem;
+}
+
 .feedback-label-correct,
 .feedback-label-partial,
 .feedback-label-wrong,
@@ -1985,6 +2042,8 @@ main.container-fluid {
   .search-history-filter,
   .search-history-promotion-row,
   .search-history-results,
+  .search-log-compare-form,
+  .search-log-compare-summary,
   .search-permission-matrix-form,
   .search-permission-summary-grid,
   .search-reproducibility-grid,

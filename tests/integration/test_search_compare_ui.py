@@ -115,6 +115,54 @@ def test_search_history_detail_renders_permission_explainability(
             created_by_user_id=user_id,
         ),
     )
+    comparison_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="History comparison target",
+            normalized_query_text="history comparison target",
+            actor_user_id=user_id,
+            requested_search_scope="company",
+            effective_search_scope="team",
+            permission_filter_metadata={
+                "permission_explainability": {
+                    "actor_user_id": user_id,
+                    "actor_login_id": "alice.member",
+                    "actor_display_name": "Alice Member",
+                    "role_name": "member",
+                    "primary_org_unit_name": "Platform Team",
+                    "requested_search_scope": "company",
+                    "effective_search_scope": "team",
+                    "scope_was_downgraded": True,
+                    "ancestor_org_unit_count": 4,
+                    "managed_org_unit_count": 0,
+                    "includes_company_documents": True,
+                    "filter_clause_count": 4,
+                    "candidate_document_count": 7,
+                    "visible_document_count": 3,
+                    "excluded_document_count": 4,
+                    "visible_access_scope_counts": {
+                        "personal": 1,
+                        "team": 1,
+                        "org_tree": 0,
+                        "company": 1,
+                    },
+                    "included_access_scopes": ["personal", "team", "company"],
+                }
+            },
+            document_group="history-permission",
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
+            top_k=3,
+            profiles=("kure_v1_1024",),
+            query_runtime_metadata={
+                "adapter": "mock",
+                "search_mode": "history_compare_target",
+                "query_instruction": "none",
+            },
+            total_elapsed_ms=8,
+            created_by_user_id=user_id,
+        ),
+    )
     app = create_app(Settings(database_url=migrated_database_url))
     replay_url = search_log_replay_url(search_log)
     fingerprint = search_reproducibility_fingerprint(search_log)
@@ -123,9 +171,17 @@ def test_search_history_detail_renders_permission_explainability(
             response = client.get(f"/search/logs?search_log_id={search_log.search_log_id}")
             replay_response = client.get(replay_url)
             filtered_response = client.get(f"/search/logs?fingerprint={fingerprint}")
+            comparison_response = client.get(
+                "/search/logs",
+                params={
+                    "search_log_id": search_log.search_log_id,
+                    "compare_search_log_id": comparison_log.search_log_id,
+                },
+            )
 
         assert response.status_code == 200
         assert filtered_response.status_code == 200
+        assert comparison_response.status_code == 200
         assert "검색 권한 설명" in response.text
         assert "History permission explainability" in response.text
         assert "Alice Member" in response.text
@@ -153,6 +209,12 @@ def test_search_history_detail_renders_permission_explainability(
         assert "No result rows found" in response.text
         assert f'value="{fingerprint}"' in filtered_response.text
         assert "History permission explainability" in filtered_response.text
+        assert "검색 로그 비교" in comparison_response.text
+        assert f'value="{comparison_log.search_log_id}"' in comparison_response.text
+        assert "Fingerprint 동일" in comparison_response.text
+        assert "공통 Chunk" in comparison_response.text
+        assert "query_text" in comparison_response.text
+        assert "다름" in comparison_response.text
         assert replay_response.status_code == 200
         assert "검색 이력 조건이 적용되었습니다." in replay_response.text
         assert f"#{search_log.search_log_id}" in replay_response.text
@@ -167,3 +229,4 @@ def test_search_history_detail_renders_permission_explainability(
         assert 'value="bge_m3_1024"' in replay_response.text
     finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)
+        _delete_search_log(migrated_database_url, comparison_log.search_log_id)

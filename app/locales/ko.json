@@ -130,6 +130,20 @@
     "json_action": "JSON Export",
     "csv_action": "CSV Export"
   },
+  "search_log_compare": {
+    "title": "검색 로그 비교",
+    "subtitle": "두 검색 로그의 재현성 조건과 결과 chunk overlap을 비교합니다.",
+    "target": "비교 대상 Log ID",
+    "run": "비교",
+    "fingerprint": "Fingerprint 동일",
+    "shared_chunks": "공통 Chunk",
+    "left_only": "현재 Log Only",
+    "right_only": "비교 Log Only",
+    "field": "필드",
+    "match": "일치",
+    "same": "같음",
+    "different": "다름"
+  },
   "permissions": {
     "title": "권한 시뮬레이션",
     "subtitle": "사용자, 조직, 멤버십, 문서 소유권 기준의 검색 범위 인벤토리",

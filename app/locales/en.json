@@ -130,6 +130,20 @@
     "json_action": "JSON Export",
     "csv_action": "CSV Export"
   },
+  "search_log_compare": {
+    "title": "Search Log Compare",
+    "subtitle": "Compare reproducibility conditions and result chunk overlap between two search logs.",
+    "target": "Target Log ID",
+    "run": "Compare",
+    "fingerprint": "Same Fingerprint",
+    "shared_chunks": "Shared Chunks",
+    "left_only": "Current Log Only",
+    "right_only": "Target Log Only",
+    "field": "Field",
+    "match": "Match",
+    "same": "Same",
+    "different": "Different"
+  },
   "permissions": {
     "title": "Permission Simulation",
     "subtitle": "Search-scope inventory from users, org units, memberships, and document ownership",
