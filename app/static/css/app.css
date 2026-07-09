@@ -1357,6 +1357,14 @@ main.container-fluid {
   padding: 0.35rem 0.55rem;
 }
 
+.search-replay-banner {
+  align-items: center;
+  border-color: #9dc5fe;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pcx-space-2);
+}
+
 .feedback-label-correct,
 .feedback-label-partial,
 .feedback-label-wrong,

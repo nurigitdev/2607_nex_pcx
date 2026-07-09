@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.database import connect
 from app.core.search_logs import SearchLogInput, create_search_log
-from app.main import create_app
+from app.main import create_app, search_log_replay_url
 
 pytestmark = pytest.mark.integration
 
@@ -116,9 +116,11 @@ def test_search_history_detail_renders_permission_explainability(
         ),
     )
     app = create_app(Settings(database_url=migrated_database_url))
+    replay_url = search_log_replay_url(search_log)
     try:
         with TestClient(app) as client:
             response = client.get(f"/search/logs?search_log_id={search_log.search_log_id}")
+            replay_response = client.get(replay_url)
 
         assert response.status_code == 200
         assert "검색 권한 설명" in response.text
@@ -137,6 +139,20 @@ def test_search_history_detail_renders_permission_explainability(
         assert "bge_m3_1024" in response.text
         assert "history_reproducibility" in response.text
         assert "query_instruction" in response.text
+        assert "동일 조건으로 재실행" in response.text
+        assert f"replay_search_log_id={search_log.search_log_id}" in response.text
         assert "No result rows found" in response.text
+        assert replay_response.status_code == 200
+        assert "검색 이력 조건이 적용되었습니다." in replay_response.text
+        assert f"#{search_log.search_log_id}" in replay_response.text
+        assert 'value="History permission explainability"' in replay_response.text
+        assert f'<option value="{user_id}" selected>' in replay_response.text
+        assert '<option value="company" selected>' in replay_response.text
+        assert 'value="5"' in replay_response.text
+        assert 'value="history-permission"' in replay_response.text
+        assert '<option value=".md" selected>' in replay_response.text
+        assert 'value="heading_512_64"' in replay_response.text
+        assert 'value="kure_v1_1024"' in replay_response.text
+        assert 'value="bge_m3_1024"' in replay_response.text
     finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)

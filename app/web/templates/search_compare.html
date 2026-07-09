@@ -13,8 +13,25 @@
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
 
+{% if search_prefill.replay_search_log_id %}
+<div class="alert alert-info search-replay-banner" role="status">
+  <strong>{{ t("search_replay.applied_title") }}</strong>
+  <span>{{ t("search_replay.applied_body") }}</span>
+  <a href="/search/logs?search_log_id={{ search_prefill.replay_search_log_id }}">
+    #{{ search_prefill.replay_search_log_id }}
+  </a>
+</div>
+{% endif %}
+
 <section class="metric-card bg-white p-3 mb-4">
   <form id="search-compare-form" class="search-form-grid">
+    <input
+      id="chunk_policy_name"
+      name="chunk_policy_name"
+      type="hidden"
+      value="{{ search_prefill.chunk_policy_name }}"
+    >
+
     <div class="search-query-field">
       <label class="form-label" for="query_text">Query</label>
       <input
@@ -23,6 +40,7 @@
         name="query_text"
         type="search"
         autocomplete="off"
+        value="{{ search_prefill.query_text }}"
         required
         {% if not database_configured %}disabled{% endif %}
       >
@@ -38,7 +56,7 @@
         {% if not database_configured %}disabled{% endif %}
       >
         {% for actor in actor_options %}
-        <option value="{{ actor.user_id }}" {% if actor.user_id == default_actor_id %}selected{% endif %}>
+        <option value="{{ actor.user_id }}" {% if actor.user_id == search_prefill.actor_user_id %}selected{% endif %}>
           {{ actor.display_name }} / {{ actor.login_id }}
         </option>
         {% endfor %}
@@ -53,8 +71,8 @@
         name="requested_search_scope"
         {% if not database_configured %}disabled{% endif %}
       >
-        {% for scope in ["mine", "team", "managed_org", "company"] %}
-        <option value="{{ scope }}" {% if scope == "company" %}selected{% endif %}>{{ t("search_scope." ~ scope) }}</option>
+        {% for scope in search_scope_options %}
+        <option value="{{ scope }}" {% if scope == search_prefill.requested_search_scope %}selected{% endif %}>{{ t("search_scope." ~ scope) }}</option>
         {% endfor %}
       </select>
     </div>
@@ -68,7 +86,7 @@
         type="number"
         min="1"
         max="20"
-        value="5"
+        value="{{ search_prefill.top_k }}"
         {% if not database_configured %}disabled{% endif %}
       >
     </div>
@@ -81,6 +99,7 @@
         name="document_group"
         type="text"
         placeholder="default"
+        value="{{ search_prefill.document_group }}"
         {% if not database_configured %}disabled{% endif %}
       >
     </div>
@@ -94,8 +113,8 @@
         {% if not database_configured %}disabled{% endif %}
       >
         <option value="">All</option>
-        {% for ext in [".md", ".pdf", ".docx", ".hwpx", ".pptx", ".xlsx"] %}
-        <option value="{{ ext }}">{{ ext }}</option>
+        {% for ext in search_file_type_options %}
+        <option value="{{ ext }}" {% if ext == search_prefill.file_type %}selected{% endif %}>{{ ext }}</option>
         {% endfor %}
       </select>
     </div>
@@ -110,7 +129,9 @@
             type="checkbox"
             name="profiles"
             value="{{ profile }}"
+            {% if (not search_prefill.profile_selection_explicit) or profile in search_prefill.profiles %}
             checked
+            {% endif %}
             {% if not database_configured %}disabled{% endif %}
           >
           <span>{{ profile }}</span>
@@ -649,6 +670,7 @@
       query_text: fieldValue("query_text"),
       top_k: Number(new FormData(form).get("top_k") || 5),
       profiles,
+      chunk_policy_name: fieldValue("chunk_policy_name"),
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
       entries: entries.map((entry) => ({
@@ -878,6 +900,7 @@
       requested_search_scope: fieldValue("requested_search_scope") || "company",
       top_k: Number(formData.get("top_k") || 5),
       profiles,
+      chunk_policy_name: fieldValue("chunk_policy_name"),
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
     };

@@ -119,6 +119,11 @@
     "profiles": "Profiles",
     "runtime_metadata": "Runtime Metadata"
   },
+  "search_replay": {
+    "action": "Replay Same Conditions",
+    "applied_title": "Search log conditions were applied.",
+    "applied_body": "Adjust the query or scope before searching again if needed."
+  },
   "permissions": {
     "title": "Permission Simulation",
     "subtitle": "Search-scope inventory from users, org units, memberships, and document ownership",

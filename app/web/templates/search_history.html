@@ -135,9 +135,14 @@
 {% set runtime_metadata = selected_log.search_log.query_runtime_metadata or {} %}
 <div class="search-history-detail">
   <section class="metric-card bg-white p-3">
-    <div class="d-flex align-items-center justify-content-between mb-3">
-      <h2 class="h5 mb-0">Search Log #{{ selected_log.search_log.search_log_id }}</h2>
-      <span class="badge text-bg-light border">{{ selected_log.search_log.effective_search_scope or "" }}</span>
+    <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-3">
+      <div>
+        <h2 class="h5 mb-1">Search Log #{{ selected_log.search_log.search_log_id }}</h2>
+        <span class="badge text-bg-light border">{{ selected_log.search_log.effective_search_scope or "" }}</span>
+      </div>
+      <a class="btn btn-primary" href="{{ selected_log_replay_url }}">
+        {{ t("search_replay.action") }}
+      </a>
     </div>
     <dl class="job-detail-list mb-0">
       <dt>Query</dt>

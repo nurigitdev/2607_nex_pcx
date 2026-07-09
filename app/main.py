@@ -200,6 +200,8 @@ OWNER_ORG_UNIT_ID_FORM = Form(None)
 ACCESS_SCOPE_FORM = Form("personal")
 UPDATED_BY_USER_ID_FORM = Form(None)
 EVALUATION_EXPORT_VERSION = 1
+SEARCH_COMPARE_FILE_TYPES = (".md", ".pdf", ".docx", ".hwpx", ".pptx", ".xlsx")
+SEARCH_COMPARE_SCOPE_OPTIONS = ("mine", "team", "managed_org", "company")
 
 
 class SearchCompareRequest(BaseModel):
@@ -611,6 +613,66 @@ def search_reproducibility_payload(search_log: SearchLogRecord) -> dict[str, obj
         "similarity_metric": search_log.similarity_metric,
         "query_runtime_metadata": runtime_metadata,
         "runtime_metadata_keys": sorted(str(key) for key in runtime_metadata),
+    }
+
+
+def search_log_replay_url(search_log: SearchLogRecord) -> str:
+    query_params: dict[str, object] = {
+        "replay_search_log_id": search_log.search_log_id,
+        "query_text": search_log.query_text,
+        "actor_user_id": search_log.actor_user_id,
+        "requested_search_scope": search_log.requested_search_scope,
+        "top_k": search_log.top_k,
+        "profiles": list(search_log.profiles),
+    }
+    optional_params = {
+        "document_group": search_log.document_group,
+        "file_type": search_log.file_type,
+        "chunk_policy_name": search_log.chunk_policy_name,
+    }
+    for key, value in optional_params.items():
+        if value:
+            query_params[key] = value
+    return f"/search?{urlencode(query_params, doseq=True)}"
+
+
+def search_compare_prefill_payload(
+    request: Request,
+    default_actor_id: object,
+) -> dict[str, object]:
+    query_params = request.query_params
+    profiles = tuple(
+        profile.strip() for profile in query_params.getlist("profiles") if profile.strip()
+    )
+    scope = (query_params.get("requested_search_scope") or "company").strip()
+    if scope not in SEARCH_COMPARE_SCOPE_OPTIONS:
+        scope = "company"
+
+    top_k_text = (query_params.get("top_k") or "5").strip()
+    try:
+        top_k = max(1, min(20, int(top_k_text)))
+    except ValueError:
+        top_k = 5
+
+    actor_user_id_text = (query_params.get("actor_user_id") or "").strip()
+    try:
+        actor_user_id: object = int(actor_user_id_text)
+    except ValueError:
+        actor_user_id = default_actor_id
+    if actor_user_id == "":
+        actor_user_id = default_actor_id
+
+    return {
+        "replay_search_log_id": (query_params.get("replay_search_log_id") or "").strip(),
+        "query_text": (query_params.get("query_text") or "").strip(),
+        "actor_user_id": actor_user_id,
+        "requested_search_scope": scope,
+        "top_k": top_k,
+        "document_group": (query_params.get("document_group") or "").strip(),
+        "file_type": (query_params.get("file_type") or "").strip(),
+        "chunk_policy_name": (query_params.get("chunk_policy_name") or "").strip(),
+        "profiles": profiles,
+        "profile_selection_explicit": bool(query_params.getlist("profiles")),
     }
 
 
@@ -3152,6 +3214,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception as exc:
                 error_message = str(exc)
 
+        default_actor_id = actor_options[0]["user_id"] if actor_options else ""
         return TEMPLATES.TemplateResponse(
             request,
             "search_compare.html",
@@ -3159,7 +3222,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 actor_options=actor_options,
                 profile_options=profile_options,
-                default_actor_id=actor_options[0]["user_id"] if actor_options else "",
+                default_actor_id=default_actor_id,
+                search_prefill=search_compare_prefill_payload(request, default_actor_id),
+                search_scope_options=SEARCH_COMPARE_SCOPE_OPTIONS,
+                search_file_type_options=SEARCH_COMPARE_FILE_TYPES,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),
@@ -3221,6 +3287,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 question_sets=question_sets,
                 logs=logs,
                 selected_log=selected_log,
+                selected_log_replay_url=(
+                    search_log_replay_url(selected_log.search_log) if selected_log else ""
+                ),
                 selected_actor_user_id=actor_user_id_value or "",
                 selected_scope=scope_value or "",
                 selected_document_group=document_group_value or "",
