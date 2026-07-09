@@ -122,8 +122,10 @@ def test_search_history_detail_renders_permission_explainability(
         with TestClient(app) as client:
             response = client.get(f"/search/logs?search_log_id={search_log.search_log_id}")
             replay_response = client.get(replay_url)
+            filtered_response = client.get(f"/search/logs?fingerprint={fingerprint}")
 
         assert response.status_code == 200
+        assert filtered_response.status_code == 200
         assert "검색 권한 설명" in response.text
         assert "History permission explainability" in response.text
         assert "Alice Member" in response.text
@@ -149,6 +151,8 @@ def test_search_history_detail_renders_permission_explainability(
         assert "동일 조건으로 재실행" in response.text
         assert f"replay_search_log_id={search_log.search_log_id}" in response.text
         assert "No result rows found" in response.text
+        assert f'value="{fingerprint}"' in filtered_response.text
+        assert "History permission explainability" in filtered_response.text
         assert replay_response.status_code == 200
         assert "검색 이력 조건이 적용되었습니다." in replay_response.text
         assert f"#{search_log.search_log_id}" in replay_response.text

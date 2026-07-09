@@ -60,6 +60,18 @@
     </div>
 
     <div>
+      <label class="form-label" for="fingerprint">{{ t("search_reproducibility.fingerprint") }}</label>
+      <input
+        class="form-control"
+        id="fingerprint"
+        name="fingerprint"
+        type="text"
+        value="{{ selected_fingerprint }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div>
       <label class="form-label" for="limit">Limit</label>
       <input
         class="form-control"

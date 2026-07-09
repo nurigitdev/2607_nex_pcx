@@ -648,6 +648,23 @@ def search_reproducibility_fingerprint(search_log: SearchLogRecord) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
+def normalize_search_fingerprint(value: str | None) -> str | None:
+    normalized = value.strip().lower() if value else None
+    return normalized or None
+
+
+def filter_search_logs_by_fingerprint(
+    logs: list[SearchLogListItem],
+    fingerprint: str | None,
+) -> list[SearchLogListItem]:
+    normalized = normalize_search_fingerprint(fingerprint)
+    if normalized is None:
+        return logs
+    return [
+        item for item in logs if search_reproducibility_fingerprint(item.search_log) == normalized
+    ]
+
+
 def search_log_replay_url(search_log: SearchLogRecord) -> str:
     query_params: dict[str, object] = {
         "replay_search_log_id": search_log.search_log_id,
@@ -2253,6 +2270,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_user_id: int | None = None,
         requested_search_scope: str | None = None,
         document_group: str | None = None,
+        fingerprint: str | None = None,
         limit: int = 50,
     ) -> JSONResponse:
         if not settings.database_url:
@@ -2269,6 +2287,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 document_group=document_group,
                 limit=limit,
             )
+            logs = filter_search_logs_by_fingerprint(logs, fingerprint)
         except InvalidSearchLogError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -3385,6 +3404,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_user_id: str | None = None,
         requested_search_scope: str | None = None,
         document_group: str | None = None,
+        fingerprint: str | None = None,
         search_log_id: int | None = None,
         limit: int = 50,
     ) -> HTMLResponse:
@@ -3396,6 +3416,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_user_id_value: int | None = None
         scope_value = requested_search_scope.strip() if requested_search_scope else None
         document_group_value = document_group.strip() if document_group else None
+        fingerprint_value = normalize_search_fingerprint(fingerprint)
         if scope_value == "":
             scope_value = None
         if document_group_value == "":
@@ -3419,6 +3440,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     document_group=document_group_value,
                     limit=limit,
                 )
+                logs = filter_search_logs_by_fingerprint(logs, fingerprint_value)
                 if search_log_id is not None:
                     selected_log = get_search_log_detail(settings.database_url, search_log_id)
                     if selected_log is None:
@@ -3444,6 +3466,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_actor_user_id=actor_user_id_value or "",
                 selected_scope=scope_value or "",
                 selected_document_group=document_group_value or "",
+                selected_fingerprint=fingerprint_value or "",
                 selected_search_log_id=search_log_id,
                 selected_limit=limit,
                 error_message=error_message,

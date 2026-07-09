@@ -358,6 +358,27 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             logs_by_id[body["search_log_id"]]["reproducibility_summary"]["fingerprint_algorithm"]
             == "sha256:16"
         )
+        with TestClient(app) as client:
+            fingerprint_logs_response = client.get(
+                "/api/search/logs",
+                params={
+                    "document_group": document_group,
+                    "fingerprint": fingerprint.upper(),
+                },
+            )
+            empty_fingerprint_logs_response = client.get(
+                "/api/search/logs",
+                params={
+                    "document_group": document_group,
+                    "fingerprint": "0000000000000000",
+                },
+            )
+        assert fingerprint_logs_response.status_code == 200
+        assert [log["search_log_id"] for log in fingerprint_logs_response.json()["logs"]] == [
+            body["search_log_id"]
+        ]
+        assert empty_fingerprint_logs_response.status_code == 200
+        assert empty_fingerprint_logs_response.json()["logs"] == []
         assert (
             logs_by_id[body["search_log_id"]]["reproducibility_summary"]["query_runtime_metadata"][
                 "search_mode"
