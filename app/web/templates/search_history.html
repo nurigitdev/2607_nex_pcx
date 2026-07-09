@@ -172,6 +172,12 @@
         <a class="btn btn-outline-secondary" href="/api/search/logs/{{ selected_log.search_log.search_log_id }}/export?format=csv">
           {{ t("search_export.csv_action") }}
         </a>
+        <a
+          class="btn btn-outline-secondary"
+          href="/api/search/logs/{{ selected_log.search_log.search_log_id }}/experiment-report{% if selected_compare_search_log_id %}?compare_search_log_id={{ selected_compare_search_log_id }}{% endif %}"
+        >
+          {{ t("search_export.report_action") }}
+        </a>
         <a class="btn btn-primary" href="{{ selected_log_replay_url }}">
           {{ t("search_replay.action") }}
         </a>

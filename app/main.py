@@ -204,6 +204,7 @@ ACCESS_SCOPE_FORM = Form("personal")
 UPDATED_BY_USER_ID_FORM = Form(None)
 EVALUATION_EXPORT_VERSION = 1
 SEARCH_LOG_EXPORT_VERSION = 1
+SEARCH_EXPERIMENT_REPORT_VERSION = 1
 SEARCH_COMPARE_FILE_TYPES = (".md", ".pdf", ".docx", ".hwpx", ".pptx", ".xlsx")
 SEARCH_COMPARE_SCOPE_OPTIONS = ("mine", "team", "managed_org", "company")
 
@@ -915,6 +916,192 @@ def search_log_results_csv(detail: SearchLogDetailRecord) -> str:
             }
         )
     return output.getvalue()
+
+
+def _markdown_text(value: object) -> str:
+    if value is None or value == "":
+        return "-"
+    if isinstance(value, (list, tuple, set)):
+        return ", ".join(_markdown_text(item) for item in value) or "-"
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def _markdown_cell(value: object) -> str:
+    return _markdown_text(value).replace("\n", " ").replace("|", "\\|")
+
+
+def _markdown_row(values: list[object]) -> str:
+    return "| " + " | ".join(_markdown_cell(value) for value in values) + " |"
+
+
+def _markdown_table(headers: list[str], rows: list[list[object]]) -> list[str]:
+    return [
+        _markdown_row(headers),
+        _markdown_row(["---"] * len(headers)),
+        *[_markdown_row(row) for row in rows],
+    ]
+
+
+def _search_log_feedback_counts(detail: SearchLogDetailRecord) -> dict[str, int]:
+    counts = {
+        "correct": 0,
+        "partial": 0,
+        "wrong": 0,
+        "duplicate": 0,
+        "insufficient_context": 0,
+    }
+    for result in detail.results:
+        for feedback in result.feedback:
+            counts[feedback.relevance_label] = counts.get(feedback.relevance_label, 0) + 1
+    return counts
+
+
+def search_experiment_report_markdown(
+    detail: SearchLogDetailRecord,
+    comparison: dict[str, object] | None = None,
+) -> str:
+    search_log = detail.search_log
+    reproducibility = search_reproducibility_payload(search_log)
+    permission_summary = permission_summary_from_metadata(search_log.permission_filter_metadata)
+    feedback_counts = _search_log_feedback_counts(detail)
+    exported_at = _datetime_response(datetime.now(UTC))
+    actor = detail.actor_display_name or detail.actor_login_id or search_log.actor_user_id
+
+    lines = [
+        "# Search Experiment Report",
+        "",
+        *[
+            f"- Report Version: {SEARCH_EXPERIMENT_REPORT_VERSION}",
+            f"- Exported At: {exported_at}",
+            f"- Search Log ID: {search_log.search_log_id}",
+        ],
+        "",
+        "## Experiment Conditions",
+        "",
+        *_markdown_table(
+            ["Field", "Value"],
+            [
+                ["Query", search_log.query_text],
+                ["Normalized Query", search_log.normalized_query_text],
+                ["Actor", actor],
+                ["Requested Scope", search_log.requested_search_scope],
+                ["Effective Scope", search_log.effective_search_scope],
+                ["Document Group", search_log.document_group],
+                ["File Type", search_log.file_type],
+                ["Chunk Policy", search_log.chunk_policy_name],
+                ["Top K", search_log.top_k],
+                ["Similarity Metric", search_log.similarity_metric],
+                ["Profiles", list(search_log.profiles)],
+                ["Fingerprint", reproducibility["fingerprint"]],
+                ["Total Elapsed ms", search_log.total_elapsed_ms],
+                ["Runtime Metadata", search_log.query_runtime_metadata],
+            ],
+        ),
+        "",
+        "## Permission Summary",
+        "",
+    ]
+    if permission_summary:
+        lines.extend(
+            _markdown_table(
+                ["Field", "Value"],
+                [
+                    ["Actor Login", permission_summary.get("actor_login_id")],
+                    ["Role", permission_summary.get("role_name")],
+                    ["Primary Org", permission_summary.get("primary_org_unit_name")],
+                    ["Candidate Documents", permission_summary.get("candidate_document_count")],
+                    ["Visible Documents", permission_summary.get("visible_document_count")],
+                    ["Excluded Documents", permission_summary.get("excluded_document_count")],
+                    ["Included Access Scopes", permission_summary.get("included_access_scopes")],
+                ],
+            )
+        )
+    else:
+        lines.append("_No permission summary recorded._")
+
+    lines.extend(
+        [
+            "",
+            "## Feedback Summary",
+            "",
+            *_markdown_table(
+                ["Label", "Count"],
+                [[label, count] for label, count in feedback_counts.items()],
+            ),
+            "",
+            "## Results",
+            "",
+        ]
+    )
+    if detail.results:
+        lines.extend(
+            _markdown_table(
+                ["Rank", "Profile", "Chunk ID", "Document", "Score", "Feedback"],
+                [
+                    [
+                        result.search_log_result.rank,
+                        result.search_log_result.profile_name,
+                        result.search_log_result.chunk_id,
+                        result.document_title or result.original_file_name,
+                        result.search_log_result.score,
+                        [feedback.relevance_label for feedback in result.feedback],
+                    ]
+                    for result in detail.results
+                ],
+            )
+        )
+    else:
+        lines.append("_No result rows recorded._")
+
+    if comparison is not None:
+        result_overlap = comparison["result_overlap"]
+        reproducibility_compare = comparison["reproducibility"]
+        right_log = comparison["right"]
+        lines.extend(
+            [
+                "",
+                "## Compare Summary",
+                "",
+                *_markdown_table(
+                    ["Field", "Value"],
+                    [
+                        ["Target Search Log ID", f"#{right_log['search_log_id']}"],
+                        ["Same Fingerprint", reproducibility_compare["same_fingerprint"]],
+                        ["Left Fingerprint", reproducibility_compare["left_fingerprint"]],
+                        ["Right Fingerprint", reproducibility_compare["right_fingerprint"]],
+                        ["Left Result Count", result_overlap["left_result_count"]],
+                        ["Right Result Count", result_overlap["right_result_count"]],
+                        ["Shared Chunks", result_overlap["shared_chunk_count"]],
+                        ["Left Only Chunks", result_overlap["left_only_chunk_count"]],
+                        ["Right Only Chunks", result_overlap["right_only_chunk_count"]],
+                    ],
+                ),
+                "",
+                "## Reproducibility Field Compare",
+                "",
+                *_markdown_table(
+                    [
+                        "Field",
+                        f"#{comparison['left']['search_log_id']}",
+                        f"#{right_log['search_log_id']}",
+                        "Match",
+                    ],
+                    [
+                        [
+                            field["field"],
+                            field["left"],
+                            field["right"],
+                            field["matches"],
+                        ]
+                        for field in reproducibility_compare["fields"]
+                    ],
+                ),
+            ]
+        )
+
+    return "\n".join(lines) + "\n"
 
 
 def _stable_compare_value(value: object) -> object:
@@ -2483,6 +2670,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=search_log_export_payload(detail),
             headers={
                 "Content-Disposition": f'attachment; filename="{filename_base}.json"',
+            },
+        )
+
+    @app.get("/api/search/logs/{search_log_id}/experiment-report")
+    def api_export_search_experiment_report(
+        search_log_id: int,
+        compare_search_log_id: int | None = Query(default=None, ge=1),
+    ) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_search_log_detail(settings.database_url, search_log_id)
+            compare_detail = (
+                get_search_log_detail(settings.database_url, compare_search_log_id)
+                if compare_search_log_id is not None
+                else None
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None or (compare_search_log_id is not None and compare_detail is None):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log not found.",
+            )
+
+        comparison = (
+            search_log_comparison_payload(detail, compare_detail)
+            if compare_detail is not None
+            else None
+        )
+        return Response(
+            content=search_experiment_report_markdown(detail, comparison),
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="search-log-{search_log_id}-experiment-report.md"'
+                ),
             },
         )
 

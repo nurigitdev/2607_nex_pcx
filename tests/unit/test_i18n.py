@@ -33,6 +33,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("search_export.action") == "JSON Export"
     assert korean("search_export.csv_action") == "CSV Export"
     assert english("search_export.csv_action") == "CSV Export"
+    assert korean("search_export.report_action") == "Report Export"
+    assert english("search_export.report_action") == "Report Export"
     assert korean("search_log_compare.title") == "검색 로그 비교"
     assert english("search_log_compare.title") == "Search Log Compare"
     assert korean("search_log_compare.target_placeholder") == "비교할 로그를 선택하세요"

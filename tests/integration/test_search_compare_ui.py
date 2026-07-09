@@ -202,14 +202,20 @@ def test_search_history_detail_renders_permission_explainability(
         assert "query_instruction" in response.text
         assert "JSON Export" in response.text
         assert "CSV Export" in response.text
+        assert "Report Export" in response.text
         assert f"/api/search/logs/{search_log.search_log_id}/export" in response.text
         assert f"/api/search/logs/{search_log.search_log_id}/export?format=csv" in response.text
+        assert f"/api/search/logs/{search_log.search_log_id}/experiment-report" in response.text
         assert "동일 조건으로 재실행" in response.text
         assert f"replay_search_log_id={search_log.search_log_id}" in response.text
         assert "No result rows found" in response.text
         assert f'value="{fingerprint}"' in filtered_response.text
         assert "History permission explainability" in filtered_response.text
         assert "검색 로그 비교" in comparison_response.text
+        assert (
+            f"/api/search/logs/{search_log.search_log_id}/experiment-report"
+            f"?compare_search_log_id={comparison_log.search_log_id}" in comparison_response.text
+        )
         assert (
             '<select\n          class="form-select"\n          id="compare_search_log_id"'
             in comparison_response.text

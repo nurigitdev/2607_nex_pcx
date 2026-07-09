@@ -319,6 +319,17 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                     "right_search_log_id": 999999999,
                 },
             )
+            report_response = client.get(
+                f"/api/search/logs/{body['search_log_id']}/experiment-report"
+            )
+            compare_report_response = client.get(
+                f"/api/search/logs/{body['search_log_id']}/experiment-report",
+                params={"compare_search_log_id": alice_matrix_log_id},
+            )
+            missing_compare_report_response = client.get(
+                f"/api/search/logs/{body['search_log_id']}/experiment-report",
+                params={"compare_search_log_id": 999999999},
+            )
         compare_body = compare_response.json()
         compare_fields = {item["field"]: item for item in compare_body["reproducibility"]["fields"]}
         assert matrix_body["query_text"] == query_text
@@ -455,6 +466,24 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert str(body["search_log_id"]) in export_csv_response.text
         assert "kure_v1_1024" in export_csv_response.text
         assert "correct" in export_csv_response.text
+        assert report_response.status_code == 200
+        assert report_response.headers["content-type"].startswith("text/markdown")
+        assert report_response.headers["content-disposition"].endswith(
+            f'search-log-{body["search_log_id"]}-experiment-report.md"'
+        )
+        assert "# Search Experiment Report" in report_response.text
+        assert f"Search Log ID: {body['search_log_id']}" in report_response.text
+        assert f"| Query | {query_text} |" in report_response.text
+        assert "visible company fixture" in report_response.text
+        assert "correct" in report_response.text
+        assert compare_report_response.status_code == 200
+        assert "## Compare Summary" in compare_report_response.text
+        assert f"| Target Search Log ID | #{alice_matrix_log_id} |" in (
+            compare_report_response.text
+        )
+        assert "| Shared Chunks | 1 |" in compare_report_response.text
+        assert "## Reproducibility Field Compare" in compare_report_response.text
+        assert missing_compare_report_response.status_code == 404
         assert bad_export_response.status_code == 400
         assert bad_export_response.json() == {"detail": "format must be json or csv."}
     finally:

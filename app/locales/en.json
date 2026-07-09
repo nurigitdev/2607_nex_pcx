@@ -128,7 +128,8 @@
   "search_export": {
     "action": "JSON Export",
     "json_action": "JSON Export",
-    "csv_action": "CSV Export"
+    "csv_action": "CSV Export",
+    "report_action": "Report Export"
   },
   "search_log_compare": {
     "title": "Search Log Compare",
