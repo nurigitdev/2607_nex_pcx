@@ -15,6 +15,19 @@ class EmbeddingModelDistribution:
     note: str = ""
 
 
+@dataclass(frozen=True)
+class EmbeddingModelReadiness:
+    distribution: EmbeddingModelDistribution
+    local_dir: Path
+    exists: bool
+    ready: bool
+    has_config: bool
+    has_tokenizer: bool
+    has_model_weights: bool
+    file_count: int
+    total_size_bytes: int
+
+
 EMBEDDING_MODEL_DISTRIBUTIONS: tuple[EmbeddingModelDistribution, ...] = (
     EmbeddingModelDistribution(
         model_key="kure_v1",
@@ -40,6 +53,22 @@ EMBEDDING_MODEL_DISTRIBUTIONS: tuple[EmbeddingModelDistribution, ...] = (
         adapter_name="qwen_embedding",
         note="Shared local model for both Qwen output-dimension profiles.",
     ),
+)
+
+TOKENIZER_FILE_NAMES = frozenset(
+    {
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "sentencepiece.bpe.model",
+        "spiece.model",
+        "vocab.txt",
+        "vocab.json",
+        "merges.txt",
+    }
+)
+MODEL_WEIGHT_SUFFIXES = (".safetensors", ".bin", ".pt")
+MODEL_WEIGHT_FILE_NAMES = frozenset(
+    {"model.safetensors.index.json", "pytorch_model.bin.index.json"}
 )
 
 
@@ -68,3 +97,54 @@ def resolve_embedding_model_dir(
     models_dir: Path,
 ) -> Path:
     return models_dir / distribution.local_dir_name
+
+
+def audit_embedding_model_readiness(
+    models_dir: Path,
+) -> tuple[EmbeddingModelReadiness, ...]:
+    return tuple(
+        audit_single_embedding_model_readiness(distribution, models_dir)
+        for distribution in EMBEDDING_MODEL_DISTRIBUTIONS
+    )
+
+
+def audit_single_embedding_model_readiness(
+    distribution: EmbeddingModelDistribution,
+    models_dir: Path,
+) -> EmbeddingModelReadiness:
+    local_dir = resolve_embedding_model_dir(distribution, models_dir)
+    exists = local_dir.is_dir()
+    file_count = 0
+    total_size_bytes = 0
+    has_config = False
+    has_tokenizer = False
+    has_model_weights = False
+
+    if exists:
+        for path in local_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            file_count += 1
+            try:
+                total_size_bytes += path.stat().st_size
+            except OSError:
+                pass
+            file_name = path.name
+            if file_name == "config.json":
+                has_config = True
+            if file_name in TOKENIZER_FILE_NAMES:
+                has_tokenizer = True
+            if file_name in MODEL_WEIGHT_FILE_NAMES or file_name.endswith(MODEL_WEIGHT_SUFFIXES):
+                has_model_weights = True
+
+    return EmbeddingModelReadiness(
+        distribution=distribution,
+        local_dir=local_dir,
+        exists=exists,
+        ready=exists and has_config and has_model_weights,
+        has_config=has_config,
+        has_tokenizer=has_tokenizer,
+        has_model_weights=has_model_weights,
+        file_count=file_count,
+        total_size_bytes=total_size_bytes,
+    )

@@ -47,6 +47,10 @@ from app.core.embedding_jobs import (
     list_embedding_jobs,
     retry_embedding_job,
 )
+from app.core.embedding_model_distribution import (
+    EmbeddingModelReadiness,
+    audit_embedding_model_readiness,
+)
 from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
     InvalidEmbeddingVectorError,
@@ -528,6 +532,26 @@ def embedding_vector_payload(vector: EmbeddingVectorRecord | None) -> dict[str, 
         "storage_type": vector.storage_type,
         "elapsed_ms": vector.elapsed_ms,
         "created_at": _datetime_response(vector.created_at),
+    }
+
+
+def embedding_model_readiness_payload(readiness: EmbeddingModelReadiness) -> dict[str, object]:
+    distribution = readiness.distribution
+    return {
+        "model_key": distribution.model_key,
+        "repo_id": distribution.repo_id,
+        "revision": distribution.default_revision,
+        "local_dir": str(readiness.local_dir),
+        "profile_names": list(distribution.profile_names),
+        "adapter_name": distribution.adapter_name,
+        "note": distribution.note,
+        "exists": readiness.exists,
+        "ready": readiness.ready,
+        "has_config": readiness.has_config,
+        "has_tokenizer": readiness.has_tokenizer,
+        "has_model_weights": readiness.has_model_weights,
+        "file_count": readiness.file_count,
+        "total_size_bytes": readiness.total_size_bytes,
     }
 
 
@@ -2573,6 +2597,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return JSONResponse(content={"job": pipeline_job_detail_payload(retried)})
 
+    @app.get("/api/embedding/models/readiness")
+    def api_embedding_model_readiness() -> JSONResponse:
+        readiness = audit_embedding_model_readiness(settings.embedding_models_dir)
+        ready_count = sum(1 for item in readiness if item.ready)
+        return JSONResponse(
+            content={
+                "models_dir": str(settings.embedding_models_dir),
+                "ready_count": ready_count,
+                "model_count": len(readiness),
+                "models": [embedding_model_readiness_payload(item) for item in readiness],
+            }
+        )
+
     @app.get("/api/embedding/jobs")
     def api_list_embedding_jobs(
         status_filter: str | None = Query(default=None, alias="status"),
@@ -4453,6 +4490,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_job_id=job_id,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/embedding-models", response_class=HTMLResponse)
+    def embedding_models_page(request: Request) -> HTMLResponse:
+        readiness = audit_embedding_model_readiness(settings.embedding_models_dir)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "embedding_models.html",
+            template_context(
+                request,
+                models_dir=settings.embedding_models_dir,
+                model_readiness=readiness,
+                ready_count=sum(1 for item in readiness if item.ready),
+                model_count=len(readiness),
+                profile_count=sum(len(item.distribution.profile_names) for item in readiness),
             ),
         )
 

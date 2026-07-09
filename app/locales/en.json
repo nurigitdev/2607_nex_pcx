@@ -15,6 +15,7 @@
     "permissions": "Permissions",
     "jobs": "Jobs",
     "embeddings": "Embeddings",
+    "embedding_models": "Model Readiness",
     "chunk_policies": "Chunk Policies",
     "design_system": "Design System",
     "logs": "Logs"
@@ -57,6 +58,29 @@
     "ndcg": "nDCG",
     "hidden": "Hidden",
     "no_evaluation_runs": "No evaluation runs found"
+  },
+  "embedding_models": {
+    "title": "Embedding Model Readiness",
+    "subtitle": "Check the local models bundle download state and profile mapping.",
+    "bundle_root": "Bundle Root",
+    "ready_models": "Ready Models",
+    "profile_count": "Profile Count",
+    "download_mode": "Download Mode",
+    "manual_download": "Manual",
+    "readiness_table": "Model Readiness",
+    "readiness_help": "Readiness is conservatively determined from config and weight files before worker loading.",
+    "model": "Model",
+    "profiles": "Profiles",
+    "local_dir": "Local Dir",
+    "status": "Status",
+    "config": "Config",
+    "tokenizer": "Tokenizer",
+    "weights": "Weights",
+    "files": "Files",
+    "bytes": "Bytes",
+    "ready": "Ready",
+    "incomplete": "Incomplete",
+    "missing": "Missing"
   },
   "role": {
     "admin": "Admin",

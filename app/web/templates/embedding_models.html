@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("embedding_models.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("embedding_models.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/api/embedding/models/readiness">{{ t("common.api") }}</a>
+</div>
+
+<section class="document-detail-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_models.bundle_root") }}</div>
+    <div class="model-path mt-3">{{ models_dir }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_models.ready_models") }}</div>
+    <div class="metric-value">{{ ready_count }} / {{ model_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_models.profile_count") }}</div>
+    <div class="metric-value">{{ profile_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_models.download_mode") }}</div>
+    <div class="mt-3">
+      <span class="badge text-bg-light border">{{ t("embedding_models.manual_download") }}</span>
+    </div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_models.readiness_table") }}</h2>
+      <div class="text-secondary">{{ t("embedding_models.readiness_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 model-readiness-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_models.model") }}</th>
+          <th scope="col">{{ t("embedding_models.profiles") }}</th>
+          <th scope="col">{{ t("embedding_models.local_dir") }}</th>
+          <th scope="col">{{ t("embedding_models.status") }}</th>
+          <th scope="col">{{ t("embedding_models.config") }}</th>
+          <th scope="col">{{ t("embedding_models.tokenizer") }}</th>
+          <th scope="col">{{ t("embedding_models.weights") }}</th>
+          <th scope="col">{{ t("embedding_models.files") }}</th>
+          <th scope="col">{{ t("embedding_models.bytes") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in model_readiness %}
+        <tr>
+          <td>
+            <strong>{{ item.distribution.model_key }}</strong>
+            <div class="text-secondary small">{{ item.distribution.repo_id }}</div>
+          </td>
+          <td>
+            {% for profile_name in item.distribution.profile_names %}
+            <span class="badge text-bg-light border">{{ profile_name }}</span>
+            {% endfor %}
+          </td>
+          <td class="model-path">{{ item.local_dir }}</td>
+          <td>
+            {% if item.ready %}
+            <span class="badge text-bg-success">{{ t("embedding_models.ready") }}</span>
+            {% elif item.exists %}
+            <span class="badge text-bg-warning">{{ t("embedding_models.incomplete") }}</span>
+            {% else %}
+            <span class="badge text-bg-secondary">{{ t("embedding_models.missing") }}</span>
+            {% endif %}
+          </td>
+          <td>{{ t("common.yes") if item.has_config else t("common.no") }}</td>
+          <td>{{ t("common.yes") if item.has_tokenizer else t("common.no") }}</td>
+          <td>{{ t("common.yes") if item.has_model_weights else t("common.no") }}</td>
+          <td>{{ item.file_count }}</td>
+          <td>{{ item.total_size_bytes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -7,6 +7,7 @@ import pytest
 
 from app.core.embedding_model_distribution import (
     InvalidEmbeddingModelDistributionError,
+    audit_embedding_model_readiness,
     get_embedding_model_distribution,
     list_embedding_model_distributions,
     resolve_embedding_model_dir,
@@ -39,6 +40,31 @@ def test_embedding_model_distribution_resolves_local_model_directories() -> None
 def test_embedding_model_distribution_rejects_unknown_model_key() -> None:
     with pytest.raises(InvalidEmbeddingModelDistributionError, match="Unsupported"):
         get_embedding_model_distribution("missing")
+
+
+def test_embedding_model_readiness_audit_reports_missing_and_ready_models(tmp_path: Path) -> None:
+    kure_dir = tmp_path / "kure_v1"
+    kure_dir.mkdir()
+    (kure_dir / "config.json").write_text("{}", encoding="utf-8")
+    (kure_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (kure_dir / "model.safetensors").write_bytes(b"weights")
+
+    bge_dir = tmp_path / "bge_m3"
+    bge_dir.mkdir()
+    (bge_dir / "config.json").write_text("{}", encoding="utf-8")
+
+    readiness = {
+        item.distribution.model_key: item for item in audit_embedding_model_readiness(tmp_path)
+    }
+
+    assert readiness["kure_v1"].ready is True
+    assert readiness["kure_v1"].has_tokenizer is True
+    assert readiness["kure_v1"].file_count == 3
+    assert readiness["kure_v1"].total_size_bytes > 0
+    assert readiness["bge_m3"].exists is True
+    assert readiness["bge_m3"].ready is False
+    assert readiness["qwen3_embedding_4b"].exists is False
+    assert readiness["qwen3_embedding_4b"].ready is False
 
 
 def test_download_embedding_models_script_prints_json_dry_run_plan() -> None:

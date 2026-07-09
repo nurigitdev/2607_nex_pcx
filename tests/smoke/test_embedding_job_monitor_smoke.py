@@ -23,3 +23,40 @@ def test_embedding_job_retry_api_requires_database_url() -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
+
+
+def test_embedding_model_readiness_api_reports_local_bundle_state(tmp_path) -> None:
+    kure_dir = tmp_path / "kure_v1"
+    kure_dir.mkdir()
+    (kure_dir / "config.json").write_text("{}", encoding="utf-8")
+    (kure_dir / "model.safetensors").write_bytes(b"weights")
+    app = create_app(Settings(embedding_models_dir=tmp_path))
+
+    with TestClient(app) as client:
+        response = client.get("/api/embedding/models/readiness")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["models_dir"] == str(tmp_path)
+    assert body["model_count"] == 3
+    assert body["ready_count"] == 1
+    models = {model["model_key"]: model for model in body["models"]}
+    assert models["kure_v1"]["ready"] is True
+    assert models["bge_m3"]["ready"] is False
+    assert models["qwen3_embedding_4b"]["profile_names"] == [
+        "qwen3_4b_1000",
+        "qwen3_4b_2560",
+    ]
+
+
+def test_embedding_model_readiness_page_shows_without_database_url(tmp_path) -> None:
+    app = create_app(Settings(embedding_models_dir=tmp_path))
+
+    with TestClient(app) as client:
+        response = client.get("/admin/embedding-models")
+
+    assert response.status_code == 200
+    assert "임베딩 모델 준비도" in response.text
+    assert str(tmp_path) in response.text
+    assert "/api/embedding/models/readiness" in response.text
+    assert "qwen3_embedding_4b" in response.text

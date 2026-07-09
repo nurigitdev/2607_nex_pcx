@@ -781,6 +781,21 @@ main.container-fluid {
   min-width: 14rem;
 }
 
+.model-path {
+  font-family: var(--bs-font-monospace);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.model-readiness-table td {
+  vertical-align: top;
+}
+
+.model-readiness-table th:nth-child(n + 4),
+.model-readiness-table td:nth-child(n + 4) {
+  white-space: nowrap;
+}
+
 .document-filter-form {
   flex-wrap: wrap;
 }
