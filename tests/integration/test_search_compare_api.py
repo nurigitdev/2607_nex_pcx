@@ -238,6 +238,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                 json={
                     "search_log_result_id": first_result_id,
                     "relevance_label": "correct",
+                    "comment": "Visible fixture matched the query.",
                 },
             )
             summary_response = client.get(
@@ -393,6 +394,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert missing_metadata_response.status_code == 404
         assert feedback_response.status_code == 201
         assert feedback_body["feedback"]["relevance_label"] == "correct"
+        assert feedback_body["feedback"]["comment"] == "Visible fixture matched the query."
         assert feedback_body["feedback"]["created_by"] == "search-compare-ui"
         assert feedback_body["feedback"]["created_by_user_id"] == ids["alice.member"]
         assert feedback_count["count"] == 1
@@ -477,6 +479,9 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert detail_body["results"][0]["document_group"] == document_group
         detail_results = {result["profile_name"]: result for result in detail_body["results"]}
         assert detail_results["kure_v1_1024"]["feedback"][0]["relevance_label"] == "correct"
+        assert detail_results["kure_v1_1024"]["feedback"][0]["comment"] == (
+            "Visible fixture matched the query."
+        )
         assert export_response.status_code == 200
         assert export_response.headers["content-disposition"].endswith(
             f'search-log-{body["search_log_id"]}.json"'
@@ -494,6 +499,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert str(body["search_log_id"]) in export_csv_response.text
         assert "kure_v1_1024" in export_csv_response.text
         assert "correct" in export_csv_response.text
+        assert "Visible fixture matched the query." in str(export_body["results"])
         assert report_response.status_code == 200
         assert report_response.headers["content-type"].startswith("text/markdown")
         assert report_response.headers["content-disposition"].endswith(

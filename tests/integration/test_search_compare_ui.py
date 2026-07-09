@@ -46,6 +46,8 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert "검색 권한 설명" in response.text
     assert 'id="feedback-summary-grid"' in response.text
     assert "search-feedback-button" in response.text
+    assert "search-feedback-comment" in response.text
+    assert "판정 이유 또는 재검토 메모" in response.text
     assert "/api/search/feedback" in response.text
     assert "/api/search/feedback/summary" in response.text
     assert "권한 검색 Matrix" in response.text

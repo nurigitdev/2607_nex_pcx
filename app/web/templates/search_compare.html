@@ -732,12 +732,15 @@
     }
   };
 
-  const setFeedbackDisabled = (actions, disabled) => {
+  const setFeedbackDisabled = (actions, disabled, commentInput = null) => {
     actions
       .querySelectorAll(".search-feedback-button")
       .forEach((button) => {
         button.disabled = disabled;
       });
+    if (commentInput) {
+      commentInput.disabled = disabled;
+    }
   };
 
   const markSelectedFeedback = (actions, relevanceLabel) => {
@@ -751,9 +754,16 @@
       });
   };
 
-  const submitFeedback = async (resultId, relevanceLabel, actions, statusEl) => {
+  const submitFeedback = async (
+    resultId,
+    relevanceLabel,
+    commentInput,
+    actions,
+    statusEl,
+  ) => {
     statusEl.textContent = "Saving";
-    setFeedbackDisabled(actions, true);
+    setFeedbackDisabled(actions, true, commentInput);
+    const comment = commentInput.value.trim();
     try {
       const response = await fetch("/api/search/feedback", {
         method: "POST",
@@ -761,6 +771,7 @@
         body: JSON.stringify({
           search_log_result_id: resultId,
           relevance_label: relevanceLabel,
+          comment: comment || null,
         }),
       });
       const body = await response.json();
@@ -774,7 +785,7 @@
     } catch (error) {
       statusEl.textContent = error instanceof Error ? error.message : "Feedback failed.";
     } finally {
-      setFeedbackDisabled(actions, false);
+      setFeedbackDisabled(actions, false, commentInput);
     }
   };
 
@@ -785,13 +796,19 @@
     const actions = document.createElement("div");
     actions.className = "search-feedback-actions";
 
+    const comment = document.createElement("textarea");
+    comment.className = "form-control search-feedback-comment";
+    comment.rows = 2;
+    comment.placeholder = "{{ t('search_feedback.comment_placeholder') }}";
+    comment.setAttribute("aria-label", "{{ t('search_feedback.comment') }}");
+
     const status = document.createElement("div");
     status.className = "search-feedback-status";
     status.setAttribute("aria-live", "polite");
 
     if (!result.search_log_result_id) {
       status.textContent = "Feedback unavailable";
-      wrapper.append(actions, status);
+      wrapper.append(comment, actions, status);
       return wrapper;
     }
 
@@ -802,12 +819,12 @@
       button.dataset.relevanceLabel = option.value;
       button.textContent = option.label;
       button.addEventListener("click", () => {
-        submitFeedback(result.search_log_result_id, option.value, actions, status);
+        submitFeedback(result.search_log_result_id, option.value, comment, actions, status);
       });
       actions.append(button);
     });
 
-    wrapper.append(actions, status);
+    wrapper.append(comment, actions, status);
     return wrapper;
   };
 

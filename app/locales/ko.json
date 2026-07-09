@@ -160,6 +160,10 @@
     "save_failed": "저장 실패",
     "empty": "없음"
   },
+  "search_feedback": {
+    "comment": "피드백 메모",
+    "comment_placeholder": "판정 이유 또는 재검토 메모"
+  },
   "permissions": {
     "title": "권한 시뮬레이션",
     "subtitle": "사용자, 조직, 멤버십, 문서 소유권 기준의 검색 범위 인벤토리",

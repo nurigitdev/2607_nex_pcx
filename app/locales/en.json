@@ -160,6 +160,10 @@
     "save_failed": "Save failed",
     "empty": "None"
   },
+  "search_feedback": {
+    "comment": "Feedback comment",
+    "comment_placeholder": "Reason or review note"
+  },
   "permissions": {
     "title": "Permission Simulation",
     "subtitle": "Search-scope inventory from users, org units, memberships, and document ownership",
