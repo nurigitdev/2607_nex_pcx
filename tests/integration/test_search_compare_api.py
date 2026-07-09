@@ -303,6 +303,24 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             for result in results
         )
         matrix_by_actor = {entry["actor_user_id"]: entry for entry in matrix_body["entries"]}
+        alice_matrix_log_id = matrix_by_actor[ids["alice.member"]]["search_log_id"]
+        with TestClient(app) as client:
+            compare_response = client.get(
+                "/api/search/logs/compare",
+                params={
+                    "left_search_log_id": body["search_log_id"],
+                    "right_search_log_id": alice_matrix_log_id,
+                },
+            )
+            missing_compare_response = client.get(
+                "/api/search/logs/compare",
+                params={
+                    "left_search_log_id": body["search_log_id"],
+                    "right_search_log_id": 999999999,
+                },
+            )
+        compare_body = compare_response.json()
+        compare_fields = {item["field"]: item for item in compare_body["reproducibility"]["fields"]}
         assert matrix_body["query_text"] == query_text
         assert matrix_body["top_k"] == 5
         assert matrix_by_actor[ids["alice.member"]]["result_count"] == 1
@@ -323,6 +341,17 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             ]
             == 1
         )
+        assert compare_response.status_code == 200
+        assert compare_body["left"]["search_log_id"] == body["search_log_id"]
+        assert compare_body["right"]["search_log_id"] == alice_matrix_log_id
+        assert compare_body["reproducibility"]["same_fingerprint"] is False
+        assert compare_fields["query_text"]["matches"] is True
+        assert compare_fields["profiles"]["matches"] is False
+        assert compare_body["result_overlap"]["left_result_count"] == 2
+        assert compare_body["result_overlap"]["right_result_count"] == 1
+        assert compare_body["result_overlap"]["shared_chunk_count"] == 1
+        assert compare_body["result_overlap"]["shared_chunk_ids"] == [visible_chunk_id]
+        assert missing_compare_response.status_code == 404
         assert feedback_response.status_code == 201
         assert feedback_body["feedback"]["relevance_label"] == "correct"
         assert feedback_body["feedback"]["created_by"] == "search-compare-ui"

@@ -610,6 +610,9 @@ def search_reproducibility_payload(search_log: SearchLogRecord) -> dict[str, obj
         "fingerprint_algorithm": "sha256:16",
         "query_text": search_log.query_text,
         "normalized_query_text": search_log.normalized_query_text,
+        "actor_user_id": search_log.actor_user_id,
+        "requested_search_scope": search_log.requested_search_scope,
+        "effective_search_scope": search_log.effective_search_scope,
         "top_k": search_log.top_k,
         "profiles": list(search_log.profiles),
         "profile_count": len(search_log.profiles),
@@ -912,6 +915,107 @@ def search_log_results_csv(detail: SearchLogDetailRecord) -> str:
             }
         )
     return output.getvalue()
+
+
+def _stable_compare_value(value: object) -> object:
+    if isinstance(value, tuple):
+        return list(value)
+    return value
+
+
+def search_log_compare_field_payload(
+    field_name: str,
+    left_value: object,
+    right_value: object,
+) -> dict[str, object]:
+    left_stable = _stable_compare_value(left_value)
+    right_stable = _stable_compare_value(right_value)
+    return {
+        "field": field_name,
+        "left": left_stable,
+        "right": right_stable,
+        "matches": left_stable == right_stable,
+    }
+
+
+def search_log_comparison_payload(
+    left: SearchLogDetailRecord,
+    right: SearchLogDetailRecord,
+) -> dict[str, object]:
+    left_summary = search_reproducibility_payload(left.search_log)
+    right_summary = search_reproducibility_payload(right.search_log)
+    compare_fields = [
+        "query_text",
+        "normalized_query_text",
+        "actor_user_id",
+        "requested_search_scope",
+        "effective_search_scope",
+        "document_group",
+        "file_type",
+        "chunk_policy_name",
+        "top_k",
+        "similarity_metric",
+        "profiles",
+        "query_runtime_metadata",
+    ]
+    left_chunks = {result.search_log_result.chunk_id for result in left.results}
+    right_chunks = {result.search_log_result.chunk_id for result in right.results}
+    shared_chunks = left_chunks & right_chunks
+    return {
+        "left": search_log_record_payload(
+            SearchLogListItem(
+                search_log=left.search_log,
+                actor_login_id=left.actor_login_id,
+                actor_display_name=left.actor_display_name,
+                result_count=len(left.results),
+                feedback_count=sum(len(result.feedback) for result in left.results),
+                correct_count=0,
+                partial_count=0,
+                wrong_count=0,
+                duplicate_count=0,
+                insufficient_context_count=0,
+                latest_feedback_at=None,
+            )
+        ),
+        "right": search_log_record_payload(
+            SearchLogListItem(
+                search_log=right.search_log,
+                actor_login_id=right.actor_login_id,
+                actor_display_name=right.actor_display_name,
+                result_count=len(right.results),
+                feedback_count=sum(len(result.feedback) for result in right.results),
+                correct_count=0,
+                partial_count=0,
+                wrong_count=0,
+                duplicate_count=0,
+                insufficient_context_count=0,
+                latest_feedback_at=None,
+            )
+        ),
+        "reproducibility": {
+            "same_fingerprint": left_summary["fingerprint"] == right_summary["fingerprint"],
+            "left_fingerprint": left_summary["fingerprint"],
+            "right_fingerprint": right_summary["fingerprint"],
+            "fields": [
+                search_log_compare_field_payload(
+                    field_name,
+                    left_summary[field_name],
+                    right_summary[field_name],
+                )
+                for field_name in compare_fields
+            ],
+        },
+        "result_overlap": {
+            "left_result_count": len(left.results),
+            "right_result_count": len(right.results),
+            "left_unique_chunk_count": len(left_chunks),
+            "right_unique_chunk_count": len(right_chunks),
+            "shared_chunk_count": len(shared_chunks),
+            "left_only_chunk_count": len(left_chunks - right_chunks),
+            "right_only_chunk_count": len(right_chunks - left_chunks),
+            "shared_chunk_ids": sorted(shared_chunks),
+        },
+    }
 
 
 def search_feedback_profile_summary_payload(
@@ -2292,6 +2396,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content={"logs": [search_log_record_payload(log) for log in logs]})
+
+    @app.get("/api/search/logs/compare")
+    def api_compare_search_logs(
+        left_search_log_id: int = Query(ge=1),
+        right_search_log_id: int = Query(ge=1),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            left = get_search_log_detail(settings.database_url, left_search_log_id)
+            right = get_search_log_detail(settings.database_url, right_search_log_id)
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if left is None or right is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log not found.",
+            )
+
+        return JSONResponse(content=search_log_comparison_payload(left, right))
 
     @app.get("/api/search/logs/{search_log_id}")
     def api_get_search_log_detail(search_log_id: int) -> JSONResponse:
