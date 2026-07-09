@@ -270,6 +270,13 @@
         >
         <span>Promoted</span>
       </label>
+      <span class="text-secondary small" id="golden-candidate-selected-count">0 selected</span>
+      <button
+        class="btn btn-primary btn-sm"
+        id="golden-candidate-promote-selected"
+        type="button"
+        disabled
+      >Promote Selected</button>
       <button
         class="btn btn-outline-secondary btn-sm"
         id="golden-candidate-refresh"
@@ -303,6 +310,7 @@
   let questions = [];
   let targets = [];
   let candidates = [];
+  let selectedCandidateIds = new Set();
   let selectedSetId = questionSets[0]?.question_set_id || null;
   let selectedQuestionId = null;
   let selectedTargetId = null;
@@ -328,6 +336,8 @@
   const targetDeleteButton = document.getElementById("target-delete");
   const candidateDocumentGroup = document.getElementById("golden-candidate-document-group");
   const candidateIncludePromoted = document.getElementById("golden-candidate-include-promoted");
+  const candidateSelectedCount = document.getElementById("golden-candidate-selected-count");
+  const candidateBatchButton = document.getElementById("golden-candidate-promote-selected");
   const candidateRefreshButton = document.getElementById("golden-candidate-refresh");
 
   const setAlert = (message, variant = "info") => {
@@ -380,6 +390,12 @@
     badge.className = `badge feedback-label-${label}`;
     badge.textContent = label;
     return badge;
+  };
+
+  const updateCandidateSelectionControls = () => {
+    const selectedCount = selectedCandidateIds.size;
+    candidateSelectedCount.textContent = `${selectedCount} selected`;
+    candidateBatchButton.disabled = !selectedSetId || selectedCount === 0;
   };
 
   const setSelectValue = (id, value) => {
@@ -598,29 +614,49 @@
     candidateCount.textContent = `${candidates.length} candidates`;
     if (!databaseConfigured) {
       candidateBody.append(makeEmptyRow("Database is not configured", 4));
+      updateCandidateSelectionControls();
       return;
     }
     if (candidates.length === 0) {
       candidateBody.append(makeEmptyRow("No feedback-backed candidates", 4));
+      updateCandidateSelectionControls();
       return;
     }
     candidates.forEach((item) => {
       const row = document.createElement("tr");
 
       const candidateCell = document.createElement("td");
+      const candidateMain = document.createElement("div");
+      candidateMain.className = "golden-candidate-main";
+      const candidateCheck = document.createElement("input");
+      candidateCheck.className = "form-check-input";
+      candidateCheck.type = "checkbox";
+      candidateCheck.disabled = item.already_promoted;
+      candidateCheck.checked = selectedCandidateIds.has(item.search_log_result_id);
+      candidateCheck.addEventListener("change", () => {
+        if (candidateCheck.checked) {
+          selectedCandidateIds.add(item.search_log_result_id);
+        } else {
+          selectedCandidateIds.delete(item.search_log_result_id);
+        }
+        updateCandidateSelectionControls();
+      });
+      const candidateText = document.createElement("div");
       const query = document.createElement("div");
       query.className = "golden-candidate-query";
       query.textContent = item.query_text;
       const preview = document.createElement("div");
       preview.className = "text-secondary small golden-candidate-preview";
       preview.textContent = item.chunk_preview;
-      candidateCell.append(query, preview);
+      candidateText.append(query, preview);
       if (item.latest_feedback_comment) {
         const comment = document.createElement("div");
         comment.className = "text-secondary small golden-candidate-comment";
         comment.textContent = item.latest_feedback_comment;
-        candidateCell.append(comment);
+        candidateText.append(comment);
       }
+      candidateMain.append(candidateCheck, candidateText);
+      candidateCell.append(candidateMain);
 
       const feedbackCell = document.createElement("td");
       const feedbackBadges = document.createElement("div");
@@ -687,10 +723,12 @@
       row.append(candidateCell, feedbackCell, sourceCell, actionCell);
       candidateBody.append(row);
     });
+    updateCandidateSelectionControls();
   };
 
   const loadCandidates = async () => {
     candidates = [];
+    selectedCandidateIds = new Set();
     renderCandidates();
     if (!databaseConfigured) {
       return;
@@ -712,6 +750,48 @@
     } catch (error) {
       setAlert(error instanceof Error ? error.message : "Candidate loading failed.", "warning");
       renderCandidates();
+    }
+  };
+
+  const promoteSelectedCandidates = async () => {
+    if (!selectedSetId) {
+      setAlert("Select a question set first.", "warning");
+      return;
+    }
+    if (selectedCandidateIds.size === 0) {
+      setAlert("Select candidates first.", "warning");
+      return;
+    }
+    candidateBatchButton.disabled = true;
+    try {
+      const response = await apiRequest("/api/evaluations/golden-question-candidates/promote", {
+        method: "POST",
+        body: JSON.stringify({
+          question_set_id: selectedSetId,
+          search_log_result_ids: Array.from(selectedCandidateIds),
+          notes: "Promoted from candidate batch review.",
+          metadata: {source_panel: "golden_candidate_batch_review"},
+        }),
+      });
+      const batch = response.batch;
+      const suffix = [
+        batch.skipped_count ? `${batch.skipped_count} skipped` : "",
+        batch.missing_count ? `${batch.missing_count} missing` : "",
+      ].filter(Boolean).join(", ");
+      setAlert(
+        suffix
+          ? `Promoted ${batch.promoted_count} candidates (${suffix}).`
+          : `Promoted ${batch.promoted_count} candidates.`,
+        "success",
+      );
+      selectedCandidateIds = new Set();
+      if (selectedSetId) {
+        await loadQuestions(selectedSetId);
+      }
+      await loadCandidates();
+    } catch (error) {
+      setAlert(error instanceof Error ? error.message : "Batch promotion failed.", "warning");
+      updateCandidateSelectionControls();
     }
   };
 
@@ -1000,6 +1080,7 @@
   });
 
   candidateRefreshButton.addEventListener("click", loadCandidates);
+  candidateBatchButton.addEventListener("click", promoteSelectedCandidates);
   candidateDocumentGroup.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();

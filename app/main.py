@@ -97,12 +97,15 @@ from app.core.golden_question_exchange import (
     import_golden_question_set,
 )
 from app.core.golden_question_promotions import (
+    GoldenQuestionBatchPromotionInput,
+    GoldenQuestionBatchPromotionRecord,
     GoldenQuestionCandidateRecord,
     GoldenQuestionPromotionInput,
     GoldenQuestionPromotionRecord,
     InvalidGoldenQuestionPromotionError,
     list_golden_question_candidates,
     promote_search_result_to_golden_question,
+    promote_search_results_to_golden_questions,
 )
 from app.core.golden_questions import (
     GoldenQuestionDetailRecord,
@@ -301,6 +304,10 @@ class GoldenQuestionPromotionRequest(BaseModel):
     notes: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
     created_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class GoldenQuestionBatchPromotionRequest(GoldenQuestionPromotionRequest):
+    search_log_result_ids: list[int] = Field(min_length=1, max_length=50)
 
 
 class GoldenEvaluationExecuteRequest(BaseModel):
@@ -1398,6 +1405,21 @@ def golden_question_promotion_input_from_request(
     )
 
 
+def golden_question_batch_promotion_input_from_request(
+    payload: GoldenQuestionBatchPromotionRequest,
+) -> GoldenQuestionBatchPromotionInput:
+    return GoldenQuestionBatchPromotionInput(
+        question_set_id=payload.question_set_id,
+        search_log_result_ids=tuple(payload.search_log_result_ids),
+        question_type=payload.question_type,
+        expectation_type=payload.expectation_type,
+        relevance_grade=payload.relevance_grade,
+        notes=payload.notes,
+        metadata=dict(payload.metadata),
+        created_by_user_id=payload.created_by_user_id,
+    )
+
+
 def golden_question_import_input_from_request(
     payload: GoldenQuestionSetImportRequest,
 ) -> GoldenQuestionImportInput:
@@ -1482,6 +1504,21 @@ def golden_question_candidate_payload(
         "latest_feedback_comment": candidate.latest_feedback_comment,
         "latest_feedback_at": _datetime_response(candidate.latest_feedback_at),
         "already_promoted": candidate.already_promoted,
+    }
+
+
+def golden_question_batch_promotion_payload(
+    batch: GoldenQuestionBatchPromotionRecord,
+) -> dict[str, object]:
+    return {
+        "promoted_count": len(batch.promotions),
+        "skipped_count": len(batch.skipped_search_log_result_ids),
+        "missing_count": len(batch.missing_search_log_result_ids),
+        "promotions": [
+            golden_question_promotion_payload(promotion) for promotion in batch.promotions
+        ],
+        "skipped_search_log_result_ids": list(batch.skipped_search_log_result_ids),
+        "missing_search_log_result_ids": list(batch.missing_search_log_result_ids),
     }
 
 
@@ -2952,6 +2989,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     golden_question_candidate_payload(candidate) for candidate in candidates
                 ],
             },
+        )
+
+    @app.post("/api/evaluations/golden-question-candidates/promote")
+    def api_promote_golden_question_candidates(
+        payload: GoldenQuestionBatchPromotionRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            batch = promote_search_results_to_golden_questions(
+                settings.database_url,
+                golden_question_batch_promotion_input_from_request(payload),
+            )
+        except (
+            InvalidGoldenQuestionPromotionError,
+            InvalidGoldenQuestionError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"batch": golden_question_batch_promotion_payload(batch)},
         )
 
     @app.post("/api/search/results/{search_log_result_id}/promote-golden-question")

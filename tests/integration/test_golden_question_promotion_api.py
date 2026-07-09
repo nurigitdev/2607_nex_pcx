@@ -23,7 +23,11 @@ from app.main import create_app
 pytestmark = pytest.mark.integration
 
 
-def _create_promotion_fixture(database_url: str) -> dict[str, object]:
+def _create_promotion_fixture(
+    database_url: str,
+    *,
+    query_text: str = "Which policy can be promoted?",
+) -> dict[str, object]:
     checksum = f"golden-promotion-{uuid4()}"
     document_group = f"slice-043-{uuid4()}"
     with connect(database_url) as connection:
@@ -107,8 +111,8 @@ def _create_promotion_fixture(database_url: str) -> dict[str, object]:
     search_log = create_search_log(
         database_url,
         SearchLogInput(
-            query_text="Which policy can be promoted?",
-            normalized_query_text="which policy can be promoted?",
+            query_text=query_text,
+            normalized_query_text=query_text.casefold(),
             actor_user_id=user_id,
             requested_search_scope="company",
             effective_search_scope="company",
@@ -250,6 +254,69 @@ def test_search_result_can_be_promoted_to_golden_question(
         assert fixture["question_set_name"] in page_response.text
     finally:
         _cleanup_fixture(migrated_database_url, fixture)
+
+
+def test_search_result_candidates_can_be_promoted_in_batch(
+    migrated_database_url: str,
+) -> None:
+    first_fixture = _create_promotion_fixture(migrated_database_url)
+    second_fixture = _create_promotion_fixture(
+        migrated_database_url,
+        query_text="Which second policy can be promoted?",
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/evaluations/golden-question-candidates/promote",
+                json={
+                    "question_set_id": first_fixture["question_set_id"],
+                    "search_log_result_ids": [
+                        first_fixture["search_log_result_id"],
+                        second_fixture["search_log_result_id"],
+                        999999999,
+                    ],
+                    "metadata": {"case": "slice-079"},
+                    "notes": "batch promoted",
+                },
+            )
+            skipped_response = client.post(
+                "/api/evaluations/golden-question-candidates/promote",
+                json={
+                    "question_set_id": first_fixture["question_set_id"],
+                    "search_log_result_ids": [
+                        first_fixture["search_log_result_id"],
+                        second_fixture["search_log_result_id"],
+                    ],
+                    "metadata": {"case": "slice-079-skipped"},
+                },
+            )
+
+        body = response.json()["batch"]
+        skipped_body = skipped_response.json()["batch"]
+
+        assert response.status_code == 201
+        assert body["promoted_count"] == 2
+        assert body["skipped_count"] == 0
+        assert body["missing_search_log_result_ids"] == [999999999]
+        assert {promotion["question"]["question_set_id"] for promotion in body["promotions"]} == {
+            first_fixture["question_set_id"]
+        }
+        assert {promotion["question"]["metadata"]["case"] for promotion in body["promotions"]} == {
+            "slice-079"
+        }
+        assert {promotion["expected_target"]["notes"] for promotion in body["promotions"]} == {
+            "batch promoted"
+        }
+        assert skipped_response.status_code == 201
+        assert skipped_body["promoted_count"] == 0
+        assert skipped_body["skipped_search_log_result_ids"] == [
+            first_fixture["search_log_result_id"],
+            second_fixture["search_log_result_id"],
+        ]
+    finally:
+        _cleanup_fixture(migrated_database_url, first_fixture)
+        _cleanup_fixture(migrated_database_url, second_fixture)
 
 
 def test_search_result_promotion_returns_not_found_for_missing_result(

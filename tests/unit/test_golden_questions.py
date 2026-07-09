@@ -1,8 +1,10 @@
 import pytest
 
 from app.core.golden_question_promotions import (
+    GoldenQuestionBatchPromotionInput,
     InvalidGoldenQuestionPromotionError,
     list_golden_question_candidates,
+    validate_golden_question_batch_promotion_input,
 )
 from app.core.golden_questions import (
     GoldenQuestionExpectedTargetInput,
@@ -195,3 +197,58 @@ def test_list_helpers_reject_invalid_limits_before_connecting() -> None:
 def test_candidate_helper_rejects_blank_document_group_before_connecting() -> None:
     with pytest.raises(InvalidGoldenQuestionPromotionError, match="document_group"):
         list_golden_question_candidates("postgresql://unused", document_group=" ")
+
+
+def test_validate_batch_promotion_input_deduplicates_ids() -> None:
+    validated = validate_golden_question_batch_promotion_input(
+        GoldenQuestionBatchPromotionInput(
+            question_set_id=1,
+            search_log_result_ids=(2, 2, 3),
+            metadata={"batch": True},
+        )
+    )
+
+    assert validated.search_log_result_ids == (2, 3)
+    assert validated.metadata == {"batch": True}
+
+
+@pytest.mark.parametrize(
+    ("promotion_input", "message"),
+    [
+        (
+            GoldenQuestionBatchPromotionInput(
+                question_set_id=0,
+                search_log_result_ids=(1,),
+            ),
+            "question_set_id",
+        ),
+        (
+            GoldenQuestionBatchPromotionInput(
+                question_set_id=1,
+                search_log_result_ids=(),
+            ),
+            "search_log_result_ids",
+        ),
+        (
+            GoldenQuestionBatchPromotionInput(
+                question_set_id=1,
+                search_log_result_ids=(0,),
+            ),
+            "search_log_result_id",
+        ),
+        (
+            GoldenQuestionBatchPromotionInput(
+                question_set_id=1,
+                search_log_result_ids=(1,),
+                metadata=[],
+            ),
+            "metadata",
+        ),
+    ],
+)
+def test_validate_batch_promotion_input_rejects_invalid_values(
+    promotion_input: GoldenQuestionBatchPromotionInput,
+    message: str,
+) -> None:
+    with pytest.raises(InvalidGoldenQuestionPromotionError, match=message):
+        validate_golden_question_batch_promotion_input(promotion_input)

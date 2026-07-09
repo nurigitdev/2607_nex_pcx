@@ -2024,6 +2024,13 @@ main.container-fluid {
   overflow-wrap: anywhere;
 }
 
+.golden-candidate-main {
+  align-items: flex-start;
+  display: grid;
+  gap: 0.625rem;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .golden-candidate-preview,
 .golden-candidate-comment {
   max-width: 48rem;

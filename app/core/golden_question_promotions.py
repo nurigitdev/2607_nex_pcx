@@ -36,6 +36,18 @@ class GoldenQuestionPromotionInput:
 
 
 @dataclass(frozen=True)
+class GoldenQuestionBatchPromotionInput:
+    question_set_id: int
+    search_log_result_ids: tuple[int, ...]
+    question_type: str = "single_fact"
+    expectation_type: str = "visible"
+    relevance_grade: int = 3
+    notes: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_by_user_id: int | None = None
+
+
+@dataclass(frozen=True)
 class GoldenQuestionPromotionRecord:
     question: GoldenQuestionRecord
     expected_target: GoldenQuestionExpectedTargetRecord
@@ -74,6 +86,13 @@ class GoldenQuestionCandidateRecord:
     already_promoted: bool
 
 
+@dataclass(frozen=True)
+class GoldenQuestionBatchPromotionRecord:
+    promotions: tuple[GoldenQuestionPromotionRecord, ...]
+    skipped_search_log_result_ids: tuple[int, ...]
+    missing_search_log_result_ids: tuple[int, ...]
+
+
 class InvalidGoldenQuestionPromotionError(ValueError):
     """Raised when a search result cannot be promoted into a golden question."""
 
@@ -103,6 +122,28 @@ def _validate_limit(limit: int, *, max_limit: int = 100) -> int:
     return limit
 
 
+def _validate_search_log_result_ids(
+    search_log_result_ids: tuple[int, ...],
+    *,
+    max_count: int = 50,
+) -> tuple[int, ...]:
+    if not search_log_result_ids:
+        raise InvalidGoldenQuestionPromotionError("search_log_result_ids must not be empty")
+    if len(search_log_result_ids) > max_count:
+        raise InvalidGoldenQuestionPromotionError(
+            f"search_log_result_ids must contain at most {max_count} ids"
+        )
+
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for search_log_result_id in search_log_result_ids:
+        _require_positive_id(search_log_result_id, "search_log_result_id")
+        if search_log_result_id not in seen:
+            normalized.append(search_log_result_id)
+            seen.add(search_log_result_id)
+    return tuple(normalized)
+
+
 def validate_golden_question_promotion_input(
     promotion_input: GoldenQuestionPromotionInput,
 ) -> GoldenQuestionPromotionInput:
@@ -116,6 +157,29 @@ def validate_golden_question_promotion_input(
     return GoldenQuestionPromotionInput(
         question_set_id=promotion_input.question_set_id,
         search_log_result_id=promotion_input.search_log_result_id,
+        question_type=promotion_input.question_type,
+        expectation_type=promotion_input.expectation_type,
+        relevance_grade=promotion_input.relevance_grade,
+        notes=promotion_input.notes,
+        metadata=_validate_metadata(promotion_input.metadata),
+        created_by_user_id=promotion_input.created_by_user_id,
+    )
+
+
+def validate_golden_question_batch_promotion_input(
+    promotion_input: GoldenQuestionBatchPromotionInput,
+) -> GoldenQuestionBatchPromotionInput:
+    _require_positive_id(promotion_input.question_set_id, "question_set_id")
+    _require_positive_id(
+        promotion_input.created_by_user_id,
+        "created_by_user_id",
+        required=False,
+    )
+    return GoldenQuestionBatchPromotionInput(
+        question_set_id=promotion_input.question_set_id,
+        search_log_result_ids=_validate_search_log_result_ids(
+            tuple(promotion_input.search_log_result_ids)
+        ),
         question_type=promotion_input.question_type,
         expectation_type=promotion_input.expectation_type,
         relevance_grade=promotion_input.relevance_grade,
@@ -304,6 +368,26 @@ def list_golden_question_candidates(
     return [_row_to_golden_question_candidate_record(dict(row)) for row in rows]
 
 
+def _promoted_search_log_result_ids(
+    database_url: str,
+    search_log_result_ids: tuple[int, ...],
+) -> set[int]:
+    if not search_log_result_ids:
+        return set()
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT metadata #>> '{promotion,search_log_result_id}' AS search_log_result_id
+                FROM golden_questions
+                WHERE metadata #>> '{promotion,search_log_result_id}' = ANY(%s)
+                """,
+                ([str(search_log_result_id) for search_log_result_id in search_log_result_ids],),
+            )
+            rows = cursor.fetchall()
+    return {int(row["search_log_result_id"]) for row in rows if row["search_log_result_id"]}
+
+
 def promote_search_result_to_golden_question(
     database_url: str,
     promotion_input: GoldenQuestionPromotionInput,
@@ -369,4 +453,45 @@ def promote_search_result_to_golden_question(
         expected_target=expected_target,
         source_search_log=source_search_log,
         source_result=source_result,
+    )
+
+
+def promote_search_results_to_golden_questions(
+    database_url: str,
+    promotion_input: GoldenQuestionBatchPromotionInput,
+) -> GoldenQuestionBatchPromotionRecord:
+    validated = validate_golden_question_batch_promotion_input(promotion_input)
+    skipped_ids = _promoted_search_log_result_ids(database_url, validated.search_log_result_ids)
+    promotions: list[GoldenQuestionPromotionRecord] = []
+    missing_ids: list[int] = []
+
+    for search_log_result_id in validated.search_log_result_ids:
+        if search_log_result_id in skipped_ids:
+            continue
+        promotion = promote_search_result_to_golden_question(
+            database_url,
+            GoldenQuestionPromotionInput(
+                question_set_id=validated.question_set_id,
+                search_log_result_id=search_log_result_id,
+                question_type=validated.question_type,
+                expectation_type=validated.expectation_type,
+                relevance_grade=validated.relevance_grade,
+                notes=validated.notes,
+                metadata=validated.metadata,
+                created_by_user_id=validated.created_by_user_id,
+            ),
+        )
+        if promotion is None:
+            missing_ids.append(search_log_result_id)
+        else:
+            promotions.append(promotion)
+
+    return GoldenQuestionBatchPromotionRecord(
+        promotions=tuple(promotions),
+        skipped_search_log_result_ids=tuple(
+            search_log_result_id
+            for search_log_result_id in validated.search_log_result_ids
+            if search_log_result_id in skipped_ids
+        ),
+        missing_search_log_result_ids=tuple(missing_ids),
     )
