@@ -1246,6 +1246,18 @@ main.container-fluid {
   gap: 1rem;
 }
 
+.search-history-detail-actions {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pcx-space-2);
+  justify-content: flex-end;
+}
+
+.search-history-detail-actions .btn {
+  white-space: nowrap;
+}
+
 .search-history-results {
   display: grid;
   gap: 1rem;

@@ -4,6 +4,7 @@ import csv
 import io
 import traceback as traceback_module
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -200,6 +201,7 @@ OWNER_ORG_UNIT_ID_FORM = Form(None)
 ACCESS_SCOPE_FORM = Form("personal")
 UPDATED_BY_USER_ID_FORM = Form(None)
 EVALUATION_EXPORT_VERSION = 1
+SEARCH_LOG_EXPORT_VERSION = 1
 SEARCH_COMPARE_FILE_TYPES = (".md", ".pdf", ".docx", ".hwpx", ".pptx", ".xlsx")
 SEARCH_COMPARE_SCOPE_OPTIONS = ("mine", "team", "managed_org", "company")
 
@@ -791,6 +793,15 @@ def search_log_detail_payload(detail: SearchLogDetailRecord) -> dict[str, object
     return {
         "search_log": search_log_record_payload(list_item),
         "results": [search_log_result_detail_payload(result) for result in detail.results],
+    }
+
+
+def search_log_export_payload(detail: SearchLogDetailRecord) -> dict[str, object]:
+    payload = search_log_detail_payload(detail)
+    return {
+        "version": SEARCH_LOG_EXPORT_VERSION,
+        "exported_at": _datetime_response(datetime.now(UTC)),
+        **payload,
     }
 
 
@@ -2190,6 +2201,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return JSONResponse(content=search_log_detail_payload(detail))
+
+    @app.get("/api/search/logs/{search_log_id}/export")
+    def api_export_search_log(search_log_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_search_log_detail(settings.database_url, search_log_id)
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log not found.",
+            )
+
+        return JSONResponse(
+            content=search_log_export_payload(detail),
+            headers={
+                "Content-Disposition": f'attachment; filename="search-log-{search_log_id}.json"',
+            },
+        )
 
     @app.post("/api/search/feedback")
     def api_search_feedback(payload: SearchFeedbackRequest) -> JSONResponse:

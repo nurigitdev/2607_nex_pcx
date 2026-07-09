@@ -249,11 +249,13 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                 params={"document_group": document_group},
             )
             detail_response = client.get(f"/api/search/logs/{body['search_log_id']}")
+            export_response = client.get(f"/api/search/logs/{body['search_log_id']}/export")
 
         feedback_body = feedback_response.json()
         summary_body = summary_response.json()
         logs_body = logs_response.json()
         detail_body = detail_response.json()
+        export_body = export_response.json()
         feedback_count = fetch_one(
             migrated_database_url,
             """
@@ -371,6 +373,14 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert detail_body["results"][0]["document_group"] == document_group
         detail_results = {result["profile_name"]: result for result in detail_body["results"]}
         assert detail_results["kure_v1_1024"]["feedback"][0]["relevance_label"] == "correct"
+        assert export_response.status_code == 200
+        assert export_response.headers["content-disposition"].endswith(
+            f'search-log-{body["search_log_id"]}.json"'
+        )
+        assert export_body["version"] == 1
+        assert export_body["exported_at"]
+        assert export_body["search_log"] == detail_body["search_log"]
+        assert export_body["results"] == detail_body["results"]
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
 

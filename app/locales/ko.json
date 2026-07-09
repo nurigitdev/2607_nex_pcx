@@ -124,6 +124,9 @@
     "applied_title": "검색 이력 조건이 적용되었습니다.",
     "applied_body": "필요하면 Query나 범위를 조정한 뒤 다시 검색할 수 있습니다."
   },
+  "search_export": {
+    "action": "JSON Export"
+  },
   "permissions": {
     "title": "권한 시뮬레이션",
     "subtitle": "사용자, 조직, 멤버십, 문서 소유권 기준의 검색 범위 인벤토리",

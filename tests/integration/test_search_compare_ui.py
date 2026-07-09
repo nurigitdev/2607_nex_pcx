@@ -139,6 +139,8 @@ def test_search_history_detail_renders_permission_explainability(
         assert "bge_m3_1024" in response.text
         assert "history_reproducibility" in response.text
         assert "query_instruction" in response.text
+        assert "JSON Export" in response.text
+        assert f"/api/search/logs/{search_log.search_log_id}/export" in response.text
         assert "동일 조건으로 재실행" in response.text
         assert f"replay_search_log_id={search_log.search_log_id}" in response.text
         assert "No result rows found" in response.text

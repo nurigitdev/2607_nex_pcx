@@ -27,6 +27,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("search_reproducibility.title") == "Search Reproducibility Metadata"
     assert korean("search_replay.action") == "동일 조건으로 재실행"
     assert english("search_replay.action") == "Replay Same Conditions"
+    assert korean("search_export.action") == "JSON Export"
+    assert english("search_export.action") == "JSON Export"
 
 
 def test_translator_falls_back_to_key_when_missing() -> None:
