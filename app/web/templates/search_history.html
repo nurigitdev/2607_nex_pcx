@@ -105,6 +105,7 @@
           <th scope="col">Feedback</th>
           <th scope="col">Latency</th>
           <th scope="col">Created</th>
+          <th scope="col">{{ t("search_log_compare.action") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -128,10 +129,22 @@
           </td>
           <td>{{ item.search_log.total_elapsed_ms or "" }} ms</td>
           <td>{{ item.search_log.created_at }}</td>
+          <td>
+            {% if selected_log and selected_log.search_log.search_log_id != item.search_log.search_log_id %}
+            <a
+              class="btn btn-sm btn-outline-secondary"
+              href="/search/logs?search_log_id={{ selected_log.search_log.search_log_id }}&compare_search_log_id={{ item.search_log.search_log_id }}"
+            >
+              {{ t("search_log_compare.run") }}
+            </a>
+            {% else %}
+            <span class="text-secondary">-</span>
+            {% endif %}
+          </td>
         </tr>
         {% else %}
         <tr>
-          <td class="text-secondary text-center py-5" colspan="9">
+          <td class="text-secondary text-center py-5" colspan="10">
             {% if database_configured %}No search logs found{% else %}No database configured{% endif %}
           </td>
         </tr>
@@ -381,17 +394,33 @@
 
     <form class="search-log-compare-form" method="get">
       <input type="hidden" name="search_log_id" value="{{ selected_log.search_log.search_log_id }}">
+      <input type="hidden" name="actor_user_id" value="{{ selected_actor_user_id }}">
+      <input type="hidden" name="requested_search_scope" value="{{ selected_scope }}">
+      <input type="hidden" name="document_group" value="{{ selected_document_group }}">
+      <input type="hidden" name="fingerprint" value="{{ selected_fingerprint }}">
+      <input type="hidden" name="limit" value="{{ selected_limit }}">
       <div>
         <label class="form-label" for="compare_search_log_id">{{ t("search_log_compare.target") }}</label>
-        <input
-          class="form-control"
+        <select
+          class="form-select"
           id="compare_search_log_id"
           name="compare_search_log_id"
-          type="number"
-          min="1"
-          value="{{ selected_compare_search_log_id }}"
           {% if not database_configured %}disabled{% endif %}
         >
+          <option value="" {% if not selected_compare_search_log_id %}selected{% endif %}>
+            {{ t("search_log_compare.target_placeholder") }}
+          </option>
+          {% for item in logs %}
+          {% if item.search_log.search_log_id != selected_log.search_log.search_log_id %}
+          <option
+            value="{{ item.search_log.search_log_id }}"
+            {% if item.search_log.search_log_id == selected_compare_search_log_id %}selected{% endif %}
+          >
+            #{{ item.search_log.search_log_id }} · {{ item.search_log.query_text }} · {{ item.actor_display_name or item.actor_login_id or t("permissions.none") }}
+          </option>
+          {% endif %}
+          {% endfor %}
+        </select>
       </div>
       <div class="search-log-compare-actions">
         <button class="btn btn-primary" type="submit" {% if not database_configured %}disabled{% endif %}>

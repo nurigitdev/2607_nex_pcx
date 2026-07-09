@@ -133,7 +133,9 @@
   "search_log_compare": {
     "title": "Search Log Compare",
     "subtitle": "Compare reproducibility conditions and result chunk overlap between two search logs.",
-    "target": "Target Log ID",
+    "target": "Target Log",
+    "target_placeholder": "Select a log to compare",
+    "action": "Compare",
     "run": "Compare",
     "fingerprint": "Same Fingerprint",
     "shared_chunks": "Shared Chunks",

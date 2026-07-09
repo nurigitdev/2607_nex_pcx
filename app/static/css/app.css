@@ -1238,7 +1238,8 @@ main.container-fluid {
 .search-log-table td:nth-child(4),
 .search-log-table td:nth-child(5),
 .search-log-table td:nth-child(8),
-.search-log-table td:nth-child(9) {
+.search-log-table td:nth-child(9),
+.search-log-table td:nth-child(10) {
   white-space: nowrap;
 }
 
@@ -1404,7 +1405,7 @@ main.container-fluid {
   align-items: end;
   display: grid;
   gap: var(--pcx-space-3);
-  grid-template-columns: minmax(10rem, 0.5fr) auto;
+  grid-template-columns: minmax(18rem, 1fr) auto;
 }
 
 .search-log-compare-actions {

@@ -210,7 +210,17 @@ def test_search_history_detail_renders_permission_explainability(
         assert f'value="{fingerprint}"' in filtered_response.text
         assert "History permission explainability" in filtered_response.text
         assert "검색 로그 비교" in comparison_response.text
+        assert (
+            '<select\n          class="form-select"\n          id="compare_search_log_id"'
+            in comparison_response.text
+        )
+        assert "비교할 로그를 선택하세요" in comparison_response.text
         assert f'value="{comparison_log.search_log_id}"' in comparison_response.text
+        assert (
+            f"#{comparison_log.search_log_id} · History comparison target"
+            in comparison_response.text
+        )
+        assert f"compare_search_log_id={comparison_log.search_log_id}" in response.text
         assert "Fingerprint 동일" in comparison_response.text
         assert "공통 Chunk" in comparison_response.text
         assert "query_text" in comparison_response.text
