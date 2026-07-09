@@ -13,6 +13,9 @@ from app.core.database import connect
 SEARCH_SCOPES = {"mine", "team", "managed_org", "company"}
 SIMILARITY_METRICS = {"cosine", "l2", "inner_product"}
 FEEDBACK_LABELS = {"correct", "partial", "wrong", "duplicate", "insufficient_context"}
+MAX_REVIEW_TAGS = 12
+MAX_REVIEW_TAG_LENGTH = 40
+MAX_REVIEW_MEMO_LENGTH = 2000
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,10 @@ class SearchLogRecord:
     total_elapsed_ms: int | None
     created_by: str | None
     created_by_user_id: int | None
+    review_tags: tuple[str, ...]
+    review_memo: str | None
+    reviewed_by_user_id: int | None
+    reviewed_at: datetime | None
     created_at: datetime
 
 
@@ -88,6 +95,14 @@ class SearchResultFeedbackInput:
     comment: str | None = None
     created_by: str | None = None
     created_by_user_id: int | None = None
+
+
+@dataclass(frozen=True)
+class SearchLogReviewMetadataInput:
+    search_log_id: int
+    review_tags: tuple[str, ...] = ()
+    review_memo: str | None = None
+    reviewed_by_user_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -215,6 +230,44 @@ def _validate_profiles(profiles: tuple[str, ...]) -> tuple[str, ...]:
     return normalized_profiles
 
 
+def _validate_review_tags(review_tags: tuple[str, ...]) -> tuple[str, ...]:
+    if len(review_tags) > MAX_REVIEW_TAGS:
+        raise InvalidSearchLogError(f"review_tags must contain at most {MAX_REVIEW_TAGS} tags")
+    normalized_tags = tuple(_validate_nonblank(tag, "review_tag") for tag in review_tags)
+    if any(tag is not None and len(tag) > MAX_REVIEW_TAG_LENGTH for tag in normalized_tags):
+        raise InvalidSearchLogError(
+            f"review_tag must be less than or equal to {MAX_REVIEW_TAG_LENGTH} characters"
+        )
+    if len(set(normalized_tags)) != len(normalized_tags):
+        raise InvalidSearchLogError("review_tags must be unique")
+    return tuple(tag for tag in normalized_tags if tag is not None)
+
+
+def _normalize_review_memo(review_memo: str | None) -> str | None:
+    if review_memo is None:
+        return None
+    normalized_memo = review_memo.strip()
+    return normalized_memo or None
+
+
+def validate_search_log_review_metadata_input(
+    metadata_input: SearchLogReviewMetadataInput,
+) -> SearchLogReviewMetadataInput:
+    _require_positive_id(metadata_input.search_log_id, "search_log_id")
+    _require_positive_id(metadata_input.reviewed_by_user_id, "reviewed_by_user_id")
+    normalized_memo = _normalize_review_memo(metadata_input.review_memo)
+    if normalized_memo is not None and len(normalized_memo) > MAX_REVIEW_MEMO_LENGTH:
+        raise InvalidSearchLogError(
+            f"review_memo must be less than or equal to {MAX_REVIEW_MEMO_LENGTH} characters"
+        )
+    return SearchLogReviewMetadataInput(
+        search_log_id=metadata_input.search_log_id,
+        review_tags=_validate_review_tags(metadata_input.review_tags),
+        review_memo=normalized_memo,
+        reviewed_by_user_id=metadata_input.reviewed_by_user_id,
+    )
+
+
 def _validate_elapsed_ms(elapsed_ms: int | None, field_name: str) -> None:
     if elapsed_ms is not None and elapsed_ms < 0:
         raise InvalidSearchLogError(f"{field_name} must be greater than or equal to 0")
@@ -326,6 +379,12 @@ def _row_to_search_log_record(row: dict[str, Any]) -> SearchLogRecord:
         created_by_user_id=(
             int(row["created_by_user_id"]) if row["created_by_user_id"] is not None else None
         ),
+        review_tags=tuple(row["review_tags"] or ()),
+        review_memo=row["review_memo"],
+        reviewed_by_user_id=(
+            int(row["reviewed_by_user_id"]) if row["reviewed_by_user_id"] is not None else None
+        ),
+        reviewed_at=row["reviewed_at"],
         created_at=row["created_at"],
     )
 
@@ -505,6 +564,34 @@ def get_search_log(database_url: str, search_log_id: int) -> SearchLogRecord | N
             cursor.execute(
                 "SELECT * FROM search_logs WHERE search_log_id = %s",
                 (search_log_id,),
+            )
+            row = cursor.fetchone()
+    return _row_to_search_log_record(dict(row)) if row else None
+
+
+def update_search_log_review_metadata(
+    database_url: str,
+    metadata_input: SearchLogReviewMetadataInput,
+) -> SearchLogRecord | None:
+    validated = validate_search_log_review_metadata_input(metadata_input)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE search_logs
+                SET review_tags = %s,
+                    review_memo = %s,
+                    reviewed_by_user_id = %s,
+                    reviewed_at = now()
+                WHERE search_log_id = %s
+                RETURNING *
+                """,
+                (
+                    Json(list(validated.review_tags)),
+                    validated.review_memo,
+                    validated.reviewed_by_user_id,
+                    validated.search_log_id,
+                ),
             )
             row = cursor.fetchone()
     return _row_to_search_log_record(dict(row)) if row else None

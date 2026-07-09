@@ -4,8 +4,10 @@ import pytest
 
 from app.core.database import connect
 from app.core.search_logs import (
+    InvalidSearchLogError,
     SearchLogInput,
     SearchLogResultInput,
+    SearchLogReviewMetadataInput,
     SearchResultFeedbackInput,
     create_search_log,
     create_search_log_results,
@@ -16,6 +18,7 @@ from app.core.search_logs import (
     list_search_log_results,
     list_search_logs,
     summarize_search_feedback,
+    update_search_log_review_metadata,
 )
 
 pytestmark = pytest.mark.integration
@@ -158,6 +161,15 @@ def test_search_log_repository_persists_results_and_feedback(
                 created_by_user_id=user_id,
             ),
         )
+        updated_log = update_search_log_review_metadata(
+            migrated_database_url,
+            SearchLogReviewMetadataInput(
+                search_log_id=search_log.search_log_id,
+                review_tags=("baseline", "needs-review"),
+                review_memo=" Review after initial experiment ",
+                reviewed_by_user_id=user_id,
+            ),
+        )
         stored_log = get_search_log(migrated_database_url, search_log.search_log_id)
         stored_result = get_search_log_result(
             migrated_database_url,
@@ -179,11 +191,20 @@ def test_search_log_repository_persists_results_and_feedback(
             profile for profile in summary.profiles if profile.profile_name == "kure_v1_1024"
         )
 
-        assert stored_log == search_log
+        assert search_log.review_tags == ()
+        assert search_log.review_memo is None
+        assert search_log.reviewed_by_user_id is None
+        assert search_log.reviewed_at is None
+        assert updated_log is not None
+        assert stored_log == updated_log
+        assert updated_log.review_tags == ("baseline", "needs-review")
+        assert updated_log.review_memo == "Review after initial experiment"
+        assert updated_log.reviewed_by_user_id == user_id
+        assert updated_log.reviewed_at is not None
         assert stored_result == results[0]
-        assert search_log.profiles == ("kure_v1_1024",)
-        assert search_log.permission_filter_metadata == {"actor_user_id": user_id}
-        assert search_log.query_runtime_metadata == {"adapter": "mock"}
+        assert updated_log.profiles == ("kure_v1_1024",)
+        assert updated_log.permission_filter_metadata == {"actor_user_id": user_id}
+        assert updated_log.query_runtime_metadata == {"adapter": "mock"}
         assert stored_results == results
         assert results[0].rank == 1
         assert results[0].chunk_id == chunk_id
@@ -199,12 +220,12 @@ def test_search_log_repository_persists_results_and_feedback(
         assert profile_summary.average_rank == pytest.approx(1)
         assert profile_summary.average_score == pytest.approx(0.88)
         assert len(history) == 1
-        assert history[0].search_log == search_log
+        assert history[0].search_log == updated_log
         assert history[0].actor_login_id == "alice.member"
         assert history[0].result_count == 1
         assert history[0].feedback_count == 1
         assert detail is not None
-        assert detail.search_log == search_log
+        assert detail.search_log == updated_log
         assert detail.actor_login_id == "alice.member"
         assert len(detail.results) == 1
         assert detail.results[0].search_log_result == results[0]
@@ -221,3 +242,33 @@ def test_search_log_repository_returns_none_and_empty_results_for_missing_log(
     assert get_search_log_detail(migrated_database_url, 999999999) is None
     assert get_search_log_result(migrated_database_url, 999999999) is None
     assert list_search_log_results(migrated_database_url, 999999999) == []
+    assert (
+        update_search_log_review_metadata(
+            migrated_database_url,
+            SearchLogReviewMetadataInput(
+                search_log_id=999999999,
+                review_tags=("missing",),
+            ),
+        )
+        is None
+    )
+
+
+def test_search_log_review_metadata_validation(migrated_database_url: str) -> None:
+    with pytest.raises(InvalidSearchLogError, match="review_tags must be unique"):
+        update_search_log_review_metadata(
+            migrated_database_url,
+            SearchLogReviewMetadataInput(
+                search_log_id=1,
+                review_tags=("duplicate", "duplicate"),
+            ),
+        )
+
+    with pytest.raises(InvalidSearchLogError, match="review_tag must not be blank"):
+        update_search_log_review_metadata(
+            migrated_database_url,
+            SearchLogReviewMetadataInput(
+                search_log_id=1,
+                review_tags=(" ",),
+            ),
+        )

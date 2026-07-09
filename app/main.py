@@ -180,6 +180,7 @@ from app.core.search_logs import (
     SearchLogListItem,
     SearchLogRecord,
     SearchLogResultDetailRecord,
+    SearchLogReviewMetadataInput,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
     create_search_result_feedback,
@@ -188,6 +189,7 @@ from app.core.search_logs import (
     get_search_log_result,
     list_search_logs,
     summarize_search_feedback,
+    update_search_log_review_metadata,
 )
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 
@@ -239,6 +241,12 @@ class SearchFeedbackRequest(BaseModel):
     search_log_result_id: int = Field(ge=1)
     relevance_label: str
     comment: str | None = None
+
+
+class SearchLogReviewMetadataRequest(BaseModel):
+    review_tags: list[str] = Field(default_factory=list, max_length=12)
+    review_memo: str | None = Field(default=None, max_length=2000)
+    reviewed_by_user_id: int | None = Field(default=None, ge=1)
 
 
 class DocumentPermissionUpdateRequest(BaseModel):
@@ -762,6 +770,10 @@ def search_log_record_payload(item: SearchLogListItem) -> dict[str, object]:
         "insufficient_context_count": item.insufficient_context_count,
         "created_by": search_log.created_by,
         "created_by_user_id": search_log.created_by_user_id,
+        "review_tags": list(search_log.review_tags),
+        "review_memo": search_log.review_memo,
+        "reviewed_by_user_id": search_log.reviewed_by_user_id,
+        "reviewed_at": _datetime_response(search_log.reviewed_at),
         "created_at": _datetime_response(search_log.created_at),
         "latest_feedback_at": _datetime_response(item.latest_feedback_at),
     }
@@ -1023,6 +1035,18 @@ def search_experiment_report_markdown(
 
     lines.extend(
         [
+            "",
+            "## Review Metadata",
+            "",
+            *_markdown_table(
+                ["Field", "Value"],
+                [
+                    ["Review Tags", list(search_log.review_tags)],
+                    ["Review Memo", search_log.review_memo],
+                    ["Reviewed By User ID", search_log.reviewed_by_user_id],
+                    ["Reviewed At", _datetime_response(search_log.reviewed_at)],
+                ],
+            ),
             "",
             "## Feedback Summary",
             "",
@@ -2627,6 +2651,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return JSONResponse(content=search_log_detail_payload(detail))
+
+    @app.patch("/api/search/logs/{search_log_id}/metadata")
+    def api_update_search_log_review_metadata(
+        search_log_id: int,
+        payload: SearchLogReviewMetadataRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            updated = update_search_log_review_metadata(
+                settings.database_url,
+                SearchLogReviewMetadataInput(
+                    search_log_id=search_log_id,
+                    review_tags=tuple(payload.review_tags),
+                    review_memo=payload.review_memo,
+                    reviewed_by_user_id=payload.reviewed_by_user_id,
+                ),
+            )
+            detail = (
+                get_search_log_detail(settings.database_url, updated.search_log_id)
+                if updated is not None
+                else None
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log not found.",
+            )
+
+        return JSONResponse(content={"search_log": search_log_detail_payload(detail)["search_log"]})
 
     @app.get("/api/search/logs/{search_log_id}/export")
     def api_export_search_log(

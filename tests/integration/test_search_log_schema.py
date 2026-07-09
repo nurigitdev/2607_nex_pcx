@@ -116,6 +116,8 @@ def test_search_log_tables_and_indexes_exist(migrated_database_url: str) -> None
               'idx_search_logs_actor',
               'idx_search_logs_scope',
               'idx_search_logs_chunk_policy',
+              'idx_search_logs_review_tags',
+              'idx_search_logs_reviewed_at',
               'idx_search_log_results_log_profile',
               'idx_search_log_results_chunk',
               'idx_search_result_feedback_result',
@@ -123,9 +125,25 @@ def test_search_log_tables_and_indexes_exist(migrated_database_url: str) -> None
           )
         """,
     )
+    column_count = fetch_one(
+        migrated_database_url,
+        """
+        SELECT count(*) AS count
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'search_logs'
+          AND column_name IN (
+              'review_tags',
+              'review_memo',
+              'reviewed_by_user_id',
+              'reviewed_at'
+          )
+        """,
+    )
 
     assert table_count["count"] == 3
-    assert index_count["count"] == 8
+    assert index_count["count"] == 10
+    assert column_count["count"] == 4
 
 
 def test_search_log_result_feedback_defaults_and_cascade(

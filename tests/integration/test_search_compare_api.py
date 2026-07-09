@@ -319,6 +319,22 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                     "right_search_log_id": 999999999,
                 },
             )
+            metadata_response = client.patch(
+                f"/api/search/logs/{body['search_log_id']}/metadata",
+                json={
+                    "review_tags": ["baseline", "permission-review"],
+                    "review_memo": "Important search experiment",
+                    "reviewed_by_user_id": ids["alice.member"],
+                },
+            )
+            invalid_metadata_response = client.patch(
+                f"/api/search/logs/{body['search_log_id']}/metadata",
+                json={"review_tags": ["duplicate", "duplicate"]},
+            )
+            missing_metadata_response = client.patch(
+                "/api/search/logs/999999999/metadata",
+                json={"review_tags": ["missing"]},
+            )
             report_response = client.get(
                 f"/api/search/logs/{body['search_log_id']}/experiment-report"
             )
@@ -332,6 +348,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             )
         compare_body = compare_response.json()
         compare_fields = {item["field"]: item for item in compare_body["reproducibility"]["fields"]}
+        metadata_body = metadata_response.json()
         assert matrix_body["query_text"] == query_text
         assert matrix_body["top_k"] == 5
         assert matrix_by_actor[ids["alice.member"]]["result_count"] == 1
@@ -363,6 +380,17 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert compare_body["result_overlap"]["shared_chunk_count"] == 1
         assert compare_body["result_overlap"]["shared_chunk_ids"] == [visible_chunk_id]
         assert missing_compare_response.status_code == 404
+        assert metadata_response.status_code == 200
+        assert metadata_body["search_log"]["review_tags"] == [
+            "baseline",
+            "permission-review",
+        ]
+        assert metadata_body["search_log"]["review_memo"] == "Important search experiment"
+        assert metadata_body["search_log"]["reviewed_by_user_id"] == ids["alice.member"]
+        assert metadata_body["search_log"]["reviewed_at"]
+        assert invalid_metadata_response.status_code == 400
+        assert "review_tags must be unique" in invalid_metadata_response.json()["detail"]
+        assert missing_metadata_response.status_code == 404
         assert feedback_response.status_code == 201
         assert feedback_body["feedback"]["relevance_label"] == "correct"
         assert feedback_body["feedback"]["created_by"] == "search-compare-ui"
@@ -475,6 +503,8 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert f"Search Log ID: {body['search_log_id']}" in report_response.text
         assert f"| Query | {query_text} |" in report_response.text
         assert "visible company fixture" in report_response.text
+        assert "| Review Tags | baseline, permission-review |" in report_response.text
+        assert "| Review Memo | Important search experiment |" in report_response.text
         assert "correct" in report_response.text
         assert compare_report_response.status_code == 200
         assert "## Compare Summary" in compare_report_response.text
