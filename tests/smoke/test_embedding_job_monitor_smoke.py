@@ -82,8 +82,11 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
 
     assert response.status_code == 200
     assert "임베딩 Provider 라우팅" in response.text
+    assert "Provider Route Health" in response.text
+    assert "data-route-health-panel" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert "/api/admin/embedding-provider-routes" in response.text
+    assert "/api/admin/embedding-provider-routes/health" in response.text
 
 
 def test_embedding_model_readiness_page_shows_without_database_url(tmp_path) -> None:

@@ -6,7 +6,10 @@
     <h1 class="h3 mb-1">{{ t("embedding_routes.title") }}</h1>
     <p class="text-secondary mb-0">{{ t("embedding_routes.subtitle") }}</p>
   </div>
-  <a class="btn btn-outline-secondary" href="/api/admin/embedding-provider-routes">{{ t("common.api") }}</a>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="/api/admin/embedding-provider-routes">{{ t("common.api") }}</a>
+    <a class="btn btn-outline-secondary" href="/api/admin/embedding-provider-routes/health">{{ t("embedding_routes.health_api") }}</a>
+  </div>
 </div>
 
 {% if error_message %}
@@ -65,6 +68,58 @@
   </form>
 </section>
 
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-route-health-panel
+  data-health-api-url="/api/admin/embedding-provider-routes/health"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.health_summary") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.health_help") }}</div>
+    </div>
+    <span class="badge text-bg-light border" data-route-health-loading>{{ t("embedding_routes.loading_health") }}</span>
+  </div>
+  <section class="document-detail-grid p-3 pt-0">
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.ready_routes") }}</div>
+      <div class="metric-value" data-route-health-ready-count>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.checked_routes") }}</div>
+      <div class="metric-value" data-route-health-checked-count>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.total_routes") }}</div>
+      <div class="metric-value" data-route-health-route-count>-</div>
+    </div>
+  </section>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.profile") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_model") }}</th>
+          <th scope="col">{{ t("embedding_routes.device") }}</th>
+          <th scope="col">{{ t("embedding_routes.dimension") }}</th>
+          <th scope="col">{{ t("embedding_routes.elapsed") }}</th>
+          <th scope="col">{{ t("embedding_routes.validation") }}</th>
+        </tr>
+      </thead>
+      <tbody data-route-health-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="8">
+            {% if database_configured %}{{ t("embedding_routes.loading_health") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden">
   <div class="dashboard-panel-header p-3">
     <div>
@@ -116,4 +171,142 @@
     </table>
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const panel = document.querySelector("[data-route-health-panel]");
+  if (!panel) {
+    return;
+  }
+
+  const labels = {
+    noDatabase: {{ t("common.no_database") | tojson }},
+    noRoutes: {{ t("embedding_routes.no_routes") | tojson }},
+    healthFailed: {{ t("embedding_routes.health_failed") | tojson }},
+    healthLoaded: {{ t("embedding_routes.health_loaded") | tojson }},
+    none: "-",
+    status: {
+      ready: {{ t("embedding_routes.status_ready") | tojson }},
+      not_ready: {{ t("embedding_routes.status_not_ready") | tojson }},
+      mismatch: {{ t("embedding_routes.status_mismatch") | tojson }},
+      unreachable: {{ t("embedding_routes.status_unreachable") | tojson }},
+      skipped: {{ t("embedding_routes.status_skipped") | tojson }},
+      unsupported: {{ t("embedding_routes.status_unsupported") | tojson }},
+    },
+  };
+
+  const statusClasses = {
+    ready: "text-bg-success",
+    not_ready: "text-bg-warning",
+    mismatch: "text-bg-warning",
+    unreachable: "text-bg-danger",
+    skipped: "text-bg-secondary",
+    unsupported: "text-bg-danger",
+  };
+
+  const readyCount = panel.querySelector("[data-route-health-ready-count]");
+  const checkedCount = panel.querySelector("[data-route-health-checked-count]");
+  const routeCount = panel.querySelector("[data-route-health-route-count]");
+  const loading = panel.querySelector("[data-route-health-loading]");
+  const tbody = panel.querySelector("[data-route-health-table]");
+
+  function setSummary(body) {
+    readyCount.textContent = body.ready_count ?? "-";
+    checkedCount.textContent = body.checked_count ?? "-";
+    routeCount.textContent = body.route_count ?? "-";
+  }
+
+  function statusBadge(status) {
+    const badge = document.createElement("span");
+    badge.className = `badge ${statusClasses[status] || "text-bg-light border"}`;
+    badge.textContent = labels.status[status] || status || labels.none;
+    return badge;
+  }
+
+  function appendTextCell(row, value, className = "") {
+    const cell = document.createElement("td");
+    if (className) {
+      cell.className = className;
+    }
+    cell.textContent = value || labels.none;
+    row.appendChild(cell);
+  }
+
+  function renderEmpty(message) {
+    tbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 8;
+    cell.textContent = message;
+    row.appendChild(cell);
+    tbody.appendChild(row);
+  }
+
+  function renderRoutes(routes) {
+    tbody.replaceChildren();
+    if (!routes.length) {
+      renderEmpty(labels.noRoutes);
+      return;
+    }
+
+    for (const routeHealth of routes) {
+      const route = routeHealth.route || {};
+      const row = document.createElement("tr");
+      appendTextCell(row, route.profile_name);
+      appendTextCell(row, route.provider_name);
+
+      const statusCell = document.createElement("td");
+      statusCell.appendChild(statusBadge(routeHealth.status));
+      row.appendChild(statusCell);
+
+      appendTextCell(row, routeHealth.provider_model_id);
+      appendTextCell(row, routeHealth.device);
+      appendTextCell(row, routeHealth.dimension == null ? labels.none : String(routeHealth.dimension));
+      appendTextCell(row, routeHealth.elapsed_ms == null ? labels.none : `${routeHealth.elapsed_ms}ms`);
+
+      const validationCell = document.createElement("td");
+      const validationMessages = [
+        ...(routeHealth.validation_errors || []),
+        ...(routeHealth.error_message ? [routeHealth.error_message] : []),
+      ];
+      validationCell.className = validationMessages.length ? "text-danger" : "text-secondary";
+      validationCell.textContent = validationMessages.length ? validationMessages.join("; ") : labels.none;
+      row.appendChild(validationCell);
+      tbody.appendChild(row);
+    }
+  }
+
+  async function loadHealth() {
+    if (panel.dataset.databaseConfigured !== "true") {
+      loading.textContent = labels.noDatabase;
+      renderEmpty(labels.noDatabase);
+      return;
+    }
+
+    try {
+      const response = await fetch(panel.dataset.healthApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.healthFailed);
+      }
+      setSummary(body);
+      renderRoutes(body.routes || []);
+      loading.textContent = labels.healthLoaded;
+    } catch (error) {
+      readyCount.textContent = "-";
+      checkedCount.textContent = "-";
+      routeCount.textContent = "-";
+      loading.textContent = labels.healthFailed;
+      renderEmpty(error.message || labels.healthFailed);
+    }
+  }
+
+  loadHealth();
+})();
+</script>
 {% endblock %}
