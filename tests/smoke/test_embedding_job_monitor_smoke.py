@@ -49,6 +49,19 @@ def test_embedding_model_readiness_api_reports_local_bundle_state(tmp_path) -> N
     ]
 
 
+def test_embedding_provider_health_api_reports_mock_provider() -> None:
+    app = create_app(Settings())
+
+    with TestClient(app) as client:
+        response = client.get("/api/embedding/providers/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider_mode"] == "mock"
+    assert body["ready"] is True
+    assert body["provider_model_id"] == "mock-provider"
+
+
 def test_embedding_model_readiness_page_shows_without_database_url(tmp_path) -> None:
     app = create_app(Settings(embedding_models_dir=tmp_path))
 

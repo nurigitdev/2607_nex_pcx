@@ -235,3 +235,5 @@ Process one pending embedding job with the configured provider:
   --provider-mode remote \
   --remote-provider-url http://127.0.0.1:9000
 ```
+
+Provider health is exposed at `/api/embedding/providers/health`.

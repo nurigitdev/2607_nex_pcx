@@ -51,6 +51,7 @@ from app.core.embedding_model_distribution import (
     EmbeddingModelReadiness,
     audit_embedding_model_readiness,
 )
+from app.core.embedding_provider_health import get_embedding_provider_health_status
 from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
     InvalidEmbeddingVectorError,
@@ -2608,6 +2609,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "model_count": len(readiness),
                 "models": [embedding_model_readiness_payload(item) for item in readiness],
             }
+        )
+
+    @app.get("/api/embedding/providers/health")
+    def api_embedding_provider_health() -> JSONResponse:
+        provider_health = get_embedding_provider_health_status(settings)
+        return JSONResponse(
+            status_code=provider_health.status_code,
+            content=provider_health.payload,
         )
 
     @app.get("/api/embedding/jobs")
