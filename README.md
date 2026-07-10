@@ -189,6 +189,13 @@ Download all model repositories into the default bundle root:
 ./.venv/bin/python scripts/download_embedding_models.py
 ```
 
+After downloading, run a local smoke check for the SentenceTransformers-backed models:
+
+```bash
+./.venv/bin/python scripts/check_embedding_models.py --dry-run
+./.venv/bin/python scripts/check_embedding_models.py --model kure_v1 --json
+```
+
 The 4 embedding profiles map to 3 downloaded model directories:
 
 - `models/kure_v1` for `nlpai-lab/KURE-v1` / `kure_v1_1024`

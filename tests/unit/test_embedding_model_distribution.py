@@ -1,7 +1,9 @@
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +15,20 @@ from app.core.embedding_model_distribution import (
     list_embedding_model_distributions,
     resolve_embedding_model_dir,
 )
+
+
+def _load_check_embedding_models_module():
+    script_path = Path(__file__).resolve().parents[2] / "scripts" / "check_embedding_models.py"
+    spec = importlib.util.spec_from_file_location("check_embedding_models_script", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+check_embedding_models = _load_check_embedding_models_module()
 
 
 def test_embedding_model_distribution_manifest_maps_profiles_to_three_models() -> None:
@@ -111,3 +127,72 @@ def test_download_embedding_models_script_prints_json_dry_run_plan() -> None:
             "note": "Shared local model for both Qwen output-dimension profiles.",
         }
     ]
+
+
+def test_check_embedding_models_script_dry_run_defaults_to_sentence_transformers_models(
+    tmp_path: Path,
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_embedding_models.py",
+            "--models-dir",
+            str(tmp_path),
+            "--dry-run",
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(result.stdout)
+
+    assert payload["models_dir"] == str(tmp_path)
+    assert payload["dry_run"] is True
+    assert [model["model_key"] for model in payload["models"]] == ["kure_v1", "bge_m3"]
+    assert payload["models"][0]["ready"] is False
+
+
+def test_embedding_model_smoke_uses_local_sentence_transformer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_dir = tmp_path / "kure_v1"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_bytes(b"weights")
+    calls = {}
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_source, **kwargs) -> None:
+            calls["model_source"] = model_source
+            calls["kwargs"] = kwargs
+
+        def encode(self, texts, **kwargs):
+            calls["texts"] = texts
+            calls["encode_kwargs"] = kwargs
+            return [[1.0 for _ in range(1024)] for _ in texts]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
+    )
+
+    result = check_embedding_models.run_embedding_model_smoke(
+        get_embedding_model_distribution("kure_v1"),
+        models_dir=tmp_path,
+        device="cpu",
+        texts=("local smoke text",),
+    )
+
+    assert result.ok is True
+    assert result.status == "passed"
+    assert result.input_count == 1
+    assert result.dimension == 1024
+    assert result.local_dir == str(model_dir)
+    assert calls["model_source"] == str(model_dir)
+    assert calls["kwargs"] == {"device": "cpu"}
+    assert calls["texts"] == ["local smoke text"]
