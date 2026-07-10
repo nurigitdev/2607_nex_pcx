@@ -243,3 +243,13 @@ Run the standalone embedding provider skeleton for contract tests:
 ```bash
 ./.venv/bin/uvicorn app.embedding_provider_service:app --host 127.0.0.1 --port 9000
 ```
+
+Run the provider with a preloaded local SentenceTransformers model:
+
+```bash
+NEX_PCX_PROVIDER_BACKEND=sentence_transformers \
+NEX_PCX_PROVIDER_MODEL_KEY=kure_v1 \
+NEX_PCX_PROVIDER_PROFILE_NAMES=kure_v1_1024 \
+NEX_PCX_PROVIDER_MODEL_ID=local-kure-v1 \
+./.venv/bin/uvicorn app.embedding_provider_service:app --host 127.0.0.1 --port 9000
+```

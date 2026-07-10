@@ -1,3 +1,6 @@
+import sys
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
 from app.embedding_provider_service import EmbeddingProviderServiceSettings, create_app
@@ -97,3 +100,65 @@ def test_embedding_provider_service_rejects_embeddings_when_not_ready() -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Embedding provider is not ready."
+
+
+def test_embedding_provider_service_can_use_local_sentence_transformers_backend(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    calls = {}
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_source, **kwargs) -> None:
+            calls["model_source"] = model_source
+            calls["kwargs"] = kwargs
+
+        def encode(self, texts, **kwargs):
+            calls["texts"] = texts
+            calls["encode_kwargs"] = kwargs
+            return [[float(index + 1) for _ in range(1024)] for index, _ in enumerate(texts)]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
+    )
+    model_dir = tmp_path / "kure_v1"
+    model_dir.mkdir()
+    app = create_app(
+        EmbeddingProviderServiceSettings(
+            backend="sentence_transformers",
+            provider_model_id="local-kure-v1",
+            model_key="kure_v1",
+            profile_names=("kure_v1_1024",),
+            dimension=1024,
+            device="cpu",
+            models_dir=tmp_path,
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/embeddings",
+            json={
+                "profile_name": "kure_v1_1024",
+                "model_key": "kure_v1",
+                "input_type": "document",
+                "texts": ["alpha", "beta"],
+                "output_dimension": 1024,
+                "trace_id": "local-provider-trace",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider_model_id"] == "local-kure-v1"
+    assert body["input_count"] == 2
+    assert body["embeddings"][0][0] == 1.0
+    assert body["embeddings"][1][0] == 2.0
+    assert body["runtime_metadata"]["backend"] == "sentence_transformers"
+    assert body["runtime_metadata"]["model_source"] == str(model_dir)
+    assert body["runtime_metadata"]["trace_id"] == "local-provider-trace"
+    assert calls["model_source"] == str(model_dir)
+    assert calls["kwargs"] == {"device": "cpu"}
+    assert calls["texts"] == ["alpha", "beta"]
