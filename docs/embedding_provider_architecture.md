@@ -43,3 +43,6 @@ pgvector storage, and experiment metadata.
 
 Qwen3 1000 and Qwen3 2560 profiles should share the same remote model service while
 preserving separate output-dimension and storage-type metadata.
+
+See `docs/gpu_embedding_provider_deployment.md` for GPU server placement, offline model
+bundle handling, provider startup checks, and operational failure modes.
