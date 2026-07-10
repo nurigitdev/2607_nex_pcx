@@ -226,3 +226,12 @@ Runtime provider selection is controlled by:
 - `NEX_PCX_EMBEDDING_PROVIDER_MODE`: `mock` by default, or `remote`
 - `NEX_PCX_REMOTE_EMBEDDING_PROVIDER_URL`: required when provider mode is `remote`
 - `NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS`: remote request timeout, default `30.0`
+
+Process one pending embedding job with the configured provider:
+
+```bash
+./.venv/bin/python scripts/process_embedding_job.py --provider-mode mock
+./.venv/bin/python scripts/process_embedding_job.py \
+  --provider-mode remote \
+  --remote-provider-url http://127.0.0.1:9000
+```
