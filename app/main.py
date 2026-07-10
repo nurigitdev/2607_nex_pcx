@@ -534,6 +534,25 @@ def pipeline_job_event_payload(event: PipelineJobEventRecord) -> dict[str, objec
     }
 
 
+def embedding_job_provider_route_failover_payload(
+    job: EmbeddingJobRecord,
+) -> dict[str, object] | None:
+    metadata = job.runtime_metadata or {}
+    candidate_count = metadata.get("provider_route_failover_candidate_count")
+    attempt = metadata.get("provider_route_failover_attempt")
+    failed_attempts = metadata.get("provider_route_failed_attempts")
+    if candidate_count is None and attempt is None and not failed_attempts:
+        return None
+    return {
+        "candidate_count": candidate_count,
+        "succeeded_attempt": attempt,
+        "selected_route_id": metadata.get("provider_route_id"),
+        "selected_provider_name": metadata.get("provider_route_name"),
+        "selected_route_priority": metadata.get("provider_route_priority"),
+        "failed_attempts": failed_attempts if isinstance(failed_attempts, list) else [],
+    }
+
+
 def embedding_job_payload(job: EmbeddingJobRecord) -> dict[str, object]:
     return {
         "job_id": job.job_id,
@@ -548,6 +567,7 @@ def embedding_job_payload(job: EmbeddingJobRecord) -> dict[str, object]:
         "error_message": job.error_message,
         "last_error_at": _datetime_response(job.last_error_at),
         "runtime_metadata": job.runtime_metadata,
+        "provider_route_failover": embedding_job_provider_route_failover_payload(job),
         "created_at": _datetime_response(job.created_at),
         "started_at": _datetime_response(job.started_at),
         "finished_at": _datetime_response(job.finished_at),

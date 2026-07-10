@@ -131,6 +131,54 @@
       {% endif %}
     </section>
   </div>
+  {% set failover_metadata = selected_job.runtime_metadata or {} %}
+  {% set failed_attempts = failover_metadata.get("provider_route_failed_attempts") or [] %}
+  {% if failover_metadata.get("provider_route_failover_candidate_count") or failed_attempts %}
+  <div class="col-12">
+    <section class="metric-card bg-white p-3">
+      <h2 class="h5 mb-3">Provider Route Failover</h2>
+      <dl class="job-detail-list mb-3">
+        <dt>Candidate Count</dt>
+        <dd>{{ failover_metadata.get("provider_route_failover_candidate_count") or "-" }}</dd>
+        <dt>Succeeded Attempt</dt>
+        <dd>{{ failover_metadata.get("provider_route_failover_attempt") or "-" }}</dd>
+        <dt>Selected Route</dt>
+        <dd>
+          {{ failover_metadata.get("provider_route_name") or "-" }}
+          {% if failover_metadata.get("provider_route_id") %}
+          #{{ failover_metadata.get("provider_route_id") }}
+          {% endif %}
+        </dd>
+      </dl>
+      {% if failed_attempts %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Provider</th>
+              <th scope="col">Mode</th>
+              <th scope="col">Priority</th>
+              <th scope="col">Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for attempt in failed_attempts %}
+            <tr>
+              <td>{{ attempt.get("provider_name") or "-" }}</td>
+              <td>{{ attempt.get("provider_mode") or "-" }}</td>
+              <td>{{ attempt.get("priority") if attempt.get("priority") is not none else "-" }}</td>
+              <td class="text-danger">{{ attempt.get("error_message") or "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-secondary">No failed route attempts recorded</div>
+      {% endif %}
+    </section>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

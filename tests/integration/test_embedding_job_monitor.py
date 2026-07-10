@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from psycopg.types.json import Json
 
 from app.core.config import Settings
 from app.core.database import connect
@@ -72,6 +73,23 @@ def _cleanup_file(database_url: str, file_id: int) -> None:
             cursor.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
 
 
+def _update_embedding_job_runtime_metadata(
+    database_url: str,
+    job_id: int,
+    runtime_metadata: dict[str, object],
+) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE embedding_jobs
+                SET runtime_metadata = %s
+                WHERE job_id = %s
+                """,
+                (Json(runtime_metadata), job_id),
+            )
+
+
 def test_embedding_job_monitor_api_and_ui(
     migrated_database_url: str,
     tmp_path: Path,
@@ -92,6 +110,27 @@ def test_embedding_job_monitor_api_and_ui(
         )
         assert processed.job is not None
         assert processed.job.job_id == created.job.job_id
+        _update_embedding_job_runtime_metadata(
+            migrated_database_url,
+            created.job.job_id,
+            {
+                "provider_runtime_source": "route",
+                "provider_route_id": 11,
+                "provider_route_name": "gpu-ready",
+                "provider_route_priority": 1,
+                "provider_route_failover_candidate_count": 2,
+                "provider_route_failover_attempt": 2,
+                "provider_route_failed_attempts": [
+                    {
+                        "route_id": 10,
+                        "provider_name": "gpu-down",
+                        "provider_mode": "remote",
+                        "priority": 0,
+                        "error_message": "gpu-down unavailable",
+                    }
+                ],
+            },
+        )
 
         app = create_app(
             Settings(database_url=migrated_database_url, upload_storage_dir=tmp_path),
@@ -107,11 +146,26 @@ def test_embedding_job_monitor_api_and_ui(
 
         list_payload = list_response.json()
         detail_payload = detail_response.json()
+        listed_job = next(
+            job for job in list_payload["jobs"] if job["job_id"] == created.job.job_id
+        )
 
         assert list_response.status_code == 200
         assert any(job["job_id"] == created.job.job_id for job in list_payload["jobs"])
+        assert listed_job["provider_route_failover"]["candidate_count"] == 2
+        assert listed_job["provider_route_failover"]["succeeded_attempt"] == 2
+        assert listed_job["provider_route_failover"]["selected_provider_name"] == "gpu-ready"
         assert detail_response.status_code == 200
         assert detail_payload["job"]["status"] == "succeeded"
+        assert detail_payload["job"]["provider_route_failover"]["failed_attempts"] == [
+            {
+                "route_id": 10,
+                "provider_name": "gpu-down",
+                "provider_mode": "remote",
+                "priority": 0,
+                "error_message": "gpu-down unavailable",
+            }
+        ]
         assert detail_payload["embedding"]["dimension"] == 1024
         assert detail_payload["embedding"]["table_name"] == "chunk_embeddings_kure_v1_1024"
         assert page_response.status_code == 200
@@ -119,6 +173,9 @@ def test_embedding_job_monitor_api_and_ui(
         assert f"#{created.job.job_id}" in page_response.text
         assert "kure_v1_1024" in page_response.text
         assert "chunk_embeddings_kure_v1_1024" in page_response.text
+        assert "Provider Route Failover" in page_response.text
+        assert "gpu-ready" in page_response.text
+        assert "gpu-down unavailable" in page_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)
 
