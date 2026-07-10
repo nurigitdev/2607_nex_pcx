@@ -1,15 +1,26 @@
 from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.core.database import connect
 from app.core.embedding_jobs import EmbeddingJobInput, create_embedding_job, get_embedding_job
-from app.core.embedding_providers import EmbeddingProviderRequest, EmbeddingProviderResponse
+from app.core.embedding_providers import (
+    EmbeddingProviderRequest,
+    EmbeddingProviderResponse,
+    RemoteEmbeddingProviderClient,
+)
 from app.core.embedding_vectors import get_chunk_embedding
 from app.core.embedding_worker import (
     ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
     process_next_embedding_job_with_provider,
     process_next_mock_embedding_job,
+)
+from app.embedding_provider_service import (
+    EmbeddingProviderServiceSettings,
+)
+from app.embedding_provider_service import (
+    create_app as create_provider_app,
 )
 
 pytestmark = pytest.mark.integration
@@ -219,6 +230,71 @@ def test_embedding_worker_can_store_vector_from_custom_provider(
         _cleanup_fixture(migrated_database_url, file_id)
 
 
+def test_embedding_worker_stores_vector_from_remote_provider_service(
+    migrated_database_url: str,
+) -> None:
+    chunk_text = "Remote provider service stores an embedding through the worker."
+    file_id, chunk_id = _create_chunk(migrated_database_url, chunk_text)
+    provider_app = create_provider_app(
+        EmbeddingProviderServiceSettings(
+            provider_model_id="remote-provider-e2e",
+            model_key="kure_v1",
+            profile_names=("kure_v1_1024",),
+            dimension=1024,
+            device="cuda:0",
+        )
+    )
+    try:
+        created = create_embedding_job(
+            migrated_database_url,
+            EmbeddingJobInput(chunk_id=chunk_id, profile_name="kure_v1_1024"),
+        )
+
+        with TestClient(provider_app, base_url="http://provider.test") as http_client:
+            provider = RemoteEmbeddingProviderClient(
+                "http://provider.test",
+                timeout_seconds=3.0,
+                http_client=_TestClientEmbeddingProviderHTTPClient(http_client),
+            )
+
+            health = provider.health()
+            result = process_next_embedding_job_with_provider(
+                migrated_database_url,
+                worker_name="remote-provider-worker",
+                provider=provider,
+                profile_name="kure_v1_1024",
+                success_message="Remote embedding stored",
+            )
+
+        stored_job = get_embedding_job(migrated_database_url, created.job.job_id)
+        stored_vector = get_chunk_embedding(
+            migrated_database_url,
+            profile_name="kure_v1_1024",
+            chunk_id=chunk_id,
+        )
+
+        assert health.ready is True
+        assert health.provider_model_id == "remote-provider-e2e"
+        assert health.device == "cuda:0"
+        assert result.processed is True
+        assert result.job is not None
+        assert result.job.status == "succeeded"
+        assert result.message == "Remote embedding stored"
+        assert stored_job is not None
+        assert stored_job.status == "succeeded"
+        assert stored_job.runtime_metadata["adapter"] == "remote"
+        assert stored_job.runtime_metadata["provider_model_id"] == "remote-provider-e2e"
+        assert stored_job.runtime_metadata["provider_type"] == "remote"
+        assert stored_job.runtime_metadata["service"] == "nex_pcx_embedding_provider_skeleton"
+        assert stored_job.runtime_metadata["device"] == "cuda:0"
+        assert stored_job.runtime_metadata["trace_id"] == f"embedding-job-{created.job.job_id}"
+        assert stored_vector is not None
+        assert stored_vector.dimension == 1024
+        assert stored_vector.table_name == "chunk_embeddings_kure_v1_1024"
+    finally:
+        _cleanup_fixture(migrated_database_url, file_id)
+
+
 class _StaticEmbeddingProvider:
     def __init__(self) -> None:
         self.requests: list[EmbeddingProviderRequest] = []
@@ -238,3 +314,12 @@ class _StaticEmbeddingProvider:
                 "device": "cuda:0",
             },
         )
+
+
+class _TestClientEmbeddingProviderHTTPClient:
+    def __init__(self, client: TestClient) -> None:
+        self.client = client
+
+    def request(self, method: str, url: str, **kwargs):
+        kwargs.pop("timeout", None)
+        return self.client.request(method, url, **kwargs)
