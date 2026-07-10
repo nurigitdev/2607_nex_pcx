@@ -704,6 +704,83 @@ def embedding_provider_route_contract_payload(
     }
 
 
+def log_embedding_provider_route_health_alert(
+    database_url: str,
+    route_health: EmbeddingProviderRouteHealthResult,
+) -> int | None:
+    if route_health.ready or not route_health.checked:
+        return None
+    level = "ERROR" if route_health.status in {"unreachable", "unsupported"} else "WARNING"
+    route = route_health.route
+    return log_event(
+        database_url,
+        level=level,
+        event_type="embedding_provider_route_health_alert",
+        source="embedding_provider_routes",
+        message=(
+            f"Embedding provider route {route.provider_name} health is " f"{route_health.status}."
+        ),
+        detail={
+            "route_id": route.route_id,
+            "profile_name": route.profile_name,
+            "provider_name": route.provider_name,
+            "provider_mode": route.provider_mode,
+            "status": route_health.status,
+            "ready": route_health.ready,
+            "checked": route_health.checked,
+            "provider_type": route_health.provider_type,
+            "provider_model_id": route_health.provider_model_id,
+            "model_key": route_health.model_key,
+            "dimension": route_health.dimension,
+            "validation_errors": list(route_health.validation_errors),
+            "error_message": route_health.error_message,
+        },
+        correlation_id=f"embedding-provider-route:{route.route_id}:health",
+    )
+
+
+def log_embedding_provider_route_contract_alert(
+    database_url: str,
+    contract: EmbeddingProviderRouteContractResult,
+) -> int | None:
+    if contract.passed:
+        return None
+    level = (
+        "ERROR"
+        if contract.status in {"embedding_failed", "invalid_route"}
+        or contract.status.startswith("health_unreachable")
+        else "WARNING"
+    )
+    route = contract.route
+    return log_event(
+        database_url,
+        level=level,
+        event_type="embedding_provider_route_contract_alert",
+        source="embedding_provider_routes",
+        message=(
+            f"Embedding provider route {route.provider_name} contract check "
+            f"failed with status {contract.status}."
+        ),
+        detail={
+            "route_id": route.route_id,
+            "profile_name": route.profile_name,
+            "provider_name": route.provider_name,
+            "provider_mode": route.provider_mode,
+            "status": contract.status,
+            "passed": contract.passed,
+            "expected_dimension": contract.expected_dimension,
+            "provider_type": contract.provider_type,
+            "provider_model_id": contract.provider_model_id,
+            "model_key": contract.model_key,
+            "dimension": contract.dimension,
+            "input_count": contract.input_count,
+            "validation_errors": list(contract.validation_errors),
+            "error_message": contract.error_message,
+        },
+        correlation_id=f"embedding-provider-route:{route.route_id}:contract",
+    )
+
+
 def embedding_provider_route_input_from_request(
     payload: EmbeddingProviderRouteRequest,
 ) -> EmbeddingProviderRouteInput:
@@ -2831,6 +2908,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.database_url,
                     summary,
                 )
+                for route_health in summary.routes:
+                    log_embedding_provider_route_health_alert(
+                        settings.database_url,
+                        route_health,
+                    )
         except (
             InvalidEmbeddingProviderRouteError,
             InvalidEmbeddingProviderRouteHealthSnapshotError,
@@ -2904,6 +2986,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 settings.database_url,
                 route_health,
             )
+            log_embedding_provider_route_health_alert(settings.database_url, route_health)
         except (
             InvalidEmbeddingProviderRouteError,
             InvalidEmbeddingProviderRouteHealthSnapshotError,
@@ -2932,6 +3015,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     detail="Embedding provider route not found.",
                 )
             contract = check_embedding_provider_route_contract(route)
+            log_embedding_provider_route_contract_alert(settings.database_url, contract)
         except InvalidEmbeddingProviderRouteError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

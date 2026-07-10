@@ -6,6 +6,7 @@ from psycopg import errors
 
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
+from app.core.embedding_provider_route_health import EmbeddingProviderRouteHealthResult
 from app.core.embedding_provider_route_health_snapshots import (
     InvalidEmbeddingProviderRouteHealthSnapshotError,
     list_embedding_provider_route_health_snapshots,
@@ -16,7 +17,7 @@ from app.core.embedding_provider_routes import (
     select_embedding_provider_route,
     upsert_embedding_provider_route,
 )
-from app.main import create_app
+from app.main import create_app, log_embedding_provider_route_health_alert
 
 pytestmark = pytest.mark.integration
 
@@ -27,6 +28,15 @@ def _cleanup_routes(database_url: str, provider_names: list[str]) -> None:
             cursor.execute(
                 "DELETE FROM embedding_provider_routes WHERE provider_name = ANY(%s)",
                 (provider_names,),
+            )
+
+
+def _cleanup_app_logs(database_url: str, correlation_ids: list[str]) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM app_logs WHERE correlation_id = ANY(%s)",
+                (correlation_ids,),
             )
 
 
@@ -444,6 +454,132 @@ def test_embedding_provider_route_contract_check_api_validates_mock_route(
         assert contract["input_count"] == 1
         assert contract["validation_errors"] == []
     finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
+
+
+def test_embedding_provider_route_contract_check_api_logs_failed_contract(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"mock-route-contract-fail-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=provider_name,
+                provider_mode="remote",
+                provider_base_url="http://127.0.0.1:9",
+                timeout_seconds=0.1,
+                priority=4,
+                runtime_metadata={"purpose": "contract-alert-test"},
+            ),
+        )
+        correlation_id = f"embedding-provider-route:{route.route_id}:contract"
+        _cleanup_app_logs(migrated_database_url, [correlation_id])
+
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/admin/embedding-provider-routes/{route.route_id}/contract-check",
+            )
+
+        assert response.status_code == 200
+        contract = response.json()["contract"]
+        assert contract["passed"] is False
+        assert contract["status"] == "health_unreachable"
+
+        log_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT level, event_type, message, detail
+            FROM app_logs
+            WHERE correlation_id = %s
+            ORDER BY log_id DESC
+            LIMIT 1
+            """,
+            (correlation_id,),
+        )
+        assert log_row["level"] == "ERROR"
+        assert log_row["event_type"] == "embedding_provider_route_contract_alert"
+        assert provider_name in log_row["message"]
+        assert log_row["detail"]["route_id"] == route.route_id
+        assert log_row["detail"]["status"] == "health_unreachable"
+        assert "Remote provider request failed" in log_row["detail"]["error_message"]
+    finally:
+        if "route" in locals():
+            _cleanup_app_logs(
+                migrated_database_url,
+                [f"embedding-provider-route:{route.route_id}:contract"],
+            )
+        _cleanup_routes(migrated_database_url, [provider_name])
+
+
+def test_embedding_provider_route_health_alert_logs_mismatch_detail(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"mock-route-health-alert-{suffix}"
+
+    try:
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=provider_name,
+                provider_mode="mock",
+                provider_base_url=None,
+                priority=5,
+            ),
+        )
+        correlation_id = f"embedding-provider-route:{route.route_id}:health"
+        _cleanup_app_logs(migrated_database_url, [correlation_id])
+
+        log_id = log_embedding_provider_route_health_alert(
+            migrated_database_url,
+            EmbeddingProviderRouteHealthResult(
+                route=route,
+                checked=True,
+                ready=False,
+                status="mismatch",
+                elapsed_ms=3,
+                provider_type="remote",
+                provider_model_id="gpu-bge",
+                model_key="bge_m3",
+                profile_names=("bge_m3_1024",),
+                dimension=1024,
+                device="cuda:1",
+                runtime_metadata={},
+                validation_errors=("model_key mismatch: expected kure_v1, got bge_m3",),
+            ),
+        )
+
+        log_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT log_id, level, event_type, detail
+            FROM app_logs
+            WHERE correlation_id = %s
+            ORDER BY log_id DESC
+            LIMIT 1
+            """,
+            (correlation_id,),
+        )
+        assert log_id == log_row["log_id"]
+        assert log_row["level"] == "WARNING"
+        assert log_row["event_type"] == "embedding_provider_route_health_alert"
+        assert log_row["detail"]["route_id"] == route.route_id
+        assert log_row["detail"]["status"] == "mismatch"
+        assert log_row["detail"]["validation_errors"] == [
+            "model_key mismatch: expected kure_v1, got bge_m3"
+        ]
+    finally:
+        if "route" in locals():
+            _cleanup_app_logs(
+                migrated_database_url,
+                [f"embedding-provider-route:{route.route_id}:health"],
+            )
         _cleanup_routes(migrated_database_url, [provider_name])
 
 
