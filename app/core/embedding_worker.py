@@ -1,6 +1,6 @@
 """Embedding worker for provider-backed vector persistence."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -18,7 +18,7 @@ from app.core.embedding_model_distribution import (
 )
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteRecord,
-    select_embedding_provider_route,
+    list_embedding_provider_routes,
 )
 from app.core.embedding_providers import (
     EmbeddingProvider,
@@ -46,6 +46,10 @@ ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE = "UNSUPPORTED_EMBEDDING_PROFILE"
 
 EmbeddingProviderBuilder = Callable[[EmbeddingProviderRuntimeConfig], EmbeddingProvider]
 EmbeddingProviderRouteSelector = Callable[[str, str], EmbeddingProviderRouteRecord | None]
+EmbeddingProviderRouteCandidatesSelector = Callable[
+    [str, str],
+    Sequence[EmbeddingProviderRouteRecord],
+]
 
 
 @dataclass(frozen=True)
@@ -122,7 +126,8 @@ def process_next_embedding_job_with_provider_routes(
     profile_name: str | None = None,
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
     provider_builder: EmbeddingProviderBuilder = build_embedding_provider_from_runtime_config,
-    route_selector: EmbeddingProviderRouteSelector = select_embedding_provider_route,
+    route_selector: EmbeddingProviderRouteSelector | None = None,
+    route_candidates_selector: EmbeddingProviderRouteCandidatesSelector | None = None,
 ) -> EmbeddingWorkerResult:
     """Claim and process one embedding job using a profile-specific provider route."""
 
@@ -139,7 +144,24 @@ def process_next_embedding_job_with_provider_routes(
             message="No pending embedding job is available",
         )
 
-    route = route_selector(database_url, job.profile_name)
+    route_candidates = _route_candidates_for_job(
+        database_url,
+        job.profile_name,
+        route_selector=route_selector,
+        route_candidates_selector=(
+            route_candidates_selector or _select_embedding_provider_route_candidates
+        ),
+    )
+    if len(route_candidates) > 1:
+        return _process_claimed_embedding_job_with_provider_route_failover(
+            database_url,
+            job=job,
+            routes=route_candidates,
+            fallback_runtime_config=fallback_runtime_config,
+            provider_builder=provider_builder,
+        )
+
+    route = route_candidates[0] if route_candidates else None
     runtime_config = _runtime_config_for_job(
         route,
         fallback_runtime_config=fallback_runtime_config,
@@ -173,6 +195,86 @@ def process_next_embedding_job_with_provider_routes(
             provider.close()  # type: ignore[attr-defined]
 
 
+def _select_embedding_provider_route_candidates(
+    database_url: str,
+    profile_name: str,
+) -> Sequence[EmbeddingProviderRouteRecord]:
+    return list_embedding_provider_routes(
+        database_url,
+        profile_name=profile_name,
+        active_only=True,
+    )
+
+
+def _route_candidates_for_job(
+    database_url: str,
+    profile_name: str,
+    *,
+    route_selector: EmbeddingProviderRouteSelector | None,
+    route_candidates_selector: EmbeddingProviderRouteCandidatesSelector,
+) -> list[EmbeddingProviderRouteRecord]:
+    if route_selector is not None:
+        selected = route_selector(database_url, profile_name)
+        return [selected] if selected else []
+    return list(route_candidates_selector(database_url, profile_name))
+
+
+def _process_claimed_embedding_job_with_provider_route_failover(
+    database_url: str,
+    *,
+    job: EmbeddingJobRecord,
+    routes: Sequence[EmbeddingProviderRouteRecord],
+    fallback_runtime_config: EmbeddingProviderRuntimeConfig,
+    provider_builder: EmbeddingProviderBuilder,
+) -> EmbeddingWorkerResult:
+    failed_attempts: list[dict[str, object]] = []
+    provider = None
+    for attempt_index, route in enumerate(routes, start=1):
+        runtime_config = _runtime_config_for_job(
+            route,
+            fallback_runtime_config=fallback_runtime_config,
+        )
+        runtime_metadata = _runtime_metadata_for_job_provider(
+            route,
+            runtime_config=runtime_config,
+            failover_attempt_index=attempt_index,
+            failover_candidate_count=len(routes),
+            failed_route_attempts=failed_attempts,
+        )
+        provider = None
+        try:
+            provider = provider_builder(runtime_config)
+            return _process_claimed_embedding_job_with_provider(
+                database_url,
+                job=job,
+                provider=provider,
+                success_message=_success_message_for_provider_mode(runtime_config.mode),
+                provider_error_code=_provider_error_code_for_provider_mode(runtime_config.mode),
+                runtime_metadata=runtime_metadata,
+                defer_provider_failure=True,
+            )
+        except InvalidEmbeddingProviderError as exc:
+            failed_attempts.append(_failed_route_attempt(route, str(exc)))
+        except _EmbeddingWorkerProviderFailure as exc:
+            failed_attempts.append(_failed_route_attempt(route, exc.error_message))
+        finally:
+            if provider is not None and hasattr(provider, "close"):
+                provider.close()  # type: ignore[attr-defined]
+
+    message = _failover_failure_message(failed_attempts)
+    failed_job = _fail_claimed_embedding_job(
+        database_url,
+        job,
+        error_code=ERROR_CODE_EMBEDDING_PROVIDER_ERROR,
+        error_message=message,
+    )
+    return EmbeddingWorkerResult(
+        processed=True,
+        job=failed_job,
+        message=message,
+    )
+
+
 def _process_claimed_embedding_job_with_provider(
     database_url: str,
     *,
@@ -181,6 +283,7 @@ def _process_claimed_embedding_job_with_provider(
     success_message: str,
     provider_error_code: str,
     runtime_metadata: Mapping[str, object] | None = None,
+    defer_provider_failure: bool = False,
 ) -> EmbeddingWorkerResult:
     """Process an already-claimed embedding job through an embedding provider."""
 
@@ -270,6 +373,8 @@ def _process_claimed_embedding_job_with_provider(
             message=str(exc),
         )
     except InvalidEmbeddingProviderError as exc:
+        if defer_provider_failure:
+            raise _EmbeddingWorkerProviderFailure(provider_error_code, str(exc)) from exc
         failed_job = _fail_claimed_embedding_job(
             database_url,
             job,
@@ -331,14 +436,24 @@ def _runtime_metadata_for_job_provider(
     route: EmbeddingProviderRouteRecord | None,
     *,
     runtime_config: EmbeddingProviderRuntimeConfig,
+    failover_attempt_index: int | None = None,
+    failover_candidate_count: int | None = None,
+    failed_route_attempts: Sequence[Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     if route is None:
-        return {
+        metadata: dict[str, object] = {
             "provider_runtime_source": "fallback_runtime_config",
             "provider_runtime_mode": runtime_config.mode,
             "provider_runtime_base_url": runtime_config.remote_base_url,
             "provider_runtime_timeout_seconds": runtime_config.remote_timeout_seconds,
         }
+        _add_failover_metadata(
+            metadata,
+            failover_attempt_index=failover_attempt_index,
+            failover_candidate_count=failover_candidate_count,
+            failed_route_attempts=failed_route_attempts,
+        )
+        return metadata
     metadata: dict[str, object] = {
         "provider_runtime_source": "route",
         "provider_runtime_mode": route.provider_mode,
@@ -350,7 +465,51 @@ def _runtime_metadata_for_job_provider(
     }
     if route.runtime_metadata:
         metadata["provider_route_metadata"] = dict(route.runtime_metadata)
+    _add_failover_metadata(
+        metadata,
+        failover_attempt_index=failover_attempt_index,
+        failover_candidate_count=failover_candidate_count,
+        failed_route_attempts=failed_route_attempts,
+    )
     return metadata
+
+
+def _add_failover_metadata(
+    metadata: dict[str, object],
+    *,
+    failover_attempt_index: int | None,
+    failover_candidate_count: int | None,
+    failed_route_attempts: Sequence[Mapping[str, object]] | None,
+) -> None:
+    if failover_attempt_index is not None:
+        metadata["provider_route_failover_attempt"] = failover_attempt_index
+    if failover_candidate_count is not None:
+        metadata["provider_route_failover_candidate_count"] = failover_candidate_count
+    if failed_route_attempts:
+        metadata["provider_route_failed_attempts"] = [
+            dict(attempt) for attempt in failed_route_attempts
+        ]
+
+
+def _failed_route_attempt(
+    route: EmbeddingProviderRouteRecord,
+    error_message: str,
+) -> dict[str, object]:
+    return {
+        "route_id": route.route_id,
+        "provider_name": route.provider_name,
+        "provider_mode": route.provider_mode,
+        "priority": route.priority,
+        "error_message": error_message,
+    }
+
+
+def _failover_failure_message(failed_attempts: Sequence[Mapping[str, object]]) -> str:
+    if not failed_attempts:
+        return "No provider route could process the embedding job"
+    providers = ", ".join(str(attempt["provider_name"]) for attempt in failed_attempts)
+    last_error = str(failed_attempts[-1]["error_message"])
+    return f"All provider routes failed ({providers}): {last_error}"
 
 
 def _success_message_for_provider_mode(provider_mode: str) -> str:
@@ -367,6 +526,15 @@ def _provider_error_code_for_provider_mode(provider_mode: str) -> str:
 
 @dataclass(frozen=True)
 class _EmbeddingWorkerFailure(Exception):
+    error_code: str
+    error_message: str
+
+    def __str__(self) -> str:
+        return self.error_message
+
+
+@dataclass(frozen=True)
+class _EmbeddingWorkerProviderFailure(Exception):
     error_code: str
     error_message: str
 
