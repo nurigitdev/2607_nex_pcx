@@ -120,6 +120,42 @@
   </div>
 </section>
 
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-route-health-history-panel
+  data-health-snapshots-api-url="/api/admin/embedding-provider-routes/health-snapshots?limit=10"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.health_history") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.health_history_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.checked_at") }}</th>
+          <th scope="col">{{ t("embedding_routes.profile") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_model") }}</th>
+          <th scope="col">{{ t("embedding_routes.elapsed") }}</th>
+          <th scope="col">{{ t("embedding_routes.validation") }}</th>
+        </tr>
+      </thead>
+      <tbody data-route-health-history-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="7">
+            {% if database_configured %}{{ t("embedding_routes.loading_history") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden">
   <div class="dashboard-panel-header p-3">
     <div>
@@ -199,6 +235,8 @@
     manualChecking: {{ t("embedding_routes.manual_checking") | tojson }},
     manualSaved: {{ t("embedding_routes.manual_snapshot_saved") | tojson }},
     manualFailed: {{ t("embedding_routes.manual_check_failed") | tojson }},
+    loadingHistory: {{ t("embedding_routes.loading_history") | tojson }},
+    noSnapshots: {{ t("embedding_routes.no_health_snapshots") | tojson }},
     none: "-",
     status: {
       ready: {{ t("embedding_routes.status_ready") | tojson }},
@@ -224,6 +262,8 @@
   const routeCount = panel.querySelector("[data-route-health-route-count]");
   const loading = panel.querySelector("[data-route-health-loading]");
   const tbody = panel.querySelector("[data-route-health-table]");
+  const historyPanel = document.querySelector("[data-route-health-history-panel]");
+  const historyTbody = historyPanel?.querySelector("[data-route-health-history-table]");
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
@@ -254,6 +294,17 @@
     }
     cell.textContent = value || labels.none;
     row.appendChild(cell);
+  }
+
+  function formatDateTime(value) {
+    if (!value) {
+      return labels.none;
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString();
   }
 
   function renderEmpty(message) {
@@ -298,6 +349,78 @@
       validationCell.textContent = validationMessages.length ? validationMessages.join("; ") : labels.none;
       row.appendChild(validationCell);
       tbody.appendChild(row);
+    }
+  }
+
+  function renderHistoryEmpty(message) {
+    if (!historyTbody) {
+      return;
+    }
+    historyTbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 7;
+    cell.textContent = message;
+    row.appendChild(cell);
+    historyTbody.appendChild(row);
+  }
+
+  function renderHistory(snapshots) {
+    if (!historyTbody) {
+      return;
+    }
+    historyTbody.replaceChildren();
+    if (!snapshots.length) {
+      renderHistoryEmpty(labels.noSnapshots);
+      return;
+    }
+
+    for (const snapshot of snapshots) {
+      const row = document.createElement("tr");
+      appendTextCell(row, formatDateTime(snapshot.checked_at));
+      appendTextCell(row, snapshot.profile_name);
+      appendTextCell(row, snapshot.provider_name);
+
+      const statusCell = document.createElement("td");
+      statusCell.appendChild(statusBadge(snapshot.status));
+      row.appendChild(statusCell);
+
+      appendTextCell(row, snapshot.provider_model_id);
+      appendTextCell(row, snapshot.elapsed_ms == null ? labels.none : `${snapshot.elapsed_ms}ms`);
+
+      const validationCell = document.createElement("td");
+      const validationMessages = [
+        ...(snapshot.validation_errors || []),
+        ...(snapshot.error_message ? [snapshot.error_message] : []),
+      ];
+      validationCell.className = validationMessages.length ? "text-danger" : "text-secondary";
+      validationCell.textContent = validationMessages.length ? validationMessages.join("; ") : labels.none;
+      row.appendChild(validationCell);
+      historyTbody.appendChild(row);
+    }
+  }
+
+  async function loadHistory() {
+    if (!historyPanel || !historyTbody) {
+      return;
+    }
+    if (historyPanel.dataset.databaseConfigured !== "true") {
+      renderHistoryEmpty(labels.noDatabase);
+      return;
+    }
+
+    try {
+      const response = await fetch(historyPanel.dataset.healthSnapshotsApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.healthFailed);
+      }
+      renderHistory(body.snapshots || []);
+    } catch (error) {
+      renderHistoryEmpty(error.message || labels.healthFailed);
     }
   }
 
@@ -351,6 +474,7 @@
             : labels.manualSaved;
           setManualStatus(button, message, "text-success");
           await loadHealth();
+          await loadHistory();
         } catch (error) {
           setManualStatus(button, error.message || labels.manualFailed, "text-danger");
         } finally {
@@ -363,6 +487,7 @@
 
   wireManualHealthButtons();
   loadHealth();
+  loadHistory();
 })();
 </script>
 {% endblock %}

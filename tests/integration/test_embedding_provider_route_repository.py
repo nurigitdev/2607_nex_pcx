@@ -233,6 +233,11 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                 f"/api/admin/embedding-provider-routes/{route['route_id']}/health-check"
                 in page_response.text
             )
+            assert "data-route-health-history-panel" in page_response.text
+            assert (
+                "/api/admin/embedding-provider-routes/health-snapshots?limit=10"
+                in page_response.text
+            )
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
 
@@ -371,14 +376,22 @@ def test_embedding_provider_route_manual_health_check_api_persists_snapshot(
             response = client.post(
                 f"/api/admin/embedding-provider-routes/{route.route_id}/health-check",
             )
+            history_response = client.get(
+                "/api/admin/embedding-provider-routes/health-snapshots",
+                params={"route_id": route.route_id, "limit": "5"},
+            )
 
         assert response.status_code == 200
+        assert history_response.status_code == 200
         body = response.json()
+        history_body = history_response.json()
         assert body["route_health"]["status"] == "ready"
         assert body["route_health"]["route"]["route_id"] == route.route_id
         assert body["snapshot"]["route_id"] == route.route_id
         assert body["snapshot"]["status"] == "ready"
         assert body["snapshot"]["profile_names"] == [profile_name]
+        assert history_body["snapshot_count"] == 1
+        assert history_body["snapshots"][0]["snapshot_id"] == body["snapshot"]["snapshot_id"]
 
         snapshots = list_embedding_provider_route_health_snapshots(
             migrated_database_url,
