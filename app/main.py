@@ -53,6 +53,10 @@ from app.core.embedding_model_distribution import (
     audit_embedding_model_readiness,
 )
 from app.core.embedding_provider_health import get_embedding_provider_health_status
+from app.core.embedding_provider_route_contracts import (
+    EmbeddingProviderRouteContractResult,
+    check_embedding_provider_route_contract,
+)
 from app.core.embedding_provider_route_health import (
     EmbeddingProviderRouteHealthResult,
     check_embedding_provider_route_health,
@@ -670,6 +674,33 @@ def embedding_provider_route_health_snapshot_payload(
         "validation_errors": list(snapshot.validation_errors),
         "error_message": snapshot.error_message,
         "checked_at": _datetime_response(snapshot.checked_at),
+    }
+
+
+def embedding_provider_route_contract_payload(
+    contract: EmbeddingProviderRouteContractResult,
+) -> dict[str, object]:
+    return {
+        "route": embedding_provider_route_payload(contract.route),
+        "passed": contract.passed,
+        "status": contract.status,
+        "elapsed_ms": contract.elapsed_ms,
+        "health": (
+            embedding_provider_route_health_payload(contract.health)
+            if contract.health is not None
+            else None
+        ),
+        "input_type": contract.input_type,
+        "sample_text_count": contract.sample_text_count,
+        "expected_dimension": contract.expected_dimension,
+        "provider_type": contract.provider_type,
+        "provider_model_id": contract.provider_model_id,
+        "model_key": contract.model_key,
+        "dimension": contract.dimension,
+        "input_count": contract.input_count,
+        "runtime_metadata": contract.runtime_metadata,
+        "validation_errors": list(contract.validation_errors),
+        "error_message": contract.error_message,
     }
 
 
@@ -2883,6 +2914,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={
                 "route_health": embedding_provider_route_health_payload(route_health),
                 "snapshot": embedding_provider_route_health_snapshot_payload(snapshot),
+            }
+        )
+
+    @app.post("/api/admin/embedding-provider-routes/{route_id}/contract-check")
+    def api_check_embedding_provider_route_contract(route_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            route = get_embedding_provider_route(settings.database_url, route_id)
+            if route is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Embedding provider route not found.",
+                )
+            contract = check_embedding_provider_route_contract(route)
+        except InvalidEmbeddingProviderRouteError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "contract": embedding_provider_route_contract_payload(contract),
             }
         )
 

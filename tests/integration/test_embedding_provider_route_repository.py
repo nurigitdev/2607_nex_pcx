@@ -404,6 +404,49 @@ def test_embedding_provider_route_manual_health_check_api_persists_snapshot(
         _cleanup_embedding_profile(migrated_database_url, profile_name)
 
 
+def test_embedding_provider_route_contract_check_api_validates_mock_route(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"mock-route-contract-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=provider_name,
+                provider_mode="mock",
+                provider_base_url=None,
+                priority=4,
+                runtime_metadata={"purpose": "contract-test"},
+            ),
+        )
+
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/admin/embedding-provider-routes/{route.route_id}/contract-check",
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        contract = body["contract"]
+        assert contract["passed"] is True
+        assert contract["status"] == "passed"
+        assert contract["route"]["route_id"] == route.route_id
+        assert contract["route"]["provider_name"] == provider_name
+        assert contract["health"]["status"] == "ready"
+        assert contract["provider_type"] == "mock"
+        assert contract["provider_model_id"] == "mock-provider"
+        assert contract["expected_dimension"] == 1024
+        assert contract["dimension"] == 1024
+        assert contract["input_count"] == 1
+        assert contract["validation_errors"] == []
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
+
+
 def test_embedding_provider_route_health_snapshot_filters_validate_inputs(
     migrated_database_url: str,
 ) -> None:
