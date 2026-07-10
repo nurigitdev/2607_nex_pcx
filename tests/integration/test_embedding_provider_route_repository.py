@@ -26,6 +26,33 @@ def _cleanup_routes(database_url: str, provider_names: list[str]) -> None:
             )
 
 
+def _create_embedding_profile(database_url: str, profile_name: str) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO embedding_profiles (
+                    profile_name,
+                    model_name,
+                    dimension,
+                    storage_type,
+                    is_active
+                )
+                VALUES (%s, 'example/mock-provider-health', 1024, 'vector', true)
+                """,
+                (profile_name,),
+            )
+
+
+def _cleanup_embedding_profile(database_url: str, profile_name: str) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM embedding_profiles WHERE profile_name = %s",
+                (profile_name,),
+            )
+
+
 def test_embedding_provider_routes_table_exists_and_enforces_remote_url(
     migrated_database_url: str,
 ) -> None:
@@ -190,3 +217,48 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "/api/admin/embedding-provider-routes" in page_response.text
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
+
+
+def test_embedding_provider_route_health_api_summarizes_mock_routes(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    profile_name = f"route_health_profile_{suffix}"
+    provider_name = f"mock-route-health-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        _create_embedding_profile(migrated_database_url, profile_name)
+        upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name=profile_name,
+                provider_name=provider_name,
+                provider_mode="mock",
+                provider_base_url=None,
+                priority=3,
+                runtime_metadata={"purpose": "api-health-test"},
+            ),
+        )
+
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/admin/embedding-provider-routes/health",
+                params={"profile_name": profile_name},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["route_count"] == 1
+        assert body["checked_count"] == 1
+        assert body["ready_count"] == 1
+        assert body["routes"][0]["checked"] is True
+        assert body["routes"][0]["ready"] is True
+        assert body["routes"][0]["status"] == "ready"
+        assert body["routes"][0]["provider_type"] == "mock"
+        assert body["routes"][0]["provider_model_id"] == "mock-provider"
+        assert body["routes"][0]["route"]["profile_name"] == profile_name
+        assert body["routes"][0]["route"]["provider_name"] == provider_name
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
+        _cleanup_embedding_profile(migrated_database_url, profile_name)

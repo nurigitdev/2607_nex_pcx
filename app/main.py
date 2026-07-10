@@ -53,6 +53,10 @@ from app.core.embedding_model_distribution import (
     audit_embedding_model_readiness,
 )
 from app.core.embedding_provider_health import get_embedding_provider_health_status
+from app.core.embedding_provider_route_health import (
+    EmbeddingProviderRouteHealthResult,
+    get_embedding_provider_route_health_summary,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     EmbeddingProviderRouteRecord,
@@ -590,6 +594,27 @@ def embedding_provider_route_payload(route: EmbeddingProviderRouteRecord) -> dic
         "runtime_metadata": route.runtime_metadata,
         "created_at": _datetime_response(route.created_at),
         "updated_at": _datetime_response(route.updated_at),
+    }
+
+
+def embedding_provider_route_health_payload(
+    route_health: EmbeddingProviderRouteHealthResult,
+) -> dict[str, object]:
+    return {
+        "route": embedding_provider_route_payload(route_health.route),
+        "checked": route_health.checked,
+        "ready": route_health.ready,
+        "status": route_health.status,
+        "elapsed_ms": route_health.elapsed_ms,
+        "provider_type": route_health.provider_type,
+        "provider_model_id": route_health.provider_model_id,
+        "model_key": route_health.model_key,
+        "profile_names": list(route_health.profile_names),
+        "dimension": route_health.dimension,
+        "device": route_health.device,
+        "runtime_metadata": route_health.runtime_metadata,
+        "validation_errors": list(route_health.validation_errors),
+        "error_message": route_health.error_message,
     }
 
 
@@ -2694,6 +2719,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             content={
                 "routes": [embedding_provider_route_payload(route) for route in routes],
+            }
+        )
+
+    @app.get("/api/admin/embedding-provider-routes/health")
+    def api_embedding_provider_route_health(
+        profile_name: str | None = None,
+        active_only: bool = True,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            summary = get_embedding_provider_route_health_summary(
+                settings.database_url,
+                profile_name=profile_name,
+                active_only=active_only,
+            )
+        except InvalidEmbeddingProviderRouteError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "route_count": summary.route_count,
+                "checked_count": summary.checked_count,
+                "ready_count": summary.ready_count,
+                "routes": [
+                    embedding_provider_route_health_payload(route_health)
+                    for route_health in summary.routes
+                ],
             }
         )
 
