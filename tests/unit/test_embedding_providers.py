@@ -1,5 +1,6 @@
 import math
 
+import httpx
 import pytest
 
 from app.core.embedding_providers import (
@@ -7,6 +8,7 @@ from app.core.embedding_providers import (
     EmbeddingProviderResponse,
     InvalidEmbeddingProviderError,
     MockEmbeddingProvider,
+    RemoteEmbeddingProviderClient,
     validate_embedding_provider_request,
     validate_embedding_provider_response,
 )
@@ -113,3 +115,97 @@ def test_validate_embedding_provider_response_rejects_bad_shape_and_values() -> 
             ),
             request,
         )
+
+
+def test_remote_embedding_provider_client_reads_health_and_embeddings() -> None:
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        if request.url.path == "/healthz":
+            return httpx.Response(
+                200,
+                json={
+                    "ready": True,
+                    "provider_type": "remote",
+                    "provider_model_id": "gpu-kure-v1",
+                    "model_key": "kure_v1",
+                    "profile_names": ["kure_v1_1024"],
+                    "dimension": 8,
+                    "device": "cuda:0",
+                    "runtime_metadata": {"batching": "dynamic"},
+                },
+            )
+        if request.url.path == "/v1/embeddings":
+            payload = json_from_request(request)
+            assert payload["profile_name"] == "kure_v1_1024"
+            assert payload["texts"] == ["hello", "world"]
+            return httpx.Response(
+                200,
+                json={
+                    "embeddings": [[1.0] * 8, [2.0] * 8],
+                    "dimension": 8,
+                    "provider_model_id": "gpu-kure-v1",
+                    "provider_type": "remote",
+                    "elapsed_ms": 12,
+                    "input_count": 2,
+                    "runtime_metadata": {"device": "cuda:0"},
+                },
+            )
+        return httpx.Response(404, json={"detail": "not found"})
+
+    client = RemoteEmbeddingProviderClient(
+        "http://embedding-provider.local/",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    health = client.health()
+    response = client.embed(make_request(output_dimension=8))
+    client.close()
+
+    assert health.ready is True
+    assert health.provider_model_id == "gpu-kure-v1"
+    assert health.device == "cuda:0"
+    assert response.embeddings == ((1.0,) * 8, (2.0,) * 8)
+    assert response.elapsed_ms == 12
+    assert [request.url.path for request in seen_requests] == ["/healthz", "/v1/embeddings"]
+
+
+def test_remote_embedding_provider_client_rejects_invalid_settings_and_responses() -> None:
+    with pytest.raises(InvalidEmbeddingProviderError, match="base_url"):
+        RemoteEmbeddingProviderClient(" ")
+
+    with pytest.raises(InvalidEmbeddingProviderError, match="timeout_seconds"):
+        RemoteEmbeddingProviderClient("http://provider", timeout_seconds=0)
+
+    bad_client = RemoteEmbeddingProviderClient(
+        "http://provider",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json=[]))
+        ),
+    )
+
+    with pytest.raises(InvalidEmbeddingProviderError, match="JSON object"):
+        bad_client.health()
+
+
+def test_remote_embedding_provider_client_wraps_http_errors() -> None:
+    client = RemoteEmbeddingProviderClient(
+        "http://provider",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(503, json={"detail": "warming"})
+            )
+        ),
+    )
+
+    with pytest.raises(InvalidEmbeddingProviderError, match="Remote provider request failed"):
+        client.health()
+
+
+def json_from_request(request: httpx.Request) -> dict[str, object]:
+    import json
+
+    payload = json.loads(request.content.decode("utf-8"))
+    assert isinstance(payload, dict)
+    return payload
