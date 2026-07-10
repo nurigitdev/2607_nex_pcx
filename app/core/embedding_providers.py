@@ -11,6 +11,7 @@ from app.core.embedding_vectors import generate_mock_embedding
 EMBEDDING_PROVIDER_INPUT_TYPES = ("query", "document")
 MOCK_EMBEDDING_PROVIDER_TYPE = "mock"
 REMOTE_EMBEDDING_PROVIDER_TYPE = "remote"
+EMBEDDING_PROVIDER_MODES = (MOCK_EMBEDDING_PROVIDER_TYPE, REMOTE_EMBEDDING_PROVIDER_TYPE)
 REMOTE_EMBEDDING_PROVIDER_HEALTH_PATH = "/healthz"
 REMOTE_EMBEDDING_PROVIDER_EMBEDDINGS_PATH = "/v1/embeddings"
 
@@ -50,6 +51,13 @@ class EmbeddingProviderHealth:
     runtime_metadata: Mapping[str, object] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class EmbeddingProviderRuntimeConfig:
+    mode: str = MOCK_EMBEDDING_PROVIDER_TYPE
+    remote_base_url: str | None = None
+    remote_timeout_seconds: float = 30.0
+
+
 class EmbeddingProvider(Protocol):
     def embed(self, request: EmbeddingProviderRequest) -> EmbeddingProviderResponse:
         """Return embeddings for the requested profile/text batch."""
@@ -57,6 +65,61 @@ class EmbeddingProvider(Protocol):
 
 class InvalidEmbeddingProviderError(ValueError):
     """Raised when provider input or output is invalid."""
+
+
+def embedding_provider_runtime_config_from_settings(
+    settings: object,
+) -> EmbeddingProviderRuntimeConfig:
+    return normalize_embedding_provider_runtime_config(
+        EmbeddingProviderRuntimeConfig(
+            mode=str(getattr(settings, "embedding_provider_mode", MOCK_EMBEDDING_PROVIDER_TYPE)),
+            remote_base_url=getattr(settings, "remote_embedding_provider_url", None),
+            remote_timeout_seconds=float(
+                getattr(settings, "remote_embedding_provider_timeout_seconds", 30.0)
+            ),
+        )
+    )
+
+
+def normalize_embedding_provider_runtime_config(
+    config: EmbeddingProviderRuntimeConfig,
+) -> EmbeddingProviderRuntimeConfig:
+    mode = config.mode.strip().lower()
+    if mode not in EMBEDDING_PROVIDER_MODES:
+        raise InvalidEmbeddingProviderError(f"Unsupported embedding provider mode: {config.mode}")
+    if config.remote_timeout_seconds <= 0:
+        raise InvalidEmbeddingProviderError(
+            "remote_embedding_provider_timeout_seconds must be greater than 0"
+        )
+
+    remote_base_url = config.remote_base_url.strip().rstrip("/") if config.remote_base_url else None
+    if mode == REMOTE_EMBEDDING_PROVIDER_TYPE and not remote_base_url:
+        raise InvalidEmbeddingProviderError(
+            "remote_embedding_provider_url is required for remote provider mode"
+        )
+
+    return EmbeddingProviderRuntimeConfig(
+        mode=mode,
+        remote_base_url=remote_base_url,
+        remote_timeout_seconds=config.remote_timeout_seconds,
+    )
+
+
+def build_embedding_provider_from_runtime_config(
+    config: EmbeddingProviderRuntimeConfig,
+    *,
+    http_client: object | None = None,
+) -> EmbeddingProvider:
+    normalized = normalize_embedding_provider_runtime_config(config)
+    if normalized.mode == MOCK_EMBEDDING_PROVIDER_TYPE:
+        return MockEmbeddingProvider()
+    if normalized.remote_base_url is None:
+        raise InvalidEmbeddingProviderError("remote_embedding_provider_url is required")
+    return RemoteEmbeddingProviderClient(
+        normalized.remote_base_url,
+        timeout_seconds=normalized.remote_timeout_seconds,
+        http_client=http_client,
+    )
 
 
 def validate_embedding_provider_request(

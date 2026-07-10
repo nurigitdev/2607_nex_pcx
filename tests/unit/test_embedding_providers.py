@@ -6,9 +6,13 @@ import pytest
 from app.core.embedding_providers import (
     EmbeddingProviderRequest,
     EmbeddingProviderResponse,
+    EmbeddingProviderRuntimeConfig,
     InvalidEmbeddingProviderError,
     MockEmbeddingProvider,
     RemoteEmbeddingProviderClient,
+    build_embedding_provider_from_runtime_config,
+    embedding_provider_runtime_config_from_settings,
+    normalize_embedding_provider_runtime_config,
     validate_embedding_provider_request,
     validate_embedding_provider_response,
 )
@@ -72,6 +76,49 @@ def test_mock_embedding_provider_returns_deterministic_vectors() -> None:
     assert all(len(embedding) == 8 for embedding in first.embeddings)
     assert first.runtime_metadata["profile_name"] == "kure_v1_1024"
     assert first.runtime_metadata["trace_id"] == "trace-001"
+
+
+def test_embedding_provider_runtime_config_defaults_to_mock() -> None:
+    config = embedding_provider_runtime_config_from_settings(object())
+    provider = build_embedding_provider_from_runtime_config(config)
+
+    assert config == EmbeddingProviderRuntimeConfig(mode="mock")
+    assert isinstance(provider, MockEmbeddingProvider)
+
+
+def test_embedding_provider_runtime_config_builds_remote_client() -> None:
+    class SettingsStub:
+        embedding_provider_mode = " REMOTE "
+        remote_embedding_provider_url = "http://embedding-provider.local/"
+        remote_embedding_provider_timeout_seconds = 7.5
+
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200)))
+    config = embedding_provider_runtime_config_from_settings(SettingsStub())
+    provider = build_embedding_provider_from_runtime_config(config, http_client=http_client)
+
+    assert config == EmbeddingProviderRuntimeConfig(
+        mode="remote",
+        remote_base_url="http://embedding-provider.local",
+        remote_timeout_seconds=7.5,
+    )
+    assert isinstance(provider, RemoteEmbeddingProviderClient)
+    assert provider.base_url == "http://embedding-provider.local"
+    assert provider.timeout_seconds == 7.5
+
+
+def test_embedding_provider_runtime_config_rejects_invalid_remote_settings() -> None:
+    with pytest.raises(InvalidEmbeddingProviderError, match="Unsupported"):
+        normalize_embedding_provider_runtime_config(EmbeddingProviderRuntimeConfig(mode="local"))
+
+    with pytest.raises(InvalidEmbeddingProviderError, match="remote_embedding_provider_url"):
+        normalize_embedding_provider_runtime_config(EmbeddingProviderRuntimeConfig(mode="remote"))
+
+    with pytest.raises(InvalidEmbeddingProviderError, match="timeout"):
+        normalize_embedding_provider_runtime_config(
+            EmbeddingProviderRuntimeConfig(
+                mode="remote", remote_base_url="http://p", remote_timeout_seconds=0
+            )
+        )
 
 
 def test_validate_embedding_provider_response_rejects_bad_shape_and_values() -> None:

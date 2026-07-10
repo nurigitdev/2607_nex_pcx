@@ -220,3 +220,9 @@ The remote provider should preload downloaded model bundles on a GPU server and 
 stable request/response contract. See `docs/embedding_provider_architecture.md` for the
 initial provider boundary and metadata requirements, and
 `docs/gpu_embedding_provider_deployment.md` for the deployment checklist.
+
+Runtime provider selection is controlled by:
+
+- `NEX_PCX_EMBEDDING_PROVIDER_MODE`: `mock` by default, or `remote`
+- `NEX_PCX_REMOTE_EMBEDDING_PROVIDER_URL`: required when provider mode is `remote`
+- `NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS`: remote request timeout, default `30.0`

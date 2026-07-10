@@ -16,6 +16,9 @@ class Settings:
     test_database_url: str | None = None
     upload_storage_dir: Path = Path("storage/uploads")
     embedding_models_dir: Path = Path("models")
+    embedding_provider_mode: str = "mock"
+    remote_embedding_provider_url: str | None = None
+    remote_embedding_provider_timeout_seconds: float = 30.0
 
 
 def get_settings() -> Settings:
@@ -27,4 +30,9 @@ def get_settings() -> Settings:
         test_database_url=getenv("NEX_PCX_TEST_DATABASE_URL"),
         upload_storage_dir=Path(getenv("NEX_PCX_UPLOAD_STORAGE_DIR", "storage/uploads")),
         embedding_models_dir=Path(getenv("NEX_PCX_MODELS_DIR", "models")),
+        embedding_provider_mode=getenv("NEX_PCX_EMBEDDING_PROVIDER_MODE", "mock"),
+        remote_embedding_provider_url=getenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_URL"),
+        remote_embedding_provider_timeout_seconds=float(
+            getenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS", "30.0")
+        ),
     )
