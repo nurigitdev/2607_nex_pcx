@@ -30,6 +30,7 @@
 | 1.3 | 2026-07-05 | 비동기 문서 처리 파이프라인, PostgreSQL job queue, worker 동시성, 진행 상태, 실패/재시도, 관리자 모니터링 요구사항 보강 |
 | 1.4 | 2026-07-06 | chunk size/overlap 실험 정책, 기본 운영 정책과 문서 구조 보존 원칙 보강 |
 | 1.5 | 2026-07-10 | embedding model 사전 다운로드, models bundle, 오프라인/고객사 설치 배포 정책 보강 |
+| 1.6 | 2026-07-10 | GPU embedding provider API 분리, local smoke adapter, provider runtime metadata 요구사항 보강 |
 
 # 목차
 
@@ -167,6 +168,10 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 
 - 운영 환경 또는 고객사 설치 환경에서는 앱 시작 시 public internet에서 model을 자동 다운로드하지 않고, 사전에 검증된 `models/` bundle을 배포한다.
 
+- 개발 PC는 GPU가 없을 수 있으므로 local model 실행은 smoke/debug 용도로 제한하고, 대량 ingestion 및 benchmark는 GPU 서버의 embedding provider API를 호출하는 구조를 지원한다.
+
+- NeX_PCX 본체는 upload, parsing, chunking, queue, permission, pgvector 저장, 검색 로그/평가 기록을 담당하고, embedding 계산은 local adapter 또는 remote provider 중 하나로 위임한다.
+
 - 파일 업로드 후 embedding은 background job으로 수행하며, 대시보드에서 profile별 진행률을 확인할 수 있어야 한다.
 
 - MVP의 background queue는 Redis/Celery 등 외부 broker가 아니라 PostgreSQL 기반 pipeline job queue로 구현한다.
@@ -213,8 +218,14 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 [Background Worker Runners]
 ├─ text extraction / parsing worker
 ├─ chunking worker
-├─ kure_v1_1024 / bge_m3_1024 worker
-└─ qwen3_4b_1000 / qwen3_4b_2560 worker
+└─ embedding worker / provider client
+│
+▼
+[Embedding Provider Layer]
+├─ local smoke adapter: sentence-transformers / qwen adapter
+├─ remote GPU provider: kure_v1_1024
+├─ remote GPU provider: bge_m3_1024
+└─ remote GPU provider: qwen3_4b_1000 / qwen3_4b_2560
 │
 ▼
 [PostgreSQL + pgvector]
@@ -239,7 +250,9 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Parser Service | 파일 타입별 텍스트/메타데이터 추출 |
 | Chunking Service | 문서 구조와 정책에 따라 chunk 생성 및 prev/next 연결 |
 | Worker Runners | stage별 job 점유, 처리, heartbeat, 실패/재시도, 처리 시간/오류 기록 |
-| Embedding Workers | profile별 모델 로딩, embedding 생성, pgvector 저장 |
+| Embedding Worker | embedding job을 점유하고 provider를 호출한 뒤 vector 저장, job 상태, runtime metadata를 기록 |
+| Embedding Provider Client | local adapter 또는 remote GPU provider API를 동일한 request/response contract로 호출 |
+| Remote Embedding Provider | GPU 서버에서 model preload, batch embedding, provider health, latency metadata를 제공 |
 | Search Service | query embedding 생성, pgvector 검색, 4개 profile 결과 병렬 반환 |
 | Statistics Service | 문서/chunk/vector/job/검색 통계 산출 |
 | Model Distribution Tooling | KURE, bge-m3, Qwen3 embedding model을 `models/` bundle로 사전 다운로드하고 설치 환경에서 검증 |
@@ -308,6 +321,9 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-032 | Worker 동시성 제어 | worker 수, stage별 동시성, profile별 worker 분리를 설정값으로 관리한다. | SHOULD |
 | FR-033 | Pipeline 실패/재시도 | 실패한 pipeline job은 오류 원인, attempt 수, 재시도 가능 여부를 저장하고 수동 재시도할 수 있어야 한다. | MUST |
 | FR-034 | Pipeline event 감사 | job 생성, 점유, stage 전환, 진행률, 실패, 재시도 이벤트를 append-only event로 저장한다. | SHOULD |
+| FR-035 | Embedding provider 선택 | profile별 embedding 실행을 local adapter 또는 remote GPU provider로 선택할 수 있어야 한다. | MUST |
+| FR-036 | Remote provider health check | provider URL, model key, dimension, device, ready 상태를 embedding 실행 전 점검할 수 있어야 한다. | MUST |
+| FR-037 | Provider runtime metadata 저장 | embedding job과 search log에 provider type, endpoint, model source, dimension, device, elapsed_ms를 저장한다. | MUST |
 
 ## 4.3 대시보드 요구사항
 
@@ -377,6 +393,14 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - `qwen3_4b_1000`과 `qwen3_4b_2560` profile은 동일한 `Qwen/Qwen3-Embedding-4B` model directory를 공유하되 output dimension과 storage type 정책을 profile metadata로 분리한다.
 
+- embedding worker는 profile별 provider 설정을 해석하여 mock, local sentence-transformers, remote HTTP provider 중 하나를 호출할 수 있어야 한다.
+
+- remote provider request에는 profile_name, model_key, input_type(query/document), texts, normalize_embeddings, output_dimension, trace_id를 포함한다.
+
+- remote provider response에는 embeddings, dimension, provider_model_id, provider_type, elapsed_ms, token_count 또는 input_count, runtime_metadata를 포함한다.
+
+- provider 호출 실패, dimension mismatch, non-finite vector, timeout은 embedding job 실패로 기록하고 error_code와 error_message를 보존한다.
+
 - job status는 pending, running, succeeded, failed, skipped 중 하나로 관리한다.
 
 - worker는 job을 lease 방식으로 점유하고, lease 만료 시 다른 worker가 재시도할 수 있어야 한다.
@@ -436,6 +460,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - 초기 운영은 단일 worker와 순차 처리로 시작하되, NEX_PCX_WORKER_CONCURRENCY 또는 동등한 설정값으로 worker 동시성을 늘릴 수 있어야 한다.
 
 - Qwen3-Embedding-4B 1000/2560 profile은 처리 시간이 길 수 있으므로 별도 worker pool로 분리 가능해야 한다.
+
+- GPU provider를 사용하는 경우 worker pool은 model을 직접 preload하지 않고 provider health check와 request timeout, retry/backoff 정책을 관리한다.
 
 - pipeline 진행률은 total_units, processed_units, progress_percent, current_stage, current_message로 표현한다.
 
@@ -1194,6 +1220,8 @@ pytest tests/e2e
 | 리스크 | 영향 | 대응 방안 |
 | --- | --- | --- |
 | Qwen3-Embedding-4B 실행 자원 부족 | embedding 속도 저하, GPU OOM | Qwen worker 분리, batch size 조정, 1000/2560 profile 분리, smoke test 선행 |
+| CPU-only 개발 PC의 embedding 처리 지연 | 대량 ingestion benchmark 시간이 과도하게 증가 | local adapter는 smoke/debug로 제한하고 GPU embedding provider API를 기본 benchmark 경로로 지원 |
+| Remote embedding provider 장애 | embedding job 대기/실패 증가 | provider health check, timeout, retry/backoff, provider runtime metadata, failed job retry 제공 |
 | Qwen 2560 vector 저장 타입 오류 | migration 실패 또는 검색 index 생성 실패 | qwen3_4b_2560은 halfvec(2560)으로 고정하고 pgvector halfvec integration test 추가 |
 | HWPX parsing 품질 부족 | 국내 문서 검색 품질 저하 | 초기 XML text 추출 후 fixture 확대, parser regression test 강화 |
 | Chunk 정책 부적절 | 검색 recall 저하 또는 중복 검색 증가 | chunk_policy를 DB에 저장하고 정책별 평가 자동화 |

@@ -198,3 +198,17 @@ The 4 embedding profiles map to 3 downloaded model directories:
 
 Production and customer-site installs should receive a verified copy of `models/` and run
 workers in offline mode rather than downloading model files from the public internet.
+
+## Embedding Provider Architecture
+
+Slice 085 separates heavy embedding inference from the main NeX_PCX application. The app
+continues to own queue orchestration, pgvector persistence, permission-aware search, and
+experiment logging. Embedding calculation can run through:
+
+- `mock` provider for deterministic tests
+- local model adapter for small smoke/debug runs
+- remote GPU provider API for benchmark ingestion and production-like experiments
+
+The remote provider should preload downloaded model bundles on a GPU server and expose a
+stable request/response contract. See `docs/embedding_provider_architecture.md` for the
+initial provider boundary and metadata requirements.
