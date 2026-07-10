@@ -226,14 +226,24 @@ Runtime provider selection is controlled by:
 - `NEX_PCX_EMBEDDING_PROVIDER_MODE`: `mock` by default, or `remote`
 - `NEX_PCX_REMOTE_EMBEDDING_PROVIDER_URL`: required when provider mode is `remote`
 - `NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS`: remote request timeout, default `30.0`
+- `/admin/embedding-provider-routes`: profile-specific provider routes used by the worker
+  before falling back to the runtime settings above
 
-Process one pending embedding job with the configured provider:
+Process one pending embedding job with route-aware provider selection:
 
 ```bash
 ./.venv/bin/python scripts/process_embedding_job.py --provider-mode mock
 ./.venv/bin/python scripts/process_embedding_job.py \
   --provider-mode remote \
   --remote-provider-url http://127.0.0.1:9000
+```
+
+Force the legacy runtime-config-only path when you want to ignore route records:
+
+```bash
+./.venv/bin/python scripts/process_embedding_job.py \
+  --provider-source runtime \
+  --provider-mode mock
 ```
 
 Provider health is exposed at `/api/embedding/providers/health`.

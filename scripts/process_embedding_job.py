@@ -23,8 +23,13 @@ from app.core.embedding_worker import (  # noqa: E402
     ERROR_CODE_MOCK_EMBEDDING_ERROR,
     EmbeddingWorkerResult,
     process_next_embedding_job_with_provider,
+    process_next_embedding_job_with_provider_routes,
 )
 from app.core.pipeline_jobs import DEFAULT_LEASE_SECONDS  # noqa: E402
+
+PROVIDER_SOURCE_ROUTE = "route"
+PROVIDER_SOURCE_RUNTIME = "runtime"
+PROVIDER_SOURCES = (PROVIDER_SOURCE_ROUTE, PROVIDER_SOURCE_RUNTIME)
 
 
 def _runtime_config_from_args(
@@ -52,7 +57,17 @@ def _process_next_job(
     profile_name: str | None,
     lease_seconds: int,
     runtime_config: EmbeddingProviderRuntimeConfig,
+    provider_source: str = PROVIDER_SOURCE_ROUTE,
 ) -> EmbeddingWorkerResult:
+    if provider_source == PROVIDER_SOURCE_ROUTE:
+        return process_next_embedding_job_with_provider_routes(
+            database_url,
+            worker_name=worker_name,
+            profile_name=profile_name,
+            lease_seconds=lease_seconds,
+            fallback_runtime_config=runtime_config,
+        )
+
     provider = build_embedding_provider_from_runtime_config(runtime_config)
     try:
         return process_next_embedding_job_with_provider(
@@ -85,10 +100,18 @@ def _result_payload(
     result: EmbeddingWorkerResult,
     *,
     runtime_config: EmbeddingProviderRuntimeConfig,
+    provider_source: str,
 ) -> dict[str, object]:
+    runtime_metadata = result.job.runtime_metadata if result.job else {}
     return {
-        "provider_mode": runtime_config.mode,
-        "remote_provider_url": runtime_config.remote_base_url,
+        "provider_source": runtime_metadata.get("provider_runtime_source", provider_source),
+        "provider_mode": runtime_metadata.get("provider_runtime_mode", runtime_config.mode),
+        "remote_provider_url": runtime_metadata.get(
+            "provider_runtime_base_url",
+            runtime_config.remote_base_url,
+        ),
+        "provider_route_id": runtime_metadata.get("provider_route_id"),
+        "provider_route_name": runtime_metadata.get("provider_route_name"),
         "processed": result.processed,
         "job_id": result.job.job_id if result.job else None,
         "chunk_id": result.job.chunk_id if result.job else None,
@@ -106,6 +129,15 @@ def main() -> int:
     parser.add_argument("--worker-name", default="embedding-worker")
     parser.add_argument("--profile-name", default=None)
     parser.add_argument("--lease-seconds", type=int, default=DEFAULT_LEASE_SECONDS)
+    parser.add_argument(
+        "--provider-source",
+        choices=PROVIDER_SOURCES,
+        default=PROVIDER_SOURCE_ROUTE,
+        help=(
+            "Provider source. 'route' selects an active profile route from the database "
+            "and falls back to runtime config; 'runtime' ignores route records."
+        ),
+    )
     parser.add_argument(
         "--provider-mode",
         choices=(MOCK_EMBEDDING_PROVIDER_TYPE, REMOTE_EMBEDDING_PROVIDER_TYPE),
@@ -137,8 +169,13 @@ def main() -> int:
         profile_name=args.profile_name,
         lease_seconds=args.lease_seconds,
         runtime_config=runtime_config,
+        provider_source=args.provider_source,
     )
-    payload = _result_payload(result, runtime_config=runtime_config)
+    payload = _result_payload(
+        result,
+        runtime_config=runtime_config,
+        provider_source=args.provider_source,
+    )
     print(json.dumps(payload, ensure_ascii=False))
     return 0
 

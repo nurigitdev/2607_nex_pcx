@@ -5,15 +5,21 @@ from fastapi.testclient import TestClient
 
 from app.core.database import connect
 from app.core.embedding_jobs import EmbeddingJobInput, create_embedding_job, get_embedding_job
+from app.core.embedding_provider_routes import (
+    EmbeddingProviderRouteInput,
+    upsert_embedding_provider_route,
+)
 from app.core.embedding_providers import (
     EmbeddingProviderRequest,
     EmbeddingProviderResponse,
+    EmbeddingProviderRuntimeConfig,
     RemoteEmbeddingProviderClient,
 )
 from app.core.embedding_vectors import get_chunk_embedding
 from app.core.embedding_worker import (
     ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
     process_next_embedding_job_with_provider,
+    process_next_embedding_job_with_provider_routes,
     process_next_mock_embedding_job,
 )
 from app.embedding_provider_service import (
@@ -108,6 +114,15 @@ def _cleanup_fixture(database_url: str, file_id: int, profile_name: str | None =
                     "DELETE FROM embedding_profiles WHERE profile_name = %s",
                     (profile_name,),
                 )
+
+
+def _cleanup_routes(database_url: str, provider_names: list[str]) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM embedding_provider_routes WHERE provider_name = ANY(%s)",
+                (provider_names,),
+            )
 
 
 def test_mock_embedding_worker_stores_vector_and_marks_job_succeeded(
@@ -293,6 +308,91 @@ def test_embedding_worker_stores_vector_from_remote_provider_service(
         assert stored_vector.table_name == "chunk_embeddings_kure_v1_1024"
     finally:
         _cleanup_fixture(migrated_database_url, file_id)
+
+
+def test_route_aware_embedding_worker_uses_profile_provider_route(
+    migrated_database_url: str,
+) -> None:
+    chunk_text = "Route-aware worker selects the provider URL from the route table."
+    file_id, chunk_id = _create_chunk(migrated_database_url, chunk_text)
+    provider_name = f"route-aware-provider-{uuid4().hex}"
+    provider_app = create_provider_app(
+        EmbeddingProviderServiceSettings(
+            provider_model_id="route-aware-provider-e2e",
+            model_key="kure_v1",
+            profile_names=("kure_v1_1024",),
+            dimension=1024,
+            device="cuda:1",
+        )
+    )
+    captured_runtime_config = None
+    try:
+        created = create_embedding_job(
+            migrated_database_url,
+            EmbeddingJobInput(chunk_id=chunk_id, profile_name="kure_v1_1024"),
+        )
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=provider_name,
+                provider_base_url="http://provider.test/",
+                timeout_seconds=4.0,
+                priority=0,
+                runtime_metadata={"pool": "gpu-a"},
+            ),
+        )
+
+        with TestClient(provider_app, base_url="http://provider.test") as http_client:
+
+            def provider_builder(runtime_config: EmbeddingProviderRuntimeConfig):
+                nonlocal captured_runtime_config
+                captured_runtime_config = runtime_config
+                return RemoteEmbeddingProviderClient(
+                    runtime_config.remote_base_url or "",
+                    timeout_seconds=runtime_config.remote_timeout_seconds,
+                    http_client=_TestClientEmbeddingProviderHTTPClient(http_client),
+                )
+
+            result = process_next_embedding_job_with_provider_routes(
+                migrated_database_url,
+                worker_name="route-aware-worker",
+                profile_name="kure_v1_1024",
+                fallback_runtime_config=EmbeddingProviderRuntimeConfig(mode="mock"),
+                provider_builder=provider_builder,
+                route_selector=lambda _database_url, _profile_name: route,
+            )
+
+        stored_job = get_embedding_job(migrated_database_url, created.job.job_id)
+        stored_vector = get_chunk_embedding(
+            migrated_database_url,
+            profile_name="kure_v1_1024",
+            chunk_id=chunk_id,
+        )
+
+        assert captured_runtime_config == EmbeddingProviderRuntimeConfig(
+            mode="remote",
+            remote_base_url="http://provider.test",
+            remote_timeout_seconds=4.0,
+        )
+        assert result.processed is True
+        assert result.job is not None
+        assert result.job.status == "succeeded"
+        assert stored_job is not None
+        assert stored_job.runtime_metadata["provider_runtime_source"] == "route"
+        assert stored_job.runtime_metadata["provider_route_id"] == route.route_id
+        assert stored_job.runtime_metadata["provider_route_name"] == provider_name
+        assert stored_job.runtime_metadata["provider_route_priority"] == 0
+        assert stored_job.runtime_metadata["provider_runtime_base_url"] == "http://provider.test"
+        assert stored_job.runtime_metadata["provider_runtime_timeout_seconds"] == 4.0
+        assert stored_job.runtime_metadata["provider_route_metadata"] == {"pool": "gpu-a"}
+        assert stored_job.runtime_metadata["provider_model_id"] == "route-aware-provider-e2e"
+        assert stored_job.runtime_metadata["device"] == "cuda:1"
+        assert stored_vector is not None
+        assert stored_vector.dimension == 1024
+    finally:
+        _cleanup_fixture(migrated_database_url, file_id)
+        _cleanup_routes(migrated_database_url, [provider_name])
 
 
 class _StaticEmbeddingProvider:
