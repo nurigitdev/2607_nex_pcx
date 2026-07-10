@@ -9,6 +9,7 @@ from app.core.embedding_model_distribution import (
     InvalidEmbeddingModelDistributionError,
     audit_embedding_model_readiness,
     get_embedding_model_distribution,
+    get_embedding_model_distribution_for_profile,
     list_embedding_model_distributions,
     resolve_embedding_model_dir,
 )
@@ -40,6 +41,16 @@ def test_embedding_model_distribution_resolves_local_model_directories() -> None
 def test_embedding_model_distribution_rejects_unknown_model_key() -> None:
     with pytest.raises(InvalidEmbeddingModelDistributionError, match="Unsupported"):
         get_embedding_model_distribution("missing")
+
+
+def test_embedding_model_distribution_resolves_distribution_by_profile_name() -> None:
+    assert (
+        get_embedding_model_distribution_for_profile("qwen3_4b_2560").model_key
+        == "qwen3_embedding_4b"
+    )
+
+    with pytest.raises(InvalidEmbeddingModelDistributionError, match="Unsupported"):
+        get_embedding_model_distribution_for_profile("missing_profile")
 
 
 def test_embedding_model_readiness_audit_reports_missing_and_ready_models(tmp_path: Path) -> None:

@@ -4,9 +4,11 @@ import pytest
 
 from app.core.database import connect
 from app.core.embedding_jobs import EmbeddingJobInput, create_embedding_job, get_embedding_job
+from app.core.embedding_providers import EmbeddingProviderRequest, EmbeddingProviderResponse
 from app.core.embedding_vectors import get_chunk_embedding
 from app.core.embedding_worker import (
     ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
+    process_next_embedding_job_with_provider,
     process_next_mock_embedding_job,
 )
 
@@ -132,6 +134,8 @@ def test_mock_embedding_worker_stores_vector_and_marks_job_succeeded(
         assert stored_job.status == "succeeded"
         assert stored_job.attempts == 1
         assert stored_job.runtime_metadata["adapter"] == "mock"
+        assert stored_job.runtime_metadata["provider_type"] == "mock"
+        assert stored_job.runtime_metadata["provider_model_id"] == "mock-provider"
         assert stored_job.runtime_metadata["dimension"] == 1024
         assert stored_job.runtime_metadata["table_name"] == "chunk_embeddings_kure_v1_1024"
         assert stored_vector == result.vector
@@ -169,3 +173,68 @@ def test_mock_embedding_worker_marks_unsupported_profile_failed(
         assert "Unsupported embedding profile" in stored_job.error_message
     finally:
         _cleanup_fixture(migrated_database_url, file_id, profile_name)
+
+
+def test_embedding_worker_can_store_vector_from_custom_provider(
+    migrated_database_url: str,
+) -> None:
+    chunk_text = "Provider worker stores a vector from an injected provider."
+    file_id, chunk_id = _create_chunk(migrated_database_url, chunk_text)
+    try:
+        created = create_embedding_job(
+            migrated_database_url,
+            EmbeddingJobInput(chunk_id=chunk_id, profile_name="kure_v1_1024"),
+        )
+        provider = _StaticEmbeddingProvider()
+
+        result = process_next_embedding_job_with_provider(
+            migrated_database_url,
+            worker_name="provider-worker-one",
+            provider=provider,
+            profile_name="kure_v1_1024",
+            success_message="Provider embedding stored",
+        )
+
+        stored_job = get_embedding_job(migrated_database_url, created.job.job_id)
+        stored_vector = get_chunk_embedding(
+            migrated_database_url,
+            profile_name="kure_v1_1024",
+            chunk_id=chunk_id,
+        )
+
+        assert result.processed is True
+        assert result.job is not None
+        assert result.job.status == "succeeded"
+        assert result.message == "Provider embedding stored"
+        assert stored_job is not None
+        assert stored_job.runtime_metadata["provider_type"] == "remote"
+        assert stored_job.runtime_metadata["provider_model_id"] == "static-gpu-provider"
+        assert stored_job.runtime_metadata["adapter"] == "remote"
+        assert stored_job.runtime_metadata["model_key"] == "kure_v1"
+        assert provider.requests[0].trace_id == f"embedding-job-{created.job.job_id}"
+        assert provider.requests[0].texts == (chunk_text,)
+        assert stored_vector is not None
+        assert stored_vector.dimension == 1024
+    finally:
+        _cleanup_fixture(migrated_database_url, file_id)
+
+
+class _StaticEmbeddingProvider:
+    def __init__(self) -> None:
+        self.requests: list[EmbeddingProviderRequest] = []
+
+    def embed(self, request: EmbeddingProviderRequest) -> EmbeddingProviderResponse:
+        self.requests.append(request)
+        return EmbeddingProviderResponse(
+            embeddings=(tuple(0.001 for _ in range(request.output_dimension)),),
+            dimension=request.output_dimension,
+            provider_model_id="static-gpu-provider",
+            provider_type="remote",
+            elapsed_ms=7,
+            input_count=1,
+            runtime_metadata={
+                "provider": "remote",
+                "model_key": request.model_key,
+                "device": "cuda:0",
+            },
+        )

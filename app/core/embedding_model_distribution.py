@@ -92,6 +92,18 @@ def get_embedding_model_distribution(model_key: str) -> EmbeddingModelDistributi
     raise InvalidEmbeddingModelDistributionError(f"Unsupported embedding model: {model_key}")
 
 
+def get_embedding_model_distribution_for_profile(profile_name: str) -> EmbeddingModelDistribution:
+    normalized_profile = profile_name.strip()
+    if not normalized_profile:
+        raise InvalidEmbeddingModelDistributionError("profile_name is required")
+
+    for distribution in EMBEDDING_MODEL_DISTRIBUTIONS:
+        if normalized_profile in distribution.profile_names:
+            return distribution
+
+    raise InvalidEmbeddingModelDistributionError(f"Unsupported embedding profile: {profile_name}")
+
+
 def resolve_embedding_model_dir(
     distribution: EmbeddingModelDistribution,
     models_dir: Path,
