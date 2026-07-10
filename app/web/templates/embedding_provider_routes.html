@@ -138,6 +138,7 @@
           <th scope="col">{{ t("embedding_routes.timeout") }}</th>
           <th scope="col">{{ t("embedding_routes.priority") }}</th>
           <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.actions") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -159,10 +160,19 @@
             <span class="badge text-bg-light border">{{ t("embedding_routes.health_check") }}</span>
             {% endif %}
           </td>
+          <td>
+            <button
+              class="btn btn-outline-primary btn-sm"
+              type="button"
+              data-manual-health-button
+              data-health-action-url="/api/admin/embedding-provider-routes/{{ route.route_id }}/health-check"
+            >{{ t("embedding_routes.run_health_check") }}</button>
+            <div class="small text-secondary mt-1" data-manual-health-status></div>
+          </td>
         </tr>
         {% else %}
         <tr>
-          <td class="text-secondary text-center py-5" colspan="7">
+          <td class="text-secondary text-center py-5" colspan="8">
             {% if database_configured %}{{ t("embedding_routes.no_routes") }}{% else %}{{ t("common.no_database") }}{% endif %}
           </td>
         </tr>
@@ -186,6 +196,9 @@
     noRoutes: {{ t("embedding_routes.no_routes") | tojson }},
     healthFailed: {{ t("embedding_routes.health_failed") | tojson }},
     healthLoaded: {{ t("embedding_routes.health_loaded") | tojson }},
+    manualChecking: {{ t("embedding_routes.manual_checking") | tojson }},
+    manualSaved: {{ t("embedding_routes.manual_snapshot_saved") | tojson }},
+    manualFailed: {{ t("embedding_routes.manual_check_failed") | tojson }},
     none: "-",
     status: {
       ready: {{ t("embedding_routes.status_ready") | tojson }},
@@ -211,6 +224,15 @@
   const routeCount = panel.querySelector("[data-route-health-route-count]");
   const loading = panel.querySelector("[data-route-health-loading]");
   const tbody = panel.querySelector("[data-route-health-table]");
+
+  function setManualStatus(button, message, className = "text-secondary") {
+    const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
+    if (!statusNode) {
+      return;
+    }
+    statusNode.className = `small mt-1 ${className}`;
+    statusNode.textContent = message;
+  }
 
   function setSummary(body) {
     readyCount.textContent = body.ready_count ?? "-";
@@ -306,6 +328,40 @@
     }
   }
 
+  function wireManualHealthButtons() {
+    document.querySelectorAll("[data-manual-health-button]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = labels.manualChecking;
+        setManualStatus(button, labels.manualChecking);
+
+        try {
+          const response = await fetch(button.dataset.healthActionUrl, {
+            method: "POST",
+            headers: {Accept: "application/json"},
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            throw new Error(body.detail || labels.manualFailed);
+          }
+          const snapshotId = body.snapshot?.snapshot_id;
+          const message = snapshotId
+            ? `${labels.manualSaved} #${snapshotId}`
+            : labels.manualSaved;
+          setManualStatus(button, message, "text-success");
+          await loadHealth();
+        } catch (error) {
+          setManualStatus(button, error.message || labels.manualFailed, "text-danger");
+        } finally {
+          button.disabled = false;
+          button.textContent = originalText;
+        }
+      });
+    });
+  }
+
+  wireManualHealthButtons();
   loadHealth();
 })();
 </script>

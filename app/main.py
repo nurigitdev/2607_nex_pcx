@@ -55,17 +55,20 @@ from app.core.embedding_model_distribution import (
 from app.core.embedding_provider_health import get_embedding_provider_health_status
 from app.core.embedding_provider_route_health import (
     EmbeddingProviderRouteHealthResult,
+    check_embedding_provider_route_health,
     get_embedding_provider_route_health_summary,
 )
 from app.core.embedding_provider_route_health_snapshots import (
     EmbeddingProviderRouteHealthSnapshotRecord,
     InvalidEmbeddingProviderRouteHealthSnapshotError,
+    record_embedding_provider_route_health_snapshot,
     record_embedding_provider_route_health_summary,
 )
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     EmbeddingProviderRouteRecord,
     InvalidEmbeddingProviderRouteError,
+    get_embedding_provider_route,
     list_embedding_provider_routes,
     upsert_embedding_provider_route,
 )
@@ -2796,6 +2799,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     embedding_provider_route_health_snapshot_payload(snapshot)
                     for snapshot in snapshots
                 ],
+            }
+        )
+
+    @app.post("/api/admin/embedding-provider-routes/{route_id}/health-check")
+    def api_check_embedding_provider_route_health(route_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            route = get_embedding_provider_route(settings.database_url, route_id)
+            if route is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Embedding provider route not found.",
+                )
+            route_health = check_embedding_provider_route_health(route)
+            snapshot = record_embedding_provider_route_health_snapshot(
+                settings.database_url,
+                route_health,
+            )
+        except (
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderRouteHealthSnapshotError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "route_health": embedding_provider_route_health_payload(route_health),
+                "snapshot": embedding_provider_route_health_snapshot_payload(snapshot),
             }
         )
 

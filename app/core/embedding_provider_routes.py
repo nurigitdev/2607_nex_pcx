@@ -162,6 +162,26 @@ def list_embedding_provider_routes(
     return [_row_to_route_record(dict(row)) for row in rows]
 
 
+def get_embedding_provider_route(
+    database_url: str,
+    route_id: int,
+) -> EmbeddingProviderRouteRecord | None:
+    if route_id <= 0:
+        raise InvalidEmbeddingProviderRouteError("route_id must be greater than 0")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {_select_route_columns()}
+                FROM embedding_provider_routes
+                WHERE route_id = %s
+                """,
+                (route_id,),
+            )
+            row = cursor.fetchone()
+    return _row_to_route_record(dict(row)) if row else None
+
+
 def select_embedding_provider_route(
     database_url: str,
     profile_name: str,

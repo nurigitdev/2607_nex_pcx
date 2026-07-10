@@ -228,6 +228,11 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert api_provider_name in page_response.text
             assert form_provider_name in page_response.text
             assert "/api/admin/embedding-provider-routes" in page_response.text
+            assert "data-manual-health-button" in page_response.text
+            assert (
+                f"/api/admin/embedding-provider-routes/{route['route_id']}/health-check"
+                in page_response.text
+            )
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
 
@@ -335,6 +340,52 @@ def test_embedding_provider_route_health_api_persists_snapshots_when_requested(
         assert snapshots[0].route_id == route.route_id
         assert snapshots[0].status == "ready"
         assert snapshots[0].provider_model_id == "mock-provider"
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
+        _cleanup_embedding_profile(migrated_database_url, profile_name)
+
+
+def test_embedding_provider_route_manual_health_check_api_persists_snapshot(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    profile_name = f"route_manual_health_profile_{suffix}"
+    provider_name = f"mock-route-manual-health-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        _create_embedding_profile(migrated_database_url, profile_name)
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name=profile_name,
+                provider_name=provider_name,
+                provider_mode="mock",
+                provider_base_url=None,
+                priority=3,
+                runtime_metadata={"purpose": "manual-health-test"},
+            ),
+        )
+
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/admin/embedding-provider-routes/{route.route_id}/health-check",
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["route_health"]["status"] == "ready"
+        assert body["route_health"]["route"]["route_id"] == route.route_id
+        assert body["snapshot"]["route_id"] == route.route_id
+        assert body["snapshot"]["status"] == "ready"
+        assert body["snapshot"]["profile_names"] == [profile_name]
+
+        snapshots = list_embedding_provider_route_health_snapshots(
+            migrated_database_url,
+            route_id=route.route_id,
+        )
+        assert len(snapshots) == 1
+        assert snapshots[0].snapshot_id == body["snapshot"]["snapshot_id"]
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])
         _cleanup_embedding_profile(migrated_database_url, profile_name)

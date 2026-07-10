@@ -3,6 +3,7 @@ import pytest
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     InvalidEmbeddingProviderRouteError,
+    get_embedding_provider_route,
     validate_embedding_provider_route_input,
 )
 
@@ -70,3 +71,8 @@ def test_embedding_provider_route_input_rejects_invalid_values(
 ) -> None:
     with pytest.raises(InvalidEmbeddingProviderRouteError, match=message):
         validate_embedding_provider_route_input(route_input)
+
+
+def test_get_embedding_provider_route_rejects_invalid_route_id() -> None:
+    with pytest.raises(InvalidEmbeddingProviderRouteError, match="route_id"):
+        get_embedding_provider_route("postgresql://example.invalid/db", 0)
