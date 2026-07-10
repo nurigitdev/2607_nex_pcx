@@ -237,3 +237,9 @@ Process one pending embedding job with the configured provider:
 ```
 
 Provider health is exposed at `/api/embedding/providers/health`.
+
+Run the standalone embedding provider skeleton for contract tests:
+
+```bash
+./.venv/bin/uvicorn app.embedding_provider_service:app --host 127.0.0.1 --port 9000
+```
