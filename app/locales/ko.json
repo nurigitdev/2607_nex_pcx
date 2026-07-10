@@ -16,6 +16,7 @@
     "jobs": "작업",
     "embeddings": "임베딩",
     "embedding_models": "모델 준비도",
+    "embedding_provider": "Provider 상태",
     "chunk_policies": "Chunk 정책",
     "design_system": "디자인 시스템",
     "logs": "로그"
@@ -81,6 +82,28 @@
     "ready": "준비됨",
     "incomplete": "미완료",
     "missing": "없음"
+  },
+  "embedding_provider": {
+    "title": "임베딩 Provider 상태",
+    "subtitle": "현재 worker가 사용할 임베딩 provider mode와 remote health 응답을 확인합니다.",
+    "mode": "Mode",
+    "status": "상태",
+    "ready": "Ready",
+    "not_ready": "Not Ready",
+    "misconfigured": "설정 오류",
+    "provider_type": "Provider Type",
+    "http_status": "HTTP 상태",
+    "health_detail": "Health Detail",
+    "health_help": "provider health API 응답을 worker 운영 관점에서 요약합니다.",
+    "remote_url": "Remote URL",
+    "provider_model_id": "Provider Model ID",
+    "model_key": "Model Key",
+    "profiles": "Profiles",
+    "dimension": "Dimension",
+    "device": "Device",
+    "error": "Error",
+    "runtime_metadata": "Runtime Metadata",
+    "no_runtime_metadata": "runtime metadata가 없습니다."
   },
   "role": {
     "admin": "관리자",

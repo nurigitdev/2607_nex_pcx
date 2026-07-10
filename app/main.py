@@ -4518,6 +4518,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
         )
 
+    @app.get("/admin/embedding-provider", response_class=HTMLResponse)
+    def embedding_provider_page(request: Request) -> HTMLResponse:
+        provider_health = get_embedding_provider_health_status(settings)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "embedding_provider.html",
+            template_context(
+                request,
+                provider_health=provider_health.payload,
+                provider_status_code=provider_health.status_code,
+            ),
+        )
+
     @app.get("/admin/chunk-policies", response_class=HTMLResponse)
     def chunk_policies_page(request: Request) -> HTMLResponse:
         policies: list[ChunkPolicySummaryRecord] = []

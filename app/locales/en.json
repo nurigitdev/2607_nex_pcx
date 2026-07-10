@@ -16,6 +16,7 @@
     "jobs": "Jobs",
     "embeddings": "Embeddings",
     "embedding_models": "Model Readiness",
+    "embedding_provider": "Provider Health",
     "chunk_policies": "Chunk Policies",
     "design_system": "Design System",
     "logs": "Logs"
@@ -81,6 +82,28 @@
     "ready": "Ready",
     "incomplete": "Incomplete",
     "missing": "Missing"
+  },
+  "embedding_provider": {
+    "title": "Embedding Provider Health",
+    "subtitle": "Check the provider mode and remote health response used by embedding workers.",
+    "mode": "Mode",
+    "status": "Status",
+    "ready": "Ready",
+    "not_ready": "Not Ready",
+    "misconfigured": "Misconfigured",
+    "provider_type": "Provider Type",
+    "http_status": "HTTP Status",
+    "health_detail": "Health Detail",
+    "health_help": "Summarizes the provider health API response for worker operations.",
+    "remote_url": "Remote URL",
+    "provider_model_id": "Provider Model ID",
+    "model_key": "Model Key",
+    "profiles": "Profiles",
+    "dimension": "Dimension",
+    "device": "Device",
+    "error": "Error",
+    "runtime_metadata": "Runtime Metadata",
+    "no_runtime_metadata": "No runtime metadata."
   },
   "role": {
     "admin": "Admin",

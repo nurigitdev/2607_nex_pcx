@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("embedding_provider.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("embedding_provider.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/api/embedding/providers/health">{{ t("common.api") }}</a>
+</div>
+
+<section class="document-detail-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_provider.mode") }}</div>
+    <div class="metric-value text-uppercase">{{ provider_health.provider_mode }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_provider.status") }}</div>
+    <div class="mt-3">
+      {% if provider_health.ready %}
+      <span class="badge text-bg-success">{{ t("embedding_provider.ready") }}</span>
+      {% elif provider_health.configured %}
+      <span class="badge text-bg-warning">{{ t("embedding_provider.not_ready") }}</span>
+      {% else %}
+      <span class="badge text-bg-danger">{{ t("embedding_provider.misconfigured") }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_provider.provider_type") }}</div>
+    <div class="metric-value">{{ provider_health.provider_type or "-" }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_provider.http_status") }}</div>
+    <div class="metric-value">{{ provider_status_code }}</div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_provider.health_detail") }}</h2>
+      <div class="text-secondary">{{ t("embedding_provider.health_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <tbody>
+        <tr>
+          <th scope="row">{{ t("embedding_provider.remote_url") }}</th>
+          <td class="model-path">{{ provider_health.remote_provider_url or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("embedding_provider.provider_model_id") }}</th>
+          <td>{{ provider_health.provider_model_id or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("embedding_provider.model_key") }}</th>
+          <td>{{ provider_health.model_key or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("embedding_provider.profiles") }}</th>
+          <td>
+            {% for profile_name in provider_health.profile_names or [] %}
+            <span class="badge text-bg-light border">{{ profile_name }}</span>
+            {% else %}
+            -
+            {% endfor %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("embedding_provider.dimension") }}</th>
+          <td>{{ provider_health.dimension or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("embedding_provider.device") }}</th>
+          <td>{{ provider_health.device or "-" }}</td>
+        </tr>
+        {% if provider_health.error_message %}
+        <tr>
+          <th scope="row">{{ t("embedding_provider.error") }}</th>
+          <td class="text-danger">{{ provider_health.error_message }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-3 mt-4">
+  <div class="metric-label mb-2">{{ t("embedding_provider.runtime_metadata") }}</div>
+  {% if provider_health.runtime_metadata %}
+  <pre class="json-preview mb-0">{{ provider_health.runtime_metadata | tojson(indent=2) }}</pre>
+  {% else %}
+  <div class="text-secondary">{{ t("embedding_provider.no_runtime_metadata") }}</div>
+  {% endif %}
+</section>
+{% endblock %}

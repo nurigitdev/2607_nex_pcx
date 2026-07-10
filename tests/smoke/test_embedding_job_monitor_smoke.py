@@ -62,6 +62,18 @@ def test_embedding_provider_health_api_reports_mock_provider() -> None:
     assert body["provider_model_id"] == "mock-provider"
 
 
+def test_embedding_provider_health_page_shows_mock_provider() -> None:
+    app = create_app(Settings())
+
+    with TestClient(app) as client:
+        response = client.get("/admin/embedding-provider")
+
+    assert response.status_code == 200
+    assert "임베딩 Provider 상태" in response.text
+    assert "mock-provider" in response.text
+    assert "/api/embedding/providers/health" in response.text
+
+
 def test_embedding_model_readiness_page_shows_without_database_url(tmp_path) -> None:
     app = create_app(Settings(embedding_models_dir=tmp_path))
 
