@@ -6,6 +6,10 @@ from psycopg import errors
 
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
+from app.core.embedding_provider_route_health_snapshots import (
+    InvalidEmbeddingProviderRouteHealthSnapshotError,
+    list_embedding_provider_route_health_snapshots,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     list_embedding_provider_routes,
@@ -62,6 +66,15 @@ def test_embedding_provider_routes_table_exists_and_enforces_remote_url(
     )
 
     assert table_name["table_name"] == "embedding_provider_routes"
+    snapshot_table_name = fetch_one(
+        migrated_database_url,
+        """
+        SELECT to_regclass(
+            'public.embedding_provider_route_health_snapshots'
+        ) AS table_name
+        """,
+    )
+    assert snapshot_table_name["table_name"] == "embedding_provider_route_health_snapshots"
 
     with connect(migrated_database_url) as connection:
         with connection.cursor() as cursor:
@@ -259,6 +272,79 @@ def test_embedding_provider_route_health_api_summarizes_mock_routes(
         assert body["routes"][0]["provider_model_id"] == "mock-provider"
         assert body["routes"][0]["route"]["profile_name"] == profile_name
         assert body["routes"][0]["route"]["provider_name"] == provider_name
+        assert body["snapshot_count"] == 0
+        assert body["snapshots"] == []
+        assert (
+            list_embedding_provider_route_health_snapshots(
+                migrated_database_url,
+                profile_name=profile_name,
+            )
+            == []
+        )
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])
         _cleanup_embedding_profile(migrated_database_url, profile_name)
+
+
+def test_embedding_provider_route_health_api_persists_snapshots_when_requested(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    profile_name = f"route_health_snapshot_profile_{suffix}"
+    provider_name = f"mock-route-health-snapshot-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        _create_embedding_profile(migrated_database_url, profile_name)
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name=profile_name,
+                provider_name=provider_name,
+                provider_mode="mock",
+                provider_base_url=None,
+                priority=3,
+                runtime_metadata={"purpose": "api-health-snapshot-test"},
+            ),
+        )
+
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/admin/embedding-provider-routes/health",
+                params={"profile_name": profile_name, "persist": "true"},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["route_count"] == 1
+        assert body["snapshot_count"] == 1
+        assert body["snapshots"][0]["route_id"] == route.route_id
+        assert body["snapshots"][0]["profile_name"] == profile_name
+        assert body["snapshots"][0]["provider_name"] == provider_name
+        assert body["snapshots"][0]["status"] == "ready"
+        assert body["snapshots"][0]["ready"] is True
+        assert body["snapshots"][0]["profile_names"] == [profile_name]
+        assert body["snapshots"][0]["runtime_metadata"] == {"provider": "mock"}
+
+        snapshots = list_embedding_provider_route_health_snapshots(
+            migrated_database_url,
+            profile_name=profile_name,
+        )
+        assert len(snapshots) == 1
+        assert snapshots[0].snapshot_id == body["snapshots"][0]["snapshot_id"]
+        assert snapshots[0].route_id == route.route_id
+        assert snapshots[0].status == "ready"
+        assert snapshots[0].provider_model_id == "mock-provider"
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
+        _cleanup_embedding_profile(migrated_database_url, profile_name)
+
+
+def test_embedding_provider_route_health_snapshot_filters_validate_inputs(
+    migrated_database_url: str,
+) -> None:
+    with pytest.raises(InvalidEmbeddingProviderRouteHealthSnapshotError):
+        list_embedding_provider_route_health_snapshots(migrated_database_url, limit=0)
+
+    with pytest.raises(InvalidEmbeddingProviderRouteHealthSnapshotError):
+        list_embedding_provider_route_health_snapshots(migrated_database_url, route_id=0)

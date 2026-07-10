@@ -57,6 +57,11 @@ from app.core.embedding_provider_route_health import (
     EmbeddingProviderRouteHealthResult,
     get_embedding_provider_route_health_summary,
 )
+from app.core.embedding_provider_route_health_snapshots import (
+    EmbeddingProviderRouteHealthSnapshotRecord,
+    InvalidEmbeddingProviderRouteHealthSnapshotError,
+    record_embedding_provider_route_health_summary,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     EmbeddingProviderRouteRecord,
@@ -615,6 +620,32 @@ def embedding_provider_route_health_payload(
         "runtime_metadata": route_health.runtime_metadata,
         "validation_errors": list(route_health.validation_errors),
         "error_message": route_health.error_message,
+    }
+
+
+def embedding_provider_route_health_snapshot_payload(
+    snapshot: EmbeddingProviderRouteHealthSnapshotRecord,
+) -> dict[str, object]:
+    return {
+        "snapshot_id": snapshot.snapshot_id,
+        "route_id": snapshot.route_id,
+        "profile_name": snapshot.profile_name,
+        "provider_name": snapshot.provider_name,
+        "provider_mode": snapshot.provider_mode,
+        "checked": snapshot.checked,
+        "ready": snapshot.ready,
+        "status": snapshot.status,
+        "elapsed_ms": snapshot.elapsed_ms,
+        "provider_type": snapshot.provider_type,
+        "provider_model_id": snapshot.provider_model_id,
+        "model_key": snapshot.model_key,
+        "profile_names": list(snapshot.profile_names),
+        "dimension": snapshot.dimension,
+        "device": snapshot.device,
+        "runtime_metadata": snapshot.runtime_metadata,
+        "validation_errors": list(snapshot.validation_errors),
+        "error_message": snapshot.error_message,
+        "checked_at": _datetime_response(snapshot.checked_at),
     }
 
 
@@ -2726,19 +2757,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def api_embedding_provider_route_health(
         profile_name: str | None = None,
         active_only: bool = True,
+        persist: bool = False,
     ) -> JSONResponse:
         if not settings.database_url:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
+        snapshots: list[EmbeddingProviderRouteHealthSnapshotRecord] = []
         try:
             summary = get_embedding_provider_route_health_summary(
                 settings.database_url,
                 profile_name=profile_name,
                 active_only=active_only,
             )
-        except InvalidEmbeddingProviderRouteError as exc:
+            if persist:
+                snapshots = record_embedding_provider_route_health_summary(
+                    settings.database_url,
+                    summary,
+                )
+        except (
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderRouteHealthSnapshotError,
+        ) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(
@@ -2746,9 +2787,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "route_count": summary.route_count,
                 "checked_count": summary.checked_count,
                 "ready_count": summary.ready_count,
+                "snapshot_count": len(snapshots),
                 "routes": [
                     embedding_provider_route_health_payload(route_health)
                     for route_health in summary.routes
+                ],
+                "snapshots": [
+                    embedding_provider_route_health_snapshot_payload(snapshot)
+                    for snapshot in snapshots
                 ],
             }
         )
