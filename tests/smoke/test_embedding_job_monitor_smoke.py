@@ -74,6 +74,18 @@ def test_embedding_provider_health_page_shows_mock_provider() -> None:
     assert "/api/embedding/providers/health" in response.text
 
 
+def test_embedding_provider_routes_page_shows_configuration_message_without_database_url() -> None:
+    app = create_app(Settings())
+
+    with TestClient(app) as client:
+        response = client.get("/admin/embedding-provider-routes")
+
+    assert response.status_code == 200
+    assert "임베딩 Provider 라우팅" in response.text
+    assert "NEX_PCX_DATABASE_URL is not configured." in response.text
+    assert "/api/admin/embedding-provider-routes" in response.text
+
+
 def test_embedding_model_readiness_page_shows_without_database_url(tmp_path) -> None:
     app = create_app(Settings(embedding_models_dir=tmp_path))
 

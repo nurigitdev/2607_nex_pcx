@@ -17,6 +17,7 @@
     "embeddings": "Embeddings",
     "embedding_models": "Model Readiness",
     "embedding_provider": "Provider Health",
+    "embedding_routes": "Provider Routing",
     "chunk_policies": "Chunk Policies",
     "design_system": "Design System",
     "logs": "Logs"
@@ -104,6 +105,24 @@
     "error": "Error",
     "runtime_metadata": "Runtime Metadata",
     "no_runtime_metadata": "No runtime metadata."
+  },
+  "embedding_routes": {
+    "title": "Embedding Provider Routing",
+    "subtitle": "Manage remote provider URL, priority, and health check settings by profile.",
+    "profile": "Profile",
+    "provider_name": "Provider Name",
+    "mode": "Mode",
+    "base_url": "Base URL",
+    "timeout": "Timeout",
+    "priority": "Priority",
+    "active": "Active",
+    "health_check": "Health Check",
+    "save": "Save Route",
+    "routes": "Provider Routes",
+    "routes_help": "Active routes become worker/provider routing candidates in ascending priority order.",
+    "status": "Status",
+    "no_profiles": "No active profiles found.",
+    "no_routes": "No provider routes found."
   },
   "role": {
     "admin": "Admin",

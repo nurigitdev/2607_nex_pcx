@@ -17,6 +17,7 @@
     "embeddings": "임베딩",
     "embedding_models": "모델 준비도",
     "embedding_provider": "Provider 상태",
+    "embedding_routes": "Provider 라우팅",
     "chunk_policies": "Chunk 정책",
     "design_system": "디자인 시스템",
     "logs": "로그"
@@ -104,6 +105,24 @@
     "error": "Error",
     "runtime_metadata": "Runtime Metadata",
     "no_runtime_metadata": "runtime metadata가 없습니다."
+  },
+  "embedding_routes": {
+    "title": "임베딩 Provider 라우팅",
+    "subtitle": "profile별 remote provider URL, 우선순위, health check 설정을 관리합니다.",
+    "profile": "Profile",
+    "provider_name": "Provider 이름",
+    "mode": "Mode",
+    "base_url": "Base URL",
+    "timeout": "Timeout",
+    "priority": "Priority",
+    "active": "활성",
+    "health_check": "Health Check",
+    "save": "Route 저장",
+    "routes": "Provider Routes",
+    "routes_help": "활성 route는 priority가 낮은 순서로 worker/provider routing 후보가 됩니다.",
+    "status": "상태",
+    "no_profiles": "활성 profile이 없습니다.",
+    "no_routes": "등록된 provider route가 없습니다."
   },
   "role": {
     "admin": "관리자",

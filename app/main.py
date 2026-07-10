@@ -41,6 +41,7 @@ from app.core.document_inventory import (
 )
 from app.core.embedding_jobs import (
     EmbeddingJobRecord,
+    EmbeddingProfileRecord,
     InvalidEmbeddingJobError,
     get_embedding_job,
     list_active_embedding_profiles,
@@ -52,6 +53,13 @@ from app.core.embedding_model_distribution import (
     audit_embedding_model_readiness,
 )
 from app.core.embedding_provider_health import get_embedding_provider_health_status
+from app.core.embedding_provider_routes import (
+    EmbeddingProviderRouteInput,
+    EmbeddingProviderRouteRecord,
+    InvalidEmbeddingProviderRouteError,
+    list_embedding_provider_routes,
+    upsert_embedding_provider_route,
+)
 from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
     InvalidEmbeddingVectorError,
@@ -282,6 +290,18 @@ class DocumentPermissionUpdateRequest(BaseModel):
     owner_org_unit_id: int | None = Field(default=None, ge=1)
     access_scope: str = "personal"
     updated_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class EmbeddingProviderRouteRequest(BaseModel):
+    profile_name: str
+    provider_name: str
+    provider_mode: str = "remote"
+    provider_base_url: str | None = None
+    timeout_seconds: float = Field(default=30.0, gt=0)
+    priority: int = Field(default=100, ge=0)
+    is_active: bool = True
+    health_check_enabled: bool = True
+    runtime_metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class GoldenQuestionSetRequest(BaseModel):
@@ -554,6 +574,39 @@ def embedding_model_readiness_payload(readiness: EmbeddingModelReadiness) -> dic
         "file_count": readiness.file_count,
         "total_size_bytes": readiness.total_size_bytes,
     }
+
+
+def embedding_provider_route_payload(route: EmbeddingProviderRouteRecord) -> dict[str, object]:
+    return {
+        "route_id": route.route_id,
+        "profile_name": route.profile_name,
+        "provider_name": route.provider_name,
+        "provider_mode": route.provider_mode,
+        "provider_base_url": route.provider_base_url,
+        "timeout_seconds": route.timeout_seconds,
+        "priority": route.priority,
+        "is_active": route.is_active,
+        "health_check_enabled": route.health_check_enabled,
+        "runtime_metadata": route.runtime_metadata,
+        "created_at": _datetime_response(route.created_at),
+        "updated_at": _datetime_response(route.updated_at),
+    }
+
+
+def embedding_provider_route_input_from_request(
+    payload: EmbeddingProviderRouteRequest,
+) -> EmbeddingProviderRouteInput:
+    return EmbeddingProviderRouteInput(
+        profile_name=payload.profile_name,
+        provider_name=payload.provider_name,
+        provider_mode=payload.provider_mode,
+        provider_base_url=payload.provider_base_url,
+        timeout_seconds=payload.timeout_seconds,
+        priority=payload.priority,
+        is_active=payload.is_active,
+        health_check_enabled=payload.health_check_enabled,
+        runtime_metadata=payload.runtime_metadata,
+    )
 
 
 def vector_search_result_payload(result: VectorSearchResult) -> dict[str, object]:
@@ -2619,6 +2672,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=provider_health.payload,
         )
 
+    @app.get("/api/admin/embedding-provider-routes")
+    def api_list_embedding_provider_routes(
+        profile_name: str | None = None,
+        active_only: bool = False,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            routes = list_embedding_provider_routes(
+                settings.database_url,
+                profile_name=profile_name,
+                active_only=active_only,
+            )
+        except InvalidEmbeddingProviderRouteError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "routes": [embedding_provider_route_payload(route) for route in routes],
+            }
+        )
+
+    @app.post("/api/admin/embedding-provider-routes")
+    def api_upsert_embedding_provider_route(
+        payload: EmbeddingProviderRouteRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            route = upsert_embedding_provider_route(
+                settings.database_url,
+                embedding_provider_route_input_from_request(payload),
+            )
+        except InvalidEmbeddingProviderRouteError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"route": embedding_provider_route_payload(route)})
+
     @app.get("/api/embedding/jobs")
     def api_list_embedding_jobs(
         status_filter: str | None = Query(default=None, alias="status"),
@@ -4528,6 +4625,90 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 provider_health=provider_health.payload,
                 provider_status_code=provider_health.status_code,
+            ),
+        )
+
+    @app.get("/admin/embedding-provider-routes", response_class=HTMLResponse)
+    def embedding_provider_routes_page(request: Request) -> HTMLResponse:
+        routes: list[EmbeddingProviderRouteRecord] = []
+        profiles: list[EmbeddingProfileRecord] = []
+        error_message = None
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                routes = list_embedding_provider_routes(settings.database_url)
+                profiles = list_active_embedding_profiles(settings.database_url)
+            except (InvalidEmbeddingProviderRouteError, InvalidEmbeddingJobError) as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "embedding_provider_routes.html",
+            template_context(
+                request,
+                routes=routes,
+                profiles=profiles,
+                error_message=error_message,
+                success_message=None,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.post("/admin/embedding-provider-routes", response_class=HTMLResponse)
+    def embedding_provider_routes_upsert_page(
+        request: Request,
+        profile_name: str = Form(...),
+        provider_name: str = Form(...),
+        provider_mode: str = Form("remote"),
+        provider_base_url: str | None = Form(None),
+        timeout_seconds: float = Form(30.0),
+        priority: int = Form(100),
+        is_active: bool = Form(False),
+        health_check_enabled: bool = Form(False),
+    ) -> HTMLResponse:
+        routes: list[EmbeddingProviderRouteRecord] = []
+        profiles: list[EmbeddingProfileRecord] = []
+        error_message = None
+        success_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                upsert_embedding_provider_route(
+                    settings.database_url,
+                    EmbeddingProviderRouteInput(
+                        profile_name=profile_name,
+                        provider_name=provider_name,
+                        provider_mode=provider_mode,
+                        provider_base_url=provider_base_url,
+                        timeout_seconds=timeout_seconds,
+                        priority=priority,
+                        is_active=is_active,
+                        health_check_enabled=health_check_enabled,
+                    ),
+                )
+                success_message = "Embedding provider route saved."
+            except InvalidEmbeddingProviderRouteError as exc:
+                error_message = str(exc)
+
+            try:
+                routes = list_embedding_provider_routes(settings.database_url)
+                profiles = list_active_embedding_profiles(settings.database_url)
+            except (InvalidEmbeddingProviderRouteError, InvalidEmbeddingJobError) as exc:
+                error_message = error_message or str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "embedding_provider_routes.html",
+            template_context(
+                request,
+                routes=routes,
+                profiles=profiles,
+                error_message=error_message,
+                success_message=success_message,
+                database_configured=bool(settings.database_url),
             ),
         )
 

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("embedding_routes.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("embedding_routes.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/api/admin/embedding-provider-routes">{{ t("common.api") }}</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+{% if success_message %}
+<div class="alert alert-success" role="alert">{{ success_message }}</div>
+{% endif %}
+
+<section class="metric-card bg-white p-3 mb-4">
+  <form class="row g-3 align-items-end" method="post" action="/admin/embedding-provider-routes">
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="profile_name">{{ t("embedding_routes.profile") }}</label>
+      <select class="form-select" id="profile_name" name="profile_name" {% if not database_configured or not profiles %}disabled{% endif %}>
+        {% for profile in profiles %}
+        <option value="{{ profile.profile_name }}">{{ profile.profile_name }}</option>
+        {% else %}
+        <option value="">{{ t("embedding_routes.no_profiles") }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="provider_name">{{ t("embedding_routes.provider_name") }}</label>
+      <input class="form-control" id="provider_name" name="provider_name" value="gpu-primary" {% if not database_configured or not profiles %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="provider_mode">{{ t("embedding_routes.mode") }}</label>
+      <select class="form-select" id="provider_mode" name="provider_mode" {% if not database_configured or not profiles %}disabled{% endif %}>
+        <option value="remote">remote</option>
+        <option value="mock">mock</option>
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="provider_base_url">{{ t("embedding_routes.base_url") }}</label>
+      <input class="form-control" id="provider_base_url" name="provider_base_url" placeholder="http://127.0.0.1:9000" {% if not database_configured or not profiles %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-md-1">
+      <label class="form-label" for="timeout_seconds">{{ t("embedding_routes.timeout") }}</label>
+      <input class="form-control" id="timeout_seconds" name="timeout_seconds" type="number" min="0.001" step="0.001" value="30" {% if not database_configured or not profiles %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-md-1">
+      <label class="form-label" for="priority">{{ t("embedding_routes.priority") }}</label>
+      <input class="form-control" id="priority" name="priority" type="number" min="0" step="1" value="100" {% if not database_configured or not profiles %}disabled{% endif %}>
+    </div>
+    <div class="col-12 d-flex flex-wrap gap-3">
+      <div class="form-check">
+        <input class="form-check-input" id="is_active" name="is_active" type="checkbox" value="true" checked {% if not database_configured or not profiles %}disabled{% endif %}>
+        <label class="form-check-label" for="is_active">{{ t("embedding_routes.active") }}</label>
+      </div>
+      <div class="form-check">
+        <input class="form-check-input" id="health_check_enabled" name="health_check_enabled" type="checkbox" value="true" checked {% if not database_configured or not profiles %}disabled{% endif %}>
+        <label class="form-check-label" for="health_check_enabled">{{ t("embedding_routes.health_check") }}</label>
+      </div>
+      <button class="btn btn-primary ms-auto" type="submit" {% if not database_configured or not profiles %}disabled{% endif %}>{{ t("embedding_routes.save") }}</button>
+    </div>
+  </form>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.routes") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.routes_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.profile") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.mode") }}</th>
+          <th scope="col">{{ t("embedding_routes.base_url") }}</th>
+          <th scope="col">{{ t("embedding_routes.timeout") }}</th>
+          <th scope="col">{{ t("embedding_routes.priority") }}</th>
+          <th scope="col">{{ t("embedding_routes.status") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for route in routes %}
+        <tr>
+          <td><span class="badge text-bg-light border">{{ route.profile_name }}</span></td>
+          <td><strong>{{ route.provider_name }}</strong></td>
+          <td>{{ route.provider_mode }}</td>
+          <td class="model-path">{{ route.provider_base_url or "-" }}</td>
+          <td>{{ route.timeout_seconds }}</td>
+          <td>{{ route.priority }}</td>
+          <td>
+            {% if route.is_active %}
+            <span class="badge text-bg-success">{{ t("common.active") }}</span>
+            {% else %}
+            <span class="badge text-bg-secondary">{{ t("common.inactive") }}</span>
+            {% endif %}
+            {% if route.health_check_enabled %}
+            <span class="badge text-bg-light border">{{ t("embedding_routes.health_check") }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="7">
+            {% if database_configured %}{{ t("embedding_routes.no_routes") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

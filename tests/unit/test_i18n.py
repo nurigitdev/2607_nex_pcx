@@ -25,6 +25,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("design_system.title") == "Design System"
     assert korean("nav.embedding_provider") == "Provider 상태"
     assert english("embedding_provider.title") == "Embedding Provider Health"
+    assert korean("nav.embedding_routes") == "Provider 라우팅"
+    assert english("embedding_routes.title") == "Embedding Provider Routing"
     assert korean("search_reproducibility.title") == "검색 재현성 Metadata"
     assert english("search_reproducibility.title") == "Search Reproducibility Metadata"
     assert korean("search_reproducibility.fingerprint") == "Fingerprint"

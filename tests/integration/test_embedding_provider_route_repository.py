@@ -1,8 +1,10 @@
 from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from psycopg import errors
 
+from app.core.config import Settings
 from app.core.database import connect, fetch_one
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
@@ -10,6 +12,7 @@ from app.core.embedding_provider_routes import (
     select_embedding_provider_route,
     upsert_embedding_provider_route,
 )
+from app.main import create_app
 
 pytestmark = pytest.mark.integration
 
@@ -117,5 +120,73 @@ def test_embedding_provider_route_repository_upserts_and_selects_best_route(
         assert updated.route_id == fast.route_id
         assert updated.provider_base_url == "http://fast-provider-v2.local"
         assert updated.is_active is False
+    finally:
+        _cleanup_routes(migrated_database_url, provider_names)
+
+
+def test_embedding_provider_route_admin_api_and_page_manage_routes(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    api_provider_name = f"gpu-admin-api-{suffix}"
+    form_provider_name = f"gpu-admin-form-{suffix}"
+    provider_names = [api_provider_name, form_provider_name]
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            post_response = client.post(
+                "/api/admin/embedding-provider-routes",
+                json={
+                    "profile_name": "kure_v1_1024",
+                    "provider_name": api_provider_name,
+                    "provider_mode": "remote",
+                    "provider_base_url": "http://gpu-admin-api.local/",
+                    "timeout_seconds": 9.0,
+                    "priority": 9,
+                    "is_active": True,
+                    "health_check_enabled": True,
+                    "runtime_metadata": {"pool": "admin"},
+                },
+            )
+            assert post_response.status_code == 200
+            route = post_response.json()["route"]
+            assert route["provider_name"] == api_provider_name
+            assert route["provider_base_url"] == "http://gpu-admin-api.local"
+            assert route["runtime_metadata"] == {"pool": "admin"}
+
+            list_response = client.get(
+                "/api/admin/embedding-provider-routes",
+                params={"profile_name": "kure_v1_1024", "active_only": "true"},
+            )
+            assert list_response.status_code == 200
+            provider_names_from_api = [
+                route["provider_name"] for route in list_response.json()["routes"]
+            ]
+            assert api_provider_name in provider_names_from_api
+
+            form_response = client.post(
+                "/admin/embedding-provider-routes",
+                data={
+                    "profile_name": "kure_v1_1024",
+                    "provider_name": form_provider_name,
+                    "provider_mode": "remote",
+                    "provider_base_url": "http://gpu-admin-form.local/",
+                    "timeout_seconds": "7",
+                    "priority": "7",
+                    "is_active": "true",
+                    "health_check_enabled": "true",
+                },
+            )
+            assert form_response.status_code == 200
+            assert "Embedding provider route saved." in form_response.text
+            assert form_provider_name in form_response.text
+
+            page_response = client.get("/admin/embedding-provider-routes")
+            assert page_response.status_code == 200
+            assert "임베딩 Provider 라우팅" in page_response.text
+            assert api_provider_name in page_response.text
+            assert form_provider_name in page_response.text
+            assert "/api/admin/embedding-provider-routes" in page_response.text
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
