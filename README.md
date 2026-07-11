@@ -258,6 +258,10 @@ Run due scheduled route preflight checks after enabling rows in
 ./.venv/bin/python scripts/run_scheduled_provider_preflight.py --limit 20
 ```
 
+Provider route health snapshots, contract snapshots, and preflight run history share a
+30-day retention setting stored in `app_log_settings`. Operators can preview or execute
+cleanup through `/api/admin/embedding-provider-routes/cleanup`.
+
 Run the standalone embedding provider skeleton for contract tests:
 
 ```bash

@@ -144,6 +144,34 @@ def test_embedding_provider_contract_sample_set_api_requires_database_url() -> N
     )
 
 
+def test_embedding_provider_route_retention_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+    retention_payload = {
+        "enabled": True,
+        "retention_days": 30,
+        "cleanup_batch_size": 1000,
+    }
+
+    with TestClient(app) as client:
+        responses = [
+            client.get("/api/admin/embedding-provider-routes/retention-settings"),
+            client.put(
+                "/api/admin/embedding-provider-routes/retention-settings",
+                json=retention_payload,
+            ),
+            client.post(
+                "/api/admin/embedding-provider-routes/cleanup",
+                json={"dry_run": True},
+            ),
+        ]
+
+    assert [response.status_code for response in responses] == [503, 503, 503]
+    assert all(
+        response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
+        for response in responses
+    )
+
+
 def test_embedding_model_readiness_page_shows_without_database_url(tmp_path) -> None:
     app = create_app(Settings(embedding_models_dir=tmp_path))
 

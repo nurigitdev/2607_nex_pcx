@@ -104,6 +104,15 @@ from app.core.embedding_provider_route_readiness import (
     EmbeddingProviderRouteReadinessSummary,
     get_embedding_provider_route_readiness_summary,
 )
+from app.core.embedding_provider_route_retention import (
+    InvalidProviderRouteRetentionError,
+    ProviderRouteCleanupResult,
+    ProviderRouteRetentionSettings,
+    ProviderRouteRetentionSettingsInput,
+    cleanup_expired_provider_route_records,
+    load_provider_route_retention_settings,
+    update_provider_route_retention_settings,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     EmbeddingProviderRouteRecord,
@@ -334,6 +343,16 @@ class SearchLogRetentionSettingsRequest(BaseModel):
 
 
 class SearchLogCleanupRequest(BaseModel):
+    dry_run: bool = True
+
+
+class ProviderRouteRetentionSettingsRequest(BaseModel):
+    enabled: bool = True
+    retention_days: int = Field(default=30, ge=1, le=3650)
+    cleanup_batch_size: int = Field(default=1000, ge=1, le=100000)
+
+
+class ProviderRouteCleanupRequest(BaseModel):
     dry_run: bool = True
 
 
@@ -898,6 +917,46 @@ def embedding_provider_preflight_run_payload(
         "error_message": run.error_message,
         "started_at": _datetime_response(run.started_at),
         "completed_at": _datetime_response(run.completed_at),
+    }
+
+
+def provider_route_retention_settings_payload(
+    retention_settings: ProviderRouteRetentionSettings,
+) -> dict[str, object]:
+    return {
+        "enabled": retention_settings.enabled,
+        "retention_days": retention_settings.retention_days,
+        "cleanup_batch_size": retention_settings.cleanup_batch_size,
+    }
+
+
+def provider_route_retention_settings_input_from_request(
+    payload: ProviderRouteRetentionSettingsRequest,
+) -> ProviderRouteRetentionSettingsInput:
+    return ProviderRouteRetentionSettingsInput(
+        enabled=payload.enabled,
+        retention_days=payload.retention_days,
+        cleanup_batch_size=payload.cleanup_batch_size,
+    )
+
+
+def provider_route_cleanup_result_payload(
+    result: ProviderRouteCleanupResult,
+) -> dict[str, object]:
+    return {
+        "enabled": result.enabled,
+        "dry_run": result.dry_run,
+        "retention_days": result.retention_days,
+        "cleanup_batch_size": result.cleanup_batch_size,
+        "expired_count": result.expired_count,
+        "deleted_count": result.deleted_count,
+        "expired_health_snapshot_count": result.expired_health_snapshot_count,
+        "expired_contract_snapshot_count": result.expired_contract_snapshot_count,
+        "expired_preflight_run_count": result.expired_preflight_run_count,
+        "deleted_health_snapshot_count": result.deleted_health_snapshot_count,
+        "deleted_contract_snapshot_count": result.deleted_contract_snapshot_count,
+        "deleted_preflight_run_count": result.deleted_preflight_run_count,
+        "cutoff_at": _datetime_response(result.cutoff_at),
     }
 
 
@@ -3409,6 +3468,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return JSONResponse(content={"alert": admin_log_payload(alert)})
+
+    @app.get("/api/admin/embedding-provider-routes/retention-settings")
+    def api_get_provider_route_retention_settings() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        retention_settings = load_provider_route_retention_settings(settings.database_url)
+        return JSONResponse(
+            content={
+                "settings": provider_route_retention_settings_payload(retention_settings),
+            }
+        )
+
+    @app.put("/api/admin/embedding-provider-routes/retention-settings")
+    def api_update_provider_route_retention_settings(
+        payload: ProviderRouteRetentionSettingsRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            retention_settings = update_provider_route_retention_settings(
+                settings.database_url,
+                provider_route_retention_settings_input_from_request(payload),
+            )
+        except InvalidProviderRouteRetentionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "settings": provider_route_retention_settings_payload(retention_settings),
+            }
+        )
+
+    @app.post("/api/admin/embedding-provider-routes/cleanup")
+    def api_cleanup_provider_route_operational_records(
+        payload: ProviderRouteCleanupRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            result = cleanup_expired_provider_route_records(
+                settings.database_url,
+                dry_run=payload.dry_run,
+            )
+        except InvalidProviderRouteRetentionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"cleanup": provider_route_cleanup_result_payload(result)})
 
     @app.get("/api/admin/embedding-provider-routes/preflight-runs")
     def api_list_embedding_provider_preflight_runs(

@@ -62,6 +62,15 @@ Recent preflight run history API:
 GET /api/admin/embedding-provider-routes/preflight-runs?limit=10
 ```
 
+Operational retention settings control health snapshots, contract snapshots, and
+preflight run history together. The default keeps 30 days and allows dry-run cleanup
+previews before deletion:
+
+```text
+GET /api/admin/embedding-provider-routes/retention-settings
+POST /api/admin/embedding-provider-routes/cleanup
+```
+
 ## Route Lifecycle
 
 | Stage | Expected state | Operator action |
