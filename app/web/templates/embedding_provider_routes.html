@@ -185,6 +185,65 @@
 
 <section
   class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-route-readiness-panel
+  data-readiness-api-url="/api/admin/embedding-provider-routes/readiness?active_only=true"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.readiness") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.readiness_help") }}</div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="small text-secondary" data-route-readiness-status aria-live="polite">
+        {% if database_configured %}{{ t("embedding_routes.loading_readiness") }}{% else %}{{ t("common.no_database") }}{% endif %}
+      </span>
+      <button class="btn btn-outline-secondary btn-sm" type="button" data-route-readiness-refresh {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.refresh") }}</button>
+    </div>
+  </div>
+  <section class="document-detail-grid p-3 border-top">
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.ready_routes") }}</div>
+      <div class="metric-value" data-route-readiness-ready>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.blocked_routes") }}</div>
+      <div class="metric-value" data-route-readiness-blocked>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.needs_preflight") }}</div>
+      <div class="metric-value" data-route-readiness-needs-preflight>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.total_routes") }}</div>
+      <div class="metric-value" data-route-readiness-total>-</div>
+    </div>
+  </section>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.profile") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.reasons") }}</th>
+          <th scope="col">{{ t("embedding_routes.latest_health") }}</th>
+          <th scope="col">{{ t("embedding_routes.latest_contract") }}</th>
+        </tr>
+      </thead>
+      <tbody data-route-readiness-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="6">
+            {% if database_configured %}{{ t("embedding_routes.loading_readiness") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-route-health-panel
   data-health-api-url="/api/admin/embedding-provider-routes/health"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
@@ -820,6 +879,12 @@
     loadingOperationsSummary: {{ t("embedding_routes.loading_operations_summary") | tojson }},
     operationsSummaryLoaded: {{ t("embedding_routes.operations_summary_loaded") | tojson }},
     operationsSummaryFailed: {{ t("embedding_routes.operations_summary_failed") | tojson }},
+    loadingReadiness: {{ t("embedding_routes.loading_readiness") | tojson }},
+    readinessLoaded: {{ t("embedding_routes.readiness_loaded") | tojson }},
+    readinessFailed: {{ t("embedding_routes.readiness_failed") | tojson }},
+    noReadinessRoutes: {{ t("embedding_routes.no_readiness_routes") | tojson }},
+    noReasons: {{ t("embedding_routes.no_reasons") | tojson }},
+    noSnapshot: {{ t("embedding_routes.no_snapshot") | tojson }},
     healthFailed: {{ t("embedding_routes.health_failed") | tojson }},
     healthLoaded: {{ t("embedding_routes.health_loaded") | tojson }},
     manualChecking: {{ t("embedding_routes.manual_checking") | tojson }},
@@ -889,6 +954,11 @@
       unreachable: {{ t("embedding_routes.status_unreachable") | tojson }},
       skipped: {{ t("embedding_routes.status_skipped") | tojson }},
       unsupported: {{ t("embedding_routes.status_unsupported") | tojson }},
+      inactive: {{ t("embedding_routes.status_inactive") | tojson }},
+      needs_contract: {{ t("embedding_routes.status_needs_contract") | tojson }},
+      contract_failed: {{ t("embedding_routes.status_contract_failed") | tojson }},
+      health_not_ready: {{ t("embedding_routes.status_health_not_ready") | tojson }},
+      readiness_unknown: {{ t("embedding_routes.status_readiness_unknown") | tojson }},
     },
   };
 
@@ -899,6 +969,11 @@
     unreachable: "text-bg-danger",
     skipped: "text-bg-secondary",
     unsupported: "text-bg-danger",
+    inactive: "text-bg-secondary",
+    needs_contract: "text-bg-warning",
+    contract_failed: "text-bg-danger",
+    health_not_ready: "text-bg-warning",
+    readiness_unknown: "text-bg-light border",
   };
 
   const readyCount = panel.querySelector("[data-route-health-ready-count]");
@@ -916,6 +991,16 @@
   const operationsLatestPreflightDetail = operationsPanel?.querySelector(
     "[data-operations-latest-preflight-detail]",
   );
+  const readinessPanel = document.querySelector("[data-route-readiness-panel]");
+  const readinessStatus = readinessPanel?.querySelector("[data-route-readiness-status]");
+  const readinessRefresh = readinessPanel?.querySelector("[data-route-readiness-refresh]");
+  const readinessReady = readinessPanel?.querySelector("[data-route-readiness-ready]");
+  const readinessBlocked = readinessPanel?.querySelector("[data-route-readiness-blocked]");
+  const readinessNeedsPreflight = readinessPanel?.querySelector(
+    "[data-route-readiness-needs-preflight]",
+  );
+  const readinessTotal = readinessPanel?.querySelector("[data-route-readiness-total]");
+  const readinessTbody = readinessPanel?.querySelector("[data-route-readiness-table]");
   const historyPanel = document.querySelector("[data-route-health-history-panel]");
   const historyTbody = historyPanel?.querySelector("[data-route-health-history-table]");
   const contractHistoryPanel = document.querySelector("[data-route-contract-history-panel]");
@@ -1002,6 +1087,14 @@
     }
     operationsStatus.className = `small ${className}`;
     operationsStatus.textContent = message;
+  }
+
+  function setReadinessStatus(message, className = "text-secondary") {
+    if (!readinessStatus) {
+      return;
+    }
+    readinessStatus.className = `small ${className}`;
+    readinessStatus.textContent = message;
   }
 
   function setSampleSetStatus(message, className = "text-secondary") {
@@ -1117,6 +1210,73 @@
       operationsLatestPreflightDetail.textContent = latestRun
         ? `${formatDateTime(latestRun.completed_at)} · ${latestRun.passed_count}/${latestRun.route_count}`
         : labels.noPreflightRuns;
+    }
+  }
+
+  function setReadinessSummary(summary = {}) {
+    if (readinessReady) {
+      readinessReady.textContent = String(summary.ready_count ?? "-");
+    }
+    if (readinessBlocked) {
+      readinessBlocked.textContent = String(summary.blocked_count ?? "-");
+    }
+    if (readinessNeedsPreflight) {
+      readinessNeedsPreflight.textContent = String(summary.needs_preflight_count ?? "-");
+    }
+    if (readinessTotal) {
+      readinessTotal.textContent = String(summary.route_count ?? "-");
+    }
+  }
+
+  function renderReadinessEmpty(message) {
+    if (!readinessTbody) {
+      return;
+    }
+    readinessTbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 6;
+    cell.textContent = message;
+    row.appendChild(cell);
+    readinessTbody.appendChild(row);
+  }
+
+  function readinessSnapshotLabel(snapshot) {
+    if (!snapshot) {
+      return labels.noSnapshot;
+    }
+    const status = snapshot.status || (snapshot.passed ? labels.contractPassed : labels.contractFailed);
+    return `${status} · ${formatDateTime(snapshot.checked_at)}`;
+  }
+
+  function renderReadiness(summary) {
+    if (!readinessTbody) {
+      return;
+    }
+    setReadinessSummary(summary);
+    const routes = summary.routes || [];
+    readinessTbody.replaceChildren();
+    if (!routes.length) {
+      renderReadinessEmpty(labels.noReadinessRoutes);
+      return;
+    }
+
+    for (const item of routes) {
+      const route = item.route || {};
+      const row = document.createElement("tr");
+      appendTextCell(row, route.profile_name);
+      appendTextCell(row, route.provider_name);
+
+      const statusCell = document.createElement("td");
+      statusCell.appendChild(statusBadge(item.status));
+      row.appendChild(statusCell);
+
+      const reasons = item.reasons || [];
+      appendTextCell(row, reasons.length ? reasons.join(", ") : labels.noReasons);
+      appendTextCell(row, readinessSnapshotLabel(item.latest_health_snapshot));
+      appendTextCell(row, readinessSnapshotLabel(item.latest_contract_snapshot));
+      readinessTbody.appendChild(row);
     }
   }
 
@@ -1934,6 +2094,34 @@
     }
   }
 
+  async function loadReadiness() {
+    if (!readinessPanel || !readinessTbody) {
+      return;
+    }
+    if (readinessPanel.dataset.databaseConfigured !== "true") {
+      setReadinessSummary();
+      renderReadinessEmpty(labels.noDatabase);
+      setReadinessStatus(labels.noDatabase);
+      return;
+    }
+    try {
+      setReadinessStatus(labels.loadingReadiness);
+      const response = await fetch(readinessPanel.dataset.readinessApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.readinessFailed);
+      }
+      renderReadiness(body || {});
+      setReadinessStatus(labels.readinessLoaded, "text-success");
+    } catch (error) {
+      setReadinessSummary();
+      renderReadinessEmpty(error.message || labels.readinessFailed);
+      setReadinessStatus(error.message || labels.readinessFailed, "text-danger");
+    }
+  }
+
   async function loadPreflightRuns() {
     if (!preflightRunPanel || !preflightRunTbody) {
       return;
@@ -2118,6 +2306,7 @@
       await loadHistory();
       await loadContractHistory();
       await loadAlerts();
+      await loadReadiness();
       await loadOperationsSummary();
       const message = `${labels.dueRunComplete}: ${body.run_count ?? 0}/${body.failed_count ?? 0}`;
       setDueStatus(message, body.failed_count ? "text-warning" : "text-success");
@@ -2388,6 +2577,7 @@
           await loadHealth();
           await loadHistory();
           await loadAlerts();
+          await loadReadiness();
           await loadOperationsSummary();
         } catch (error) {
           setManualStatus(button, error.message || labels.manualFailed, "text-danger");
@@ -2451,6 +2641,7 @@
           setContractStatus(button, contractStatusMessage(contract), contractStatusClass(contract));
           await loadContractHistory();
           await loadAlerts();
+          await loadReadiness();
           await loadOperationsSummary();
         } catch (error) {
           setContractStatus(button, error.message || labels.contractCheckFailed, "text-danger");
@@ -2488,6 +2679,7 @@
         await loadContractHistory();
         await loadAlerts();
         await loadPreflightRuns();
+        await loadReadiness();
         await loadOperationsSummary();
       } catch (error) {
         setPreflightStatus(error.message || labels.preflightFailed, "text-danger");
@@ -2506,6 +2698,10 @@
 
   function wireOperationsSummaryControls() {
     operationsRefresh?.addEventListener("click", () => loadOperationsSummary());
+  }
+
+  function wireReadinessControls() {
+    readinessRefresh?.addEventListener("click", () => loadReadiness());
   }
 
   function wireSampleSetForm() {
@@ -2531,10 +2727,12 @@
   wirePreflightButton();
   wireAlertFilters();
   wireOperationsSummaryControls();
+  wireReadinessControls();
   wireSampleSetForm();
   wireScheduleForm();
   wireRetentionControls();
   loadOperationsSummary();
+  loadReadiness();
   loadHealth();
   loadAlerts();
   loadSampleSets();

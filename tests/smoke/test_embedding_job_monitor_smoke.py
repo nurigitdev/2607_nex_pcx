@@ -86,6 +86,9 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-provider-operations-summary-panel" in response.text
     assert "data-operations-summary-refresh" in response.text
     assert "Provider Route Health" in response.text
+    assert "Provider Route Readiness" in response.text
+    assert "data-route-readiness-panel" in response.text
+    assert "data-route-readiness-table" in response.text
     assert "data-route-health-panel" in response.text
     assert "Preflight 실행" in response.text
     assert "data-route-preflight-button" in response.text
@@ -114,6 +117,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert "/api/admin/embedding-provider-routes" in response.text
     assert "/api/admin/embedding-provider-routes/operations-summary" in response.text
+    assert "/api/admin/embedding-provider-routes/readiness?active_only=true" in response.text
     assert "/api/admin/embedding-provider-routes/health" in response.text
     assert "/api/admin/embedding-provider-routes/contract-sample-sets" in response.text
     assert "/api/admin/embedding-provider-routes/preflight" in response.text

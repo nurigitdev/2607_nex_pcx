@@ -486,6 +486,10 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "/api/admin/embedding-provider-routes" in page_response.text
             assert "data-provider-operations-summary-panel" in page_response.text
             assert "/api/admin/embedding-provider-routes/operations-summary" in page_response.text
+            assert "data-route-readiness-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/readiness?active_only=true" in (
+                page_response.text
+            )
             assert "data-manual-health-button" in page_response.text
             assert (
                 f"/api/admin/embedding-provider-routes/{route['route_id']}/health-check"
