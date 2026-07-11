@@ -382,6 +382,11 @@ class ProviderRouteCleanupRequest(BaseModel):
     dry_run: bool = True
 
 
+class EmbeddingFailedJobBulkRetryRequest(BaseModel):
+    profile_name: str | None = Field(default=None, max_length=120)
+    limit: int = Field(default=100, ge=1, le=500)
+
+
 class ProviderPreflightScheduleRequest(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     profile_name: str | None = Field(default=None, max_length=120)
@@ -921,6 +926,54 @@ def retry_failed_embedding_worker_batch_run_jobs(
     return {
         "batch_run_id": batch_run.batch_run_id,
         "failed_job_ids": failed_job_ids,
+        "retried_count": len(retried_jobs),
+        "skipped_count": len(skipped_jobs),
+        "retried_jobs": [embedding_job_payload(job) for job in retried_jobs],
+        "skipped_jobs": skipped_jobs,
+    }
+
+
+def retry_failed_embedding_jobs_for_scope(
+    database_url: str,
+    *,
+    profile_name: str | None = None,
+    limit: int = 100,
+) -> dict[str, object]:
+    failed_jobs = list_embedding_jobs(
+        database_url,
+        status="failed",
+        profile_name=profile_name,
+        limit=limit,
+    )
+    retried_jobs: list[EmbeddingJobRecord] = []
+    skipped_jobs: list[dict[str, object]] = []
+
+    def skip_job(job: EmbeddingJobRecord, reason: str) -> None:
+        skipped_jobs.append(
+            {
+                "job_id": job.job_id,
+                "reason": reason,
+                "status": job.status,
+                "attempts": job.attempts,
+                "max_attempts": job.max_attempts,
+            }
+        )
+
+    for job in failed_jobs:
+        if job.attempts >= job.max_attempts:
+            skip_job(job, "max_attempts_reached")
+            continue
+
+        retried = retry_embedding_job(database_url, job.job_id)
+        if retried is None:
+            skip_job(job, "not_retryable")
+            continue
+        retried_jobs.append(retried)
+
+    return {
+        "profile_name": profile_name,
+        "limit": limit,
+        "failed_job_count": len(failed_jobs),
         "retried_count": len(retried_jobs),
         "skipped_count": len(skipped_jobs),
         "retried_jobs": [embedding_job_payload(job) for job in retried_jobs],
@@ -4421,6 +4474,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return JSONResponse(content={"job": embedding_job_payload(retried)})
 
+    @app.post("/api/admin/embedding-jobs/retry-failed")
+    def api_retry_failed_embedding_jobs(
+        payload: EmbeddingFailedJobBulkRetryRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            retry_result = retry_failed_embedding_jobs_for_scope(
+                settings.database_url,
+                profile_name=payload.profile_name,
+                limit=payload.limit,
+            )
+        except InvalidEmbeddingJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=retry_result)
+
     @app.post("/api/admin/embedding-jobs/{job_id}/release-stale-lease")
     def api_release_stale_embedding_job_lease(job_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -6290,6 +6364,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected_vector = None
         backlog_summary: EmbeddingJobBacklogSummary | None = None
         stale_jobs: list[EmbeddingJobRecord] = []
+        failed_retryable_count = 0
+        failed_exhausted_count = 0
         profiles: list[EmbeddingProfileRecord] = []
         error_message = None
 
@@ -6298,6 +6374,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             try:
                 backlog_summary = get_embedding_job_backlog_summary(settings.database_url)
+                if profile_name is None:
+                    failed_retryable_count = backlog_summary.retryable_failed_count
+                    failed_exhausted_count = backlog_summary.exhausted_failed_count
+                else:
+                    for profile_summary in backlog_summary.profile_summaries:
+                        if profile_summary.profile_name == profile_name:
+                            failed_retryable_count = profile_summary.retryable_failed_count
+                            failed_exhausted_count = profile_summary.exhausted_failed_count
+                            break
                 stale_jobs = list_stale_embedding_jobs(
                     settings.database_url,
                     profile_name=profile_name,
@@ -6335,6 +6420,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_vector=selected_vector,
                 backlog_summary=backlog_summary,
                 stale_jobs=stale_jobs,
+                failed_retryable_count=failed_retryable_count,
+                failed_exhausted_count=failed_exhausted_count,
                 profiles=profiles,
                 selected_status=status_filter or "",
                 selected_profile_name=profile_name or "",

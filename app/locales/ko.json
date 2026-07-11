@@ -93,6 +93,19 @@
     "release_complete": "Stale lease를 pending 상태로 되돌렸습니다.",
     "release_failed": "Stale lease 해제 실패"
   },
+  "embedding_failed_retry": {
+    "title": "Failed Job Bulk Retry",
+    "help": "현재 범위의 retry 가능한 failed job을 한 번에 pending 상태로 되돌립니다.",
+    "scope": "범위",
+    "all_profiles": "전체 Profile",
+    "retryable": "Retryable Failed",
+    "exhausted": "Exhausted Failed",
+    "limit": "Limit 100",
+    "action": "Failed Job 재시도",
+    "running": "Failed job 재시도 요청 중...",
+    "complete": "재시도 요청 완료: {retried_count}건, 건너뜀 {skipped_count}건",
+    "failed": "Failed job bulk retry 실패"
+  },
   "embedding_models": {
     "title": "임베딩 모델 준비도",
     "subtitle": "로컬 models bundle의 다운로드 상태와 profile 매핑을 확인합니다.",

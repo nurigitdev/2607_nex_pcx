@@ -13,8 +13,10 @@ def test_embedding_job_monitor_shows_configuration_message_without_database_url(
     assert response.status_code == 200
     assert "Embedding Job Monitor" in response.text
     assert "임베딩 Queue Backlog" in response.text
+    assert "Failed Job Bulk Retry" in response.text
     assert "Stale Lease Recovery" in response.text
     assert "/api/admin/embedding-jobs/backlog-summary" in response.text
+    assert "/api/admin/embedding-jobs/retry-failed" in response.text
     assert "/api/admin/embedding-jobs/stale-leases" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
 
@@ -25,11 +27,12 @@ def test_embedding_job_admin_apis_require_database_url() -> None:
     with TestClient(app) as client:
         responses = [
             client.get("/api/admin/embedding-jobs/backlog-summary"),
+            client.post("/api/admin/embedding-jobs/retry-failed", json={}),
             client.get("/api/admin/embedding-jobs/stale-leases"),
             client.post("/api/admin/embedding-jobs/1/release-stale-lease"),
         ]
 
-    assert [response.status_code for response in responses] == [503, 503, 503]
+    assert [response.status_code for response in responses] == [503, 503, 503, 503]
     assert all(
         response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
         for response in responses

@@ -104,6 +104,46 @@
   {% endif %}
 </section>
 
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-failed-bulk-retry-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_failed_retry.title") }}</h2>
+      <div class="text-secondary">{{ t("embedding_failed_retry.help") }}</div>
+    </div>
+    <span class="badge text-bg-light">POST /api/admin/embedding-jobs/retry-failed</span>
+  </div>
+  <div class="p-3 border-top">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div class="d-flex flex-wrap align-items-center gap-3">
+        <div>
+          <div class="metric-label">{{ t("embedding_failed_retry.scope") }}</div>
+          <div class="fw-semibold">{{ selected_profile_name or t("embedding_failed_retry.all_profiles") }}</div>
+        </div>
+        <div>
+          <div class="metric-label">{{ t("embedding_failed_retry.retryable") }}</div>
+          <div class="fw-semibold">{{ failed_retryable_count }}</div>
+        </div>
+        <div>
+          <div class="metric-label">{{ t("embedding_failed_retry.exhausted") }}</div>
+          <div class="fw-semibold">{{ failed_exhausted_count }}</div>
+        </div>
+        <span class="badge text-bg-light">{{ t("embedding_failed_retry.limit") }}</span>
+      </div>
+      <button
+        class="btn btn-outline-secondary btn-sm"
+        type="button"
+        data-failed-bulk-retry-button
+        data-profile-name="{{ selected_profile_name }}"
+        data-limit="100"
+        {% if failed_retryable_count <= 0 %}disabled{% endif %}
+      >
+        {{ t("embedding_failed_retry.action") }}
+      </button>
+    </div>
+    <div class="alert alert-info mt-3 mb-0" data-failed-bulk-retry-status hidden></div>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4" data-stale-lease-panel>
   <div class="dashboard-panel-header p-3">
     <div>
@@ -379,6 +419,13 @@
   const embeddingRetryStatus = document.getElementById("embedding-retry-status");
   const staleLeaseReleaseStatus = document.getElementById("stale-lease-release-status");
   const staleLeaseReleaseButtons = document.querySelectorAll(".stale-lease-release-button");
+  const failedBulkRetryButton = document.querySelector("[data-failed-bulk-retry-button]");
+  const failedBulkRetryStatus = document.querySelector("[data-failed-bulk-retry-status]");
+  const failedBulkRetryLabels = {
+    running: {{ t("embedding_failed_retry.running") | tojson }},
+    complete: {{ t("embedding_failed_retry.complete") | tojson }},
+    failed: {{ t("embedding_failed_retry.failed") | tojson }},
+  };
 
   function setEmbeddingRetryStatus(message, level = "info") {
     if (!embeddingRetryStatus) return;
@@ -392,6 +439,50 @@
     staleLeaseReleaseStatus.hidden = false;
     staleLeaseReleaseStatus.className = `alert alert-${level} m-3 mb-0`;
     staleLeaseReleaseStatus.textContent = message;
+  }
+
+  function setFailedBulkRetryStatus(message, level = "info") {
+    if (!failedBulkRetryStatus) return;
+    failedBulkRetryStatus.hidden = false;
+    failedBulkRetryStatus.className = `alert alert-${level} mt-3 mb-0`;
+    failedBulkRetryStatus.textContent = message;
+  }
+
+  if (failedBulkRetryButton) {
+    failedBulkRetryButton.addEventListener("click", async () => {
+      const profileName = failedBulkRetryButton.dataset.profileName || null;
+      const limit = Number(failedBulkRetryButton.dataset.limit || 100);
+      const payload = { limit };
+      if (profileName) {
+        payload.profile_name = profileName;
+      }
+      failedBulkRetryButton.disabled = true;
+      setFailedBulkRetryStatus(failedBulkRetryLabels.running);
+      try {
+        const response = await fetch("/api/admin/embedding-jobs/retry-failed", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body.detail || failedBulkRetryLabels.failed);
+        }
+        const message = failedBulkRetryLabels.complete
+          .replace("{retried_count}", String(body.retried_count ?? 0))
+          .replace("{skipped_count}", String(body.skipped_count ?? 0));
+        setFailedBulkRetryStatus(message, Number(body.retried_count ?? 0) > 0 ? "success" : "warning");
+        window.setTimeout(() => {
+          window.location.reload();
+        }, 700);
+      } catch (error) {
+        setFailedBulkRetryStatus(error instanceof Error ? error.message : failedBulkRetryLabels.failed, "warning");
+        failedBulkRetryButton.disabled = false;
+      }
+    });
   }
 
   staleLeaseReleaseButtons.forEach((button) => {

@@ -221,7 +221,18 @@ def test_embedding_job_backlog_summary_api_and_ui(
                 "/api/admin/embedding-jobs/stale-leases",
                 params={"profile_name": profile_name, "reclaimable_only": True},
             )
-            page_response = client.get("/admin/embedding-jobs")
+            page_response = client.get(
+                "/admin/embedding-jobs",
+                params={"profile_name": profile_name},
+            )
+            bulk_retry_response = client.post(
+                "/api/admin/embedding-jobs/retry-failed",
+                json={"profile_name": profile_name, "limit": 100},
+            )
+            second_bulk_retry_response = client.post(
+                "/api/admin/embedding-jobs/retry-failed",
+                json={"profile_name": profile_name, "limit": 100},
+            )
             release_response = client.post(
                 f"/api/admin/embedding-jobs/{job_ids[1]}/release-stale-lease"
             )
@@ -253,12 +264,28 @@ def test_embedding_job_backlog_summary_api_and_ui(
         assert stale_response.status_code == 200
         assert stale_response.json()["stale_job_count"] == 1
         assert stale_response.json()["jobs"][0]["job_id"] == job_ids[1]
+        assert bulk_retry_response.status_code == 200
+        assert bulk_retry_response.json()["profile_name"] == profile_name
+        assert bulk_retry_response.json()["failed_job_count"] == 2
+        assert bulk_retry_response.json()["retried_count"] == 1
+        assert bulk_retry_response.json()["retried_jobs"][0]["job_id"] == job_ids[3]
+        assert bulk_retry_response.json()["retried_jobs"][0]["status"] == "pending"
+        assert bulk_retry_response.json()["skipped_count"] == 1
+        assert bulk_retry_response.json()["skipped_jobs"][0]["job_id"] == job_ids[4]
+        assert bulk_retry_response.json()["skipped_jobs"][0]["reason"] == "max_attempts_reached"
+        assert second_bulk_retry_response.status_code == 200
+        assert second_bulk_retry_response.json()["retried_count"] == 0
+        assert second_bulk_retry_response.json()["skipped_count"] == 1
         assert release_response.status_code == 200
         assert release_response.json()["job"]["status"] == "pending"
         assert release_response.json()["job"]["lease_owner"] is None
         assert second_release_response.status_code == 409
         assert page_response.status_code == 200
         assert "임베딩 Queue Backlog" in page_response.text
+        assert "Failed Job Bulk Retry" in page_response.text
+        assert "/api/admin/embedding-jobs/retry-failed" in page_response.text
+        assert "data-failed-bulk-retry-button" in page_response.text
+        assert f'data-profile-name="{profile_name}"' in page_response.text
         assert "Stale Lease Recovery" in page_response.text
         assert "/api/admin/embedding-jobs/stale-leases" in page_response.text
         assert f'data-job-id="{job_ids[1]}"' in page_response.text

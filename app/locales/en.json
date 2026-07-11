@@ -93,6 +93,19 @@
     "release_complete": "Stale lease released back to pending.",
     "release_failed": "Stale lease release failed"
   },
+  "embedding_failed_retry": {
+    "title": "Failed Job Bulk Retry",
+    "help": "Release retryable failed jobs in the current scope back to pending.",
+    "scope": "Scope",
+    "all_profiles": "All Profiles",
+    "retryable": "Retryable Failed",
+    "exhausted": "Exhausted Failed",
+    "limit": "Limit 100",
+    "action": "Retry Failed Jobs",
+    "running": "Retrying failed jobs...",
+    "complete": "Retry requested: {retried_count} retried, {skipped_count} skipped",
+    "failed": "Failed job bulk retry failed"
+  },
   "embedding_models": {
     "title": "Embedding Model Readiness",
     "subtitle": "Check the local models bundle download state and profile mapping.",
