@@ -6,6 +6,12 @@ from psycopg import errors
 
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
+from app.core.embedding_provider_contract_sample_sets import (
+    EmbeddingProviderContractSampleSetInput,
+    get_default_embedding_provider_contract_sample_set,
+    list_embedding_provider_contract_sample_sets,
+    upsert_embedding_provider_contract_sample_set,
+)
 from app.core.embedding_provider_route_contract_snapshots import (
     InvalidEmbeddingProviderRouteContractSnapshotError,
     list_embedding_provider_route_contract_snapshots,
@@ -44,6 +50,18 @@ def _cleanup_app_logs(database_url: str, correlation_ids: list[str]) -> None:
             cursor.execute(
                 "DELETE FROM app_logs WHERE correlation_id = ANY(%s)",
                 (correlation_ids,),
+            )
+
+
+def _cleanup_contract_sample_sets(database_url: str, sample_set_names: list[str]) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM embedding_provider_contract_sample_sets
+                WHERE sample_set_name = ANY(%s)
+                """,
+                (sample_set_names,),
             )
 
 
@@ -103,6 +121,15 @@ def test_embedding_provider_routes_table_exists_and_enforces_remote_url(
     assert contract_snapshot_table_name["table_name"] == (
         "embedding_provider_route_contract_snapshots"
     )
+    sample_set_table_name = fetch_one(
+        migrated_database_url,
+        """
+        SELECT to_regclass(
+            'public.embedding_provider_contract_sample_sets'
+        ) AS table_name
+        """,
+    )
+    assert sample_set_table_name["table_name"] == "embedding_provider_contract_sample_sets"
 
     with connect(migrated_database_url) as connection:
         with connection.cursor() as cursor:
@@ -120,6 +147,98 @@ def test_embedding_provider_routes_table_exists_and_enforces_remote_url(
                     (f"invalid-{uuid4()}",),
                 )
             connection.rollback()
+
+
+def test_embedding_provider_contract_sample_set_repository_and_api(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    sample_set_name = f"contract-samples-{suffix}"
+    inactive_sample_set_name = f"inactive-contract-samples-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        default_sample_set = get_default_embedding_provider_contract_sample_set(
+            migrated_database_url
+        )
+        assert default_sample_set.sample_set_name == "default_route_contract"
+        assert default_sample_set.input_type == "document"
+        assert default_sample_set.sample_texts == (
+            "NeX-PCX embedding provider contract check sample.",
+        )
+
+        inactive_sample_set = upsert_embedding_provider_contract_sample_set(
+            migrated_database_url,
+            EmbeddingProviderContractSampleSetInput(
+                sample_set_name=inactive_sample_set_name,
+                description="Inactive integration sample set",
+                input_type="document",
+                sample_texts=("inactive sample",),
+                is_active=False,
+                is_default=False,
+            ),
+        )
+
+        assert inactive_sample_set.is_active is False
+        assert inactive_sample_set.is_default is False
+
+        custom_sample_set = upsert_embedding_provider_contract_sample_set(
+            migrated_database_url,
+            EmbeddingProviderContractSampleSetInput(
+                sample_set_name=sample_set_name,
+                description="Integration sample set",
+                input_type="query",
+                sample_texts=("query sample one", "query sample two"),
+                is_default=True,
+            ),
+        )
+
+        assert custom_sample_set.is_default is True
+        assert custom_sample_set.sample_texts == ("query sample one", "query sample two")
+        assert (
+            get_default_embedding_provider_contract_sample_set(
+                migrated_database_url
+            ).sample_set_name
+            == sample_set_name
+        )
+        assert any(
+            sample_set.sample_set_name == sample_set_name
+            for sample_set in list_embedding_provider_contract_sample_sets(
+                migrated_database_url,
+                active_only=True,
+            )
+        )
+
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/admin/embedding-provider-routes/contract-sample-sets",
+                params={"active_only": "true"},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["default_sample_set"]["sample_set_name"] == sample_set_name
+        assert body["default_sample_set"]["input_type"] == "query"
+        assert body["default_sample_set"]["sample_text_count"] == 2
+        assert all(
+            sample_set["sample_set_name"] != inactive_sample_set_name
+            for sample_set in body["sample_sets"]
+        )
+    finally:
+        _cleanup_contract_sample_sets(
+            migrated_database_url,
+            [sample_set_name, inactive_sample_set_name],
+        )
+        upsert_embedding_provider_contract_sample_set(
+            migrated_database_url,
+            EmbeddingProviderContractSampleSetInput(
+                sample_set_name="default_route_contract",
+                description="Default provider route embedding contract check sample set",
+                input_type="document",
+                sample_texts=("NeX-PCX embedding provider contract check sample.",),
+                is_default=True,
+            ),
+        )
 
 
 def test_embedding_provider_route_repository_upserts_and_selects_best_route(
@@ -481,6 +600,8 @@ def test_embedding_provider_route_contract_check_api_validates_mock_route(
         history_body = history_response.json()
         contract = body["contract"]
         snapshot = body["snapshot"]
+        assert body["sample_set"]["sample_set_name"] == "default_route_contract"
+        assert body["sample_set"]["sample_text_count"] == 1
         assert contract["passed"] is True
         assert contract["status"] == "passed"
         assert contract["route"]["route_id"] == route.route_id
@@ -491,6 +612,7 @@ def test_embedding_provider_route_contract_check_api_validates_mock_route(
         assert contract["expected_dimension"] == 1024
         assert contract["dimension"] == 1024
         assert contract["input_count"] == 1
+        assert contract["runtime_metadata"]["contract_sample_set_name"] == "default_route_contract"
         assert contract["validation_errors"] == []
         assert snapshot["route_id"] == route.route_id
         assert snapshot["profile_name"] == "kure_v1_1024"
@@ -694,6 +816,8 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
         route_result = route_results[0]
         assert body["route_count"] >= 1
         assert body["passed_count"] >= 1
+        assert body["sample_set"]["sample_set_name"] == "default_route_contract"
+        assert body["sample_set"]["sample_text_count"] == 1
         assert route_result["health"]["status"] == "ready"
         assert route_result["health_snapshot"]["route_id"] == route.route_id
         assert route_result["contract"]["passed"] is True

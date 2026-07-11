@@ -51,6 +51,7 @@ def check_embedding_provider_route_contract(
     *,
     sample_texts: tuple[str, ...] = DEFAULT_CONTRACT_SAMPLE_TEXTS,
     input_type: str = "document",
+    sample_set_name: str | None = None,
     http_client: object | None = None,
 ) -> EmbeddingProviderRouteContractResult:
     started_at = perf_counter()
@@ -66,6 +67,7 @@ def check_embedding_provider_route_contract(
             input_type=input_type,
             sample_text_count=sample_text_count,
             expected_dimension=None,
+            runtime_metadata=_contract_runtime_metadata(sample_set_name),
             validation_errors=(str(exc),),
             error_message=str(exc),
         )
@@ -84,6 +86,7 @@ def check_embedding_provider_route_contract(
             provider_model_id=health.provider_model_id,
             model_key=health.model_key,
             dimension=health.dimension,
+            runtime_metadata=_contract_runtime_metadata(sample_set_name),
             validation_errors=health.validation_errors,
             error_message=health.error_message,
         )
@@ -97,7 +100,11 @@ def check_embedding_provider_route_contract(
         output_dimension=vector_table.dimension,
         normalize_embeddings=True,
         trace_id=f"route-contract-{route.route_id}",
-        runtime_metadata={"contract_check": True, "provider_route_id": route.route_id},
+        runtime_metadata={
+            "contract_check": True,
+            "provider_route_id": route.route_id,
+            **_contract_runtime_metadata(sample_set_name),
+        },
     )
     try:
         response = provider.embed(request)
@@ -114,6 +121,7 @@ def check_embedding_provider_route_contract(
             provider_model_id=health.provider_model_id,
             model_key=health.model_key,
             dimension=health.dimension,
+            runtime_metadata=_contract_runtime_metadata(sample_set_name),
             validation_errors=health.validation_errors,
             error_message=str(exc),
         )
@@ -137,7 +145,10 @@ def check_embedding_provider_route_contract(
         model_key=distribution.model_key,
         dimension=response.dimension,
         input_count=response.input_count,
-        runtime_metadata=dict(response.runtime_metadata),
+        runtime_metadata={
+            **dict(response.runtime_metadata),
+            **_contract_runtime_metadata(sample_set_name),
+        },
         validation_errors=validation_errors,
     )
 
@@ -172,6 +183,10 @@ def _validate_embedding_contract(
             f"dimension mismatch: health={health.dimension}, embedding={response.dimension}"
         )
     return tuple(validation_errors)
+
+
+def _contract_runtime_metadata(sample_set_name: str | None) -> dict[str, object]:
+    return {"contract_sample_set_name": sample_set_name} if sample_set_name else {}
 
 
 def _contract_result(

@@ -53,7 +53,8 @@ def test_route_contract_passes_remote_health_and_embedding_request() -> None:
             assert payload["model_key"] == "kure_v1"
             assert payload["input_type"] == "document"
             assert payload["output_dimension"] == 1024
-            assert payload["texts"] == ["NeX-PCX embedding provider contract check sample."]
+            assert payload["texts"] == ["unit contract sample"]
+            assert payload["runtime_metadata"]["contract_sample_set_name"] == "unit_samples"
             return httpx.Response(
                 200,
                 json={
@@ -70,6 +71,8 @@ def test_route_contract_passes_remote_health_and_embedding_request() -> None:
 
     result = check_embedding_provider_route_contract(
         make_route(),
+        sample_texts=("unit contract sample",),
+        sample_set_name="unit_samples",
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
@@ -79,7 +82,10 @@ def test_route_contract_passes_remote_health_and_embedding_request() -> None:
     assert result.dimension == 1024
     assert result.input_count == 1
     assert result.provider_model_id == "gpu-kure-v1"
-    assert result.runtime_metadata == {"device": "cuda:0"}
+    assert result.runtime_metadata == {
+        "device": "cuda:0",
+        "contract_sample_set_name": "unit_samples",
+    }
     assert result.validation_errors == ()
     assert seen_paths == ["/healthz", "/v1/embeddings"]
 

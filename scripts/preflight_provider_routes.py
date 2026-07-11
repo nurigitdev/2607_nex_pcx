@@ -10,6 +10,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.config import get_settings  # noqa: E402
+from app.core.embedding_provider_contract_sample_sets import (  # noqa: E402
+    get_default_embedding_provider_contract_sample_set,
+)
 from app.core.embedding_provider_route_contract_snapshots import (  # noqa: E402
     record_embedding_provider_route_contract_snapshot,
 )
@@ -33,9 +36,15 @@ def run_preflight(
         profile_name=profile_name,
         active_only=active_only,
     )
+    sample_set = get_default_embedding_provider_contract_sample_set(database_url)
     results = []
     for route in routes:
-        contract = check_embedding_provider_route_contract(route)
+        contract = check_embedding_provider_route_contract(
+            route,
+            sample_texts=sample_set.sample_texts,
+            input_type=sample_set.input_type,
+            sample_set_name=sample_set.sample_set_name,
+        )
         health_snapshot = None
         if contract.health is not None:
             health_snapshot = record_embedding_provider_route_health_snapshot(
@@ -74,6 +83,11 @@ def run_preflight(
         "failed_count": len(routes) - passed_count,
         "profile_name": profile_name,
         "active_only": active_only,
+        "sample_set": {
+            "sample_set_name": sample_set.sample_set_name,
+            "input_type": sample_set.input_type,
+            "sample_text_count": len(sample_set.sample_texts),
+        },
         "results": results,
     }
 

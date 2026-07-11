@@ -58,6 +58,12 @@ from app.core.embedding_model_distribution import (
     EmbeddingModelReadiness,
     audit_embedding_model_readiness,
 )
+from app.core.embedding_provider_contract_sample_sets import (
+    EmbeddingProviderContractSampleSetRecord,
+    InvalidEmbeddingProviderContractSampleSetError,
+    get_default_embedding_provider_contract_sample_set,
+    list_embedding_provider_contract_sample_sets,
+)
 from app.core.embedding_provider_health import get_embedding_provider_health_status
 from app.core.embedding_provider_route_contract_snapshots import (
     EmbeddingProviderRouteContractSnapshotRecord,
@@ -661,6 +667,22 @@ def embedding_model_readiness_payload(readiness: EmbeddingModelReadiness) -> dic
         "has_model_weights": readiness.has_model_weights,
         "file_count": readiness.file_count,
         "total_size_bytes": readiness.total_size_bytes,
+    }
+
+
+def embedding_provider_contract_sample_set_payload(
+    sample_set: EmbeddingProviderContractSampleSetRecord,
+) -> dict[str, object]:
+    return {
+        "sample_set_name": sample_set.sample_set_name,
+        "description": sample_set.description,
+        "input_type": sample_set.input_type,
+        "sample_texts": list(sample_set.sample_texts),
+        "sample_text_count": len(sample_set.sample_texts),
+        "is_active": sample_set.is_active,
+        "is_default": sample_set.is_default,
+        "created_at": _datetime_response(sample_set.created_at),
+        "updated_at": _datetime_response(sample_set.updated_at),
     }
 
 
@@ -2975,6 +2997,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=provider_health.payload,
         )
 
+    @app.get("/api/admin/embedding-provider-routes/contract-sample-sets")
+    def api_list_embedding_provider_contract_sample_sets(
+        active_only: bool = False,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        sample_sets = list_embedding_provider_contract_sample_sets(
+            settings.database_url,
+            active_only=active_only,
+        )
+        default_sample_set = next(
+            (sample_set for sample_set in sample_sets if sample_set.is_default),
+            None,
+        )
+        return JSONResponse(
+            content={
+                "sample_set_count": len(sample_sets),
+                "default_sample_set": (
+                    embedding_provider_contract_sample_set_payload(default_sample_set)
+                    if default_sample_set is not None
+                    else None
+                ),
+                "sample_sets": [
+                    embedding_provider_contract_sample_set_payload(sample_set)
+                    for sample_set in sample_sets
+                ],
+            }
+        )
+
     @app.get("/api/admin/embedding-provider-routes")
     def api_list_embedding_provider_routes(
         profile_name: str | None = None,
@@ -3204,6 +3258,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
         try:
+            sample_set = get_default_embedding_provider_contract_sample_set(settings.database_url)
             routes = list_embedding_provider_routes(
                 settings.database_url,
                 profile_name=profile_name,
@@ -3211,7 +3266,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             results = []
             for route in routes:
-                contract = check_embedding_provider_route_contract(route)
+                contract = check_embedding_provider_route_contract(
+                    route,
+                    sample_texts=sample_set.sample_texts,
+                    input_type=sample_set.input_type,
+                    sample_set_name=sample_set.sample_set_name,
+                )
                 health_snapshot = None
                 if contract.health is not None:
                     health_snapshot = record_embedding_provider_route_health_snapshot(
@@ -3246,6 +3306,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     }
                 )
         except (
+            InvalidEmbeddingProviderContractSampleSetError,
             InvalidEmbeddingProviderRouteError,
             InvalidEmbeddingProviderRouteHealthSnapshotError,
             InvalidEmbeddingProviderRouteContractSnapshotError,
@@ -3258,6 +3319,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "route_count": len(routes),
                 "passed_count": passed_count,
                 "failed_count": len(routes) - passed_count,
+                "sample_set": embedding_provider_contract_sample_set_payload(sample_set),
                 "results": results,
             }
         )
@@ -3309,13 +3371,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Embedding provider route not found.",
                 )
-            contract = check_embedding_provider_route_contract(route)
+            sample_set = get_default_embedding_provider_contract_sample_set(settings.database_url)
+            contract = check_embedding_provider_route_contract(
+                route,
+                sample_texts=sample_set.sample_texts,
+                input_type=sample_set.input_type,
+                sample_set_name=sample_set.sample_set_name,
+            )
             snapshot = record_embedding_provider_route_contract_snapshot(
                 settings.database_url,
                 contract,
             )
             log_embedding_provider_route_contract_alert(settings.database_url, contract)
         except (
+            InvalidEmbeddingProviderContractSampleSetError,
             InvalidEmbeddingProviderRouteError,
             InvalidEmbeddingProviderRouteContractSnapshotError,
         ) as exc:
@@ -3323,6 +3392,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(
             content={
+                "sample_set": embedding_provider_contract_sample_set_payload(sample_set),
                 "contract": embedding_provider_route_contract_payload(contract),
                 "snapshot": embedding_provider_route_contract_snapshot_payload(snapshot),
             }

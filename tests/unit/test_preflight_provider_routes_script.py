@@ -3,6 +3,9 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.core.embedding_provider_contract_sample_sets import (
+    EmbeddingProviderContractSampleSetRecord,
+)
 from app.core.embedding_provider_route_contract_snapshots import (
     EmbeddingProviderRouteContractSnapshotRecord,
 )
@@ -36,6 +39,10 @@ def test_run_preflight_records_health_and_contract_snapshots(monkeypatch) -> Non
         calls["list_call"] = (database_url, kwargs)
         return [route]
 
+    def fake_check_embedding_provider_route_contract(checked_route, **kwargs):
+        calls["contract_call"] = (checked_route, kwargs)
+        return make_contract(checked_route)
+
     monkeypatch.setattr(
         preflight_provider_routes,
         "list_embedding_provider_routes",
@@ -44,7 +51,12 @@ def test_run_preflight_records_health_and_contract_snapshots(monkeypatch) -> Non
     monkeypatch.setattr(
         preflight_provider_routes,
         "check_embedding_provider_route_contract",
-        lambda checked_route: make_contract(checked_route),
+        fake_check_embedding_provider_route_contract,
+    )
+    monkeypatch.setattr(
+        preflight_provider_routes,
+        "get_default_embedding_provider_contract_sample_set",
+        lambda database_url: make_sample_set(),
     )
     monkeypatch.setattr(
         preflight_provider_routes,
@@ -66,9 +78,22 @@ def test_run_preflight_records_health_and_contract_snapshots(monkeypatch) -> Non
         "postgresql://example/db",
         {"profile_name": "kure_v1_1024", "active_only": True},
     )
+    assert calls["contract_call"] == (
+        route,
+        {
+            "sample_texts": ("contract sample one", "contract sample two"),
+            "input_type": "document",
+            "sample_set_name": "unit_contract_samples",
+        },
+    )
     assert payload["route_count"] == 1
     assert payload["passed_count"] == 1
     assert payload["failed_count"] == 0
+    assert payload["sample_set"] == {
+        "sample_set_name": "unit_contract_samples",
+        "input_type": "document",
+        "sample_text_count": 2,
+    }
     assert payload["results"][0]["provider_name"] == "gpu-primary"
     assert payload["results"][0]["health_snapshot_id"] == 101
     assert payload["results"][0]["contract_snapshot_id"] == 202
@@ -149,6 +174,22 @@ def make_route(**overrides) -> EmbeddingProviderRouteRecord:
     }
     values.update(overrides)
     return EmbeddingProviderRouteRecord(**values)
+
+
+def make_sample_set(**overrides) -> EmbeddingProviderContractSampleSetRecord:
+    now = datetime(2026, 7, 11, tzinfo=UTC)
+    values = {
+        "sample_set_name": "unit_contract_samples",
+        "description": "Unit sample set",
+        "input_type": "document",
+        "sample_texts": ("contract sample one", "contract sample two"),
+        "is_active": True,
+        "is_default": True,
+        "created_at": now,
+        "updated_at": now,
+    }
+    values.update(overrides)
+    return EmbeddingProviderContractSampleSetRecord(**values)
 
 
 def make_contract(route: EmbeddingProviderRouteRecord) -> EmbeddingProviderRouteContractResult:
