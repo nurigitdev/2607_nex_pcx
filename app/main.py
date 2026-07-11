@@ -75,6 +75,11 @@ from app.core.embedding_provider_route_health_snapshots import (
     record_embedding_provider_route_health_snapshot,
     record_embedding_provider_route_health_summary,
 )
+from app.core.embedding_provider_route_readiness import (
+    EmbeddingProviderRouteReadinessItem,
+    EmbeddingProviderRouteReadinessSummary,
+    get_embedding_provider_route_readiness_summary,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     EmbeddingProviderRouteRecord,
@@ -734,6 +739,43 @@ def embedding_provider_route_contract_snapshot_payload(
         "validation_errors": list(snapshot.validation_errors),
         "error_message": snapshot.error_message,
         "checked_at": _datetime_response(snapshot.checked_at),
+    }
+
+
+def embedding_provider_route_readiness_item_payload(
+    item: EmbeddingProviderRouteReadinessItem,
+) -> dict[str, object]:
+    return {
+        "route": embedding_provider_route_payload(item.route),
+        "ready": item.ready,
+        "status": item.status,
+        "reasons": list(item.reasons),
+        "latest_health_snapshot": (
+            embedding_provider_route_health_snapshot_payload(item.latest_health_snapshot)
+            if item.latest_health_snapshot is not None
+            else None
+        ),
+        "latest_contract_snapshot": (
+            embedding_provider_route_contract_snapshot_payload(item.latest_contract_snapshot)
+            if item.latest_contract_snapshot is not None
+            else None
+        ),
+    }
+
+
+def embedding_provider_route_readiness_summary_payload(
+    summary: EmbeddingProviderRouteReadinessSummary,
+) -> dict[str, object]:
+    return {
+        "route_count": summary.route_count,
+        "active_count": summary.active_count,
+        "ready_count": summary.ready_count,
+        "blocked_count": summary.blocked_count,
+        "needs_preflight_count": summary.needs_preflight_count,
+        "status_counts": summary.status_counts,
+        "routes": [
+            embedding_provider_route_readiness_item_payload(item) for item in summary.routes
+        ],
     }
 
 
@@ -3030,6 +3072,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ],
             }
         )
+
+    @app.get("/api/admin/embedding-provider-routes/readiness")
+    def api_embedding_provider_route_readiness(
+        profile_name: str | None = None,
+        active_only: bool = False,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            readiness = get_embedding_provider_route_readiness_summary(
+                settings.database_url,
+                profile_name=profile_name,
+                active_only=active_only,
+            )
+        except (
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderRouteHealthSnapshotError,
+            InvalidEmbeddingProviderRouteContractSnapshotError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=embedding_provider_route_readiness_summary_payload(readiness))
 
     @app.post("/api/admin/embedding-provider-routes/preflight")
     def api_preflight_embedding_provider_routes(

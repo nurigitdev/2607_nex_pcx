@@ -15,6 +15,9 @@ from app.core.embedding_provider_route_health_snapshots import (
     InvalidEmbeddingProviderRouteHealthSnapshotError,
     list_embedding_provider_route_health_snapshots,
 )
+from app.core.embedding_provider_route_readiness import (
+    get_embedding_provider_route_readiness_summary,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     list_embedding_provider_routes,
@@ -629,6 +632,71 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
         )
         assert len(health_snapshots) == 1
         assert len(contract_snapshots) == 1
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
+
+
+def test_embedding_provider_route_readiness_api_aggregates_latest_snapshots(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"mock-route-readiness-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=provider_name,
+                provider_mode="mock",
+                provider_base_url=None,
+                priority=2,
+                runtime_metadata={"purpose": "readiness-test"},
+            ),
+        )
+
+        initial_summary = get_embedding_provider_route_readiness_summary(
+            migrated_database_url,
+            profile_name="kure_v1_1024",
+            active_only=True,
+        )
+        initial_item = next(
+            item for item in initial_summary.routes if item.route.route_id == route.route_id
+        )
+        assert initial_item.status == "needs_contract"
+        assert initial_item.ready is False
+        assert initial_item.latest_health_snapshot is None
+        assert initial_item.latest_contract_snapshot is None
+
+        with TestClient(app) as client:
+            preflight_response = client.post(
+                "/api/admin/embedding-provider-routes/preflight",
+                params={"profile_name": "kure_v1_1024"},
+            )
+            readiness_response = client.get(
+                "/api/admin/embedding-provider-routes/readiness",
+                params={"profile_name": "kure_v1_1024", "active_only": "true"},
+            )
+
+        assert preflight_response.status_code == 200
+        assert readiness_response.status_code == 200
+        body = readiness_response.json()
+        route_items = [
+            item for item in body["routes"] if item["route"]["provider_name"] == provider_name
+        ]
+        assert route_items
+        route_item = route_items[0]
+        assert body["route_count"] >= 1
+        assert body["active_count"] >= 1
+        assert body["ready_count"] >= 1
+        assert route_item["ready"] is True
+        assert route_item["status"] == "ready"
+        assert route_item["latest_health_snapshot"]["route_id"] == route.route_id
+        assert route_item["latest_health_snapshot"]["status"] == "ready"
+        assert route_item["latest_contract_snapshot"]["route_id"] == route.route_id
+        assert route_item["latest_contract_snapshot"]["status"] == "passed"
+        assert route_item["latest_contract_snapshot"]["passed"] is True
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])
 

@@ -1,5 +1,6 @@
 """Persistence helpers for embedding provider route health snapshots."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -157,6 +158,31 @@ def list_embedding_provider_route_health_snapshots(
     return [_row_to_snapshot_record(dict(row)) for row in rows]
 
 
+def list_latest_embedding_provider_route_health_snapshots(
+    database_url: str,
+    route_ids: Sequence[int],
+) -> dict[int, EmbeddingProviderRouteHealthSnapshotRecord]:
+    validated_route_ids = _validate_route_ids(route_ids)
+    if not validated_route_ids:
+        return {}
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT ON (route_id) *
+                FROM embedding_provider_route_health_snapshots
+                WHERE route_id = ANY(%s)
+                ORDER BY route_id, checked_at DESC, snapshot_id DESC
+                """,
+                (list(validated_route_ids),),
+            )
+            rows = cursor.fetchall()
+
+    snapshots = [_row_to_snapshot_record(dict(row)) for row in rows]
+    return {snapshot.route_id: snapshot for snapshot in snapshots}
+
+
 def _validate_limit(limit: int) -> None:
     if limit <= 0:
         raise InvalidEmbeddingProviderRouteHealthSnapshotError("limit must be greater than 0")
@@ -164,6 +190,17 @@ def _validate_limit(limit: int) -> None:
         raise InvalidEmbeddingProviderRouteHealthSnapshotError(
             "limit must be less than or equal to 500"
         )
+
+
+def _validate_route_ids(route_ids: Sequence[int]) -> tuple[int, ...]:
+    validated = []
+    for route_id in dict.fromkeys(route_ids):
+        if route_id <= 0:
+            raise InvalidEmbeddingProviderRouteHealthSnapshotError(
+                "route_id must be greater than 0"
+            )
+        validated.append(route_id)
+    return tuple(validated)
 
 
 def _validate_nonblank(value: str, field_name: str) -> str:
