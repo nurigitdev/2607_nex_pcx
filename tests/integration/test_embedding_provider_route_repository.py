@@ -14,6 +14,7 @@ from app.core.embedding_provider_contract_sample_sets import (
     list_embedding_provider_contract_sample_sets,
     upsert_embedding_provider_contract_sample_set,
 )
+from app.core.embedding_provider_preflight_runs import list_embedding_provider_preflight_runs
 from app.core.embedding_provider_route_contract_snapshots import (
     InvalidEmbeddingProviderRouteContractSnapshotError,
     list_embedding_provider_route_contract_snapshots,
@@ -132,6 +133,15 @@ def test_embedding_provider_routes_table_exists_and_enforces_remote_url(
         """,
     )
     assert sample_set_table_name["table_name"] == "embedding_provider_contract_sample_sets"
+    preflight_run_table_name = fetch_one(
+        migrated_database_url,
+        """
+        SELECT to_regclass(
+            'public.embedding_provider_preflight_runs'
+        ) AS table_name
+        """,
+    )
+    assert preflight_run_table_name["table_name"] == "embedding_provider_preflight_runs"
 
     with connect(migrated_database_url) as connection:
         with connection.cursor() as cursor:
@@ -483,6 +493,10 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             )
             assert "data-route-preflight-button" in page_response.text
             assert "/api/admin/embedding-provider-routes/preflight" in page_response.text
+            assert "data-preflight-run-history-panel" in page_response.text
+            assert (
+                "/api/admin/embedding-provider-routes/preflight-runs?limit=10" in page_response.text
+            )
             assert "data-route-health-history-panel" in page_response.text
             assert (
                 "/api/admin/embedding-provider-routes/health-snapshots?limit=10"
@@ -903,9 +917,15 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
                 "/api/admin/embedding-provider-routes/preflight",
                 params={"profile_name": "kure_v1_1024"},
             )
+            history_response = client.get(
+                "/api/admin/embedding-provider-routes/preflight-runs",
+                params={"limit": "10"},
+            )
 
         assert response.status_code == 200
+        assert history_response.status_code == 200
         body = response.json()
+        preflight_run = body["preflight_run"]
         route_results = [
             result
             for result in body["results"]
@@ -917,11 +937,17 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
         assert body["passed_count"] >= 1
         assert body["sample_set"]["sample_set_name"] == "default_route_contract"
         assert body["sample_set"]["sample_text_count"] == 1
+        assert preflight_run["trigger_source"] == "manual_api"
+        assert preflight_run["status"] == "succeeded"
+        assert preflight_run["route_count"] == body["route_count"]
+        assert preflight_run["passed_count"] == body["passed_count"]
+        assert preflight_run["sample_set_name"] == "default_route_contract"
         assert route_result["health"]["status"] == "ready"
         assert route_result["health_snapshot"]["route_id"] == route.route_id
         assert route_result["contract"]["passed"] is True
         assert route_result["contract_snapshot"]["route_id"] == route.route_id
         assert route_result["contract_snapshot"]["status"] == "passed"
+        assert preflight_run["run_id"] in [run["run_id"] for run in history_response.json()["runs"]]
 
         health_snapshots = list_embedding_provider_route_health_snapshots(
             migrated_database_url,
@@ -933,6 +959,13 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
         )
         assert len(health_snapshots) == 1
         assert len(contract_snapshots) == 1
+        assert preflight_run["run_id"] in [
+            run.run_id
+            for run in list_embedding_provider_preflight_runs(
+                migrated_database_url,
+                limit=10,
+            )
+        ]
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])
 

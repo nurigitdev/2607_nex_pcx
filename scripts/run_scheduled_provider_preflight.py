@@ -34,6 +34,7 @@ def run_scheduled_preflight(
         "results": [
             {
                 "schedule_name": run.schedule.schedule_name,
+                "run_id": run.run_record.run_id,
                 "status": run.status,
                 "profile_name": run.schedule.profile_name,
                 "active_only": run.schedule.active_only,

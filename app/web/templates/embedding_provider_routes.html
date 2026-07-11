@@ -210,6 +210,42 @@
 
 <section
   class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-preflight-run-history-panel
+  data-preflight-runs-api-url="/api/admin/embedding-provider-routes/preflight-runs?limit=10"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.preflight_run_history") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.preflight_run_history_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.completed_at") }}</th>
+          <th scope="col">{{ t("embedding_routes.trigger_source") }}</th>
+          <th scope="col">{{ t("embedding_routes.schedule") }}</th>
+          <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.routes_checked") }}</th>
+          <th scope="col">{{ t("embedding_routes.sample_set_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.elapsed") }}</th>
+        </tr>
+      </thead>
+      <tbody data-preflight-run-history-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="7">
+            {% if database_configured %}{{ t("embedding_routes.loading_preflight_runs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-route-alerts-panel
   data-alerts-api-url="/api/admin/embedding-provider-routes/alerts"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
@@ -425,6 +461,9 @@
     preflightRunning: {{ t("embedding_routes.preflight_running") | tojson }},
     preflightComplete: {{ t("embedding_routes.preflight_complete") | tojson }},
     preflightFailed: {{ t("embedding_routes.preflight_failed") | tojson }},
+    loadingPreflightRuns: {{ t("embedding_routes.loading_preflight_runs") | tojson }},
+    noPreflightRuns: {{ t("embedding_routes.no_preflight_runs") | tojson }},
+    preflightRunsFailed: {{ t("embedding_routes.preflight_runs_failed") | tojson }},
     loadingHistory: {{ t("embedding_routes.loading_history") | tojson }},
     noSnapshots: {{ t("embedding_routes.no_health_snapshots") | tojson }},
     loadingContractHistory: {{ t("embedding_routes.loading_contract_history") | tojson }},
@@ -487,6 +526,8 @@
   const sampleSetCount = sampleSetPanel?.querySelector("[data-sample-set-count]");
   const sampleSetStatus = sampleSetPanel?.querySelector("[data-sample-set-status]");
   const sampleSetReset = sampleSetPanel?.querySelector("[data-sample-set-reset]");
+  const preflightRunPanel = document.querySelector("[data-preflight-run-history-panel]");
+  const preflightRunTbody = preflightRunPanel?.querySelector("[data-preflight-run-history-table]");
   const preflightButton = document.querySelector("[data-route-preflight-button]");
   const preflightStatus = document.querySelector("[data-route-preflight-status]");
 
@@ -851,6 +892,54 @@
     alertsTbody.appendChild(row);
   }
 
+  function renderPreflightRunsEmpty(message) {
+    if (!preflightRunTbody) {
+      return;
+    }
+    preflightRunTbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 7;
+    cell.textContent = message;
+    row.appendChild(cell);
+    preflightRunTbody.appendChild(row);
+  }
+
+  function renderPreflightRuns(runs) {
+    if (!preflightRunTbody) {
+      return;
+    }
+    preflightRunTbody.replaceChildren();
+    if (!runs.length) {
+      renderPreflightRunsEmpty(labels.noPreflightRuns);
+      return;
+    }
+
+    for (const run of runs) {
+      const row = document.createElement("tr");
+      appendTextCell(row, formatDateTime(run.completed_at));
+      appendTextCell(row, run.trigger_source);
+      appendTextCell(row, run.schedule_name);
+
+      const statusCell = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = run.status === "succeeded"
+        ? "badge text-bg-success"
+        : run.status === "failed"
+          ? "badge text-bg-warning"
+          : "badge text-bg-danger";
+      badge.textContent = run.status || labels.none;
+      statusCell.appendChild(badge);
+      row.appendChild(statusCell);
+
+      appendTextCell(row, `${run.passed_count}/${run.route_count}`);
+      appendTextCell(row, run.sample_set_name);
+      appendTextCell(row, run.elapsed_ms == null ? labels.none : `${run.elapsed_ms}ms`);
+      preflightRunTbody.appendChild(row);
+    }
+  }
+
   function alertStatus(alert) {
     const detail = alert.detail || {};
     return detail.status || alert.event_type || labels.none;
@@ -969,6 +1058,29 @@
       renderAlerts(body.alerts || []);
     } catch (error) {
       renderAlertsEmpty(error.message || labels.alertsFailed);
+    }
+  }
+
+  async function loadPreflightRuns() {
+    if (!preflightRunPanel || !preflightRunTbody) {
+      return;
+    }
+    if (preflightRunPanel.dataset.databaseConfigured !== "true") {
+      renderPreflightRunsEmpty(labels.noDatabase);
+      return;
+    }
+    try {
+      renderPreflightRunsEmpty(labels.loadingPreflightRuns);
+      const response = await fetch(preflightRunPanel.dataset.preflightRunsApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.preflightRunsFailed);
+      }
+      renderPreflightRuns(body.runs || []);
+    } catch (error) {
+      renderPreflightRunsEmpty(error.message || labels.preflightRunsFailed);
     }
   }
 
@@ -1242,6 +1354,7 @@
         await loadHistory();
         await loadContractHistory();
         await loadAlerts();
+        await loadPreflightRuns();
       } catch (error) {
         setPreflightStatus(error.message || labels.preflightFailed, "text-danger");
       } finally {
@@ -1270,6 +1383,7 @@
   loadHealth();
   loadAlerts();
   loadSampleSets();
+  loadPreflightRuns();
   loadHistory();
   loadContractHistory();
 })();

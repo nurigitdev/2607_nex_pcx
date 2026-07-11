@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from app.core.embedding_provider_preflight_runs import EmbeddingProviderPreflightRunRecord
 from app.core.embedding_provider_preflight_schedules import (
     EmbeddingProviderPreflightScheduleRecord,
     ScheduledProviderRoutePreflightRun,
@@ -46,6 +47,7 @@ def test_run_scheduled_preflight_serializes_due_runs(monkeypatch) -> None:
                 status="succeeded",
                 result={"route_count": 1, "failed_count": 0},
                 updated_schedule=updated_schedule,
+                run_record=make_run_record(run_id=123),
             )
         ]
 
@@ -67,6 +69,7 @@ def test_run_scheduled_preflight_serializes_due_runs(monkeypatch) -> None:
     )
     assert payload["run_count"] == 1
     assert payload["failed_count"] == 0
+    assert payload["results"][0]["run_id"] == 123
     assert payload["results"][0]["schedule_name"] == "hourly-kure"
     assert payload["results"][0]["next_run_at"] == "2026-07-11T14:00:00+00:00"
 
@@ -138,3 +141,28 @@ def make_schedule(**overrides) -> EmbeddingProviderPreflightScheduleRecord:
     }
     values.update(overrides)
     return EmbeddingProviderPreflightScheduleRecord(**values)
+
+
+def make_run_record(**overrides) -> EmbeddingProviderPreflightRunRecord:
+    now = datetime(2026, 7, 11, 12, 0, tzinfo=UTC)
+    values = {
+        "run_id": 1,
+        "schedule_name": "hourly-kure",
+        "trigger_source": "scheduled_cli",
+        "profile_name": "kure_v1_1024",
+        "active_only": True,
+        "status": "succeeded",
+        "route_count": 1,
+        "passed_count": 1,
+        "failed_count": 0,
+        "sample_set_name": "default_route_contract",
+        "input_type": "document",
+        "sample_text_count": 1,
+        "elapsed_ms": None,
+        "result": {"route_count": 1, "failed_count": 0},
+        "error_message": None,
+        "started_at": now,
+        "completed_at": now,
+    }
+    values.update(overrides)
+    return EmbeddingProviderPreflightRunRecord(**values)

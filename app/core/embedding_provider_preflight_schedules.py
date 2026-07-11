@@ -8,6 +8,11 @@ from typing import Any
 from psycopg.types.json import Json
 
 from app.core.database import connect
+from app.core.embedding_provider_preflight_runs import (
+    EmbeddingProviderPreflightRunInput,
+    EmbeddingProviderPreflightRunRecord,
+    record_embedding_provider_preflight_run,
+)
 from app.core.embedding_provider_route_preflight import run_embedding_provider_route_preflight
 
 PREFLIGHT_SCHEDULE_STATUSES = ("never_run", "succeeded", "failed", "error")
@@ -50,6 +55,7 @@ class ScheduledProviderRoutePreflightRun:
     status: str
     result: dict[str, Any]
     updated_schedule: EmbeddingProviderPreflightScheduleRecord
+    run_record: EmbeddingProviderPreflightRunRecord
 
 
 class InvalidEmbeddingProviderPreflightScheduleError(ValueError):
@@ -284,12 +290,26 @@ def run_due_embedding_provider_preflight_schedules(
             result=result,
             ran_at=run_at,
         )
+        run_record = record_embedding_provider_preflight_run(
+            database_url,
+            EmbeddingProviderPreflightRunInput(
+                schedule_name=schedule.schedule_name,
+                trigger_source="scheduled_cli",
+                profile_name=schedule.profile_name,
+                active_only=schedule.active_only,
+                status=status,
+                result=result,
+                started_at=run_at,
+                completed_at=run_at,
+            ),
+        )
         runs.append(
             ScheduledProviderRoutePreflightRun(
                 schedule=schedule,
                 status=status,
                 result=result,
                 updated_schedule=updated_schedule,
+                run_record=run_record,
             )
         )
     return runs

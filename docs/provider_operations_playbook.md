@@ -44,14 +44,23 @@ Then review the UI:
 
 - `/admin/embedding-provider-routes`
 - Provider health summary
+- Preflight run history
 - Contract snapshot history
 - Route readiness status
 - Unacknowledged route alerts
 
 The preflight command uses the active default contract sample set and persists both health
-and contract snapshots. A route should not be treated as ready only because the provider
-responds to `GET /healthz`; it also needs to pass the embedding contract check for the
-configured profile and vector dimension.
+and contract snapshots. Manual API and scheduled CLI runs also create rows in
+`embedding_provider_preflight_runs`, which the routing page shows in recent-first order.
+A route should not be treated as ready only because the provider responds to `GET /healthz`;
+it also needs to pass the embedding contract check for the configured profile and vector
+dimension.
+
+Recent preflight run history API:
+
+```text
+GET /api/admin/embedding-provider-routes/preflight-runs?limit=10
+```
 
 ## Route Lifecycle
 

@@ -86,6 +86,8 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-route-health-panel" in response.text
     assert "Preflight 실행" in response.text
     assert "data-route-preflight-button" in response.text
+    assert "Preflight 실행 이력" in response.text
+    assert "data-preflight-run-history-panel" in response.text
     assert "Health Snapshot 이력" in response.text
     assert "data-route-health-history-panel" in response.text
     assert "Contract Snapshot 이력" in response.text
@@ -101,6 +103,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "/api/admin/embedding-provider-routes/health" in response.text
     assert "/api/admin/embedding-provider-routes/contract-sample-sets" in response.text
     assert "/api/admin/embedding-provider-routes/preflight" in response.text
+    assert "/api/admin/embedding-provider-routes/preflight-runs?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/health-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/contract-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/alerts" in response.text

@@ -137,6 +137,10 @@ def test_embedding_provider_preflight_schedule_repository_and_runner(
         assert runs[0].updated_schedule.failure_count == 0
         assert runs[0].updated_schedule.next_run_at == run_at + timedelta(minutes=15)
         assert runs[0].updated_schedule.last_result["route_count"] == 1
+        assert runs[0].run_record.schedule_name == due_name
+        assert runs[0].run_record.trigger_source == "scheduled_cli"
+        assert runs[0].run_record.status == "succeeded"
+        assert runs[0].run_record.route_count == 1
 
         assert (
             list_due_embedding_provider_preflight_schedules(
@@ -183,6 +187,9 @@ def test_embedding_provider_preflight_schedule_records_errors(
             runs[0].updated_schedule.last_result["error_message"]
             == "provider route preflight failed"
         )
+        assert runs[0].run_record.schedule_name == schedule_name
+        assert runs[0].run_record.status == "error"
+        assert runs[0].run_record.error_message == "provider route preflight failed"
     finally:
         _cleanup_schedules(migrated_database_url, [schedule_name])
 

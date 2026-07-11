@@ -8,6 +8,7 @@ import traceback as traceback_module
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -69,6 +70,13 @@ from app.core.embedding_provider_contract_sample_sets import (
     upsert_embedding_provider_contract_sample_set,
 )
 from app.core.embedding_provider_health import get_embedding_provider_health_status
+from app.core.embedding_provider_preflight_runs import (
+    EmbeddingProviderPreflightRunInput,
+    EmbeddingProviderPreflightRunRecord,
+    InvalidEmbeddingProviderPreflightRunError,
+    list_embedding_provider_preflight_runs,
+    record_embedding_provider_preflight_run,
+)
 from app.core.embedding_provider_route_contract_snapshots import (
     EmbeddingProviderRouteContractSnapshotRecord,
     InvalidEmbeddingProviderRouteContractSnapshotError,
@@ -866,6 +874,30 @@ def embedding_provider_route_readiness_summary_payload(
         "routes": [
             embedding_provider_route_readiness_item_payload(item) for item in summary.routes
         ],
+    }
+
+
+def embedding_provider_preflight_run_payload(
+    run: EmbeddingProviderPreflightRunRecord,
+) -> dict[str, object]:
+    return {
+        "run_id": run.run_id,
+        "schedule_name": run.schedule_name,
+        "trigger_source": run.trigger_source,
+        "profile_name": run.profile_name,
+        "active_only": run.active_only,
+        "status": run.status,
+        "route_count": run.route_count,
+        "passed_count": run.passed_count,
+        "failed_count": run.failed_count,
+        "sample_set_name": run.sample_set_name,
+        "input_type": run.input_type,
+        "sample_text_count": run.sample_text_count,
+        "elapsed_ms": run.elapsed_ms,
+        "result": run.result,
+        "error_message": run.error_message,
+        "started_at": _datetime_response(run.started_at),
+        "completed_at": _datetime_response(run.completed_at),
     }
 
 
@@ -3378,6 +3410,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content={"alert": admin_log_payload(alert)})
 
+    @app.get("/api/admin/embedding-provider-routes/preflight-runs")
+    def api_list_embedding_provider_preflight_runs(
+        schedule_name: str | None = None,
+        status_filter: str | None = Query(default=None, alias="status"),
+        limit: int = 10,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            runs = list_embedding_provider_preflight_runs(
+                settings.database_url,
+                schedule_name=schedule_name,
+                status=status_filter,
+                limit=limit,
+            )
+        except InvalidEmbeddingProviderPreflightRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content={
+                "run_count": len(runs),
+                "runs": [embedding_provider_preflight_run_payload(run) for run in runs],
+            }
+        )
+
     @app.post("/api/admin/embedding-provider-routes/preflight")
     def api_preflight_embedding_provider_routes(
         profile_name: str | None = None,
@@ -3388,6 +3447,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
+        started_at = datetime.now(UTC)
+        started_perf = perf_counter()
         try:
             sample_set = get_default_embedding_provider_contract_sample_set(settings.database_url)
             routes = list_embedding_provider_routes(
@@ -3441,19 +3502,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             InvalidEmbeddingProviderRouteError,
             InvalidEmbeddingProviderRouteHealthSnapshotError,
             InvalidEmbeddingProviderRouteContractSnapshotError,
+            InvalidEmbeddingProviderPreflightRunError,
         ) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         passed_count = sum(1 for result in results if result["contract"]["passed"])
-        return JSONResponse(
-            content={
-                "route_count": len(routes),
-                "passed_count": passed_count,
-                "failed_count": len(routes) - passed_count,
-                "sample_set": embedding_provider_contract_sample_set_payload(sample_set),
-                "results": results,
-            }
-        )
+        response_content = {
+            "route_count": len(routes),
+            "passed_count": passed_count,
+            "failed_count": len(routes) - passed_count,
+            "sample_set": embedding_provider_contract_sample_set_payload(sample_set),
+            "results": results,
+        }
+        completed_at = datetime.now(UTC)
+        elapsed_ms = int((perf_counter() - started_perf) * 1000)
+        try:
+            preflight_run = record_embedding_provider_preflight_run(
+                settings.database_url,
+                EmbeddingProviderPreflightRunInput(
+                    trigger_source="manual_api",
+                    status="succeeded" if response_content["failed_count"] == 0 else "failed",
+                    result=response_content,
+                    profile_name=profile_name,
+                    active_only=active_only,
+                    elapsed_ms=elapsed_ms,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                ),
+            )
+        except InvalidEmbeddingProviderPreflightRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        response_content["preflight_run"] = embedding_provider_preflight_run_payload(preflight_run)
+        return JSONResponse(content=response_content)
 
     @app.post("/api/admin/embedding-provider-routes/{route_id}/health-check")
     def api_check_embedding_provider_route_health(route_id: int) -> JSONResponse:
