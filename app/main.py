@@ -145,6 +145,15 @@ from app.core.embedding_vectors import (
     get_chunk_embedding,
 )
 from app.core.embedding_worker import ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY
+from app.core.embedding_worker_batch_run_retention import (
+    EmbeddingBatchRunCleanupResult,
+    EmbeddingBatchRunRetentionSettings,
+    EmbeddingBatchRunRetentionSettingsInput,
+    InvalidEmbeddingBatchRunRetentionError,
+    cleanup_expired_embedding_batch_run_records,
+    load_embedding_batch_run_retention_settings,
+    update_embedding_batch_run_retention_settings,
+)
 from app.core.embedding_worker_batch_runs import (
     EmbeddingWorkerBatchRunRecord,
     InvalidEmbeddingWorkerBatchRunError,
@@ -385,6 +394,16 @@ class ProviderRouteCleanupRequest(BaseModel):
 class EmbeddingFailedJobBulkRetryRequest(BaseModel):
     profile_name: str | None = Field(default=None, max_length=120)
     limit: int = Field(default=100, ge=1, le=500)
+
+
+class EmbeddingBatchRunRetentionSettingsRequest(BaseModel):
+    enabled: bool = True
+    retention_days: int = Field(default=30, ge=1, le=3650)
+    cleanup_batch_size: int = Field(default=1000, ge=1, le=100000)
+
+
+class EmbeddingBatchRunCleanupRequest(BaseModel):
+    dry_run: bool = True
 
 
 class ProviderPreflightScheduleRequest(BaseModel):
@@ -1440,6 +1459,42 @@ def provider_route_cleanup_result_payload(
         "deleted_health_snapshot_count": result.deleted_health_snapshot_count,
         "deleted_contract_snapshot_count": result.deleted_contract_snapshot_count,
         "deleted_preflight_run_count": result.deleted_preflight_run_count,
+        "cutoff_at": _datetime_response(result.cutoff_at),
+    }
+
+
+def embedding_batch_run_retention_settings_payload(
+    retention_settings: EmbeddingBatchRunRetentionSettings,
+) -> dict[str, object]:
+    return {
+        "enabled": retention_settings.enabled,
+        "retention_days": retention_settings.retention_days,
+        "cleanup_batch_size": retention_settings.cleanup_batch_size,
+    }
+
+
+def embedding_batch_run_retention_settings_input_from_request(
+    payload: EmbeddingBatchRunRetentionSettingsRequest,
+) -> EmbeddingBatchRunRetentionSettingsInput:
+    return EmbeddingBatchRunRetentionSettingsInput(
+        enabled=payload.enabled,
+        retention_days=payload.retention_days,
+        cleanup_batch_size=payload.cleanup_batch_size,
+    )
+
+
+def embedding_batch_run_cleanup_result_payload(
+    result: EmbeddingBatchRunCleanupResult,
+) -> dict[str, object]:
+    return {
+        "enabled": result.enabled,
+        "dry_run": result.dry_run,
+        "retention_days": result.retention_days,
+        "cleanup_batch_size": result.cleanup_batch_size,
+        "expired_count": result.expired_count,
+        "deleted_count": result.deleted_count,
+        "expired_batch_run_count": result.expired_batch_run_count,
+        "deleted_batch_run_count": result.deleted_batch_run_count,
         "cutoff_at": _datetime_response(result.cutoff_at),
     }
 
@@ -4650,6 +4705,71 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/admin/embedding-batch-runs/retention-settings")
+    def api_get_embedding_batch_run_retention_settings() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        retention_settings = load_embedding_batch_run_retention_settings(
+            settings.database_url
+        )
+        return JSONResponse(
+            content={
+                "settings": embedding_batch_run_retention_settings_payload(
+                    retention_settings
+                ),
+            }
+        )
+
+    @app.put("/api/admin/embedding-batch-runs/retention-settings")
+    def api_update_embedding_batch_run_retention_settings(
+        payload: EmbeddingBatchRunRetentionSettingsRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            retention_settings = update_embedding_batch_run_retention_settings(
+                settings.database_url,
+                embedding_batch_run_retention_settings_input_from_request(payload),
+            )
+        except InvalidEmbeddingBatchRunRetentionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "settings": embedding_batch_run_retention_settings_payload(
+                    retention_settings
+                ),
+            }
+        )
+
+    @app.post("/api/admin/embedding-batch-runs/cleanup")
+    def api_cleanup_embedding_batch_run_records(
+        payload: EmbeddingBatchRunCleanupRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            result = cleanup_expired_embedding_batch_run_records(
+                settings.database_url,
+                dry_run=payload.dry_run,
+            )
+        except InvalidEmbeddingBatchRunRetentionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"cleanup": embedding_batch_run_cleanup_result_payload(result)})
+
     @app.get("/api/admin/embedding-batch-runs/{batch_run_id}")
     def api_get_embedding_batch_run(batch_run_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -6538,6 +6658,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         batch_runs: list[EmbeddingWorkerBatchRunRecord] = []
         selected_batch_run = None
         profiles: list[EmbeddingProfileRecord] = []
+        retention_settings = EmbeddingBatchRunRetentionSettings()
         error_message = None
 
         if not settings.database_url:
@@ -6552,6 +6673,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     limit=limit,
                 )
                 profiles = list_active_embedding_profiles(settings.database_url)
+                retention_settings = load_embedding_batch_run_retention_settings(
+                    settings.database_url
+                )
                 if batch_run_id is not None:
                     selected_batch_run = get_embedding_worker_batch_run(
                         settings.database_url,
@@ -6585,6 +6709,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 throughput_summary=embedding_worker_batch_run_throughput_summary(
                     batch_runs
                 ),
+                retention_settings=retention_settings,
                 profiles=profiles,
                 selected_worker_name=worker_name or "",
                 selected_profile_name=profile_name or "",

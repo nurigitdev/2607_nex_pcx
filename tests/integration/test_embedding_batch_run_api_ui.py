@@ -13,6 +13,9 @@ from app.core.embedding_jobs import (
     get_embedding_job,
     mark_embedding_job_failed,
 )
+from app.core.embedding_worker_batch_run_retention import (
+    load_embedding_batch_run_retention_settings,
+)
 from app.core.embedding_worker_batch_runs import (
     EmbeddingWorkerBatchRunInput,
     record_embedding_worker_batch_run,
@@ -304,3 +307,146 @@ def test_embedding_batch_run_failed_jobs_can_retry_from_api_and_ui(
     finally:
         _cleanup_batch_runs(migrated_database_url, batch_run_ids)
         _cleanup_file(migrated_database_url, checksum)
+
+
+def test_embedding_batch_run_retention_api_previews_and_deletes_expired_runs(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    worker_name = f"retention-batch-worker-{suffix}"
+    old_started_at = datetime(2000, 1, 1, 0, 0, tzinfo=UTC)
+    recent_started_at = datetime(2026, 7, 11, 18, 0, tzinfo=UTC)
+    batch_run_ids: list[int] = []
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        old_run = record_embedding_worker_batch_run(
+            migrated_database_url,
+            EmbeddingWorkerBatchRunInput(
+                worker_name=worker_name,
+                profile_name="kure_v1_1024",
+                provider_source="route",
+                provider_mode="mock",
+                limit_requested=1,
+                result_count=1,
+                processed_count=1,
+                succeeded_count=1,
+                failed_count=0,
+                deferred_count=0,
+                idle_count=0,
+                stopped_reason="limit_reached",
+                job_ids=(92001,),
+                elapsed_ms=10,
+                started_at=old_started_at,
+                completed_at=old_started_at + timedelta(milliseconds=10),
+            ),
+        )
+        recent_run = record_embedding_worker_batch_run(
+            migrated_database_url,
+            EmbeddingWorkerBatchRunInput(
+                worker_name=worker_name,
+                profile_name="kure_v1_1024",
+                provider_source="route",
+                provider_mode="mock",
+                limit_requested=1,
+                result_count=1,
+                processed_count=1,
+                succeeded_count=1,
+                failed_count=0,
+                deferred_count=0,
+                idle_count=0,
+                stopped_reason="limit_reached",
+                job_ids=(92002,),
+                elapsed_ms=10,
+                started_at=recent_started_at,
+                completed_at=recent_started_at + timedelta(milliseconds=10),
+            ),
+        )
+        batch_run_ids.extend([old_run.batch_run_id, recent_run.batch_run_id])
+
+        with TestClient(app) as client:
+            update_response = client.put(
+                "/api/admin/embedding-batch-runs/retention-settings",
+                json={
+                    "enabled": True,
+                    "retention_days": 3650,
+                    "cleanup_batch_size": 1,
+                },
+            )
+            get_response = client.get("/api/admin/embedding-batch-runs/retention-settings")
+            invalid_response = client.put(
+                "/api/admin/embedding-batch-runs/retention-settings",
+                json={
+                    "enabled": True,
+                    "retention_days": 0,
+                    "cleanup_batch_size": 1,
+                },
+            )
+            page_response = client.get("/admin/embedding-batch-runs")
+            preview_response = client.post(
+                "/api/admin/embedding-batch-runs/cleanup",
+                json={"dry_run": True},
+            )
+            cleanup_response = client.post(
+                "/api/admin/embedding-batch-runs/cleanup",
+                json={"dry_run": False},
+            )
+
+        remaining = _count_batch_run_ids(migrated_database_url, batch_run_ids)
+
+        assert update_response.status_code == 200
+        assert update_response.json()["settings"] == {
+            "enabled": True,
+            "retention_days": 3650,
+            "cleanup_batch_size": 1,
+        }
+        assert get_response.status_code == 200
+        assert get_response.json()["settings"] == update_response.json()["settings"]
+        assert invalid_response.status_code == 422
+        assert page_response.status_code == 200
+        assert "Batch Run Retention" in page_response.text
+        assert "/api/admin/embedding-batch-runs/retention-settings" in page_response.text
+        assert "/api/admin/embedding-batch-runs/cleanup" in page_response.text
+        assert preview_response.status_code == 200
+        assert preview_response.json()["cleanup"]["dry_run"] is True
+        assert preview_response.json()["cleanup"]["expired_batch_run_count"] >= 1
+        assert preview_response.json()["cleanup"]["deleted_count"] == 0
+        assert cleanup_response.status_code == 200
+        assert cleanup_response.json()["cleanup"]["dry_run"] is False
+        assert cleanup_response.json()["cleanup"]["deleted_batch_run_count"] == 1
+        assert remaining == 1
+    finally:
+        _cleanup_batch_runs(migrated_database_url, batch_run_ids)
+        with TestClient(app) as client:
+            client.put(
+                "/api/admin/embedding-batch-runs/retention-settings",
+                json={
+                    "enabled": True,
+                    "retention_days": 30,
+                    "cleanup_batch_size": 1000,
+                },
+            )
+
+
+def test_embedding_batch_run_retention_settings_seeded(
+    migrated_database_url: str,
+) -> None:
+    settings = load_embedding_batch_run_retention_settings(migrated_database_url)
+
+    assert settings.enabled is True
+    assert settings.retention_days == 30
+    assert settings.cleanup_batch_size == 1000
+
+
+def _count_batch_run_ids(database_url: str, batch_run_ids: list[int]) -> int:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*) AS count
+                FROM embedding_worker_batch_runs
+                WHERE batch_run_id = ANY(%s)
+                """,
+                (batch_run_ids,),
+            )
+            return int(cursor.fetchone()["count"])

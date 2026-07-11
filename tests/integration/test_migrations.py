@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260711_0021"
+HEAD_REVISION = "20260711_0022"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:

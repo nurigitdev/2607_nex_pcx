@@ -153,6 +153,74 @@
   </div>
 </section>
 
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-batch-run-retention-panel
+  data-settings-url="/api/admin/embedding-batch-runs/retention-settings"
+  data-cleanup-url="/api/admin/embedding-batch-runs/cleanup"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_batch_runs.retention_title") }}</h2>
+      <div class="text-secondary">{{ t("embedding_batch_runs.retention_help") }}</div>
+    </div>
+    <span class="badge text-bg-light">API</span>
+  </div>
+  <div class="p-3 border-top">
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-lg-3">
+        <div class="form-check form-switch">
+          <input
+            class="form-check-input"
+            id="batchRetentionEnabled"
+            type="checkbox"
+            {% if retention_settings.enabled %}checked{% endif %}
+          >
+          <label class="form-check-label" for="batchRetentionEnabled">
+            {{ t("embedding_batch_runs.retention_enabled") }}
+          </label>
+        </div>
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="batchRetentionDays">{{ t("embedding_batch_runs.retention_days") }}</label>
+        <input
+          class="form-control"
+          id="batchRetentionDays"
+          type="number"
+          min="1"
+          max="3650"
+          value="{{ retention_settings.retention_days }}"
+        >
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="batchCleanupSize">{{ t("embedding_batch_runs.cleanup_batch_size") }}</label>
+        <input
+          class="form-control"
+          id="batchCleanupSize"
+          type="number"
+          min="1"
+          max="100000"
+          value="{{ retention_settings.cleanup_batch_size }}"
+        >
+      </div>
+      <div class="col-12 col-lg-5">
+        <div class="d-flex flex-wrap justify-content-lg-end gap-2">
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-batch-retention-save>
+            {{ t("embedding_batch_runs.save_retention") }}
+          </button>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-batch-retention-preview>
+            {{ t("embedding_batch_runs.preview_cleanup") }}
+          </button>
+          <button class="btn btn-outline-danger btn-sm" type="button" data-batch-retention-run>
+            {{ t("embedding_batch_runs.run_cleanup") }}
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="alert alert-info mt-3 mb-0" data-batch-retention-status hidden></div>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="dashboard-panel-header p-3">
     <div>
@@ -394,10 +462,18 @@
   (() => {
     const retryButton = document.querySelector("[data-batch-run-retry-button]");
     const retryStatus = document.querySelector("[data-batch-run-retry-status]");
+    const retentionPanel = document.querySelector("[data-batch-run-retention-panel]");
     const labels = {
       running: {{ t("embedding_batch_runs.retry_running") | tojson }},
       complete: {{ t("embedding_batch_runs.retry_complete") | tojson }},
       failed: {{ t("embedding_batch_runs.retry_failed") | tojson }},
+    };
+    const retentionLabels = {
+      saved: {{ t("embedding_batch_runs.retention_saved") | tojson }},
+      saveFailed: {{ t("embedding_batch_runs.retention_save_failed") | tojson }},
+      previewComplete: {{ t("embedding_batch_runs.cleanup_preview_complete") | tojson }},
+      cleanupComplete: {{ t("embedding_batch_runs.cleanup_complete") | tojson }},
+      cleanupFailed: {{ t("embedding_batch_runs.cleanup_failed") | tojson }},
     };
 
     function setRetryStatus(message, level = "info") {
@@ -405,6 +481,80 @@
       retryStatus.hidden = false;
       retryStatus.className = `alert alert-${level}`;
       retryStatus.textContent = message;
+    }
+
+    function setRetentionStatus(message, level = "info") {
+      const status = document.querySelector("[data-batch-retention-status]");
+      if (!status) return;
+      status.hidden = false;
+      status.className = `alert alert-${level} mt-3 mb-0`;
+      status.textContent = message;
+    }
+
+    function retentionPayload() {
+      return {
+        enabled: Boolean(document.getElementById("batchRetentionEnabled")?.checked),
+        retention_days: Number(document.getElementById("batchRetentionDays")?.value || 30),
+        cleanup_batch_size: Number(document.getElementById("batchCleanupSize")?.value || 1000),
+      };
+    }
+
+    if (retentionPanel) {
+      const saveButton = retentionPanel.querySelector("[data-batch-retention-save]");
+      const previewButton = retentionPanel.querySelector("[data-batch-retention-preview]");
+      const runButton = retentionPanel.querySelector("[data-batch-retention-run]");
+
+      saveButton?.addEventListener("click", async () => {
+        saveButton.disabled = true;
+        try {
+          const response = await fetch(retentionPanel.dataset.settingsUrl, {
+            method: "PUT",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(retentionPayload()),
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(body.detail || retentionLabels.saveFailed);
+          setRetentionStatus(retentionLabels.saved, "success");
+        } catch (error) {
+          setRetentionStatus(error instanceof Error ? error.message : retentionLabels.saveFailed, "warning");
+        } finally {
+          saveButton.disabled = false;
+        }
+      });
+
+      async function runCleanup(dryRun) {
+        const button = dryRun ? previewButton : runButton;
+        if (!button) return;
+        button.disabled = true;
+        try {
+          const response = await fetch(retentionPanel.dataset.cleanupUrl, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ dry_run: dryRun }),
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(body.detail || retentionLabels.cleanupFailed);
+          const cleanup = body.cleanup || {};
+          const label = dryRun ? retentionLabels.previewComplete : retentionLabels.cleanupComplete;
+          const message = label
+            .replace("{expired_count}", String(cleanup.expired_count ?? 0))
+            .replace("{deleted_count}", String(cleanup.deleted_count ?? 0));
+          setRetentionStatus(message, dryRun ? "info" : "success");
+        } catch (error) {
+          setRetentionStatus(error instanceof Error ? error.message : retentionLabels.cleanupFailed, "warning");
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      previewButton?.addEventListener("click", () => runCleanup(true));
+      runButton?.addEventListener("click", () => runCleanup(false));
     }
 
     if (!retryButton) return;
