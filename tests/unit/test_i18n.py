@@ -39,6 +39,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("embedding_backlog.help") == (
         "Summarizes queue, failure, and stale lease state by profile."
     )
+    assert korean("dashboard.embedding_queue_snapshot") == "임베딩 Queue 스냅샷"
+    assert english("dashboard.embedding_queue_snapshot") == "Embedding Queue Snapshot"
     assert korean("nav.embedding_routes") == "Provider 라우팅"
     assert english("embedding_routes.title") == "Embedding Provider Routing"
     assert korean("embedding_routes.playbook") == "운영 Playbook"

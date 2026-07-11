@@ -5,6 +5,11 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.database import connect
+from app.core.embedding_jobs import (
+    EmbeddingJobInput,
+    create_embedding_job,
+    get_embedding_job_backlog_summary,
+)
 from app.core.evaluation_dashboard import get_evaluation_dashboard_summary
 from app.core.evaluation_metrics import (
     ExpectedTarget,
@@ -24,8 +29,77 @@ from app.main import create_app
 pytestmark = pytest.mark.integration
 
 
+def _create_dashboard_embedding_backlog_fixture(database_url: str) -> dict[str, object]:
+    checksum = f"dashboard-backlog-{uuid4()}"
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO files (
+                    original_file_name,
+                    stored_file_name,
+                    file_ext,
+                    file_size_bytes,
+                    sha256_checksum,
+                    storage_path
+                )
+                VALUES (%s, %s, '.md', 1, %s, %s)
+                RETURNING file_id
+                """,
+                (
+                    f"{checksum}.md",
+                    f"{checksum}.stored.md",
+                    checksum,
+                    f"/tmp/{checksum}.md",
+                ),
+            )
+            file_id = cursor.fetchone()["file_id"]
+            cursor.execute(
+                """
+                INSERT INTO documents (file_id, document_title)
+                VALUES (%s, %s)
+                RETURNING document_id
+                """,
+                (file_id, f"Dashboard backlog fixture {checksum}"),
+            )
+            document_id = cursor.fetchone()["document_id"]
+            cursor.execute(
+                """
+                INSERT INTO chunks (
+                    document_id,
+                    chunk_seq,
+                    chunk_text,
+                    content_hash,
+                    chunk_policy_name,
+                    char_count
+                )
+                VALUES (%s, 0, %s, %s, 'heading_512_64', %s)
+                RETURNING chunk_id
+                """,
+                (
+                    document_id,
+                    "Dashboard backlog fixture chunk",
+                    f"chunk-{checksum}",
+                    len("Dashboard backlog fixture chunk"),
+                ),
+            )
+            chunk_id = cursor.fetchone()["chunk_id"]
+
+    profile_name = "kure_v1_1024"
+    job = create_embedding_job(
+        database_url,
+        EmbeddingJobInput(chunk_id=chunk_id, profile_name=profile_name),
+    )
+    return {
+        "file_id": file_id,
+        "job_id": job.job.job_id,
+        "profile_name": profile_name,
+    }
+
+
 def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
     set_name = f"slice-048-{uuid4()}"
+    backlog_fixture = _create_dashboard_embedding_backlog_fixture(database_url)
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT user_id FROM app_users WHERE login_id = 'alice.member'")
@@ -125,6 +199,9 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
         "question_id": question_id,
         "succeeded_run_id": completed_run.evaluation_run_id,
         "failed_run_id": failed_run.evaluation_run_id,
+        "embedding_file_id": backlog_fixture["file_id"],
+        "embedding_job_id": backlog_fixture["job_id"],
+        "embedding_profile_name": backlog_fixture["profile_name"],
     }
 
 
@@ -135,6 +212,10 @@ def _cleanup_dashboard_fixture(database_url: str, fixture: dict[str, object]) ->
                 "DELETE FROM golden_question_sets WHERE set_name = %s",
                 (fixture["set_name"],),
             )
+            cursor.execute(
+                "DELETE FROM files WHERE file_id = %s",
+                (fixture["embedding_file_id"],),
+            )
 
 
 def test_evaluation_dashboard_summary_api_and_page(
@@ -144,10 +225,12 @@ def test_evaluation_dashboard_summary_api_and_page(
     app = create_app(Settings(database_url=migrated_database_url))
     try:
         summary = get_evaluation_dashboard_summary(migrated_database_url, recent_limit=10)
+        backlog_summary = get_embedding_job_backlog_summary(migrated_database_url)
         status_counts = {item.status: item.count for item in summary.status_counts}
 
         with TestClient(app) as client:
             api_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 10})
+            backlog_api_response = client.get("/api/dashboard/embedding-backlog")
             bad_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 0})
             page_response = client.get("/")
 
@@ -165,8 +248,14 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert api_response.status_code == 200
         assert api_payload["active_question_set_count"] == summary.active_question_set_count
         assert fixture["succeeded_run_id"] in api_recent_run_ids
+        assert backlog_api_response.status_code == 200
+        assert backlog_api_response.json()["backlog"]["total_count"] == backlog_summary.total_count
+        assert backlog_api_response.json()["backlog"]["pending_count"] >= 1
         assert bad_response.status_code == 400
         assert page_response.status_code == 200
+        assert "임베딩 Queue 스냅샷" in page_response.text
+        assert fixture["embedding_profile_name"] in page_response.text
+        assert "/api/dashboard/embedding-backlog" in page_response.text
         assert "골든 평가 스냅샷" in page_response.text
         assert "활성 질문 세트" in page_response.text
         assert fixture["set_name"] in page_response.text

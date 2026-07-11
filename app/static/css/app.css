@@ -1080,6 +1080,7 @@ main.container-fluid {
   align-items: center;
   border-bottom: 1px solid var(--pcx-border);
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   justify-content: space-between;
 }
@@ -1122,6 +1123,20 @@ main.container-fluid {
 
 .dashboard-evaluation-table td:nth-child(2) {
   min-width: 14rem;
+}
+
+.dashboard-backlog-table td:nth-child(2),
+.dashboard-backlog-table td:nth-child(3),
+.dashboard-backlog-table td:nth-child(4),
+.dashboard-backlog-table td:nth-child(5),
+.dashboard-backlog-table td:nth-child(6),
+.dashboard-backlog-table td:nth-child(7) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dashboard-backlog-table td:nth-child(1) {
+  min-width: 12rem;
 }
 
 .model-path {

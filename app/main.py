@@ -3230,6 +3230,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content={"evaluations": evaluation_dashboard_summary_payload(summary)})
 
+    @app.get("/api/dashboard/embedding-backlog")
+    def api_get_dashboard_embedding_backlog() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        summary = get_embedding_job_backlog_summary(settings.database_url)
+        return JSONResponse(content={"backlog": embedding_job_backlog_summary_payload(summary)})
+
     @app.get("/api/chunk-policies")
     def api_list_chunk_policies() -> JSONResponse:
         if not settings.database_url:
@@ -6018,6 +6029,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request) -> HTMLResponse:
         evaluation_dashboard: EvaluationDashboardSummary | None = None
+        embedding_backlog: EmbeddingJobBacklogSummary | None = None
         error_message = None
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
@@ -6031,6 +6043,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 error_message = str(exc)
             except Exception as exc:
                 error_message = str(exc)
+            try:
+                embedding_backlog = get_embedding_job_backlog_summary(settings.database_url)
+            except InvalidEmbeddingJobError as exc:
+                if error_message is None:
+                    error_message = str(exc)
+            except Exception as exc:
+                if error_message is None:
+                    error_message = str(exc)
 
         return TEMPLATES.TemplateResponse(
             request,
@@ -6039,6 +6059,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 database_configured=bool(settings.database_url),
                 evaluation_dashboard=evaluation_dashboard,
+                embedding_backlog=embedding_backlog,
                 error_message=error_message,
             ),
         )
