@@ -20,25 +20,25 @@
   <div class="col-12 col-md-6 col-xl-3">
     <section class="metric-card bg-white p-3">
       <div class="metric-label">{{ t("dashboard.documents") }}</div>
-      <div class="metric-value">0</div>
+      <div class="metric-value">{{ core_metrics.document_count if core_metrics else 0 }}</div>
     </section>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
     <section class="metric-card bg-white p-3">
       <div class="metric-label">{{ t("dashboard.chunks") }}</div>
-      <div class="metric-value">0</div>
+      <div class="metric-value">{{ core_metrics.chunk_count if core_metrics else 0 }}</div>
     </section>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
     <section class="metric-card bg-white p-3">
       <div class="metric-label">{{ t("dashboard.embedding_jobs") }}</div>
-      <div class="metric-value">{{ embedding_backlog.total_count if embedding_backlog else 0 }}</div>
+      <div class="metric-value">{{ core_metrics.embedding_job_count if core_metrics else 0 }}</div>
     </section>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
     <section class="metric-card bg-white p-3">
       <div class="metric-label">{{ t("dashboard.search_logs") }}</div>
-      <div class="metric-value">0</div>
+      <div class="metric-value">{{ core_metrics.search_log_count if core_metrics else 0 }}</div>
     </section>
   </div>
 </div>
@@ -69,6 +69,134 @@
     </section>
   </div>
 </div>
+
+<section class="metric-card bg-white p-0 overflow-hidden mt-4" data-dashboard-core-metrics-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dashboard.core_metrics") }}</h2>
+      <div class="text-secondary">{{ t("dashboard.core_metrics_subtitle") }}</div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/api/dashboard/core-metrics">{{ t("common.api") }}</a>
+  </div>
+
+  <div class="dashboard-evaluation-body p-3">
+    <div class="dashboard-core-grid">
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.files") }}</span>
+        <strong>{{ core_metrics.file_count if core_metrics else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.total_file_size") }}</span>
+        <strong>{{ core_metrics.total_file_size_label if core_metrics else "0 B" }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.average_file_size") }}</span>
+        <strong>{{ core_metrics.average_file_size_label if core_metrics else "-" }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.duplicate_checksums") }}</span>
+        <strong>{{ core_metrics.duplicate_checksum_count if core_metrics else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.average_chunk_tokens") }}</span>
+        <strong>{{ "%.1f"|format(core_metrics.average_chunk_token_count) if core_metrics and core_metrics.average_chunk_token_count is not none else "-" }}</strong>
+      </div>
+    </div>
+
+    <div class="dashboard-core-tables">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dashboard-core-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("dashboard.file_type") }}</th>
+              <th scope="col">{{ t("dashboard.files") }}</th>
+              <th scope="col">{{ t("dashboard.documents") }}</th>
+              <th scope="col">{{ t("dashboard.size") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if core_metrics and core_metrics.file_types %}
+              {% for file_type in core_metrics.file_types %}
+              <tr>
+                <td class="text-break">{{ file_type.file_type }}</td>
+                <td>{{ file_type.file_count }}</td>
+                <td>{{ file_type.document_count }}</td>
+                <td>{{ file_type.total_file_size_label }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="4">
+                {% if database_configured %}{{ t("dashboard.no_core_metrics") }}{% else %}{{ t("common.no_database") }}{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dashboard-core-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("dashboard.document_group") }}</th>
+              <th scope="col">{{ t("dashboard.files") }}</th>
+              <th scope="col">{{ t("dashboard.documents") }}</th>
+              <th scope="col">{{ t("dashboard.chunks") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if core_metrics and core_metrics.document_groups %}
+              {% for group in core_metrics.document_groups %}
+              <tr>
+                <td class="text-break">{{ group.document_group }}</td>
+                <td>{{ group.file_count }}</td>
+                <td>{{ group.document_count }}</td>
+                <td>{{ group.chunk_count }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="4">
+                {% if database_configured %}{{ t("dashboard.no_core_metrics") }}{% else %}{{ t("common.no_database") }}{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dashboard-core-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("dashboard.chunk_policy") }}</th>
+              <th scope="col">{{ t("dashboard.chunks") }}</th>
+              <th scope="col">{{ t("dashboard.avg_tokens") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if core_metrics and core_metrics.chunk_policies %}
+              {% for policy in core_metrics.chunk_policies %}
+              <tr>
+                <td class="text-break">{{ policy.chunk_policy_name }}</td>
+                <td>{{ policy.chunk_count }}</td>
+                <td>{{ "%.1f"|format(policy.average_token_count) if policy.average_token_count is not none else "-" }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="3">
+                {% if database_configured %}{{ t("dashboard.no_core_metrics") }}{% else %}{{ t("common.no_database") }}{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
 
 <section class="metric-card bg-white p-0 overflow-hidden mt-4" data-dashboard-embedding-backlog-panel>
   <div class="dashboard-panel-header p-3">

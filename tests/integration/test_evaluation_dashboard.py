@@ -2,8 +2,10 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from psycopg.types.json import Json
 
 from app.core.config import Settings
+from app.core.dashboard_metrics import get_dashboard_core_metrics
 from app.core.database import connect
 from app.core.embedding_jobs import (
     EmbeddingJobInput,
@@ -41,9 +43,10 @@ def _create_dashboard_embedding_backlog_fixture(database_url: str) -> dict[str, 
                     file_ext,
                     file_size_bytes,
                     sha256_checksum,
-                    storage_path
+                    storage_path,
+                    document_group
                 )
-                VALUES (%s, %s, '.md', 1, %s, %s)
+                VALUES (%s, %s, '.md', 2048, %s, %s, 'slice-151')
                 RETURNING file_id
                 """,
                 (
@@ -56,8 +59,8 @@ def _create_dashboard_embedding_backlog_fixture(database_url: str) -> dict[str, 
             file_id = cursor.fetchone()["file_id"]
             cursor.execute(
                 """
-                INSERT INTO documents (file_id, document_title)
-                VALUES (%s, %s)
+                INSERT INTO documents (file_id, document_title, document_group)
+                VALUES (%s, %s, 'slice-151')
                 RETURNING document_id
                 """,
                 (file_id, f"Dashboard backlog fixture {checksum}"),
@@ -71,9 +74,10 @@ def _create_dashboard_embedding_backlog_fixture(database_url: str) -> dict[str, 
                     chunk_text,
                     content_hash,
                     chunk_policy_name,
+                    token_count,
                     char_count
                 )
-                VALUES (%s, 0, %s, %s, 'heading_512_64', %s)
+                VALUES (%s, 0, %s, %s, 'heading_512_64', 11, %s)
                 RETURNING chunk_id
                 """,
                 (
@@ -154,6 +158,31 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
                 """,
                 (question_id,),
             )
+            cursor.execute(
+                """
+                INSERT INTO search_logs (
+                    query_text,
+                    normalized_query_text,
+                    document_group,
+                    top_k,
+                    profiles,
+                    query_runtime_metadata,
+                    created_by
+                )
+                VALUES (
+                    'dashboard core metrics fixture',
+                    'dashboard core metrics fixture',
+                    'slice-151',
+                    5,
+                    %s,
+                    %s,
+                    'integration-test'
+                )
+                RETURNING search_log_id
+                """,
+                (Json(["kure_v1_1024"]), Json({"purpose": "slice-151"})),
+            )
+            search_log_id = cursor.fetchone()["search_log_id"]
 
     metric = evaluate_question(
         QuestionEvaluationInput(
@@ -202,6 +231,7 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
         "embedding_file_id": backlog_fixture["file_id"],
         "embedding_job_id": backlog_fixture["job_id"],
         "embedding_profile_name": backlog_fixture["profile_name"],
+        "search_log_id": search_log_id,
     }
 
 
@@ -211,6 +241,10 @@ def _cleanup_dashboard_fixture(database_url: str, fixture: dict[str, object]) ->
             cursor.execute(
                 "DELETE FROM golden_question_sets WHERE set_name = %s",
                 (fixture["set_name"],),
+            )
+            cursor.execute(
+                "DELETE FROM search_logs WHERE search_log_id = %s",
+                (fixture["search_log_id"],),
             )
             cursor.execute(
                 "DELETE FROM files WHERE file_id = %s",
@@ -225,19 +259,39 @@ def test_evaluation_dashboard_summary_api_and_page(
     app = create_app(Settings(database_url=migrated_database_url))
     try:
         summary = get_evaluation_dashboard_summary(migrated_database_url, recent_limit=10)
+        core_metrics = get_dashboard_core_metrics(migrated_database_url)
         backlog_summary = get_embedding_job_backlog_summary(migrated_database_url)
         status_counts = {item.status: item.count for item in summary.status_counts}
 
         with TestClient(app) as client:
+            core_metrics_response = client.get("/api/dashboard/core-metrics")
             api_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 10})
             backlog_api_response = client.get("/api/dashboard/embedding-backlog")
             bad_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 0})
             page_response = client.get("/")
 
         api_payload = api_response.json()["evaluations"]
+        core_metrics_payload = core_metrics_response.json()["core_metrics"]
         recent_run_ids = {run.evaluation_run_id for run in summary.recent_runs}
         api_recent_run_ids = {run["evaluation_run_id"] for run in api_payload["recent_runs"]}
 
+        assert core_metrics.document_count >= 1
+        assert core_metrics.chunk_count >= 1
+        assert core_metrics.search_log_count >= 1
+        assert core_metrics_response.status_code == 200
+        assert core_metrics_payload["document_count"] == core_metrics.document_count
+        assert core_metrics_payload["chunk_count"] == core_metrics.chunk_count
+        assert core_metrics_payload["search_log_count"] == core_metrics.search_log_count
+        assert core_metrics_payload["total_file_size_bytes"] >= 2048
+        assert any(item["file_type"] == ".md" for item in core_metrics_payload["file_types"])
+        assert any(
+            item["document_group"] == "slice-151"
+            for item in core_metrics_payload["document_groups"]
+        )
+        assert any(
+            item["chunk_policy_name"] == "heading_512_64"
+            for item in core_metrics_payload["chunk_policies"]
+        )
         assert summary.active_question_set_count >= 1
         assert summary.question_count >= 1
         assert summary.expected_target_count >= 1
@@ -253,6 +307,9 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert backlog_api_response.json()["backlog"]["pending_count"] >= 1
         assert bad_response.status_code == 400
         assert page_response.status_code == 200
+        assert "Core Metrics" in page_response.text
+        assert "slice-151" in page_response.text
+        assert "/api/dashboard/core-metrics" in page_response.text
         assert "임베딩 Queue 스냅샷" in page_response.text
         assert fixture["embedding_profile_name"] in page_response.text
         assert "/api/dashboard/embedding-backlog" in page_response.text

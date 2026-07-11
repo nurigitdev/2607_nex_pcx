@@ -38,6 +38,13 @@ from app.core.chunks import (
     list_document_chunks,
 )
 from app.core.config import Settings, get_settings
+from app.core.dashboard_metrics import (
+    DashboardChunkPolicySummary,
+    DashboardCoreMetrics,
+    DashboardDocumentGroupSummary,
+    DashboardFileTypeSummary,
+    get_dashboard_core_metrics,
+)
 from app.core.database import connect
 from app.core.document_inventory import (
     DocumentInventoryItem,
@@ -615,6 +622,20 @@ def pipeline_job_response_payload(
 
 def _datetime_response(value: object | None) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else None
+
+
+def _byte_count_label(value: int | float | None) -> str:
+    if value is None:
+        return "-"
+    amount = float(value)
+    units = ("B", "KB", "MB", "GB", "TB")
+    unit_index = 0
+    while abs(amount) >= 1024 and unit_index < len(units) - 1:
+        amount /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(amount):,} {units[unit_index]}"
+    return f"{amount:,.1f} {units[unit_index]}"
 
 
 def admin_log_payload(log: dict[str, object]) -> dict[str, object]:
@@ -2909,6 +2930,67 @@ def evaluation_dashboard_summary_payload(
     }
 
 
+def dashboard_file_type_summary_payload(
+    summary: DashboardFileTypeSummary,
+) -> dict[str, object]:
+    return {
+        "file_type": summary.file_type,
+        "file_count": summary.file_count,
+        "document_count": summary.document_count,
+        "total_file_size_bytes": summary.total_file_size_bytes,
+        "total_file_size_label": _byte_count_label(summary.total_file_size_bytes),
+    }
+
+
+def dashboard_document_group_summary_payload(
+    summary: DashboardDocumentGroupSummary,
+) -> dict[str, object]:
+    return {
+        "document_group": summary.document_group,
+        "file_count": summary.file_count,
+        "document_count": summary.document_count,
+        "chunk_count": summary.chunk_count,
+    }
+
+
+def dashboard_chunk_policy_summary_payload(
+    summary: DashboardChunkPolicySummary,
+) -> dict[str, object]:
+    return {
+        "chunk_policy_name": summary.chunk_policy_name,
+        "chunk_count": summary.chunk_count,
+        "average_token_count": summary.average_token_count,
+    }
+
+
+def dashboard_core_metrics_payload(
+    metrics: DashboardCoreMetrics,
+) -> dict[str, object]:
+    return {
+        "file_count": metrics.file_count,
+        "document_count": metrics.document_count,
+        "chunk_count": metrics.chunk_count,
+        "embedding_job_count": metrics.embedding_job_count,
+        "search_log_count": metrics.search_log_count,
+        "total_file_size_bytes": metrics.total_file_size_bytes,
+        "total_file_size_label": _byte_count_label(metrics.total_file_size_bytes),
+        "average_file_size_bytes": metrics.average_file_size_bytes,
+        "average_file_size_label": _byte_count_label(metrics.average_file_size_bytes),
+        "duplicate_checksum_count": metrics.duplicate_checksum_count,
+        "average_chunk_token_count": metrics.average_chunk_token_count,
+        "file_types": [
+            dashboard_file_type_summary_payload(summary) for summary in metrics.file_types
+        ],
+        "document_groups": [
+            dashboard_document_group_summary_payload(summary)
+            for summary in metrics.document_groups
+        ],
+        "chunk_policies": [
+            dashboard_chunk_policy_summary_payload(summary) for summary in metrics.chunk_policies
+        ],
+    }
+
+
 def document_inventory_item_payload(item: DocumentInventoryItem) -> dict[str, object]:
     return {
         "document_id": item.document_id,
@@ -3229,6 +3311,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content={"evaluations": evaluation_dashboard_summary_payload(summary)})
+
+    @app.get("/api/dashboard/core-metrics")
+    def api_get_dashboard_core_metrics() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        metrics = get_dashboard_core_metrics(settings.database_url)
+        return JSONResponse(content={"core_metrics": dashboard_core_metrics_payload(metrics)})
 
     @app.get("/api/dashboard/embedding-backlog")
     def api_get_dashboard_embedding_backlog() -> JSONResponse:
@@ -6028,6 +6121,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request) -> HTMLResponse:
+        core_metrics: DashboardCoreMetrics | None = None
         evaluation_dashboard: EvaluationDashboardSummary | None = None
         embedding_backlog: EmbeddingJobBacklogSummary | None = None
         error_message = None
@@ -6035,14 +6129,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
+                core_metrics = get_dashboard_core_metrics(settings.database_url)
+            except Exception as exc:
+                error_message = str(exc)
+            try:
                 evaluation_dashboard = get_evaluation_dashboard_summary(
                     settings.database_url,
                     recent_limit=5,
                 )
             except InvalidEvaluationDashboardError as exc:
-                error_message = str(exc)
+                if error_message is None:
+                    error_message = str(exc)
             except Exception as exc:
-                error_message = str(exc)
+                if error_message is None:
+                    error_message = str(exc)
             try:
                 embedding_backlog = get_embedding_job_backlog_summary(settings.database_url)
             except InvalidEmbeddingJobError as exc:
@@ -6058,6 +6158,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             template_context(
                 request,
                 database_configured=bool(settings.database_url),
+                core_metrics=(
+                    dashboard_core_metrics_payload(core_metrics)
+                    if core_metrics is not None
+                    else None
+                ),
                 evaluation_dashboard=evaluation_dashboard,
                 embedding_backlog=embedding_backlog,
                 error_message=error_message,
