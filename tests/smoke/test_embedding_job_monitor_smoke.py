@@ -92,14 +92,53 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-route-contract-history-panel" in response.text
     assert "Provider Route Alert" in response.text
     assert "data-route-alerts-panel" in response.text
+    assert "Contract Sample Sets" in response.text
+    assert "data-contract-sample-set-panel" in response.text
+    assert "data-sample-set-form" in response.text
     assert "wireContractButtons" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert "/api/admin/embedding-provider-routes" in response.text
     assert "/api/admin/embedding-provider-routes/health" in response.text
+    assert "/api/admin/embedding-provider-routes/contract-sample-sets" in response.text
     assert "/api/admin/embedding-provider-routes/preflight" in response.text
     assert "/api/admin/embedding-provider-routes/health-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/contract-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/alerts" in response.text
+
+
+def test_embedding_provider_contract_sample_set_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+    payload = {
+        "sample_set_name": "smoke_samples",
+        "description": "Smoke sample set",
+        "input_type": "document",
+        "sample_texts": ["sample text"],
+        "is_active": True,
+        "is_default": False,
+    }
+
+    with TestClient(app) as client:
+        responses = [
+            client.get("/api/admin/embedding-provider-routes/contract-sample-sets"),
+            client.post(
+                "/api/admin/embedding-provider-routes/contract-sample-sets",
+                json=payload,
+            ),
+            client.get("/api/admin/embedding-provider-routes/contract-sample-sets/smoke_samples"),
+            client.put(
+                "/api/admin/embedding-provider-routes/contract-sample-sets/smoke_samples",
+                json=payload,
+            ),
+            client.delete(
+                "/api/admin/embedding-provider-routes/contract-sample-sets/smoke_samples"
+            ),
+        ]
+
+    assert [response.status_code for response in responses] == [503, 503, 503, 503, 503]
+    assert all(
+        response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
+        for response in responses
+    )
 
 
 def test_embedding_model_readiness_page_shows_without_database_url(tmp_path) -> None:

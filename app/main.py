@@ -59,10 +59,14 @@ from app.core.embedding_model_distribution import (
     audit_embedding_model_readiness,
 )
 from app.core.embedding_provider_contract_sample_sets import (
+    EmbeddingProviderContractSampleSetInput,
     EmbeddingProviderContractSampleSetRecord,
     InvalidEmbeddingProviderContractSampleSetError,
+    delete_embedding_provider_contract_sample_set,
     get_default_embedding_provider_contract_sample_set,
+    get_embedding_provider_contract_sample_set,
     list_embedding_provider_contract_sample_sets,
+    upsert_embedding_provider_contract_sample_set,
 )
 from app.core.embedding_provider_health import get_embedding_provider_health_status
 from app.core.embedding_provider_route_contract_snapshots import (
@@ -342,6 +346,15 @@ class EmbeddingProviderRouteRequest(BaseModel):
     is_active: bool = True
     health_check_enabled: bool = True
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class EmbeddingProviderContractSampleSetRequest(BaseModel):
+    sample_set_name: str
+    description: str | None = Field(default=None, max_length=1000)
+    input_type: str = "document"
+    sample_texts: list[str] = Field(min_length=1, max_length=20)
+    is_active: bool = True
+    is_default: bool = False
 
 
 class ProviderRouteAlertAcknowledgeRequest(BaseModel):
@@ -684,6 +697,21 @@ def embedding_provider_contract_sample_set_payload(
         "created_at": _datetime_response(sample_set.created_at),
         "updated_at": _datetime_response(sample_set.updated_at),
     }
+
+
+def embedding_provider_contract_sample_set_input_from_request(
+    payload: EmbeddingProviderContractSampleSetRequest,
+    *,
+    sample_set_name: str | None = None,
+) -> EmbeddingProviderContractSampleSetInput:
+    return EmbeddingProviderContractSampleSetInput(
+        sample_set_name=sample_set_name or payload.sample_set_name,
+        description=payload.description,
+        input_type=payload.input_type,
+        sample_texts=tuple(payload.sample_texts),
+        is_active=payload.is_active,
+        is_default=payload.is_default,
+    )
 
 
 def embedding_provider_route_payload(route: EmbeddingProviderRouteRecord) -> dict[str, object]:
@@ -3026,6 +3054,109 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     embedding_provider_contract_sample_set_payload(sample_set)
                     for sample_set in sample_sets
                 ],
+            }
+        )
+
+    @app.post("/api/admin/embedding-provider-routes/contract-sample-sets")
+    def api_save_embedding_provider_contract_sample_set(
+        payload: EmbeddingProviderContractSampleSetRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            sample_set = upsert_embedding_provider_contract_sample_set(
+                settings.database_url,
+                embedding_provider_contract_sample_set_input_from_request(payload),
+            )
+        except InvalidEmbeddingProviderContractSampleSetError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content={"sample_set": embedding_provider_contract_sample_set_payload(sample_set)}
+        )
+
+    @app.get("/api/admin/embedding-provider-routes/contract-sample-sets/{sample_set_name}")
+    def api_get_embedding_provider_contract_sample_set(sample_set_name: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            sample_set = get_embedding_provider_contract_sample_set(
+                settings.database_url,
+                sample_set_name,
+            )
+        except InvalidEmbeddingProviderContractSampleSetError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if sample_set is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Embedding provider contract sample set not found.",
+            )
+        return JSONResponse(
+            content={"sample_set": embedding_provider_contract_sample_set_payload(sample_set)}
+        )
+
+    @app.put("/api/admin/embedding-provider-routes/contract-sample-sets/{sample_set_name}")
+    def api_update_embedding_provider_contract_sample_set(
+        sample_set_name: str,
+        payload: EmbeddingProviderContractSampleSetRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            existing = get_embedding_provider_contract_sample_set(
+                settings.database_url,
+                sample_set_name,
+            )
+            if existing is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Embedding provider contract sample set not found.",
+                )
+            sample_set = upsert_embedding_provider_contract_sample_set(
+                settings.database_url,
+                embedding_provider_contract_sample_set_input_from_request(
+                    payload,
+                    sample_set_name=sample_set_name,
+                ),
+            )
+        except InvalidEmbeddingProviderContractSampleSetError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content={"sample_set": embedding_provider_contract_sample_set_payload(sample_set)}
+        )
+
+    @app.delete("/api/admin/embedding-provider-routes/contract-sample-sets/{sample_set_name}")
+    def api_delete_embedding_provider_contract_sample_set(sample_set_name: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            deleted_sample_set = delete_embedding_provider_contract_sample_set(
+                settings.database_url,
+                sample_set_name,
+            )
+        except InvalidEmbeddingProviderContractSampleSetError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if deleted_sample_set is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Embedding provider contract sample set not found.",
+            )
+        return JSONResponse(
+            content={
+                "deleted_sample_set": embedding_provider_contract_sample_set_payload(
+                    deleted_sample_set
+                )
             }
         )
 

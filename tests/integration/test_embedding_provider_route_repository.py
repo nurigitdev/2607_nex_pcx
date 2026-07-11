@@ -8,7 +8,9 @@ from app.core.config import Settings
 from app.core.database import connect, fetch_one
 from app.core.embedding_provider_contract_sample_sets import (
     EmbeddingProviderContractSampleSetInput,
+    delete_embedding_provider_contract_sample_set,
     get_default_embedding_provider_contract_sample_set,
+    get_embedding_provider_contract_sample_set,
     list_embedding_provider_contract_sample_sets,
     upsert_embedding_provider_contract_sample_set,
 )
@@ -167,40 +169,134 @@ def test_embedding_provider_contract_sample_set_repository_and_api(
             "NeX-PCX embedding provider contract check sample.",
         )
 
-        inactive_sample_set = upsert_embedding_provider_contract_sample_set(
-            migrated_database_url,
-            EmbeddingProviderContractSampleSetInput(
-                sample_set_name=inactive_sample_set_name,
-                description="Inactive integration sample set",
-                input_type="document",
-                sample_texts=("inactive sample",),
-                is_active=False,
-                is_default=False,
-            ),
-        )
+        with TestClient(app) as client:
+            inactive_response = client.post(
+                "/api/admin/embedding-provider-routes/contract-sample-sets",
+                json={
+                    "sample_set_name": inactive_sample_set_name,
+                    "description": "Inactive integration sample set",
+                    "input_type": "document",
+                    "sample_texts": ["inactive sample"],
+                    "is_active": False,
+                    "is_default": False,
+                },
+            )
+            assert inactive_response.status_code == 200
+            inactive_sample_set = inactive_response.json()["sample_set"]
+            assert inactive_sample_set["is_active"] is False
+            assert inactive_sample_set["is_default"] is False
 
-        assert inactive_sample_set.is_active is False
-        assert inactive_sample_set.is_default is False
+            create_response = client.post(
+                "/api/admin/embedding-provider-routes/contract-sample-sets",
+                json={
+                    "sample_set_name": sample_set_name,
+                    "description": "Integration sample set",
+                    "input_type": "query",
+                    "sample_texts": ["query sample one", "query sample two"],
+                    "is_active": True,
+                    "is_default": True,
+                },
+            )
+            assert create_response.status_code == 200
+            custom_sample_set = create_response.json()["sample_set"]
+            assert custom_sample_set["is_default"] is True
+            assert custom_sample_set["sample_texts"] == [
+                "query sample one",
+                "query sample two",
+            ]
+            assert (
+                get_default_embedding_provider_contract_sample_set(
+                    migrated_database_url
+                ).sample_set_name
+                == sample_set_name
+            )
 
-        custom_sample_set = upsert_embedding_provider_contract_sample_set(
-            migrated_database_url,
-            EmbeddingProviderContractSampleSetInput(
-                sample_set_name=sample_set_name,
-                description="Integration sample set",
-                input_type="query",
-                sample_texts=("query sample one", "query sample two"),
-                is_default=True,
-            ),
-        )
+            get_response = client.get(
+                f"/api/admin/embedding-provider-routes/contract-sample-sets/{sample_set_name}"
+            )
+            assert get_response.status_code == 200
+            assert get_response.json()["sample_set"]["sample_set_name"] == sample_set_name
 
-        assert custom_sample_set.is_default is True
-        assert custom_sample_set.sample_texts == ("query sample one", "query sample two")
-        assert (
-            get_default_embedding_provider_contract_sample_set(
-                migrated_database_url
-            ).sample_set_name
-            == sample_set_name
-        )
+            update_response = client.put(
+                f"/api/admin/embedding-provider-routes/contract-sample-sets/{sample_set_name}",
+                json={
+                    "sample_set_name": "ignored-by-path",
+                    "description": "Updated integration sample set",
+                    "input_type": "query",
+                    "sample_texts": ["updated query sample"],
+                    "is_active": True,
+                    "is_default": True,
+                },
+            )
+            assert update_response.status_code == 200
+            updated_sample_set = update_response.json()["sample_set"]
+            assert updated_sample_set["sample_set_name"] == sample_set_name
+            assert updated_sample_set["description"] == "Updated integration sample set"
+            assert updated_sample_set["sample_texts"] == ["updated query sample"]
+
+            invalid_default_response = client.post(
+                "/api/admin/embedding-provider-routes/contract-sample-sets",
+                json={
+                    "sample_set_name": f"invalid-default-{suffix}",
+                    "input_type": "document",
+                    "sample_texts": ["invalid"],
+                    "is_active": False,
+                    "is_default": True,
+                },
+            )
+            assert invalid_default_response.status_code == 400
+            assert (
+                "Default contract sample set must be active"
+                in invalid_default_response.json()["detail"]
+            )
+
+            unset_default_response = client.put(
+                f"/api/admin/embedding-provider-routes/contract-sample-sets/{sample_set_name}",
+                json={
+                    "sample_set_name": sample_set_name,
+                    "description": "Unset default sample set",
+                    "input_type": "query",
+                    "sample_texts": ["updated query sample"],
+                    "is_active": True,
+                    "is_default": False,
+                },
+            )
+            assert unset_default_response.status_code == 400
+            assert "cannot be unset directly" in unset_default_response.json()["detail"]
+
+            delete_default_response = client.delete(
+                f"/api/admin/embedding-provider-routes/contract-sample-sets/{sample_set_name}"
+            )
+            assert delete_default_response.status_code == 400
+            assert "cannot be deleted" in delete_default_response.json()["detail"]
+
+            deleted_response = client.delete(
+                "/api/admin/embedding-provider-routes/contract-sample-sets/"
+                f"{inactive_sample_set_name}"
+            )
+            assert deleted_response.status_code == 200
+            assert (
+                deleted_response.json()["deleted_sample_set"]["sample_set_name"]
+                == inactive_sample_set_name
+            )
+            assert (
+                get_embedding_provider_contract_sample_set(
+                    migrated_database_url,
+                    inactive_sample_set_name,
+                )
+                is None
+            )
+
+            missing_delete_response = client.delete(
+                "/api/admin/embedding-provider-routes/contract-sample-sets/missing-sample-set"
+            )
+            assert missing_delete_response.status_code == 404
+
+            response = client.get(
+                "/api/admin/embedding-provider-routes/contract-sample-sets",
+                params={"active_only": "true"},
+            )
+
         assert any(
             sample_set.sample_set_name == sample_set_name
             for sample_set in list_embedding_provider_contract_sample_sets(
@@ -208,18 +304,18 @@ def test_embedding_provider_contract_sample_set_repository_and_api(
                 active_only=True,
             )
         )
-
-        with TestClient(app) as client:
-            response = client.get(
-                "/api/admin/embedding-provider-routes/contract-sample-sets",
-                params={"active_only": "true"},
+        assert (
+            delete_embedding_provider_contract_sample_set(
+                migrated_database_url,
+                "missing-sample-set",
             )
-
+            is None
+        )
         assert response.status_code == 200
         body = response.json()
         assert body["default_sample_set"]["sample_set_name"] == sample_set_name
         assert body["default_sample_set"]["input_type"] == "query"
-        assert body["default_sample_set"]["sample_text_count"] == 2
+        assert body["default_sample_set"]["sample_text_count"] == 1
         assert all(
             sample_set["sample_set_name"] != inactive_sample_set_name
             for sample_set in body["sample_sets"]
@@ -399,6 +495,9 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             )
             assert "data-route-alerts-panel" in page_response.text
             assert "/api/admin/embedding-provider-routes/alerts" in page_response.text
+            assert "data-contract-sample-set-panel" in page_response.text
+            assert "data-sample-set-form" in page_response.text
+            assert "/api/admin/embedding-provider-routes/contract-sample-sets" in page_response.text
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
 

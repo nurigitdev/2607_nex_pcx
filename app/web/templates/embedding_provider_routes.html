@@ -70,6 +70,82 @@
 
 <section
   class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-contract-sample-set-panel
+  data-sample-sets-api-url="/api/admin/embedding-provider-routes/contract-sample-sets"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.sample_sets") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.sample_sets_help") }}</div>
+    </div>
+    <span class="badge text-bg-light border" data-sample-set-count>-</span>
+  </div>
+  <div class="p-3 border-bottom">
+    <form class="row g-3 align-items-end" data-sample-set-form>
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="sample_set_name">{{ t("embedding_routes.sample_set_name") }}</label>
+        <input class="form-control" id="sample_set_name" name="sample_set_name" value="default_route_contract" {% if not database_configured %}disabled{% endif %}>
+      </div>
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="sample_set_description">{{ t("embedding_routes.description") }}</label>
+        <input class="form-control" id="sample_set_description" name="description" {% if not database_configured %}disabled{% endif %}>
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="sample_set_input_type">{{ t("embedding_routes.input_type") }}</label>
+        <select class="form-select" id="sample_set_input_type" name="input_type" {% if not database_configured %}disabled{% endif %}>
+          <option value="document">document</option>
+          <option value="query">query</option>
+        </select>
+      </div>
+      <div class="col-6 col-lg-2">
+        <div class="form-check mt-4">
+          <input class="form-check-input" id="sample_set_active" name="is_active" type="checkbox" value="true" checked {% if not database_configured %}disabled{% endif %}>
+          <label class="form-check-label" for="sample_set_active">{{ t("embedding_routes.active") }}</label>
+        </div>
+      </div>
+      <div class="col-6 col-lg-2">
+        <div class="form-check mt-4">
+          <input class="form-check-input" id="sample_set_default" name="is_default" type="checkbox" value="true" checked {% if not database_configured %}disabled{% endif %}>
+          <label class="form-check-label" for="sample_set_default">{{ t("embedding_routes.default_sample_set") }}</label>
+        </div>
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="sample_set_texts">{{ t("embedding_routes.sample_texts") }}</label>
+        <textarea class="form-control" id="sample_set_texts" name="sample_texts" rows="3" {% if not database_configured %}disabled{% endif %}>NeX-PCX embedding provider contract check sample.</textarea>
+      </div>
+      <div class="col-12 d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-primary" type="submit" {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.save_sample_set") }}</button>
+        <button class="btn btn-outline-secondary" type="button" data-sample-set-reset {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.reset") }}</button>
+        <div class="small text-secondary ms-auto" data-sample-set-status></div>
+      </div>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.sample_set_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.input_type") }}</th>
+          <th scope="col">{{ t("embedding_routes.samples") }}</th>
+          <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.updated_at") }}</th>
+          <th scope="col">{{ t("embedding_routes.actions") }}</th>
+        </tr>
+      </thead>
+      <tbody data-sample-set-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="6">
+            {% if database_configured %}{{ t("embedding_routes.loading_sample_sets") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-route-health-panel
   data-health-api-url="/api/admin/embedding-provider-routes/health"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
@@ -360,6 +436,17 @@
     acknowledging: {{ t("embedding_routes.acknowledging") | tojson }},
     acknowledged: {{ t("embedding_routes.acknowledged") | tojson }},
     acknowledgeFailed: {{ t("embedding_routes.acknowledge_failed") | tojson }},
+    loadingSampleSets: {{ t("embedding_routes.loading_sample_sets") | tojson }},
+    noSampleSets: {{ t("embedding_routes.no_sample_sets") | tojson }},
+    sampleSetSaved: {{ t("embedding_routes.sample_set_saved") | tojson }},
+    sampleSetSaveFailed: {{ t("embedding_routes.sample_set_save_failed") | tojson }},
+    sampleSetDeleted: {{ t("embedding_routes.sample_set_deleted") | tojson }},
+    sampleSetDeleteFailed: {{ t("embedding_routes.sample_set_delete_failed") | tojson }},
+    sampleSetConfirmDelete: {{ t("embedding_routes.sample_set_confirm_delete") | tojson }},
+    sampleSetEmptyText: {{ t("embedding_routes.sample_set_empty_text") | tojson }},
+    edit: {{ t("embedding_routes.edit") | tojson }},
+    delete: {{ t("embedding_routes.delete") | tojson }},
+    defaultSampleSet: {{ t("embedding_routes.default_sample_set") | tojson }},
     none: "-",
     status: {
       ready: {{ t("embedding_routes.status_ready") | tojson }},
@@ -394,6 +481,12 @@
   const alertLevelFilter = alertsPanel?.querySelector("[data-route-alert-level-filter]");
   const alertAckFilter = alertsPanel?.querySelector("[data-route-alert-ack-filter]");
   const alertRefreshButton = alertsPanel?.querySelector("[data-route-alert-refresh]");
+  const sampleSetPanel = document.querySelector("[data-contract-sample-set-panel]");
+  const sampleSetForm = sampleSetPanel?.querySelector("[data-sample-set-form]");
+  const sampleSetTbody = sampleSetPanel?.querySelector("[data-sample-set-table]");
+  const sampleSetCount = sampleSetPanel?.querySelector("[data-sample-set-count]");
+  const sampleSetStatus = sampleSetPanel?.querySelector("[data-sample-set-status]");
+  const sampleSetReset = sampleSetPanel?.querySelector("[data-sample-set-reset]");
   const preflightButton = document.querySelector("[data-route-preflight-button]");
   const preflightStatus = document.querySelector("[data-route-preflight-status]");
 
@@ -421,6 +514,14 @@
     }
     preflightStatus.className = `small ${className}`;
     preflightStatus.textContent = message;
+  }
+
+  function setSampleSetStatus(message, className = "text-secondary") {
+    if (!sampleSetStatus) {
+      return;
+    }
+    sampleSetStatus.className = `small ms-auto ${className}`;
+    sampleSetStatus.textContent = message;
   }
 
   function setSummary(body) {
@@ -454,6 +555,139 @@
       return value;
     }
     return date.toLocaleString();
+  }
+
+  function resetSampleSetForm() {
+    if (!sampleSetForm) {
+      return;
+    }
+    sampleSetForm.dataset.editing = "false";
+    sampleSetForm.sample_set_name.readOnly = false;
+    sampleSetForm.sample_set_name.value = "";
+    sampleSetForm.description.value = "";
+    sampleSetForm.input_type.value = "document";
+    sampleSetForm.is_active.checked = true;
+    sampleSetForm.is_default.checked = false;
+    sampleSetForm.sample_texts.value = "NeX-PCX embedding provider contract check sample.";
+    setSampleSetStatus("");
+  }
+
+  function fillSampleSetForm(sampleSet) {
+    if (!sampleSetForm) {
+      return;
+    }
+    sampleSetForm.dataset.editing = "true";
+    sampleSetForm.sample_set_name.readOnly = true;
+    sampleSetForm.sample_set_name.value = sampleSet.sample_set_name || "";
+    sampleSetForm.description.value = sampleSet.description || "";
+    sampleSetForm.input_type.value = sampleSet.input_type || "document";
+    sampleSetForm.is_active.checked = Boolean(sampleSet.is_active);
+    sampleSetForm.is_default.checked = Boolean(sampleSet.is_default);
+    sampleSetForm.sample_texts.value = (sampleSet.sample_texts || []).join("\n");
+    setSampleSetStatus("");
+  }
+
+  function sampleSetPayload() {
+    const sampleTexts = sampleSetForm.sample_texts.value
+      .split("\n")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (!sampleTexts.length) {
+      throw new Error(labels.sampleSetEmptyText);
+    }
+    return {
+      sample_set_name: sampleSetForm.sample_set_name.value.trim(),
+      description: sampleSetForm.description.value.trim() || null,
+      input_type: sampleSetForm.input_type.value,
+      sample_texts: sampleTexts,
+      is_active: sampleSetForm.is_active.checked,
+      is_default: sampleSetForm.is_default.checked,
+    };
+  }
+
+  function renderSampleSetsEmpty(message) {
+    if (!sampleSetTbody) {
+      return;
+    }
+    sampleSetTbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 6;
+    cell.textContent = message;
+    row.appendChild(cell);
+    sampleSetTbody.appendChild(row);
+  }
+
+  function renderSampleSets(sampleSets) {
+    if (!sampleSetTbody) {
+      return;
+    }
+    sampleSetTbody.replaceChildren();
+    sampleSetCount.textContent = String(sampleSets.length);
+    if (!sampleSets.length) {
+      renderSampleSetsEmpty(labels.noSampleSets);
+      return;
+    }
+    if (sampleSetForm?.dataset.editing !== "true") {
+      const defaultSampleSet = sampleSets.find((sampleSet) => sampleSet.is_default);
+      fillSampleSetForm(defaultSampleSet || sampleSets[0]);
+    }
+
+    for (const sampleSet of sampleSets) {
+      const row = document.createElement("tr");
+
+      const nameCell = document.createElement("td");
+      const name = document.createElement("strong");
+      name.textContent = sampleSet.sample_set_name || labels.none;
+      nameCell.appendChild(name);
+      if (sampleSet.is_default) {
+        const defaultBadge = document.createElement("span");
+        defaultBadge.className = "badge text-bg-primary ms-2";
+        defaultBadge.textContent = labels.defaultSampleSet;
+        nameCell.appendChild(defaultBadge);
+      }
+      row.appendChild(nameCell);
+
+      appendTextCell(row, sampleSet.input_type);
+      appendTextCell(row, String(sampleSet.sample_text_count ?? 0));
+
+      const statusCell = document.createElement("td");
+      const activeBadge = document.createElement("span");
+      activeBadge.className = sampleSet.is_active
+        ? "badge text-bg-success"
+        : "badge text-bg-secondary";
+      activeBadge.textContent = sampleSet.is_active
+        ? {{ t("common.active") | tojson }}
+        : {{ t("common.inactive") | tojson }};
+      statusCell.appendChild(activeBadge);
+      row.appendChild(statusCell);
+
+      appendTextCell(row, formatDateTime(sampleSet.updated_at));
+
+      const actionCell = document.createElement("td");
+      const actionGroup = document.createElement("div");
+      actionGroup.className = "d-flex flex-wrap gap-2";
+
+      const editButton = document.createElement("button");
+      editButton.className = "btn btn-outline-primary btn-sm";
+      editButton.type = "button";
+      editButton.textContent = labels.edit;
+      editButton.addEventListener("click", () => fillSampleSetForm(sampleSet));
+      actionGroup.appendChild(editButton);
+
+      const deleteButton = document.createElement("button");
+      deleteButton.className = "btn btn-outline-danger btn-sm";
+      deleteButton.type = "button";
+      deleteButton.textContent = labels.delete;
+      deleteButton.disabled = Boolean(sampleSet.is_default);
+      deleteButton.addEventListener("click", () => deleteSampleSet(sampleSet));
+      actionGroup.appendChild(deleteButton);
+
+      actionCell.appendChild(actionGroup);
+      row.appendChild(actionCell);
+      sampleSetTbody.appendChild(row);
+    }
   }
 
   function renderEmpty(message) {
@@ -738,6 +972,81 @@
     }
   }
 
+  async function loadSampleSets() {
+    if (!sampleSetPanel || !sampleSetTbody) {
+      return;
+    }
+    if (sampleSetPanel.dataset.databaseConfigured !== "true") {
+      renderSampleSetsEmpty(labels.noDatabase);
+      return;
+    }
+    try {
+      renderSampleSetsEmpty(labels.loadingSampleSets);
+      const response = await fetch(`${sampleSetPanel.dataset.sampleSetsApiUrl}?active_only=false`, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.sampleSetSaveFailed);
+      }
+      renderSampleSets(body.sample_sets || []);
+    } catch (error) {
+      renderSampleSetsEmpty(error.message || labels.sampleSetSaveFailed);
+    }
+  }
+
+  async function saveSampleSet(event) {
+    event.preventDefault();
+    if (!sampleSetForm) {
+      return;
+    }
+    try {
+      const payload = sampleSetPayload();
+      const editing = sampleSetForm.dataset.editing === "true";
+      const url = editing
+        ? `${sampleSetPanel.dataset.sampleSetsApiUrl}/${encodeURIComponent(payload.sample_set_name)}`
+        : sampleSetPanel.dataset.sampleSetsApiUrl;
+      const response = await fetch(url, {
+        method: editing ? "PUT" : "POST",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.sampleSetSaveFailed);
+      }
+      setSampleSetStatus(labels.sampleSetSaved, "text-success");
+      fillSampleSetForm(body.sample_set);
+      await loadSampleSets();
+    } catch (error) {
+      setSampleSetStatus(error.message || labels.sampleSetSaveFailed, "text-danger");
+    }
+  }
+
+  async function deleteSampleSet(sampleSet) {
+    if (!window.confirm(labels.sampleSetConfirmDelete)) {
+      return;
+    }
+    try {
+      const response = await fetch(
+        `${sampleSetPanel.dataset.sampleSetsApiUrl}/${encodeURIComponent(sampleSet.sample_set_name)}`,
+        {
+          method: "DELETE",
+          headers: {Accept: "application/json"},
+        },
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.sampleSetDeleteFailed);
+      }
+      resetSampleSetForm();
+      setSampleSetStatus(labels.sampleSetDeleted, "text-success");
+      await loadSampleSets();
+    } catch (error) {
+      setSampleSetStatus(error.message || labels.sampleSetDeleteFailed, "text-danger");
+    }
+  }
+
   async function loadHistory() {
     if (!historyPanel || !historyTbody) {
       return;
@@ -948,12 +1257,19 @@
     alertAckFilter?.addEventListener("change", () => loadAlerts());
   }
 
+  function wireSampleSetForm() {
+    sampleSetForm?.addEventListener("submit", saveSampleSet);
+    sampleSetReset?.addEventListener("click", resetSampleSetForm);
+  }
+
   wireManualHealthButtons();
   wireContractButtons();
   wirePreflightButton();
   wireAlertFilters();
+  wireSampleSetForm();
   loadHealth();
   loadAlerts();
+  loadSampleSets();
   loadHistory();
   loadContractHistory();
 })();

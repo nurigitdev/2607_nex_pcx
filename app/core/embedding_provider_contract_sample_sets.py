@@ -39,6 +39,25 @@ class InvalidEmbeddingProviderContractSampleSetError(ValueError):
     """Raised when a contract sample set is invalid or unavailable."""
 
 
+def get_embedding_provider_contract_sample_set(
+    database_url: str,
+    sample_set_name: str,
+) -> EmbeddingProviderContractSampleSetRecord | None:
+    normalized_sample_set_name = _validate_nonblank(sample_set_name, "sample_set_name")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM embedding_provider_contract_sample_sets
+                WHERE sample_set_name = %s
+                """,
+                (normalized_sample_set_name,),
+            )
+            row = cursor.fetchone()
+    return _row_to_sample_set_record(dict(row)) if row is not None else None
+
+
 def validate_embedding_provider_contract_sample_set_input(
     sample_input: EmbeddingProviderContractSampleSetInput,
 ) -> EmbeddingProviderContractSampleSetInput:
@@ -53,6 +72,10 @@ def validate_embedding_provider_contract_sample_set_input(
     )
     if not sample_texts:
         raise InvalidEmbeddingProviderContractSampleSetError("sample_texts must not be empty")
+    if sample_input.is_default and not sample_input.is_active:
+        raise InvalidEmbeddingProviderContractSampleSetError(
+            "Default contract sample set must be active"
+        )
     return EmbeddingProviderContractSampleSetInput(
         sample_set_name=sample_set_name,
         description=sample_input.description.strip() if sample_input.description else None,
@@ -69,6 +92,21 @@ def upsert_embedding_provider_contract_sample_set(
 ) -> EmbeddingProviderContractSampleSetRecord:
     validated = validate_embedding_provider_contract_sample_set_input(sample_input)
     with connect(database_url) as connection:
+        if not validated.is_default:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT is_default
+                    FROM embedding_provider_contract_sample_sets
+                    WHERE sample_set_name = %s
+                    """,
+                    (validated.sample_set_name,),
+                )
+                row = cursor.fetchone()
+            if row is not None and bool(row["is_default"]):
+                raise InvalidEmbeddingProviderContractSampleSetError(
+                    "Default contract sample set cannot be unset directly"
+                )
         if validated.is_default:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -131,6 +169,29 @@ def list_embedding_provider_contract_sample_sets(
                 """)
             rows = cursor.fetchall()
     return [_row_to_sample_set_record(dict(row)) for row in rows]
+
+
+def delete_embedding_provider_contract_sample_set(
+    database_url: str,
+    sample_set_name: str,
+) -> EmbeddingProviderContractSampleSetRecord | None:
+    existing = get_embedding_provider_contract_sample_set(database_url, sample_set_name)
+    if existing is None:
+        return None
+    if existing.is_default:
+        raise InvalidEmbeddingProviderContractSampleSetError(
+            "Default contract sample set cannot be deleted"
+        )
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM embedding_provider_contract_sample_sets
+                WHERE sample_set_name = %s
+                """,
+                (existing.sample_set_name,),
+            )
+    return existing
 
 
 def get_default_embedding_provider_contract_sample_set(

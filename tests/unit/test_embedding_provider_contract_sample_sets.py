@@ -52,6 +52,14 @@ def test_validate_contract_sample_set_input_normalizes_values() -> None:
             ),
             "sample_text",
         ),
+        (
+            EmbeddingProviderContractSampleSetInput(
+                sample_set_name="inactive_default",
+                is_active=False,
+                is_default=True,
+            ),
+            "Default contract sample set must be active",
+        ),
     ],
 )
 def test_validate_contract_sample_set_input_rejects_invalid_values(
