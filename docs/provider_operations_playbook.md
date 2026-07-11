@@ -133,6 +133,10 @@ Route-aware embedding workers can require route readiness before processing a jo
 readiness gate when provider routes are managed through PostgreSQL and preflight checks are
 part of the deployment process.
 
+Enable the gate for worker runs with `NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS=true`, or
+override a single run with `scripts/process_embedding_job.py --require-route-readiness`.
+Use `--skip-route-readiness` for smoke/debug runs that should bypass the gate.
+
 Expected behavior:
 
 - If a ready route exists, the worker uses that route for the job profile.

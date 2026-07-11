@@ -5,6 +5,13 @@ from os import getenv
 from pathlib import Path
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings loaded from environment variables."""
@@ -19,6 +26,7 @@ class Settings:
     embedding_provider_mode: str = "mock"
     remote_embedding_provider_url: str | None = None
     remote_embedding_provider_timeout_seconds: float = 30.0
+    embedding_require_route_readiness: bool = False
 
 
 def get_settings() -> Settings:
@@ -34,5 +42,9 @@ def get_settings() -> Settings:
         remote_embedding_provider_url=getenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_URL"),
         remote_embedding_provider_timeout_seconds=float(
             getenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS", "30.0")
+        ),
+        embedding_require_route_readiness=_env_bool(
+            "NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS",
+            False,
         ),
     )

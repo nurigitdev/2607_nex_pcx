@@ -58,6 +58,7 @@ def _process_next_job(
     lease_seconds: int,
     runtime_config: EmbeddingProviderRuntimeConfig,
     provider_source: str = PROVIDER_SOURCE_ROUTE,
+    require_route_readiness: bool = False,
 ) -> EmbeddingWorkerResult:
     if provider_source == PROVIDER_SOURCE_ROUTE:
         return process_next_embedding_job_with_provider_routes(
@@ -66,6 +67,7 @@ def _process_next_job(
             profile_name=profile_name,
             lease_seconds=lease_seconds,
             fallback_runtime_config=runtime_config,
+            require_route_readiness=require_route_readiness,
         )
 
     provider = build_embedding_provider_from_runtime_config(runtime_config)
@@ -101,6 +103,7 @@ def _result_payload(
     *,
     runtime_config: EmbeddingProviderRuntimeConfig,
     provider_source: str,
+    require_route_readiness: bool,
 ) -> dict[str, object]:
     runtime_metadata = result.job.runtime_metadata if result.job else {}
     return {
@@ -112,6 +115,7 @@ def _result_payload(
         ),
         "provider_route_id": runtime_metadata.get("provider_route_id"),
         "provider_route_name": runtime_metadata.get("provider_route_name"),
+        "require_route_readiness": require_route_readiness,
         "processed": result.processed,
         "job_id": result.job.job_id if result.job else None,
         "chunk_id": result.job.chunk_id if result.job else None,
@@ -138,6 +142,20 @@ def main() -> int:
             "and falls back to runtime config; 'runtime' ignores route records."
         ),
     )
+    readiness_group = parser.add_mutually_exclusive_group()
+    readiness_group.add_argument(
+        "--require-route-readiness",
+        action="store_true",
+        default=None,
+        help="Require selected provider routes to pass the readiness gate before use.",
+    )
+    readiness_group.add_argument(
+        "--skip-route-readiness",
+        action="store_false",
+        dest="require_route_readiness",
+        help="Disable the provider route readiness gate for this run.",
+    )
+    parser.set_defaults(require_route_readiness=None)
     parser.add_argument(
         "--provider-mode",
         choices=(MOCK_EMBEDDING_PROVIDER_TYPE, REMOTE_EMBEDDING_PROVIDER_TYPE),
@@ -163,6 +181,11 @@ def main() -> int:
         parser.error("--database-url or NEX_PCX_DATABASE_URL is required")
 
     runtime_config = _runtime_config_from_args(args, settings)
+    require_route_readiness = (
+        args.require_route_readiness
+        if args.require_route_readiness is not None
+        else settings.embedding_require_route_readiness
+    )
     result = _process_next_job(
         database_url,
         worker_name=args.worker_name,
@@ -170,11 +193,13 @@ def main() -> int:
         lease_seconds=args.lease_seconds,
         runtime_config=runtime_config,
         provider_source=args.provider_source,
+        require_route_readiness=require_route_readiness,
     )
     payload = _result_payload(
         result,
         runtime_config=runtime_config,
         provider_source=args.provider_source,
+        require_route_readiness=require_route_readiness,
     )
     print(json.dumps(payload, ensure_ascii=False))
     return 0

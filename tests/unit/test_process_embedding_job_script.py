@@ -141,6 +141,42 @@ def test_process_embedding_job_uses_route_aware_worker_by_default(monkeypatch) -
     assert calls["kwargs"]["profile_name"] is None
     assert calls["kwargs"]["lease_seconds"] == 13
     assert calls["kwargs"]["fallback_runtime_config"] == runtime_config
+    assert calls["kwargs"]["require_route_readiness"] is False
+
+
+def test_process_embedding_job_passes_route_readiness_gate_setting(monkeypatch) -> None:
+    calls = {}
+
+    def fake_route_process(database_url, **kwargs):
+        calls["database_url"] = database_url
+        calls["kwargs"] = kwargs
+        return EmbeddingWorkerResult(processed=False, job=None, message="idle")
+
+    monkeypatch.setattr(
+        process_embedding_job,
+        "process_next_embedding_job_with_provider_routes",
+        fake_route_process,
+    )
+    runtime_config = EmbeddingProviderRuntimeConfig(
+        mode="mock",
+        remote_base_url=None,
+        remote_timeout_seconds=30.0,
+    )
+
+    result = process_embedding_job._process_next_job(
+        "postgresql://example/db",
+        worker_name="route-worker-gated",
+        profile_name="kure_v1_1024",
+        lease_seconds=13,
+        runtime_config=runtime_config,
+        require_route_readiness=True,
+    )
+
+    assert result.message == "idle"
+    assert calls["database_url"] == "postgresql://example/db"
+    assert calls["kwargs"]["worker_name"] == "route-worker-gated"
+    assert calls["kwargs"]["profile_name"] == "kure_v1_1024"
+    assert calls["kwargs"]["require_route_readiness"] is True
 
 
 class _ClosableProvider:
