@@ -176,6 +176,34 @@ def test_embedding_provider_route_retention_api_requires_database_url() -> None:
     )
 
 
+def test_embedding_provider_preflight_schedule_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+    schedule_payload = {
+        "description": "Smoke schedule",
+        "profile_name": None,
+        "active_only": True,
+        "interval_minutes": 60,
+        "is_enabled": False,
+        "next_run_at": None,
+    }
+
+    with TestClient(app) as client:
+        responses = [
+            client.get("/api/admin/embedding-provider-routes/preflight-schedules"),
+            client.get("/api/admin/embedding-provider-routes/preflight-schedules/smoke-schedule"),
+            client.put(
+                "/api/admin/embedding-provider-routes/preflight-schedules/smoke-schedule",
+                json=schedule_payload,
+            ),
+        ]
+
+    assert [response.status_code for response in responses] == [503, 503, 503]
+    assert all(
+        response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
+        for response in responses
+    )
+
+
 def test_embedding_model_readiness_page_shows_without_database_url(tmp_path) -> None:
     app = create_app(Settings(embedding_models_dir=tmp_path))
 

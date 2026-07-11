@@ -2,7 +2,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.core.config import Settings
 from app.core.database import connect, fetch_one
 from app.core.embedding_provider_preflight_schedules import (
     DEFAULT_PROVIDER_PREFLIGHT_SCHEDULE_NAME,
@@ -15,6 +17,7 @@ from app.core.embedding_provider_preflight_schedules import (
     run_due_embedding_provider_preflight_schedules,
     upsert_embedding_provider_preflight_schedule,
 )
+from app.main import create_app
 
 pytestmark = pytest.mark.integration
 
@@ -216,3 +219,67 @@ def test_embedding_provider_preflight_schedule_validates_filters(
             status="never_run",
             result={},
         )
+
+
+def test_embedding_provider_preflight_schedule_admin_api_round_trips(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    schedule_name = f"api-preflight-{suffix}"
+    next_run_at = "2026-07-11T15:00:00+00:00"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            upsert_response = client.put(
+                f"/api/admin/embedding-provider-routes/preflight-schedules/{schedule_name}",
+                json={
+                    "description": " API preflight schedule ",
+                    "profile_name": "kure_v1_1024",
+                    "active_only": True,
+                    "interval_minutes": 45,
+                    "is_enabled": True,
+                    "next_run_at": next_run_at,
+                },
+            )
+            list_response = client.get(
+                "/api/admin/embedding-provider-routes/preflight-schedules",
+                params={"enabled_only": "true"},
+            )
+            get_response = client.get(
+                f"/api/admin/embedding-provider-routes/preflight-schedules/{schedule_name}",
+            )
+            invalid_response = client.put(
+                f"/api/admin/embedding-provider-routes/preflight-schedules/{schedule_name}",
+                json={
+                    "profile_name": " ",
+                    "interval_minutes": 45,
+                    "is_enabled": True,
+                },
+            )
+            missing_response = client.get(
+                "/api/admin/embedding-provider-routes/preflight-schedules/"
+                f"missing-schedule-{suffix}",
+            )
+
+        assert upsert_response.status_code == 200
+        schedule = upsert_response.json()["schedule"]
+        assert schedule["schedule_name"] == schedule_name
+        assert schedule["description"] == "API preflight schedule"
+        assert schedule["profile_name"] == "kure_v1_1024"
+        assert schedule["interval_minutes"] == 45
+        assert schedule["is_enabled"] is True
+        assert datetime.fromisoformat(schedule["next_run_at"]) == datetime.fromisoformat(
+            next_run_at
+        )
+        assert list_response.status_code == 200
+        assert any(
+            item["schedule_name"] == schedule_name for item in list_response.json()["schedules"]
+        )
+        assert get_response.status_code == 200
+        assert get_response.json()["schedule"]["schedule_name"] == schedule_name
+        assert invalid_response.status_code == 400
+        assert "profile_name is required" in invalid_response.json()["detail"]
+        assert missing_response.status_code == 404
+    finally:
+        _cleanup_schedules(migrated_database_url, [schedule_name])

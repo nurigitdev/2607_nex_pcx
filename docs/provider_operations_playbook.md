@@ -39,6 +39,12 @@ the due-runner from cron or a systemd timer:
 
 The seeded `default_provider_route_preflight` schedule is disabled by default so a newly
 installed environment does not contact remote providers until an operator opts in.
+Schedules can also be inspected and updated through:
+
+```text
+GET /api/admin/embedding-provider-routes/preflight-schedules
+PUT /api/admin/embedding-provider-routes/preflight-schedules/{schedule_name}
+```
 
 Then review the UI:
 

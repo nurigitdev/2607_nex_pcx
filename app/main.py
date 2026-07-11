@@ -77,6 +77,14 @@ from app.core.embedding_provider_preflight_runs import (
     list_embedding_provider_preflight_runs,
     record_embedding_provider_preflight_run,
 )
+from app.core.embedding_provider_preflight_schedules import (
+    EmbeddingProviderPreflightScheduleInput,
+    EmbeddingProviderPreflightScheduleRecord,
+    InvalidEmbeddingProviderPreflightScheduleError,
+    get_embedding_provider_preflight_schedule,
+    list_embedding_provider_preflight_schedules,
+    upsert_embedding_provider_preflight_schedule,
+)
 from app.core.embedding_provider_route_contract_snapshots import (
     EmbeddingProviderRouteContractSnapshotRecord,
     InvalidEmbeddingProviderRouteContractSnapshotError,
@@ -354,6 +362,15 @@ class ProviderRouteRetentionSettingsRequest(BaseModel):
 
 class ProviderRouteCleanupRequest(BaseModel):
     dry_run: bool = True
+
+
+class ProviderPreflightScheduleRequest(BaseModel):
+    description: str | None = Field(default=None, max_length=500)
+    profile_name: str | None = Field(default=None, max_length=120)
+    active_only: bool = True
+    interval_minutes: int = Field(default=60, ge=1, le=10080)
+    is_enabled: bool = False
+    next_run_at: datetime | None = None
 
 
 class DocumentPermissionUpdateRequest(BaseModel):
@@ -918,6 +935,42 @@ def embedding_provider_preflight_run_payload(
         "started_at": _datetime_response(run.started_at),
         "completed_at": _datetime_response(run.completed_at),
     }
+
+
+def embedding_provider_preflight_schedule_payload(
+    schedule: EmbeddingProviderPreflightScheduleRecord,
+) -> dict[str, object]:
+    return {
+        "schedule_name": schedule.schedule_name,
+        "description": schedule.description,
+        "profile_name": schedule.profile_name,
+        "active_only": schedule.active_only,
+        "interval_minutes": schedule.interval_minutes,
+        "is_enabled": schedule.is_enabled,
+        "next_run_at": _datetime_response(schedule.next_run_at),
+        "last_run_at": _datetime_response(schedule.last_run_at),
+        "last_status": schedule.last_status,
+        "last_result": schedule.last_result,
+        "run_count": schedule.run_count,
+        "failure_count": schedule.failure_count,
+        "created_at": _datetime_response(schedule.created_at),
+        "updated_at": _datetime_response(schedule.updated_at),
+    }
+
+
+def embedding_provider_preflight_schedule_input_from_request(
+    schedule_name: str,
+    payload: ProviderPreflightScheduleRequest,
+) -> EmbeddingProviderPreflightScheduleInput:
+    return EmbeddingProviderPreflightScheduleInput(
+        schedule_name=schedule_name,
+        description=payload.description,
+        profile_name=payload.profile_name,
+        active_only=payload.active_only,
+        interval_minutes=payload.interval_minutes,
+        is_enabled=payload.is_enabled,
+        next_run_at=payload.next_run_at,
+    )
 
 
 def provider_route_retention_settings_payload(
@@ -3527,6 +3580,76 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content={"cleanup": provider_route_cleanup_result_payload(result)})
+
+    @app.get("/api/admin/embedding-provider-routes/preflight-schedules")
+    def api_list_embedding_provider_preflight_schedules(
+        enabled_only: bool = False,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        schedules = list_embedding_provider_preflight_schedules(
+            settings.database_url,
+            enabled_only=enabled_only,
+        )
+        return JSONResponse(
+            content={
+                "schedule_count": len(schedules),
+                "schedules": [
+                    embedding_provider_preflight_schedule_payload(schedule)
+                    for schedule in schedules
+                ],
+            }
+        )
+
+    @app.get("/api/admin/embedding-provider-routes/preflight-schedules/{schedule_name}")
+    def api_get_embedding_provider_preflight_schedule(schedule_name: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            schedule = get_embedding_provider_preflight_schedule(
+                settings.database_url,
+                schedule_name,
+            )
+        except InvalidEmbeddingProviderPreflightScheduleError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if schedule is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Provider preflight schedule not found.",
+            )
+        return JSONResponse(
+            content={"schedule": embedding_provider_preflight_schedule_payload(schedule)}
+        )
+
+    @app.put("/api/admin/embedding-provider-routes/preflight-schedules/{schedule_name}")
+    def api_upsert_embedding_provider_preflight_schedule(
+        schedule_name: str,
+        payload: ProviderPreflightScheduleRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            schedule = upsert_embedding_provider_preflight_schedule(
+                settings.database_url,
+                embedding_provider_preflight_schedule_input_from_request(
+                    schedule_name,
+                    payload,
+                ),
+            )
+        except InvalidEmbeddingProviderPreflightScheduleError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content={"schedule": embedding_provider_preflight_schedule_payload(schedule)}
+        )
 
     @app.get("/api/admin/embedding-provider-routes/preflight-runs")
     def api_list_embedding_provider_preflight_runs(

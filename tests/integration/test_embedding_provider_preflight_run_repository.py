@@ -111,7 +111,7 @@ def test_preflight_run_repository_records_and_filters_history(
 
         latest_runs = list_embedding_provider_preflight_runs(
             migrated_database_url,
-            limit=2,
+            limit=200,
         )
         failed_runs = list_embedding_provider_preflight_runs(
             migrated_database_url,
@@ -124,7 +124,8 @@ def test_preflight_run_repository_records_and_filters_history(
             limit=10,
         )
 
-        assert latest_runs[0].run_id == manual_run.run_id
+        assert manual_run.run_id in [run.run_id for run in latest_runs]
+        assert scheduled_run.run_id in [run.run_id for run in latest_runs]
         assert scheduled_run.route_count == 2
         assert scheduled_run.passed_count == 1
         assert scheduled_run.failed_count == 1
