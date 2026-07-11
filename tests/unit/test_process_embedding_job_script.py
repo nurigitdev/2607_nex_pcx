@@ -3,6 +3,7 @@ import importlib.util
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.core.config import Settings
 from app.core.embedding_jobs import EmbeddingJobRecord
@@ -278,6 +279,8 @@ def test_process_embedding_job_batch_reuses_runtime_provider_and_stops_on_idle(
 
 
 def test_process_embedding_job_batch_payload_summarizes_results() -> None:
+    started_at = datetime(2026, 7, 11, 15, 0, tzinfo=UTC)
+    completed_at = datetime(2026, 7, 11, 15, 0, 1, tzinfo=UTC)
     batch = process_embedding_job.EmbeddingWorkerBatchResult(
         limit=3,
         results=(
@@ -304,17 +307,92 @@ def test_process_embedding_job_batch_payload_summarizes_results() -> None:
         require_route_readiness=True,
         readiness_gate_failure_mode="defer",
         readiness_gate_defer_seconds=45,
+        batch_run_id=77,
+        started_at=started_at,
+        completed_at=completed_at,
+        elapsed_ms=1000,
     )
 
+    assert payload["batch_run_id"] == 77
     assert payload["limit"] == 3
     assert payload["processed_count"] == 1
     assert payload["idle_count"] == 1
     assert payload["succeeded_count"] == 1
     assert payload["stopped_reason"] == "queue_empty"
     assert payload["job_ids"] == [1]
+    assert payload["started_at"] == started_at.isoformat()
+    assert payload["completed_at"] == completed_at.isoformat()
+    assert payload["elapsed_ms"] == 1000
     assert payload["results"][0]["job_id"] == 1
     assert payload["results"][1]["processed"] is False
     assert payload["require_route_readiness"] is True
+
+
+def test_process_embedding_job_records_batch_run_summary(monkeypatch) -> None:
+    calls = {}
+    started_at = datetime(2026, 7, 11, 15, 10, tzinfo=UTC)
+    completed_at = datetime(2026, 7, 11, 15, 10, 2, tzinfo=UTC)
+    batch = process_embedding_job.EmbeddingWorkerBatchResult(
+        limit=2,
+        results=(
+            EmbeddingWorkerResult(processed=True, job=make_job(job_id=1), message="stored"),
+            EmbeddingWorkerResult(processed=False, job=None, message="idle"),
+        ),
+        stopped_reason="queue_empty",
+    )
+    payload = process_embedding_job._batch_payload(
+        batch,
+        runtime_config=EmbeddingProviderRuntimeConfig(mode="mock"),
+        provider_source=process_embedding_job.PROVIDER_SOURCE_ROUTE,
+        require_route_readiness=True,
+        readiness_gate_failure_mode="defer",
+        readiness_gate_defer_seconds=60,
+        started_at=started_at,
+        completed_at=completed_at,
+        elapsed_ms=2000,
+    )
+
+    def fake_record(database_url, run_input):
+        calls["database_url"] = database_url
+        calls["run_input"] = run_input
+        return SimpleNamespace(batch_run_id=91)
+
+    monkeypatch.setattr(
+        process_embedding_job,
+        "record_embedding_worker_batch_run",
+        fake_record,
+    )
+
+    batch_run_id = process_embedding_job._record_batch_run(
+        "postgresql://example/db",
+        batch,
+        worker_name="batch-worker",
+        profile_name="kure_v1_1024",
+        runtime_config=EmbeddingProviderRuntimeConfig(mode="mock"),
+        provider_source=process_embedding_job.PROVIDER_SOURCE_ROUTE,
+        require_route_readiness=True,
+        readiness_gate_failure_mode="defer",
+        readiness_gate_defer_seconds=60,
+        started_at=started_at,
+        completed_at=completed_at,
+        elapsed_ms=2000,
+        payload=payload,
+    )
+
+    run_input = calls["run_input"]
+    assert batch_run_id == 91
+    assert calls["database_url"] == "postgresql://example/db"
+    assert run_input.worker_name == "batch-worker"
+    assert run_input.profile_name == "kure_v1_1024"
+    assert run_input.provider_source == "route"
+    assert run_input.limit_requested == 2
+    assert run_input.result_count == 2
+    assert run_input.processed_count == 1
+    assert run_input.idle_count == 1
+    assert run_input.job_ids == (1,)
+    assert run_input.elapsed_ms == 2000
+    assert run_input.runtime_metadata["script"] == "process_embedding_job.py"
+    assert run_input.runtime_metadata["results"][0]["job_id"] == 1
 
 
 def test_process_embedding_job_batch_uses_route_worker_for_each_iteration(monkeypatch) -> None:

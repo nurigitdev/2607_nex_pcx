@@ -246,6 +246,10 @@ Process a bounded batch of pending embedding jobs in one worker run:
 ./.venv/bin/python scripts/process_embedding_job.py --provider-mode mock --limit 10
 ```
 
+Batch runs persist a compact summary in `embedding_worker_batch_runs`; the script JSON
+response includes `batch_run_id`, processed/succeeded/failed/deferred/idle counts, stop
+reason, elapsed time, and per-job result details for operator review.
+
 Force the legacy runtime-config-only path when you want to ignore route records:
 
 ```bash

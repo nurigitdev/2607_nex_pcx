@@ -3,7 +3,9 @@
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -26,6 +28,10 @@ from app.core.embedding_worker import (  # noqa: E402
     process_embedding_worker_batch,
     process_next_embedding_job_with_provider,
     process_next_embedding_job_with_provider_routes,
+)
+from app.core.embedding_worker_batch_runs import (  # noqa: E402
+    EmbeddingWorkerBatchRunInput,
+    record_embedding_worker_batch_run,
 )
 from app.core.pipeline_jobs import DEFAULT_LEASE_SECONDS  # noqa: E402
 
@@ -192,8 +198,12 @@ def _batch_payload(
     require_route_readiness: bool,
     readiness_gate_failure_mode: str,
     readiness_gate_defer_seconds: int,
+    batch_run_id: int | None = None,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
+    elapsed_ms: int | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "provider_source": provider_source,
         "provider_mode": runtime_config.mode,
         "remote_provider_url": runtime_config.remote_base_url,
@@ -221,6 +231,68 @@ def _batch_payload(
             for result in batch.results
         ],
     }
+    if batch_run_id is not None:
+        payload["batch_run_id"] = batch_run_id
+    if started_at is not None:
+        payload["started_at"] = started_at.isoformat()
+    if completed_at is not None:
+        payload["completed_at"] = completed_at.isoformat()
+    if elapsed_ms is not None:
+        payload["elapsed_ms"] = elapsed_ms
+    return payload
+
+
+def _record_batch_run(
+    database_url: str,
+    batch: EmbeddingWorkerBatchResult,
+    *,
+    worker_name: str,
+    profile_name: str | None,
+    runtime_config: EmbeddingProviderRuntimeConfig,
+    provider_source: str,
+    require_route_readiness: bool,
+    readiness_gate_failure_mode: str,
+    readiness_gate_defer_seconds: int,
+    started_at: datetime,
+    completed_at: datetime,
+    elapsed_ms: int,
+    payload: dict[str, object],
+) -> int:
+    run_record = record_embedding_worker_batch_run(
+        database_url,
+        EmbeddingWorkerBatchRunInput(
+            worker_name=worker_name,
+            profile_name=profile_name,
+            provider_source=provider_source,
+            provider_mode=runtime_config.mode,
+            remote_provider_url=runtime_config.remote_base_url,
+            require_route_readiness=require_route_readiness,
+            readiness_gate_failure_mode=readiness_gate_failure_mode,
+            readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+            limit_requested=batch.limit,
+            result_count=batch.result_count,
+            processed_count=batch.processed_count,
+            succeeded_count=batch.succeeded_count,
+            failed_count=batch.failed_count,
+            deferred_count=batch.deferred_count,
+            idle_count=batch.idle_count,
+            stopped_reason=batch.stopped_reason,
+            job_ids=batch.job_ids,
+            runtime_metadata={
+                "script": "process_embedding_job.py",
+                "provider": {
+                    "source": provider_source,
+                    "mode": runtime_config.mode,
+                    "remote_provider_url": runtime_config.remote_base_url,
+                },
+                "results": payload["results"],
+            },
+            elapsed_ms=elapsed_ms,
+            started_at=started_at,
+            completed_at=completed_at,
+        ),
+    )
+    return run_record.batch_run_id
 
 
 def main() -> int:
@@ -330,6 +402,8 @@ def main() -> int:
                 readiness_gate_defer_seconds=readiness_gate_defer_seconds,
             )
         else:
+            started_at = datetime.now(UTC)
+            started_timer = perf_counter()
             batch = _process_job_batch(
                 database_url,
                 worker_name=args.worker_name,
@@ -342,6 +416,8 @@ def main() -> int:
                 readiness_gate_defer_seconds=readiness_gate_defer_seconds,
                 limit=args.limit,
             )
+            completed_at = datetime.now(UTC)
+            elapsed_ms = int((perf_counter() - started_timer) * 1000)
             payload = _batch_payload(
                 batch,
                 runtime_config=runtime_config,
@@ -349,7 +425,26 @@ def main() -> int:
                 require_route_readiness=require_route_readiness,
                 readiness_gate_failure_mode=readiness_gate_failure_mode,
                 readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+                started_at=started_at,
+                completed_at=completed_at,
+                elapsed_ms=elapsed_ms,
             )
+            batch_run_id = _record_batch_run(
+                database_url,
+                batch,
+                worker_name=args.worker_name,
+                profile_name=args.profile_name,
+                runtime_config=runtime_config,
+                provider_source=args.provider_source,
+                require_route_readiness=require_route_readiness,
+                readiness_gate_failure_mode=readiness_gate_failure_mode,
+                readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+                started_at=started_at,
+                completed_at=completed_at,
+                elapsed_ms=elapsed_ms,
+                payload=payload,
+            )
+            payload["batch_run_id"] = batch_run_id
     except ValueError as exc:
         parser.error(str(exc))
     print(json.dumps(payload, ensure_ascii=False))
