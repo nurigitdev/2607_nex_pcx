@@ -10,6 +10,7 @@ from app.core.embedding_provider_preflight_schedules import (
     DEFAULT_PROVIDER_PREFLIGHT_SCHEDULE_NAME,
     EmbeddingProviderPreflightScheduleInput,
     InvalidEmbeddingProviderPreflightScheduleError,
+    claim_due_embedding_provider_preflight_schedules,
     get_embedding_provider_preflight_schedule,
     list_due_embedding_provider_preflight_schedules,
     list_embedding_provider_preflight_schedules,
@@ -165,6 +166,125 @@ def test_embedding_provider_preflight_schedule_repository_and_runner(
         )
     finally:
         _cleanup_schedules(migrated_database_url, [due_name, future_name])
+
+
+def test_embedding_provider_preflight_schedule_claim_skips_locked_rows(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    schedule_name = f"locked-preflight-{suffix}"
+    run_at = datetime(2026, 7, 11, 13, 20, tzinfo=UTC)
+
+    try:
+        upsert_embedding_provider_preflight_schedule(
+            migrated_database_url,
+            EmbeddingProviderPreflightScheduleInput(
+                schedule_name=schedule_name,
+                interval_minutes=20,
+                is_enabled=True,
+                next_run_at=run_at,
+            ),
+        )
+
+        with connect(migrated_database_url) as locked_connection:
+            with locked_connection.cursor() as locked_cursor:
+                locked_cursor.execute(
+                    """
+                    SELECT *
+                    FROM embedding_provider_preflight_schedules
+                    WHERE schedule_name = %s
+                    FOR UPDATE
+                    """,
+                    (schedule_name,),
+                )
+                assert locked_cursor.fetchone() is not None
+
+                skipped_claims = claim_due_embedding_provider_preflight_schedules(
+                    migrated_database_url,
+                    now=run_at,
+                    schedule_name=schedule_name,
+                )
+
+        claimed = claim_due_embedding_provider_preflight_schedules(
+            migrated_database_url,
+            now=run_at,
+            schedule_name=schedule_name,
+        )
+
+        assert skipped_claims == []
+        assert len(claimed) == 1
+        assert claimed[0].schedule_name == schedule_name
+        assert claimed[0].next_run_at == run_at + timedelta(minutes=20)
+        assert (
+            list_due_embedding_provider_preflight_schedules(
+                migrated_database_url,
+                now=run_at,
+                schedule_name=schedule_name,
+            )
+            == []
+        )
+    finally:
+        _cleanup_schedules(migrated_database_url, [schedule_name])
+
+
+def test_embedding_provider_preflight_schedule_runner_claim_blocks_duplicate_reentry(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    schedule_name = f"duplicate-preflight-{suffix}"
+    run_at = datetime(2026, 7, 11, 13, 25, tzinfo=UTC)
+    nested_runs = []
+    run_ids: list[int] = []
+
+    def nested_runner(database_url: str, **kwargs):
+        nested_runs.extend(
+            run_due_embedding_provider_preflight_schedules(
+                database_url,
+                now=run_at,
+                schedule_name=schedule_name,
+                preflight_runner=lambda *_args, **_kwargs: {
+                    "route_count": 99,
+                    "passed_count": 99,
+                    "failed_count": 0,
+                },
+            )
+        )
+        return {
+            "route_count": 1,
+            "passed_count": 1,
+            "failed_count": 0,
+            "profile_name": kwargs["profile_name"],
+            "active_only": kwargs["active_only"],
+        }
+
+    try:
+        upsert_embedding_provider_preflight_schedule(
+            migrated_database_url,
+            EmbeddingProviderPreflightScheduleInput(
+                schedule_name=schedule_name,
+                profile_name="kure_v1_1024",
+                interval_minutes=20,
+                is_enabled=True,
+                next_run_at=run_at,
+            ),
+        )
+
+        runs = run_due_embedding_provider_preflight_schedules(
+            migrated_database_url,
+            now=run_at,
+            schedule_name=schedule_name,
+            preflight_runner=nested_runner,
+        )
+
+        assert len(runs) == 1
+        run_ids.extend(run.run_record.run_id for run in runs)
+        assert nested_runs == []
+        assert runs[0].run_record.route_count == 1
+        assert runs[0].updated_schedule.run_count == 1
+        assert runs[0].updated_schedule.next_run_at == run_at + timedelta(minutes=20)
+    finally:
+        _cleanup_preflight_runs(migrated_database_url, run_ids)
+        _cleanup_schedules(migrated_database_url, [schedule_name])
 
 
 def test_embedding_provider_preflight_schedule_records_errors(

@@ -37,6 +37,11 @@ the due-runner from cron or a systemd timer:
 ./.venv/bin/python scripts/run_scheduled_provider_preflight.py --limit 20
 ```
 
+The due-runner claims eligible schedules with row-level `FOR UPDATE SKIP LOCKED` before
+calling providers. This keeps overlapping cron, API, or UI executions from running the
+same due schedule twice; a claimed schedule has its next run time advanced immediately and
+is finalized when the preflight result is recorded.
+
 The seeded `default_provider_route_preflight` schedule is disabled by default so a newly
 installed environment does not contact remote providers until an operator opts in.
 Schedules can also be inspected and updated through:

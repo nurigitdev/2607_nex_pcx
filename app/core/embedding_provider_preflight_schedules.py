@@ -205,6 +205,53 @@ def list_due_embedding_provider_preflight_schedules(
     return [_row_to_schedule_record(dict(row)) for row in rows]
 
 
+def claim_due_embedding_provider_preflight_schedules(
+    database_url: str,
+    *,
+    now: datetime | None = None,
+    limit: int = 20,
+    schedule_name: str | None = None,
+) -> list[EmbeddingProviderPreflightScheduleRecord]:
+    _validate_limit(limit)
+    claim_at = now or datetime.now(UTC)
+    where_clauses = ["is_enabled", "(next_run_at IS NULL OR next_run_at <= %s)"]
+    params: list[object] = [claim_at]
+    if schedule_name is not None:
+        where_clauses.append("schedule_name = %s")
+        params.append(_validate_nonblank(schedule_name, "schedule_name"))
+
+    claimed_rows = []
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT *
+                FROM embedding_provider_preflight_schedules
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY next_run_at ASC NULLS FIRST, schedule_name ASC
+                LIMIT %s
+                FOR UPDATE SKIP LOCKED
+                """,
+                (*params, limit),
+            )
+            rows = cursor.fetchall()
+
+            for row in rows:
+                cursor.execute(
+                    """
+                    UPDATE embedding_provider_preflight_schedules
+                    SET next_run_at = %s + (interval_minutes * INTERVAL '1 minute'),
+                        updated_at = now()
+                    WHERE schedule_name = %s
+                    RETURNING *
+                    """,
+                    (claim_at, row["schedule_name"]),
+                )
+                claimed_rows.append(dict(cursor.fetchone()))
+
+    return [_row_to_schedule_record(row) for row in claimed_rows]
+
+
 def record_embedding_provider_preflight_schedule_run(
     database_url: str,
     schedule: EmbeddingProviderPreflightScheduleRecord,
@@ -258,7 +305,7 @@ def run_due_embedding_provider_preflight_schedules(
     preflight_runner: PreflightRunner = run_embedding_provider_route_preflight,
 ) -> list[ScheduledProviderRoutePreflightRun]:
     run_at = now or datetime.now(UTC)
-    schedules = list_due_embedding_provider_preflight_schedules(
+    schedules = claim_due_embedding_provider_preflight_schedules(
         database_url,
         now=run_at,
         limit=limit,
