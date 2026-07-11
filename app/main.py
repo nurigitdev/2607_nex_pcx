@@ -914,6 +914,7 @@ def embedding_provider_route_readiness_item_payload(
         "ready": item.ready,
         "status": item.status,
         "reasons": list(item.reasons),
+        "recovery_action": embedding_provider_route_readiness_recovery_action(item),
         "latest_health_snapshot": (
             embedding_provider_route_health_snapshot_payload(item.latest_health_snapshot)
             if item.latest_health_snapshot is not None
@@ -925,6 +926,22 @@ def embedding_provider_route_readiness_item_payload(
             else None
         ),
     }
+
+
+def embedding_provider_route_readiness_recovery_action(
+    item: EmbeddingProviderRouteReadinessItem,
+) -> str:
+    if item.ready:
+        return "ready_for_worker"
+    if item.status == "inactive":
+        return "activate_route"
+    if item.status == "needs_contract":
+        return "run_preflight"
+    if item.status == "contract_failed":
+        return "review_contract_snapshot"
+    if item.status == "health_not_ready":
+        return "check_provider_health"
+    return "run_preflight"
 
 
 def embedding_provider_route_readiness_summary_payload(

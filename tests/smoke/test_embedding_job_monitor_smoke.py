@@ -87,6 +87,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-operations-summary-refresh" in response.text
     assert "Provider Route Health" in response.text
     assert "Provider Route Readiness" in response.text
+    assert "다음 조치" in response.text
     assert "data-route-readiness-panel" in response.text
     assert "data-route-readiness-table" in response.text
     assert "data-route-health-panel" in response.text

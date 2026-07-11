@@ -1091,6 +1091,7 @@ def test_embedding_provider_route_readiness_api_aggregates_latest_snapshots(
         assert body["ready_count"] >= 1
         assert route_item["ready"] is True
         assert route_item["status"] == "ready"
+        assert route_item["recovery_action"] == "ready_for_worker"
         assert route_item["latest_health_snapshot"]["route_id"] == route.route_id
         assert route_item["latest_health_snapshot"]["status"] == "ready"
         assert route_item["latest_contract_snapshot"]["route_id"] == route.route_id

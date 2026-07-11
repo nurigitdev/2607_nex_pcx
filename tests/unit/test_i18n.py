@@ -34,6 +34,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert korean("embedding_routes.readiness") == "Provider Route Readiness"
     assert english("embedding_routes.readiness_failed") == "Readiness failed to load"
     assert korean("embedding_routes.status_needs_contract") == "Needs Contract"
+    assert korean("embedding_routes.recovery_run_preflight") == "Preflight 실행"
+    assert english("embedding_routes.recovery_check_provider_health") == "Check provider health"
     assert korean("embedding_routes.health_summary") == "Provider Route Health"
     assert korean("embedding_routes.health_loaded") == "Health 확인 완료"
     assert korean("embedding_routes.run_health_check") == "확인"

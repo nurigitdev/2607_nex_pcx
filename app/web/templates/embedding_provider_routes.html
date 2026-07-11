@@ -227,13 +227,14 @@
           <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
           <th scope="col">{{ t("embedding_routes.status") }}</th>
           <th scope="col">{{ t("embedding_routes.reasons") }}</th>
+          <th scope="col">{{ t("embedding_routes.recovery_action") }}</th>
           <th scope="col">{{ t("embedding_routes.latest_health") }}</th>
           <th scope="col">{{ t("embedding_routes.latest_contract") }}</th>
         </tr>
       </thead>
       <tbody data-route-readiness-table>
         <tr>
-          <td class="text-secondary text-center py-4" colspan="6">
+          <td class="text-secondary text-center py-4" colspan="7">
             {% if database_configured %}{{ t("embedding_routes.loading_readiness") }}{% else %}{{ t("common.no_database") }}{% endif %}
           </td>
         </tr>
@@ -939,6 +940,13 @@
     acknowledgedBy: {{ t("embedding_routes.acknowledged_by") | tojson }},
     acknowledgedAt: {{ t("embedding_routes.acknowledged_at") | tojson }},
     acknowledgementNote: {{ t("embedding_routes.acknowledgement_note") | tojson }},
+    recoveryAction: {
+      ready_for_worker: {{ t("embedding_routes.recovery_ready_for_worker") | tojson }},
+      activate_route: {{ t("embedding_routes.recovery_activate_route") | tojson }},
+      run_preflight: {{ t("embedding_routes.recovery_run_preflight") | tojson }},
+      review_contract_snapshot: {{ t("embedding_routes.recovery_review_contract_snapshot") | tojson }},
+      check_provider_health: {{ t("embedding_routes.recovery_check_provider_health") | tojson }},
+    },
     loadingSampleSets: {{ t("embedding_routes.loading_sample_sets") | tojson }},
     noSampleSets: {{ t("embedding_routes.no_sample_sets") | tojson }},
     sampleSetSaved: {{ t("embedding_routes.sample_set_saved") | tojson }},
@@ -1240,7 +1248,7 @@
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.className = "text-secondary text-center py-4";
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     cell.textContent = message;
     row.appendChild(cell);
     readinessTbody.appendChild(row);
@@ -1278,6 +1286,10 @@
 
       const reasons = item.reasons || [];
       appendTextCell(row, reasons.length ? reasons.join(", ") : labels.noReasons);
+      appendTextCell(
+        row,
+        labels.recoveryAction[item.recovery_action] || item.recovery_action || labels.none,
+      );
       appendTextCell(row, readinessSnapshotLabel(item.latest_health_snapshot));
       appendTextCell(row, readinessSnapshotLabel(item.latest_contract_snapshot));
       readinessTbody.appendChild(row);
