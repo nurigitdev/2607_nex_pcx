@@ -7,8 +7,10 @@ from app.core.embedding_jobs import (
     get_embedding_job_in_connection,
     heartbeat_embedding_job_in_connection,
     list_embedding_jobs,
+    list_stale_embedding_jobs,
     mark_embedding_job_failed_in_connection,
     mark_embedding_job_skipped_in_connection,
+    release_stale_embedding_job_lease_in_connection,
     retry_embedding_job_in_connection,
     validate_embedding_job_input,
 )
@@ -108,6 +110,11 @@ def test_retry_embedding_job_rejects_non_positive_id_before_db() -> None:
         retry_embedding_job_in_connection(None, 0)  # type: ignore[arg-type]
 
 
+def test_release_stale_embedding_job_lease_rejects_non_positive_id_before_db() -> None:
+    with pytest.raises(InvalidEmbeddingJobError, match="job_id"):
+        release_stale_embedding_job_lease_in_connection(None, 0)  # type: ignore[arg-type]
+
+
 def test_list_embedding_jobs_validates_filters_before_db() -> None:
     with pytest.raises(InvalidEmbeddingJobError, match="chunk_id"):
         list_embedding_jobs("postgresql://example/db", chunk_id=0)
@@ -120,3 +127,11 @@ def test_list_embedding_jobs_validates_filters_before_db() -> None:
 
     with pytest.raises(InvalidEmbeddingJobError, match="limit"):
         list_embedding_jobs("postgresql://example/db", limit=0)
+
+
+def test_list_stale_embedding_jobs_validates_filters_before_db() -> None:
+    with pytest.raises(InvalidEmbeddingJobError, match="profile_name"):
+        list_stale_embedding_jobs("postgresql://example/db", profile_name=" ")
+
+    with pytest.raises(InvalidEmbeddingJobError, match="limit"):
+        list_stale_embedding_jobs("postgresql://example/db", limit=0)

@@ -217,7 +217,17 @@ def test_embedding_job_backlog_summary_api_and_ui(
 
         with TestClient(app) as client:
             api_response = client.get("/api/admin/embedding-jobs/backlog-summary")
+            stale_response = client.get(
+                "/api/admin/embedding-jobs/stale-leases",
+                params={"profile_name": profile_name, "reclaimable_only": True},
+            )
             page_response = client.get("/admin/embedding-jobs")
+            release_response = client.post(
+                f"/api/admin/embedding-jobs/{job_ids[1]}/release-stale-lease"
+            )
+            second_release_response = client.post(
+                f"/api/admin/embedding-jobs/{job_ids[1]}/release-stale-lease"
+            )
 
         api_profile = next(
             item
@@ -240,8 +250,19 @@ def test_embedding_job_backlog_summary_api_and_ui(
         assert api_profile["claimable_count"] == 2
         assert api_profile["attention_count"] == 3
         assert api_profile["oldest_pending_at"] is not None
+        assert stale_response.status_code == 200
+        assert stale_response.json()["stale_job_count"] == 1
+        assert stale_response.json()["jobs"][0]["job_id"] == job_ids[1]
+        assert release_response.status_code == 200
+        assert release_response.json()["job"]["status"] == "pending"
+        assert release_response.json()["job"]["lease_owner"] is None
+        assert second_release_response.status_code == 409
         assert page_response.status_code == 200
         assert "임베딩 Queue Backlog" in page_response.text
+        assert "Stale Lease Recovery" in page_response.text
+        assert "/api/admin/embedding-jobs/stale-leases" in page_response.text
+        assert f'data-job-id="{job_ids[1]}"' in page_response.text
+        assert "release-stale-lease" in page_response.text
         assert "/api/admin/embedding-jobs/backlog-summary" in page_response.text
         assert profile_name in page_response.text
     finally:

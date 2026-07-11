@@ -104,6 +104,67 @@
   {% endif %}
 </section>
 
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-stale-lease-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_stale_leases.title") }}</h2>
+      <div class="text-secondary">{{ t("embedding_stale_leases.help") }}</div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/api/admin/embedding-jobs/stale-leases">{{ t("common.api") }}</a>
+  </div>
+  <div class="alert alert-info m-3 mb-0" id="stale-lease-release-status" hidden></div>
+  {% if stale_jobs %}
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0 embedding-stale-lease-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_stale_leases.job") }}</th>
+          <th scope="col">{{ t("embedding_stale_leases.profile") }}</th>
+          <th scope="col">{{ t("embedding_stale_leases.worker") }}</th>
+          <th scope="col">{{ t("embedding_stale_leases.attempts") }}</th>
+          <th scope="col">{{ t("embedding_stale_leases.lease_expired") }}</th>
+          <th scope="col">{{ t("embedding_stale_leases.action") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in stale_jobs %}
+        <tr>
+          <td><a class="job-link" href="/admin/embedding-jobs?job_id={{ job.job_id }}">#{{ job.job_id }}</a></td>
+          <td class="text-break">{{ job.profile_name }}</td>
+          <td>{{ job.lease_owner or "-" }}</td>
+          <td>{{ job.attempts }} / {{ job.max_attempts }}</td>
+          <td>
+            {% if job.lease_expires_at %}
+            {{ job.lease_expires_at.strftime("%Y-%m-%d %H:%M:%S") }}
+            {% else %}
+            -
+            {% endif %}
+          </td>
+          <td>
+            {% if job.attempts < job.max_attempts %}
+            <button
+              class="btn btn-outline-secondary btn-sm stale-lease-release-button"
+              type="button"
+              data-job-id="{{ job.job_id }}"
+            >
+              {{ t("embedding_stale_leases.release") }}
+            </button>
+            {% else %}
+            <span class="badge text-bg-warning">{{ t("embedding_stale_leases.max_attempts") }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-secondary text-center py-4 border-top">
+    {% if database_configured %}{{ t("embedding_stale_leases.no_jobs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+  </div>
+  {% endif %}
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0 job-table">
@@ -316,6 +377,8 @@
 <script>
   const embeddingRetryButton = document.getElementById("embedding-retry-button");
   const embeddingRetryStatus = document.getElementById("embedding-retry-status");
+  const staleLeaseReleaseStatus = document.getElementById("stale-lease-release-status");
+  const staleLeaseReleaseButtons = document.querySelectorAll(".stale-lease-release-button");
 
   function setEmbeddingRetryStatus(message, level = "info") {
     if (!embeddingRetryStatus) return;
@@ -323,6 +386,38 @@
     embeddingRetryStatus.className = `alert alert-${level}`;
     embeddingRetryStatus.textContent = message;
   }
+
+  function setStaleLeaseReleaseStatus(message, level = "info") {
+    if (!staleLeaseReleaseStatus) return;
+    staleLeaseReleaseStatus.hidden = false;
+    staleLeaseReleaseStatus.className = `alert alert-${level} m-3 mb-0`;
+    staleLeaseReleaseStatus.textContent = message;
+  }
+
+  staleLeaseReleaseButtons.forEach((button) => {
+    button.addEventListener("click", async () => {
+      const jobId = button.dataset.jobId;
+      button.disabled = true;
+      setStaleLeaseReleaseStatus("{{ t("embedding_stale_leases.releasing") }}");
+      try {
+        const response = await fetch(`/api/admin/embedding-jobs/${jobId}/release-stale-lease`, {
+          method: "POST",
+          headers: { Accept: "application/json" },
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body.detail || "{{ t("embedding_stale_leases.release_failed") }}");
+        }
+        setStaleLeaseReleaseStatus("{{ t("embedding_stale_leases.release_complete") }}", "success");
+        window.setTimeout(() => {
+          window.location.reload();
+        }, 500);
+      } catch (error) {
+        setStaleLeaseReleaseStatus(error instanceof Error ? error.message : "{{ t("embedding_stale_leases.release_failed") }}", "warning");
+        button.disabled = false;
+      }
+    });
+  });
 
   if (embeddingRetryButton) {
     embeddingRetryButton.addEventListener("click", async () => {

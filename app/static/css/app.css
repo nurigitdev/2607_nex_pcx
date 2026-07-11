@@ -698,6 +698,16 @@ main.container-fluid {
   white-space: normal;
 }
 
+.embedding-stale-lease-table th,
+.embedding-stale-lease-table td {
+  white-space: nowrap;
+}
+
+.embedding-stale-lease-table td:nth-child(2) {
+  min-width: 12rem;
+  white-space: normal;
+}
+
 .batch-run-filter-form .form-control,
 .batch-run-filter-form .form-select {
   min-width: 0;

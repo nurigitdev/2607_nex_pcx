@@ -13,9 +13,11 @@ from app.core.embedding_jobs import (
     heartbeat_embedding_job,
     list_active_embedding_profiles,
     list_embedding_jobs,
+    list_stale_embedding_jobs,
     mark_embedding_job_failed,
     mark_embedding_job_skipped,
     mark_embedding_job_succeeded,
+    release_stale_embedding_job_lease,
     retry_embedding_job,
 )
 
@@ -312,6 +314,69 @@ def test_failed_job_can_retry_and_expired_running_job_can_be_reclaimed(
         assert reclaimed.status == "running"
         assert reclaimed.lease_owner == "recovery-worker"
         assert reclaimed.attempts == 2
+    finally:
+        _cleanup_fixture(migrated_database_url, file_id, profile_name)
+
+
+def test_stale_embedding_job_lease_can_be_released_to_pending(
+    migrated_database_url: str,
+) -> None:
+    file_id, chunk_id = _create_chunk(migrated_database_url)
+    profile_name = _create_inactive_profile(migrated_database_url)
+    try:
+        created = create_embedding_job(
+            migrated_database_url,
+            EmbeddingJobInput(chunk_id=chunk_id, profile_name=profile_name),
+        )
+        claimed = claim_next_embedding_job(
+            migrated_database_url,
+            "lease-release-worker",
+            profile_name=profile_name,
+        )
+        assert claimed is not None
+        with connect(migrated_database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE embedding_jobs
+                    SET lease_expires_at = now() - interval '2 minutes',
+                        error_code = 'WORKER_STALE',
+                        error_message = 'worker lease expired',
+                        last_error_at = now()
+                    WHERE job_id = %s
+                    """,
+                    (created.job.job_id,),
+                )
+
+        stale_jobs = list_stale_embedding_jobs(
+            migrated_database_url,
+            profile_name=profile_name,
+            reclaimable_only=True,
+        )
+        released = release_stale_embedding_job_lease(
+            migrated_database_url,
+            created.job.job_id,
+        )
+        stale_after_release = list_stale_embedding_jobs(
+            migrated_database_url,
+            profile_name=profile_name,
+        )
+        second_release = release_stale_embedding_job_lease(
+            migrated_database_url,
+            created.job.job_id,
+        )
+
+        assert [job.job_id for job in stale_jobs] == [created.job.job_id]
+        assert released is not None
+        assert released.status == "pending"
+        assert released.lease_owner is None
+        assert released.lease_expires_at is None
+        assert released.error_code is None
+        assert released.error_message is None
+        assert released.last_error_at is None
+        assert released.attempts == 1
+        assert stale_after_release == []
+        assert second_release is None
     finally:
         _cleanup_fixture(migrated_database_url, file_id, profile_name)
 

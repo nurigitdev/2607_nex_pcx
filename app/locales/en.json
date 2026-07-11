@@ -77,6 +77,22 @@
     "oldest_pending": "Oldest Pending",
     "no_jobs": "No embedding jobs found."
   },
+  "embedding_stale_leases": {
+    "title": "Stale Lease Recovery",
+    "help": "Review expired running job leases and release reclaimable jobs back to pending.",
+    "job": "Job",
+    "profile": "Profile",
+    "worker": "Worker",
+    "attempts": "Attempts",
+    "lease_expired": "Lease Expired",
+    "action": "Action",
+    "release": "Release Lease",
+    "max_attempts": "Max Attempts",
+    "no_jobs": "No expired running jobs found.",
+    "releasing": "Releasing stale lease...",
+    "release_complete": "Stale lease released back to pending.",
+    "release_failed": "Stale lease release failed"
+  },
   "embedding_models": {
     "title": "Embedding Model Readiness",
     "subtitle": "Check the local models bundle download state and profile mapping.",

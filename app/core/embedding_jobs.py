@@ -357,6 +357,45 @@ def list_embedding_jobs(
     return [_row_to_embedding_job_record(dict(row)) for row in rows]
 
 
+def list_stale_embedding_jobs(
+    database_url: str,
+    *,
+    profile_name: str | None = None,
+    reclaimable_only: bool = False,
+    limit: int = 100,
+) -> list[EmbeddingJobRecord]:
+    profile = _validate_profile_name(profile_name)
+    _validate_limit(limit)
+
+    filters = [
+        "status = 'running'",
+        "lease_expires_at IS NOT NULL",
+        "lease_expires_at < now()",
+    ]
+    params: list[object] = []
+    if profile is not None:
+        filters.append("profile_name = %s")
+        params.append(profile)
+    if reclaimable_only:
+        filters.append("attempts < max_attempts")
+    params.append(limit)
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {_select_embedding_job_columns()}
+                FROM embedding_jobs
+                WHERE {' AND '.join(filters)}
+                ORDER BY lease_expires_at ASC, created_at ASC, job_id ASC
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+    return [_row_to_embedding_job_record(dict(row)) for row in rows]
+
+
 def get_embedding_job_backlog_summary(database_url: str) -> EmbeddingJobBacklogSummary:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
@@ -881,3 +920,41 @@ def retry_embedding_job_in_connection(
 def retry_embedding_job(database_url: str, job_id: int) -> EmbeddingJobRecord | None:
     with connect(database_url) as connection:
         return retry_embedding_job_in_connection(connection, job_id)
+
+
+def release_stale_embedding_job_lease_in_connection(
+    connection: Connection,
+    job_id: int,
+) -> EmbeddingJobRecord | None:
+    _require_positive_id(job_id, "job_id")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            UPDATE embedding_jobs
+            SET status = 'pending',
+                lease_owner = NULL,
+                lease_expires_at = NULL,
+                error_code = NULL,
+                error_message = NULL,
+                last_error_at = NULL,
+                finished_at = NULL,
+                updated_at = now()
+            WHERE job_id = %s
+              AND status = 'running'
+              AND lease_expires_at IS NOT NULL
+              AND lease_expires_at < now()
+              AND attempts < max_attempts
+            RETURNING {_select_embedding_job_columns()}
+            """,
+            (job_id,),
+        )
+        row = cursor.fetchone()
+    return _row_to_embedding_job_record(dict(row)) if row else None
+
+
+def release_stale_embedding_job_lease(
+    database_url: str,
+    job_id: int,
+) -> EmbeddingJobRecord | None:
+    with connect(database_url) as connection:
+        return release_stale_embedding_job_lease_in_connection(connection, job_id)

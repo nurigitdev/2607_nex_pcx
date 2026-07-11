@@ -57,6 +57,8 @@ from app.core.embedding_jobs import (
     get_embedding_job_backlog_summary,
     list_active_embedding_profiles,
     list_embedding_jobs,
+    list_stale_embedding_jobs,
+    release_stale_embedding_job_lease,
     retry_embedding_job,
 )
 from app.core.embedding_model_distribution import (
@@ -4332,6 +4334,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         summary = get_embedding_job_backlog_summary(settings.database_url)
         return JSONResponse(content={"backlog": embedding_job_backlog_summary_payload(summary)})
 
+    @app.get("/api/admin/embedding-jobs/stale-leases")
+    def api_list_stale_embedding_job_leases(
+        profile_name: str | None = None,
+        reclaimable_only: bool = False,
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            jobs = list_stale_embedding_jobs(
+                settings.database_url,
+                profile_name=profile_name,
+                reclaimable_only=reclaimable_only,
+                limit=limit,
+            )
+        except InvalidEmbeddingJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "stale_job_count": len(jobs),
+                "jobs": [embedding_job_payload(job) for job in jobs],
+            },
+        )
+
     @app.get("/api/embedding/jobs/{job_id}")
     def api_get_embedding_job(job_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -4389,6 +4420,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Embedding job is not retryable.",
             )
         return JSONResponse(content={"job": embedding_job_payload(retried)})
+
+    @app.post("/api/admin/embedding-jobs/{job_id}/release-stale-lease")
+    def api_release_stale_embedding_job_lease(job_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            existing = get_embedding_job(settings.database_url, job_id)
+            if existing is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Embedding job not found.",
+                )
+            released = release_stale_embedding_job_lease(settings.database_url, job_id)
+        except InvalidEmbeddingJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        if released is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Embedding job does not have a reclaimable stale lease.",
+            )
+        return JSONResponse(content={"job": embedding_job_payload(released)})
 
     @app.get("/api/admin/embedding-batch-runs")
     def api_list_embedding_batch_runs(
@@ -6232,6 +6289,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected_job = None
         selected_vector = None
         backlog_summary: EmbeddingJobBacklogSummary | None = None
+        stale_jobs: list[EmbeddingJobRecord] = []
         profiles: list[EmbeddingProfileRecord] = []
         error_message = None
 
@@ -6240,6 +6298,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             try:
                 backlog_summary = get_embedding_job_backlog_summary(settings.database_url)
+                stale_jobs = list_stale_embedding_jobs(
+                    settings.database_url,
+                    profile_name=profile_name,
+                    limit=20,
+                )
                 profiles = list_active_embedding_profiles(settings.database_url)
                 jobs = list_embedding_jobs(
                     settings.database_url,
@@ -6271,6 +6334,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_job=selected_job,
                 selected_vector=selected_vector,
                 backlog_summary=backlog_summary,
+                stale_jobs=stale_jobs,
                 profiles=profiles,
                 selected_status=status_filter or "",
                 selected_profile_name=profile_name or "",

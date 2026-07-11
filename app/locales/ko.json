@@ -77,6 +77,22 @@
     "oldest_pending": "Oldest Pending",
     "no_jobs": "임베딩 job이 없습니다."
   },
+  "embedding_stale_leases": {
+    "title": "Stale Lease Recovery",
+    "help": "lease가 만료된 running job을 확인하고 재처리 가능 상태로 되돌립니다.",
+    "job": "Job",
+    "profile": "Profile",
+    "worker": "Worker",
+    "attempts": "Attempts",
+    "lease_expired": "Lease 만료",
+    "action": "작업",
+    "release": "Lease 해제",
+    "max_attempts": "Max Attempts",
+    "no_jobs": "만료된 running job이 없습니다.",
+    "releasing": "Stale lease 해제 중...",
+    "release_complete": "Stale lease를 pending 상태로 되돌렸습니다.",
+    "release_failed": "Stale lease 해제 실패"
+  },
   "embedding_models": {
     "title": "임베딩 모델 준비도",
     "subtitle": "로컬 models bundle의 다운로드 상태와 profile 매핑을 확인합니다.",
