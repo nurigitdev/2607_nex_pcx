@@ -53,6 +53,11 @@ from app.core.embedding_model_distribution import (
     audit_embedding_model_readiness,
 )
 from app.core.embedding_provider_health import get_embedding_provider_health_status
+from app.core.embedding_provider_route_contract_snapshots import (
+    EmbeddingProviderRouteContractSnapshotRecord,
+    InvalidEmbeddingProviderRouteContractSnapshotError,
+    record_embedding_provider_route_contract_snapshot,
+)
 from app.core.embedding_provider_route_contracts import (
     EmbeddingProviderRouteContractResult,
     check_embedding_provider_route_contract,
@@ -701,6 +706,33 @@ def embedding_provider_route_contract_payload(
         "runtime_metadata": contract.runtime_metadata,
         "validation_errors": list(contract.validation_errors),
         "error_message": contract.error_message,
+    }
+
+
+def embedding_provider_route_contract_snapshot_payload(
+    snapshot: EmbeddingProviderRouteContractSnapshotRecord,
+) -> dict[str, object]:
+    return {
+        "snapshot_id": snapshot.snapshot_id,
+        "route_id": snapshot.route_id,
+        "profile_name": snapshot.profile_name,
+        "provider_name": snapshot.provider_name,
+        "provider_mode": snapshot.provider_mode,
+        "passed": snapshot.passed,
+        "status": snapshot.status,
+        "elapsed_ms": snapshot.elapsed_ms,
+        "input_type": snapshot.input_type,
+        "sample_text_count": snapshot.sample_text_count,
+        "expected_dimension": snapshot.expected_dimension,
+        "provider_type": snapshot.provider_type,
+        "provider_model_id": snapshot.provider_model_id,
+        "model_key": snapshot.model_key,
+        "dimension": snapshot.dimension,
+        "input_count": snapshot.input_count,
+        "runtime_metadata": snapshot.runtime_metadata,
+        "validation_errors": list(snapshot.validation_errors),
+        "error_message": snapshot.error_message,
+        "checked_at": _datetime_response(snapshot.checked_at),
     }
 
 
@@ -3015,13 +3047,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     detail="Embedding provider route not found.",
                 )
             contract = check_embedding_provider_route_contract(route)
+            snapshot = record_embedding_provider_route_contract_snapshot(
+                settings.database_url,
+                contract,
+            )
             log_embedding_provider_route_contract_alert(settings.database_url, contract)
-        except InvalidEmbeddingProviderRouteError as exc:
+        except (
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderRouteContractSnapshotError,
+        ) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(
             content={
                 "contract": embedding_provider_route_contract_payload(contract),
+                "snapshot": embedding_provider_route_contract_snapshot_payload(snapshot),
             }
         )
 

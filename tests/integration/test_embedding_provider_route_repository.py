@@ -6,6 +6,10 @@ from psycopg import errors
 
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
+from app.core.embedding_provider_route_contract_snapshots import (
+    InvalidEmbeddingProviderRouteContractSnapshotError,
+    list_embedding_provider_route_contract_snapshots,
+)
 from app.core.embedding_provider_route_health import EmbeddingProviderRouteHealthResult
 from app.core.embedding_provider_route_health_snapshots import (
     InvalidEmbeddingProviderRouteHealthSnapshotError,
@@ -85,6 +89,17 @@ def test_embedding_provider_routes_table_exists_and_enforces_remote_url(
         """,
     )
     assert snapshot_table_name["table_name"] == "embedding_provider_route_health_snapshots"
+    contract_snapshot_table_name = fetch_one(
+        migrated_database_url,
+        """
+        SELECT to_regclass(
+            'public.embedding_provider_route_contract_snapshots'
+        ) AS table_name
+        """,
+    )
+    assert contract_snapshot_table_name["table_name"] == (
+        "embedding_provider_route_contract_snapshots"
+    )
 
     with connect(migrated_database_url) as connection:
         with connection.cursor() as cursor:
@@ -447,6 +462,7 @@ def test_embedding_provider_route_contract_check_api_validates_mock_route(
         assert response.status_code == 200
         body = response.json()
         contract = body["contract"]
+        snapshot = body["snapshot"]
         assert contract["passed"] is True
         assert contract["status"] == "passed"
         assert contract["route"]["route_id"] == route.route_id
@@ -458,6 +474,24 @@ def test_embedding_provider_route_contract_check_api_validates_mock_route(
         assert contract["dimension"] == 1024
         assert contract["input_count"] == 1
         assert contract["validation_errors"] == []
+        assert snapshot["route_id"] == route.route_id
+        assert snapshot["profile_name"] == "kure_v1_1024"
+        assert snapshot["provider_name"] == provider_name
+        assert snapshot["passed"] is True
+        assert snapshot["status"] == "passed"
+        assert snapshot["provider_model_id"] == "mock-provider"
+        assert snapshot["expected_dimension"] == 1024
+        assert snapshot["dimension"] == 1024
+        assert snapshot["input_count"] == 1
+
+        snapshots = list_embedding_provider_route_contract_snapshots(
+            migrated_database_url,
+            route_id=route.route_id,
+        )
+        assert len(snapshots) == 1
+        assert snapshots[0].snapshot_id == snapshot["snapshot_id"]
+        assert snapshots[0].passed is True
+        assert snapshots[0].status == "passed"
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])
 
@@ -491,9 +525,15 @@ def test_embedding_provider_route_contract_check_api_logs_failed_contract(
             )
 
         assert response.status_code == 200
-        contract = response.json()["contract"]
+        body = response.json()
+        contract = body["contract"]
+        snapshot = body["snapshot"]
         assert contract["passed"] is False
         assert contract["status"] == "health_unreachable"
+        assert snapshot["route_id"] == route.route_id
+        assert snapshot["passed"] is False
+        assert snapshot["status"] == "health_unreachable"
+        assert "Remote provider request failed" in snapshot["error_message"]
 
         log_row = fetch_one(
             migrated_database_url,
@@ -596,3 +636,13 @@ def test_embedding_provider_route_health_snapshot_filters_validate_inputs(
 
     with pytest.raises(InvalidEmbeddingProviderRouteHealthSnapshotError):
         list_embedding_provider_route_health_snapshots(migrated_database_url, route_id=0)
+
+
+def test_embedding_provider_route_contract_snapshot_filters_validate_inputs(
+    migrated_database_url: str,
+) -> None:
+    with pytest.raises(InvalidEmbeddingProviderRouteContractSnapshotError):
+        list_embedding_provider_route_contract_snapshots(migrated_database_url, limit=0)
+
+    with pytest.raises(InvalidEmbeddingProviderRouteContractSnapshotError):
+        list_embedding_provider_route_contract_snapshots(migrated_database_url, route_id=0)
