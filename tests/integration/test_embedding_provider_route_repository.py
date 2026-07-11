@@ -1000,6 +1000,9 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
         assert detail_route_results[0]["contract"]["status"] == "passed"
         assert operations_summary["active_route_count"] >= 1
         assert operations_summary["ready_route_count"] >= 1
+        assert operations_summary["overall_status"] in {"ready", "attention", "blocked"}
+        assert operations_summary["overall_status_reason"]
+        assert isinstance(operations_summary["unacknowledged_alert_count"], int)
         assert operations_summary["latest_preflight_run"] is not None
         assert operations_summary["latest_preflight_run"]["status"] in {
             "succeeded",

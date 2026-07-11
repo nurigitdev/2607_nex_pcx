@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from app.core.admin_logging import (
     InvalidAdminLogError,
     acknowledge_log,
+    count_provider_route_alert_logs,
     list_logs,
     list_provider_route_alert_logs,
     log_event,
@@ -966,16 +967,27 @@ def embedding_provider_route_operations_summary_payload(
     schedules: list[EmbeddingProviderPreflightScheduleRecord],
     due_schedules: list[EmbeddingProviderPreflightScheduleRecord],
     latest_run: EmbeddingProviderPreflightRunRecord | None,
+    unacknowledged_alert_count: int = 0,
 ) -> dict[str, object]:
     failed_schedule_count = sum(
         1 for schedule in schedules if schedule.last_status in {"failed", "error"}
     )
+    overall_status, overall_status_reason = embedding_provider_route_operations_status(
+        readiness=readiness,
+        due_schedule_count=len(due_schedules),
+        failed_schedule_count=failed_schedule_count,
+        latest_run=latest_run,
+        unacknowledged_alert_count=unacknowledged_alert_count,
+    )
     return {
+        "overall_status": overall_status,
+        "overall_status_reason": overall_status_reason,
         "route_count": readiness.route_count,
         "active_route_count": readiness.active_count,
         "ready_route_count": readiness.ready_count,
         "blocked_route_count": readiness.blocked_count,
         "needs_preflight_count": readiness.needs_preflight_count,
+        "unacknowledged_alert_count": unacknowledged_alert_count,
         "schedule_count": len(schedules),
         "enabled_schedule_count": sum(1 for schedule in schedules if schedule.is_enabled),
         "due_schedule_count": len(due_schedules),
@@ -984,6 +996,29 @@ def embedding_provider_route_operations_summary_payload(
             embedding_provider_preflight_run_payload(latest_run) if latest_run is not None else None
         ),
     }
+
+
+def embedding_provider_route_operations_status(
+    *,
+    readiness: EmbeddingProviderRouteReadinessSummary,
+    due_schedule_count: int,
+    failed_schedule_count: int,
+    latest_run: EmbeddingProviderPreflightRunRecord | None,
+    unacknowledged_alert_count: int,
+) -> tuple[str, str]:
+    if readiness.active_count == 0:
+        return "blocked", "no_active_routes"
+    if readiness.blocked_count > 0:
+        return "blocked", "blocked_routes"
+    if unacknowledged_alert_count > 0:
+        return "attention", "unacknowledged_alerts"
+    if failed_schedule_count > 0:
+        return "attention", "failed_schedules"
+    if latest_run is not None and latest_run.status in {"failed", "error"}:
+        return "attention", "latest_preflight_failed"
+    if due_schedule_count > 0:
+        return "attention", "due_schedules"
+    return "ready", "ready"
 
 
 def embedding_provider_preflight_run_payload(
@@ -3570,12 +3605,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 settings.database_url,
                 limit=1,
             )
+            unacknowledged_alert_count = count_provider_route_alert_logs(
+                settings.database_url,
+                acknowledged=False,
+            )
         except (
             InvalidEmbeddingProviderRouteError,
             InvalidEmbeddingProviderRouteHealthSnapshotError,
             InvalidEmbeddingProviderRouteContractSnapshotError,
             InvalidEmbeddingProviderPreflightScheduleError,
             InvalidEmbeddingProviderPreflightRunError,
+            InvalidAdminLogError,
         ) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -3586,6 +3626,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     schedules=schedules,
                     due_schedules=due_schedules,
                     latest_run=latest_runs[0] if latest_runs else None,
+                    unacknowledged_alert_count=unacknowledged_alert_count,
                 )
             }
         )

@@ -2,7 +2,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.core.embedding_provider_route_readiness import EmbeddingProviderRouteReadinessItem
+from app.core.embedding_provider_preflight_runs import EmbeddingProviderPreflightRunRecord
+from app.core.embedding_provider_route_readiness import (
+    EmbeddingProviderRouteReadinessItem,
+    EmbeddingProviderRouteReadinessSummary,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
     EmbeddingProviderRouteRecord,
@@ -10,7 +14,10 @@ from app.core.embedding_provider_routes import (
     get_embedding_provider_route,
     validate_embedding_provider_route_input,
 )
-from app.main import embedding_provider_route_readiness_recovery_action
+from app.main import (
+    embedding_provider_route_operations_status,
+    embedding_provider_route_readiness_recovery_action,
+)
 
 
 def make_route(**overrides) -> EmbeddingProviderRouteRecord:
@@ -45,6 +52,29 @@ def make_readiness_item(
         reasons=() if ready else (f"{status}_reason",),
         latest_health_snapshot=None,
         latest_contract_snapshot=None,
+    )
+
+
+def make_preflight_run(*, status: str) -> EmbeddingProviderPreflightRunRecord:
+    now = datetime(2026, 7, 6, tzinfo=UTC)
+    return EmbeddingProviderPreflightRunRecord(
+        run_id=1,
+        schedule_name=None,
+        trigger_source="manual_api",
+        profile_name="kure_v1_1024",
+        active_only=True,
+        status=status,
+        route_count=1,
+        passed_count=1 if status == "succeeded" else 0,
+        failed_count=0 if status == "succeeded" else 1,
+        sample_set_name="default_route_contract",
+        input_type="document",
+        sample_text_count=1,
+        elapsed_ms=10,
+        result={},
+        error_message=None,
+        started_at=now,
+        completed_at=now,
     )
 
 
@@ -137,3 +167,48 @@ def test_embedding_provider_route_readiness_recovery_action_maps_status(
     item = make_readiness_item(ready=ready, status=status)
 
     assert embedding_provider_route_readiness_recovery_action(item) == expected_action
+
+
+@pytest.mark.parametrize(
+    (
+        "ready",
+        "status",
+        "due_schedule_count",
+        "failed_schedule_count",
+        "latest_run_status",
+        "alert_count",
+        "expected_status",
+        "expected_reason",
+    ),
+    [
+        (False, "inactive", 0, 0, None, 0, "blocked", "no_active_routes"),
+        (False, "needs_contract", 0, 0, None, 0, "blocked", "blocked_routes"),
+        (True, "ready", 0, 0, None, 2, "attention", "unacknowledged_alerts"),
+        (True, "ready", 0, 1, None, 0, "attention", "failed_schedules"),
+        (True, "ready", 0, 0, "failed", 0, "attention", "latest_preflight_failed"),
+        (True, "ready", 3, 0, None, 0, "attention", "due_schedules"),
+        (True, "ready", 0, 0, "succeeded", 0, "ready", "ready"),
+    ],
+)
+def test_embedding_provider_route_operations_status_prioritizes_operator_actions(
+    ready: bool,
+    status: str,
+    due_schedule_count: int,
+    failed_schedule_count: int,
+    latest_run_status: str | None,
+    alert_count: int,
+    expected_status: str,
+    expected_reason: str,
+) -> None:
+    readiness = EmbeddingProviderRouteReadinessSummary(
+        routes=(make_readiness_item(ready=ready, status=status),)
+    )
+    latest_run = make_preflight_run(status=latest_run_status) if latest_run_status else None
+
+    assert embedding_provider_route_operations_status(
+        readiness=readiness,
+        due_schedule_count=due_schedule_count,
+        failed_schedule_count=failed_schedule_count,
+        latest_run=latest_run,
+        unacknowledged_alert_count=alert_count,
+    ) == (expected_status, expected_reason)

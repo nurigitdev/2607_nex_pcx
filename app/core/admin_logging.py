@@ -215,6 +215,36 @@ def list_provider_route_alert_logs(
             return [dict(row) for row in cursor.fetchall()]
 
 
+def count_provider_route_alert_logs(
+    database_url: str,
+    *,
+    level: str | None = None,
+    acknowledged: bool | None = False,
+) -> int:
+    with connect(database_url) as connection:
+        where_clauses = ["event_type = ANY(%s)"]
+        params: list[object] = [list(PROVIDER_ROUTE_ALERT_EVENT_TYPES)]
+        if level:
+            where_clauses.append("level = %s")
+            params.append(normalize_level(level))
+        if acknowledged is True:
+            where_clauses.append("acknowledged_at IS NOT NULL")
+        elif acknowledged is False:
+            where_clauses.append("acknowledged_at IS NULL")
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*) AS alert_count
+                FROM app_logs
+                WHERE {' AND '.join(where_clauses)}
+                """,
+                tuple(params),
+            )
+            row = cursor.fetchone()
+            return int(row["alert_count"]) if row else 0
+
+
 def acknowledge_log(
     database_url: str,
     log_id: int,

@@ -88,6 +88,13 @@
   </div>
   <section class="document-detail-grid p-3 border-top">
     <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.operations_status") }}</div>
+      <div class="mt-2">
+        <span class="badge text-bg-light border" data-operations-overall-status>-</span>
+      </div>
+      <div class="small text-secondary mt-2" data-operations-overall-reason>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
       <div class="metric-label">{{ t("embedding_routes.active_routes") }}</div>
       <div class="metric-value" data-operations-active-routes>-</div>
     </div>
@@ -940,6 +947,20 @@
     acknowledgedBy: {{ t("embedding_routes.acknowledged_by") | tojson }},
     acknowledgedAt: {{ t("embedding_routes.acknowledged_at") | tojson }},
     acknowledgementNote: {{ t("embedding_routes.acknowledgement_note") | tojson }},
+    operationsStatus: {
+      ready: {{ t("embedding_routes.operations_status_ready") | tojson }},
+      attention: {{ t("embedding_routes.operations_status_attention") | tojson }},
+      blocked: {{ t("embedding_routes.operations_status_blocked") | tojson }},
+    },
+    operationsReason: {
+      ready: {{ t("embedding_routes.operations_reason_ready") | tojson }},
+      no_active_routes: {{ t("embedding_routes.operations_reason_no_active_routes") | tojson }},
+      blocked_routes: {{ t("embedding_routes.operations_reason_blocked_routes") | tojson }},
+      unacknowledged_alerts: {{ t("embedding_routes.operations_reason_unacknowledged_alerts") | tojson }},
+      failed_schedules: {{ t("embedding_routes.operations_reason_failed_schedules") | tojson }},
+      latest_preflight_failed: {{ t("embedding_routes.operations_reason_latest_preflight_failed") | tojson }},
+      due_schedules: {{ t("embedding_routes.operations_reason_due_schedules") | tojson }},
+    },
     recoveryAction: {
       ready_for_worker: {{ t("embedding_routes.recovery_ready_for_worker") | tojson }},
       activate_route: {{ t("embedding_routes.recovery_activate_route") | tojson }},
@@ -975,6 +996,8 @@
   };
 
   const statusClasses = {
+    attention: "text-bg-warning",
+    blocked: "text-bg-danger",
     ready: "text-bg-success",
     not_ready: "text-bg-warning",
     mismatch: "text-bg-warning",
@@ -996,6 +1019,8 @@
   const operationsPanel = document.querySelector("[data-provider-operations-summary-panel]");
   const operationsStatus = operationsPanel?.querySelector("[data-operations-summary-status]");
   const operationsRefresh = operationsPanel?.querySelector("[data-operations-summary-refresh]");
+  const operationsOverallStatus = operationsPanel?.querySelector("[data-operations-overall-status]");
+  const operationsOverallReason = operationsPanel?.querySelector("[data-operations-overall-reason]");
   const operationsActiveRoutes = operationsPanel?.querySelector("[data-operations-active-routes]");
   const operationsReadyRoutes = operationsPanel?.querySelector("[data-operations-ready-routes]");
   const operationsDueSchedules = operationsPanel?.querySelector("[data-operations-due-schedules]");
@@ -1187,6 +1212,13 @@
   }
 
   function setOperationsEmpty(message) {
+    if (operationsOverallStatus) {
+      operationsOverallStatus.className = "badge text-bg-light border";
+      operationsOverallStatus.textContent = "-";
+    }
+    if (operationsOverallReason) {
+      operationsOverallReason.textContent = message;
+    }
     if (operationsActiveRoutes) {
       operationsActiveRoutes.textContent = "-";
     }
@@ -1205,6 +1237,19 @@
   }
 
   function renderOperationsSummary(summary) {
+    const overallStatus = summary.overall_status || "ready";
+    if (operationsOverallStatus) {
+      operationsOverallStatus.className = `badge ${statusClasses[overallStatus] || "text-bg-light border"}`;
+      operationsOverallStatus.textContent = labels.operationsStatus[overallStatus] || overallStatus;
+    }
+    if (operationsOverallReason) {
+      const reason =
+        labels.operationsReason[summary.overall_status_reason] ||
+        summary.overall_status_reason ||
+        labels.none;
+      const alertCount = summary.unacknowledged_alert_count ?? 0;
+      operationsOverallReason.textContent = alertCount > 0 ? `${reason} · ${alertCount}` : reason;
+    }
     if (operationsActiveRoutes) {
       operationsActiveRoutes.textContent = `${summary.active_route_count ?? 0}/${summary.route_count ?? 0}`;
     }
