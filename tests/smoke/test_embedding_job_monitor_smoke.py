@@ -45,9 +45,10 @@ def test_embedding_batch_run_api_requires_database_url() -> None:
         responses = [
             client.get("/api/admin/embedding-batch-runs"),
             client.get("/api/admin/embedding-batch-runs/1"),
+            client.post("/api/admin/embedding-batch-runs/1/retry-failed"),
         ]
 
-    assert [response.status_code for response in responses] == [503, 503]
+    assert [response.status_code for response in responses] == [503, 503, 503]
     assert all(
         response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
         for response in responses

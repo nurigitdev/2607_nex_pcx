@@ -792,6 +792,90 @@ def embedding_worker_batch_run_summary(
     }
 
 
+def embedding_worker_batch_run_failed_job_ids(
+    batch_run: EmbeddingWorkerBatchRunRecord,
+) -> list[int]:
+    failed_job_ids: list[int] = []
+    seen_job_ids: set[int] = set()
+
+    def append_job_id(raw_job_id: object) -> None:
+        if isinstance(raw_job_id, bool):
+            return
+        try:
+            job_id = int(raw_job_id)
+        except (TypeError, ValueError):
+            return
+        if job_id <= 0 or job_id in seen_job_ids:
+            return
+        seen_job_ids.add(job_id)
+        failed_job_ids.append(job_id)
+
+    results = batch_run.runtime_metadata.get("results")
+    if isinstance(results, list):
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            if result.get("status") == "failed":
+                append_job_id(result.get("job_id"))
+
+    if not failed_job_ids and batch_run.failed_count > 0:
+        for job_id in batch_run.job_ids:
+            append_job_id(job_id)
+
+    return failed_job_ids
+
+
+def retry_failed_embedding_worker_batch_run_jobs(
+    database_url: str,
+    batch_run: EmbeddingWorkerBatchRunRecord,
+) -> dict[str, object]:
+    failed_job_ids = embedding_worker_batch_run_failed_job_ids(batch_run)
+    retried_jobs: list[EmbeddingJobRecord] = []
+    skipped_jobs: list[dict[str, object]] = []
+
+    def skip_job(
+        job_id: int,
+        reason: str,
+        job: EmbeddingJobRecord | None = None,
+    ) -> None:
+        skipped_jobs.append(
+            {
+                "job_id": job_id,
+                "reason": reason,
+                "status": job.status if job is not None else None,
+                "attempts": job.attempts if job is not None else None,
+                "max_attempts": job.max_attempts if job is not None else None,
+            }
+        )
+
+    for job_id in failed_job_ids:
+        job = get_embedding_job(database_url, job_id)
+        if job is None:
+            skip_job(job_id, "missing")
+            continue
+        if job.status != "failed":
+            skip_job(job_id, "not_failed", job)
+            continue
+        if job.attempts >= job.max_attempts:
+            skip_job(job_id, "max_attempts_reached", job)
+            continue
+
+        retried = retry_embedding_job(database_url, job_id)
+        if retried is None:
+            skip_job(job_id, "not_retryable", job)
+            continue
+        retried_jobs.append(retried)
+
+    return {
+        "batch_run_id": batch_run.batch_run_id,
+        "failed_job_ids": failed_job_ids,
+        "retried_count": len(retried_jobs),
+        "skipped_count": len(skipped_jobs),
+        "retried_jobs": [embedding_job_payload(job) for job in retried_jobs],
+        "skipped_jobs": skipped_jobs,
+    }
+
+
 def embedding_model_readiness_payload(readiness: EmbeddingModelReadiness) -> dict[str, object]:
     distribution = readiness.distribution
     return {
@@ -4300,6 +4384,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             content={"batch_run": embedding_worker_batch_run_payload(batch_run)}
         )
+
+    @app.post("/api/admin/embedding-batch-runs/{batch_run_id}/retry-failed")
+    def api_retry_failed_embedding_batch_run_jobs(batch_run_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            batch_run = get_embedding_worker_batch_run(settings.database_url, batch_run_id)
+            if batch_run is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Embedding batch run not found.",
+                )
+            retry_result = retry_failed_embedding_worker_batch_run_jobs(
+                settings.database_url,
+                batch_run,
+            )
+        except (
+            InvalidEmbeddingWorkerBatchRunError,
+            InvalidEmbeddingJobError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=retry_result)
 
     @app.post("/api/search/compare")
     def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:

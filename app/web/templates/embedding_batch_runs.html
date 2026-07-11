@@ -155,10 +155,23 @@
     <section class="metric-card bg-white p-3">
       <div class="d-flex align-items-center justify-content-between mb-3">
         <h2 class="h5 mb-0">{{ t("embedding_batch_runs.detail_title") }} #{{ selected_batch_run.batch_run_id }}</h2>
-        <span class="badge status-badge status-{{ selected_batch_run.stopped_reason|replace('_', '-') }}">
-          {{ t("embedding_batch_runs.stop_" ~ selected_batch_run.stopped_reason) }}
-        </span>
+        <div class="d-flex align-items-center gap-2">
+          {% if selected_batch_run.failed_count > 0 %}
+          <button
+            class="btn btn-outline-primary btn-sm"
+            type="button"
+            data-batch-run-retry-button
+            data-retry-url="/api/admin/embedding-batch-runs/{{ selected_batch_run.batch_run_id }}/retry-failed"
+          >
+            {{ t("embedding_batch_runs.retry_failed_jobs") }}
+          </button>
+          {% endif %}
+          <span class="badge status-badge status-{{ selected_batch_run.stopped_reason|replace('_', '-') }}">
+            {{ t("embedding_batch_runs.stop_" ~ selected_batch_run.stopped_reason) }}
+          </span>
+        </div>
       </div>
+      <div class="alert alert-info" data-batch-run-retry-status hidden></div>
       <dl class="job-detail-list mb-0">
         <dt>{{ t("embedding_batch_runs.worker") }}</dt>
         <dd>{{ selected_batch_run.worker_name }}</dd>
@@ -305,4 +318,49 @@
   </div>
 </section>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const retryButton = document.querySelector("[data-batch-run-retry-button]");
+    const retryStatus = document.querySelector("[data-batch-run-retry-status]");
+    const labels = {
+      running: {{ t("embedding_batch_runs.retry_running") | tojson }},
+      complete: {{ t("embedding_batch_runs.retry_complete") | tojson }},
+      failed: {{ t("embedding_batch_runs.retry_failed") | tojson }},
+    };
+
+    function setRetryStatus(message, level = "info") {
+      if (!retryStatus) return;
+      retryStatus.hidden = false;
+      retryStatus.className = `alert alert-${level}`;
+      retryStatus.textContent = message;
+    }
+
+    if (!retryButton) return;
+
+    retryButton.addEventListener("click", async () => {
+      retryButton.disabled = true;
+      setRetryStatus(labels.running);
+      try {
+        const response = await fetch(retryButton.dataset.retryUrl, {
+          method: "POST",
+          headers: { Accept: "application/json" },
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body.detail || labels.failed);
+        }
+        const message = labels.complete
+          .replace("{retried_count}", String(body.retried_count ?? 0))
+          .replace("{skipped_count}", String(body.skipped_count ?? 0));
+        setRetryStatus(message, Number(body.retried_count ?? 0) > 0 ? "success" : "warning");
+      } catch (error) {
+        setRetryStatus(error instanceof Error ? error.message : labels.failed, "warning");
+        retryButton.disabled = false;
+      }
+    });
+  })();
+</script>
 {% endblock %}

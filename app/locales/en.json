@@ -158,7 +158,11 @@
     "no_result_detail": "No result detail saved.",
     "raw_json": "Raw JSON",
     "raw_json_help": "Original batch run payload",
-    "api_failed": "Batch run API failed to load"
+    "api_failed": "Batch run API failed to load",
+    "retry_failed_jobs": "Retry Failed Jobs",
+    "retry_running": "Retrying failed jobs...",
+    "retry_complete": "Retry requested: {retried_count} retried, {skipped_count} skipped",
+    "retry_failed": "Failed job retry request failed"
   },
   "embedding_routes": {
     "title": "Embedding Provider Routing",
