@@ -218,8 +218,10 @@ experiment logging. Embedding calculation can run through:
 
 The remote provider should preload downloaded model bundles on a GPU server and expose a
 stable request/response contract. See `docs/embedding_provider_architecture.md` for the
-initial provider boundary and metadata requirements, and
-`docs/gpu_embedding_provider_deployment.md` for the deployment checklist.
+initial provider boundary and metadata requirements,
+`docs/gpu_embedding_provider_deployment.md` for the deployment checklist, and
+`docs/provider_operations_playbook.md` for the provider route preflight, readiness,
+contract snapshot, sample set, and alert acknowledgement workflow.
 
 Runtime provider selection is controlled by:
 
