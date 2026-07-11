@@ -27,8 +27,18 @@ Run this sequence before benchmark ingestion or after changing provider routes:
 ```bash
 export NEX_PCX_DATABASE_URL="postgresql://USER:PASSWORD@127.0.0.1:5432/nex_pcx_dev"
 bash scripts/migrate.sh upgrade head
-./.venv/bin/python scripts/preflight_provider_routes.py --json
+./.venv/bin/python scripts/preflight_provider_routes.py
 ```
+
+For scheduled operation, enable a row in `embedding_provider_preflight_schedules` and call
+the due-runner from cron or a systemd timer:
+
+```bash
+./.venv/bin/python scripts/run_scheduled_provider_preflight.py --limit 20
+```
+
+The seeded `default_provider_route_preflight` schedule is disabled by default so a newly
+installed environment does not contact remote providers until an operator opts in.
 
 Then review the UI:
 

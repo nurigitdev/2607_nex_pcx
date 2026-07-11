@@ -251,6 +251,13 @@ Force the legacy runtime-config-only path when you want to ignore route records:
 Provider health is exposed at `/api/embedding/providers/health`.
 Route health aggregation is exposed at `/api/admin/embedding-provider-routes/health`.
 
+Run due scheduled route preflight checks after enabling rows in
+`embedding_provider_preflight_schedules`:
+
+```bash
+./.venv/bin/python scripts/run_scheduled_provider_preflight.py --limit 20
+```
+
 Run the standalone embedding provider skeleton for contract tests:
 
 ```bash
