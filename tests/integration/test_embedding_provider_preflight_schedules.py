@@ -34,6 +34,17 @@ def _cleanup_schedules(database_url: str, schedule_names: list[str]) -> None:
             )
 
 
+def _cleanup_preflight_runs(database_url: str, run_ids: list[int]) -> None:
+    if not run_ids:
+        return
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM embedding_provider_preflight_runs WHERE run_id = ANY(%s)",
+                (run_ids,),
+            )
+
+
 def test_embedding_provider_preflight_schedule_table_seeded(
     migrated_database_url: str,
 ) -> None:
@@ -283,3 +294,75 @@ def test_embedding_provider_preflight_schedule_admin_api_round_trips(
         assert missing_response.status_code == 404
     finally:
         _cleanup_schedules(migrated_database_url, [schedule_name])
+
+
+def test_embedding_provider_preflight_schedule_due_api_previews_and_runs(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    due_name = f"api-due-preflight-{suffix}"
+    future_name = f"api-future-preflight-{suffix}"
+    profile_name = f"empty-preflight-profile-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+    run_ids: list[int] = []
+
+    try:
+        upsert_embedding_provider_preflight_schedule(
+            migrated_database_url,
+            EmbeddingProviderPreflightScheduleInput(
+                schedule_name=due_name,
+                profile_name=profile_name,
+                interval_minutes=30,
+                is_enabled=True,
+                next_run_at=datetime(2020, 1, 1, tzinfo=UTC),
+            ),
+        )
+        upsert_embedding_provider_preflight_schedule(
+            migrated_database_url,
+            EmbeddingProviderPreflightScheduleInput(
+                schedule_name=future_name,
+                profile_name=profile_name,
+                interval_minutes=30,
+                is_enabled=True,
+                next_run_at=datetime(2099, 1, 1, tzinfo=UTC),
+            ),
+        )
+
+        with TestClient(app) as client:
+            due_response = client.get(
+                "/api/admin/embedding-provider-routes/preflight-schedules/due",
+                params={"limit": "10"},
+            )
+            run_response = client.post(
+                "/api/admin/embedding-provider-routes/preflight-schedules/run-due",
+                json={"schedule_name": due_name, "limit": 5},
+            )
+            due_after_response = client.get(
+                "/api/admin/embedding-provider-routes/preflight-schedules/due",
+                params={"schedule_name": due_name},
+            )
+
+        assert due_response.status_code == 200
+        due_schedule_names = [
+            schedule["schedule_name"] for schedule in due_response.json()["schedules"]
+        ]
+        assert due_name in due_schedule_names
+        assert future_name not in due_schedule_names
+        assert run_response.status_code == 200
+        body = run_response.json()
+        assert body["run_count"] == 1
+        assert body["failed_count"] == 0
+        run = body["runs"][0]
+        run_ids.append(run["run_record"]["run_id"])
+        assert run["status"] == "succeeded"
+        assert run["schedule"]["schedule_name"] == due_name
+        assert run["updated_schedule"]["run_count"] == 1
+        assert run["updated_schedule"]["last_status"] == "succeeded"
+        assert run["run_record"]["schedule_name"] == due_name
+        assert run["run_record"]["trigger_source"] == "scheduled_cli"
+        assert run["run_record"]["route_count"] == 0
+        assert due_after_response.status_code == 200
+        assert due_after_response.json()["schedule_count"] == 0
+    finally:
+        _cleanup_preflight_runs(migrated_database_url, run_ids)
+        _cleanup_schedules(migrated_database_url, [due_name, future_name])

@@ -193,6 +193,11 @@ def test_embedding_provider_preflight_schedule_api_requires_database_url() -> No
     with TestClient(app) as client:
         responses = [
             client.get("/api/admin/embedding-provider-routes/preflight-schedules"),
+            client.get("/api/admin/embedding-provider-routes/preflight-schedules/due"),
+            client.post(
+                "/api/admin/embedding-provider-routes/preflight-schedules/run-due",
+                json={"schedule_name": "smoke-schedule", "limit": 5},
+            ),
             client.get("/api/admin/embedding-provider-routes/preflight-schedules/smoke-schedule"),
             client.put(
                 "/api/admin/embedding-provider-routes/preflight-schedules/smoke-schedule",
@@ -200,7 +205,7 @@ def test_embedding_provider_preflight_schedule_api_requires_database_url() -> No
             ),
         ]
 
-    assert [response.status_code for response in responses] == [503, 503, 503]
+    assert [response.status_code for response in responses] == [503, 503, 503, 503, 503]
     assert all(
         response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
         for response in responses

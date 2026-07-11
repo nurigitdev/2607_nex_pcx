@@ -43,7 +43,9 @@ Schedules can also be inspected and updated through:
 
 ```text
 GET /api/admin/embedding-provider-routes/preflight-schedules
+GET /api/admin/embedding-provider-routes/preflight-schedules/due
 PUT /api/admin/embedding-provider-routes/preflight-schedules/{schedule_name}
+POST /api/admin/embedding-provider-routes/preflight-schedules/run-due
 ```
 
 Then review the UI:

@@ -81,8 +81,11 @@ from app.core.embedding_provider_preflight_schedules import (
     EmbeddingProviderPreflightScheduleInput,
     EmbeddingProviderPreflightScheduleRecord,
     InvalidEmbeddingProviderPreflightScheduleError,
+    ScheduledProviderRoutePreflightRun,
     get_embedding_provider_preflight_schedule,
+    list_due_embedding_provider_preflight_schedules,
     list_embedding_provider_preflight_schedules,
+    run_due_embedding_provider_preflight_schedules,
     upsert_embedding_provider_preflight_schedule,
 )
 from app.core.embedding_provider_route_contract_snapshots import (
@@ -371,6 +374,11 @@ class ProviderPreflightScheduleRequest(BaseModel):
     interval_minutes: int = Field(default=60, ge=1, le=10080)
     is_enabled: bool = False
     next_run_at: datetime | None = None
+
+
+class ProviderPreflightScheduleRunDueRequest(BaseModel):
+    schedule_name: str | None = Field(default=None, max_length=120)
+    limit: int = Field(default=20, ge=1, le=100)
 
 
 class DocumentPermissionUpdateRequest(BaseModel):
@@ -971,6 +979,18 @@ def embedding_provider_preflight_schedule_input_from_request(
         is_enabled=payload.is_enabled,
         next_run_at=payload.next_run_at,
     )
+
+
+def scheduled_provider_route_preflight_run_payload(
+    run: ScheduledProviderRoutePreflightRun,
+) -> dict[str, object]:
+    return {
+        "schedule": embedding_provider_preflight_schedule_payload(run.schedule),
+        "status": run.status,
+        "result": run.result,
+        "updated_schedule": embedding_provider_preflight_schedule_payload(run.updated_schedule),
+        "run_record": embedding_provider_preflight_run_payload(run.run_record),
+    }
 
 
 def provider_route_retention_settings_payload(
@@ -3601,6 +3621,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     embedding_provider_preflight_schedule_payload(schedule)
                     for schedule in schedules
                 ],
+            }
+        )
+
+    @app.get("/api/admin/embedding-provider-routes/preflight-schedules/due")
+    def api_list_due_embedding_provider_preflight_schedules(
+        schedule_name: str | None = None,
+        limit: int = 20,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            schedules = list_due_embedding_provider_preflight_schedules(
+                settings.database_url,
+                schedule_name=schedule_name,
+                limit=limit,
+            )
+        except InvalidEmbeddingProviderPreflightScheduleError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content={
+                "schedule_count": len(schedules),
+                "schedules": [
+                    embedding_provider_preflight_schedule_payload(schedule)
+                    for schedule in schedules
+                ],
+            }
+        )
+
+    @app.post("/api/admin/embedding-provider-routes/preflight-schedules/run-due")
+    def api_run_due_embedding_provider_preflight_schedules(
+        payload: ProviderPreflightScheduleRunDueRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            runs = run_due_embedding_provider_preflight_schedules(
+                settings.database_url,
+                schedule_name=payload.schedule_name,
+                limit=payload.limit,
+            )
+        except InvalidEmbeddingProviderPreflightScheduleError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        failed_count = sum(1 for run in runs if run.status != "succeeded")
+        return JSONResponse(
+            content={
+                "run_count": len(runs),
+                "failed_count": failed_count,
+                "runs": [scheduled_provider_route_preflight_run_payload(run) for run in runs],
             }
         )
 
