@@ -74,6 +74,7 @@ from app.core.embedding_provider_preflight_runs import (
     EmbeddingProviderPreflightRunInput,
     EmbeddingProviderPreflightRunRecord,
     InvalidEmbeddingProviderPreflightRunError,
+    get_embedding_provider_preflight_run,
     list_embedding_provider_preflight_runs,
     record_embedding_provider_preflight_run,
 )
@@ -3815,6 +3816,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "runs": [embedding_provider_preflight_run_payload(run) for run in runs],
             }
         )
+
+    @app.get("/api/admin/embedding-provider-routes/preflight-runs/{run_id}")
+    def api_get_embedding_provider_preflight_run(run_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            run = get_embedding_provider_preflight_run(settings.database_url, run_id)
+        except InvalidEmbeddingProviderPreflightRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if run is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Provider preflight run not found.",
+            )
+        return JSONResponse(content={"run": embedding_provider_preflight_run_payload(run)})
 
     @app.post("/api/admin/embedding-provider-routes/preflight")
     def api_preflight_embedding_provider_routes(

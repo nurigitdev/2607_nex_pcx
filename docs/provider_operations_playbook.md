@@ -73,6 +73,7 @@ Recent preflight run history API:
 
 ```text
 GET /api/admin/embedding-provider-routes/preflight-runs?limit=10
+GET /api/admin/embedding-provider-routes/preflight-runs/{run_id}
 ```
 
 Operational retention settings control health snapshots, contract snapshots, and

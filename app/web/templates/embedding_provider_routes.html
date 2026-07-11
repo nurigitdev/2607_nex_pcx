@@ -442,6 +442,7 @@
   class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-preflight-run-history-panel
   data-preflight-runs-api-url="/api/admin/embedding-provider-routes/preflight-runs?limit=10"
+  data-preflight-run-detail-api-url="/api/admin/embedding-provider-routes/preflight-runs"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
 >
   <div class="dashboard-panel-header p-3">
@@ -461,16 +462,69 @@
           <th scope="col">{{ t("embedding_routes.routes_checked") }}</th>
           <th scope="col">{{ t("embedding_routes.sample_set_name") }}</th>
           <th scope="col">{{ t("embedding_routes.elapsed") }}</th>
+          <th scope="col">{{ t("embedding_routes.actions") }}</th>
         </tr>
       </thead>
       <tbody data-preflight-run-history-table>
         <tr>
-          <td class="text-secondary text-center py-4" colspan="7">
+          <td class="text-secondary text-center py-4" colspan="8">
             {% if database_configured %}{{ t("embedding_routes.loading_preflight_runs") }}{% else %}{{ t("common.no_database") }}{% endif %}
           </td>
         </tr>
       </tbody>
     </table>
+  </div>
+  <div class="border-top p-3" data-preflight-run-detail-panel>
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <h3 class="h6 mb-1">{{ t("embedding_routes.preflight_run_detail") }}</h3>
+        <div class="text-secondary small">{{ t("embedding_routes.preflight_run_detail_help") }}</div>
+      </div>
+      <span class="small text-secondary" data-preflight-run-detail-status aria-live="polite">
+        {% if database_configured %}{{ t("embedding_routes.no_preflight_run_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}
+      </span>
+    </div>
+    <section class="document-detail-grid mb-3">
+      <div class="bg-white p-3 border rounded-2">
+        <div class="metric-label">{{ t("embedding_routes.run_id") }}</div>
+        <div class="metric-value fs-5" data-preflight-run-detail-id>-</div>
+      </div>
+      <div class="bg-white p-3 border rounded-2">
+        <div class="metric-label">{{ t("embedding_routes.status") }}</div>
+        <div class="metric-value fs-5" data-preflight-run-detail-status-value>-</div>
+      </div>
+      <div class="bg-white p-3 border rounded-2">
+        <div class="metric-label">{{ t("embedding_routes.routes_checked") }}</div>
+        <div class="metric-value fs-5" data-preflight-run-detail-routes>-</div>
+      </div>
+      <div class="bg-white p-3 border rounded-2">
+        <div class="metric-label">{{ t("embedding_routes.completed_at") }}</div>
+        <div class="metric-value fs-6" data-preflight-run-detail-completed>-</div>
+      </div>
+    </section>
+    <div class="table-responsive border rounded-2 mb-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+            <th scope="col">{{ t("embedding_routes.profile") }}</th>
+            <th scope="col">{{ t("embedding_routes.status") }}</th>
+            <th scope="col">{{ t("embedding_routes.provider_model") }}</th>
+            <th scope="col">{{ t("embedding_routes.dimension") }}</th>
+            <th scope="col">{{ t("embedding_routes.elapsed") }}</th>
+            <th scope="col">{{ t("embedding_routes.validation") }}</th>
+          </tr>
+        </thead>
+        <tbody data-preflight-run-detail-routes-table>
+          <tr>
+            <td class="text-secondary text-center py-4" colspan="7">
+              {% if database_configured %}{{ t("embedding_routes.no_preflight_run_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <pre class="bg-light border rounded-2 p-3 mb-0 small overflow-auto" data-preflight-run-detail-json>{% if database_configured %}{{ t("embedding_routes.no_preflight_run_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}</pre>
   </div>
 </section>
 
@@ -790,6 +844,12 @@
     loadingPreflightRuns: {{ t("embedding_routes.loading_preflight_runs") | tojson }},
     noPreflightRuns: {{ t("embedding_routes.no_preflight_runs") | tojson }},
     preflightRunsFailed: {{ t("embedding_routes.preflight_runs_failed") | tojson }},
+    preflightRunDetailAction: {{ t("embedding_routes.preflight_run_detail_action") | tojson }},
+    loadingPreflightRunDetail: {{ t("embedding_routes.loading_preflight_run_detail") | tojson }},
+    preflightRunDetailLoaded: {{ t("embedding_routes.preflight_run_detail_loaded") | tojson }},
+    preflightRunDetailFailed: {{ t("embedding_routes.preflight_run_detail_failed") | tojson }},
+    noPreflightRunSelected: {{ t("embedding_routes.no_preflight_run_selected") | tojson }},
+    noPreflightRouteResults: {{ t("embedding_routes.no_preflight_route_results") | tojson }},
     loadingRetention: {{ t("embedding_routes.loading_retention") | tojson }},
     retentionSaved: {{ t("embedding_routes.retention_saved") | tojson }},
     retentionSaveFailed: {{ t("embedding_routes.retention_save_failed") | tojson }},
@@ -886,6 +946,19 @@
   const dueFailedCount = schedulePanel?.querySelector("[data-due-failed-count]");
   const preflightRunPanel = document.querySelector("[data-preflight-run-history-panel]");
   const preflightRunTbody = preflightRunPanel?.querySelector("[data-preflight-run-history-table]");
+  const preflightRunDetailStatus = preflightRunPanel?.querySelector("[data-preflight-run-detail-status]");
+  const preflightRunDetailId = preflightRunPanel?.querySelector("[data-preflight-run-detail-id]");
+  const preflightRunDetailStatusValue = preflightRunPanel?.querySelector(
+    "[data-preflight-run-detail-status-value]",
+  );
+  const preflightRunDetailRoutes = preflightRunPanel?.querySelector("[data-preflight-run-detail-routes]");
+  const preflightRunDetailCompleted = preflightRunPanel?.querySelector(
+    "[data-preflight-run-detail-completed]",
+  );
+  const preflightRunDetailRoutesTable = preflightRunPanel?.querySelector(
+    "[data-preflight-run-detail-routes-table]",
+  );
+  const preflightRunDetailJson = preflightRunPanel?.querySelector("[data-preflight-run-detail-json]");
   const retentionPanel = document.querySelector("[data-provider-route-retention-panel]");
   const retentionForm = retentionPanel?.querySelector("[data-retention-form]");
   const retentionStatus = retentionPanel?.querySelector("[data-retention-status]");
@@ -1500,10 +1573,143 @@
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.className = "text-secondary text-center py-4";
-    cell.colSpan = 7;
+    cell.colSpan = 8;
     cell.textContent = message;
     row.appendChild(cell);
     preflightRunTbody.appendChild(row);
+  }
+
+  function setPreflightRunDetailStatus(message, className = "text-secondary") {
+    if (!preflightRunDetailStatus) {
+      return;
+    }
+    preflightRunDetailStatus.className = `small ${className}`;
+    preflightRunDetailStatus.textContent = message;
+  }
+
+  function renderPreflightRunDetailRoutesEmpty(message) {
+    if (!preflightRunDetailRoutesTable) {
+      return;
+    }
+    preflightRunDetailRoutesTable.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 7;
+    cell.textContent = message;
+    row.appendChild(cell);
+    preflightRunDetailRoutesTable.appendChild(row);
+  }
+
+  function clearPreflightRunDetail(message = labels.noPreflightRunSelected) {
+    if (preflightRunDetailId) {
+      preflightRunDetailId.textContent = "-";
+    }
+    if (preflightRunDetailStatusValue) {
+      preflightRunDetailStatusValue.textContent = "-";
+    }
+    if (preflightRunDetailRoutes) {
+      preflightRunDetailRoutes.textContent = "-";
+    }
+    if (preflightRunDetailCompleted) {
+      preflightRunDetailCompleted.textContent = "-";
+    }
+    renderPreflightRunDetailRoutesEmpty(message);
+    if (preflightRunDetailJson) {
+      preflightRunDetailJson.textContent = message;
+    }
+  }
+
+  function preflightRouteResultValue(result, key, nestedKey = null) {
+    if (result[key] != null) {
+      return result[key];
+    }
+    if (nestedKey && result[nestedKey]?.[key] != null) {
+      return result[nestedKey][key];
+    }
+    return null;
+  }
+
+  function preflightRouteResultProvider(result) {
+    return result.provider_name || result.route?.provider_name || result.route_id || labels.none;
+  }
+
+  function preflightRouteResultProfile(result) {
+    return result.profile_name || result.route?.profile_name || labels.none;
+  }
+
+  function preflightRouteResultStatus(result) {
+    return (
+      result.contract_status
+      || result.contract?.status
+      || result.health_status
+      || result.health?.status
+      || labels.none
+    );
+  }
+
+  function preflightRouteResultValidation(result) {
+    const validation = [
+      ...(result.validation_errors || []),
+      ...(result.contract?.validation_errors || []),
+      ...(result.health?.validation_errors || []),
+      ...(result.error_message ? [result.error_message] : []),
+      ...(result.contract?.error_message ? [result.contract.error_message] : []),
+      ...(result.health?.error_message ? [result.health.error_message] : []),
+    ];
+    return validation.length ? validation.join("; ") : labels.none;
+  }
+
+  function renderPreflightRunDetail(run) {
+    const results = Array.isArray(run.result?.results) ? run.result.results : [];
+    if (preflightRunDetailId) {
+      preflightRunDetailId.textContent = String(run.run_id ?? labels.none);
+    }
+    if (preflightRunDetailStatusValue) {
+      preflightRunDetailStatusValue.textContent = run.status || labels.none;
+    }
+    if (preflightRunDetailRoutes) {
+      preflightRunDetailRoutes.textContent = `${run.passed_count}/${run.route_count}`;
+    }
+    if (preflightRunDetailCompleted) {
+      preflightRunDetailCompleted.textContent = formatDateTime(run.completed_at);
+    }
+    if (preflightRunDetailJson) {
+      preflightRunDetailJson.textContent = JSON.stringify(run.result || {}, null, 2);
+    }
+    if (!preflightRunDetailRoutesTable) {
+      return;
+    }
+    preflightRunDetailRoutesTable.replaceChildren();
+    if (!results.length) {
+      renderPreflightRunDetailRoutesEmpty(labels.noPreflightRouteResults);
+      return;
+    }
+    for (const result of results) {
+      const row = document.createElement("tr");
+      appendTextCell(row, preflightRouteResultProvider(result));
+      appendTextCell(row, preflightRouteResultProfile(result));
+
+      const statusCell = document.createElement("td");
+      const badge = document.createElement("span");
+      const passed = result.contract_passed ?? result.contract?.passed;
+      badge.className = passed === true
+        ? "badge text-bg-success"
+        : passed === false
+          ? "badge text-bg-danger"
+          : "badge text-bg-light border";
+      badge.textContent = preflightRouteResultStatus(result);
+      statusCell.appendChild(badge);
+      row.appendChild(statusCell);
+
+      appendTextCell(row, preflightRouteResultValue(result, "provider_model_id", "contract"));
+      const dimension = preflightRouteResultValue(result, "dimension", "contract");
+      appendTextCell(row, dimension == null ? labels.none : `${dimension}d`);
+      const elapsed = preflightRouteResultValue(result, "elapsed_ms", "contract");
+      appendTextCell(row, elapsed == null ? labels.none : `${elapsed}ms`);
+      appendTextCell(row, preflightRouteResultValidation(result));
+      preflightRunDetailRoutesTable.appendChild(row);
+    }
   }
 
   function renderPreflightRuns(runs) {
@@ -1513,6 +1719,7 @@
     preflightRunTbody.replaceChildren();
     if (!runs.length) {
       renderPreflightRunsEmpty(labels.noPreflightRuns);
+      clearPreflightRunDetail(labels.noPreflightRunSelected);
       return;
     }
 
@@ -1536,6 +1743,16 @@
       appendTextCell(row, `${run.passed_count}/${run.route_count}`);
       appendTextCell(row, run.sample_set_name);
       appendTextCell(row, run.elapsed_ms == null ? labels.none : `${run.elapsed_ms}ms`);
+
+      const actionCell = document.createElement("td");
+      const detailButton = document.createElement("button");
+      detailButton.className = "btn btn-outline-primary btn-sm";
+      detailButton.type = "button";
+      detailButton.textContent = labels.preflightRunDetailAction;
+      detailButton.addEventListener("click", () => loadPreflightRunDetail(run.run_id));
+      actionCell.appendChild(detailButton);
+      row.appendChild(actionCell);
+
       preflightRunTbody.appendChild(row);
     }
   }
@@ -1723,6 +1940,7 @@
     }
     if (preflightRunPanel.dataset.databaseConfigured !== "true") {
       renderPreflightRunsEmpty(labels.noDatabase);
+      clearPreflightRunDetail(labels.noDatabase);
       return;
     }
     try {
@@ -1737,6 +1955,36 @@
       renderPreflightRuns(body.runs || []);
     } catch (error) {
       renderPreflightRunsEmpty(error.message || labels.preflightRunsFailed);
+    }
+  }
+
+  async function loadPreflightRunDetail(runId) {
+    if (!preflightRunPanel || !runId) {
+      return;
+    }
+    if (preflightRunPanel.dataset.databaseConfigured !== "true") {
+      clearPreflightRunDetail(labels.noDatabase);
+      setPreflightRunDetailStatus(labels.noDatabase);
+      return;
+    }
+    try {
+      setPreflightRunDetailStatus(labels.loadingPreflightRunDetail);
+      const response = await fetch(
+        `${preflightRunPanel.dataset.preflightRunDetailApiUrl}/${encodeURIComponent(runId)}`,
+        {headers: {Accept: "application/json"}},
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.preflightRunDetailFailed);
+      }
+      renderPreflightRunDetail(body.run || {});
+      setPreflightRunDetailStatus(labels.preflightRunDetailLoaded, "text-success");
+    } catch (error) {
+      clearPreflightRunDetail(error.message || labels.preflightRunDetailFailed);
+      setPreflightRunDetailStatus(
+        error.message || labels.preflightRunDetailFailed,
+        "text-danger",
+      );
     }
   }
 

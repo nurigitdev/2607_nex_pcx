@@ -96,6 +96,8 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-run-due" in response.text
     assert "Preflight 실행 이력" in response.text
     assert "data-preflight-run-history-panel" in response.text
+    assert "data-preflight-run-detail-panel" in response.text
+    assert "data-preflight-run-detail-routes-table" in response.text
     assert "운영 데이터 보존 설정" in response.text
     assert "data-provider-route-retention-panel" in response.text
     assert "Health Snapshot 이력" in response.text
@@ -118,6 +120,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "/api/admin/embedding-provider-routes/preflight-schedules/due" in response.text
     assert "/api/admin/embedding-provider-routes/preflight-schedules/run-due" in response.text
     assert "/api/admin/embedding-provider-routes/preflight-runs?limit=10" in response.text
+    assert "/api/admin/embedding-provider-routes/preflight-runs" in response.text
     assert "/api/admin/embedding-provider-routes/retention-settings" in response.text
     assert "/api/admin/embedding-provider-routes/cleanup" in response.text
     assert "/api/admin/embedding-provider-routes/health-snapshots?limit=10" in response.text
@@ -193,6 +196,16 @@ def test_embedding_provider_operations_summary_api_requires_database_url() -> No
 
     with TestClient(app) as client:
         response = client.get("/api/admin/embedding-provider-routes/operations-summary")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
+
+
+def test_embedding_provider_preflight_run_detail_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.get("/api/admin/embedding-provider-routes/preflight-runs/1")
 
     assert response.status_code == 503
     assert response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."

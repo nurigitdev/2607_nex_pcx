@@ -149,6 +149,26 @@ def list_embedding_provider_preflight_runs(
     return [_row_to_preflight_run_record(dict(row)) for row in rows]
 
 
+def get_embedding_provider_preflight_run(
+    database_url: str,
+    run_id: int,
+) -> EmbeddingProviderPreflightRunRecord | None:
+    if run_id <= 0:
+        raise InvalidEmbeddingProviderPreflightRunError("run_id must be greater than 0")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM embedding_provider_preflight_runs
+                WHERE run_id = %s
+                """,
+                (run_id,),
+            )
+            row = cursor.fetchone()
+    return _row_to_preflight_run_record(dict(row)) if row is not None else None
+
+
 def validate_embedding_provider_preflight_run_input(
     run_input: EmbeddingProviderPreflightRunInput,
 ) -> EmbeddingProviderPreflightRunInput:

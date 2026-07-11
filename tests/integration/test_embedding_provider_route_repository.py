@@ -14,7 +14,10 @@ from app.core.embedding_provider_contract_sample_sets import (
     list_embedding_provider_contract_sample_sets,
     upsert_embedding_provider_contract_sample_set,
 )
-from app.core.embedding_provider_preflight_runs import list_embedding_provider_preflight_runs
+from app.core.embedding_provider_preflight_runs import (
+    get_embedding_provider_preflight_run,
+    list_embedding_provider_preflight_runs,
+)
 from app.core.embedding_provider_route_contract_snapshots import (
     InvalidEmbeddingProviderRouteContractSnapshotError,
     list_embedding_provider_route_contract_snapshots,
@@ -508,6 +511,8 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                 in page_response.text
             )
             assert "data-preflight-run-history-panel" in page_response.text
+            assert "data-preflight-run-detail-panel" in page_response.text
+            assert "data-preflight-run-detail-routes-table" in page_response.text
             assert (
                 "/api/admin/embedding-provider-routes/preflight-runs?limit=10" in page_response.text
             )
@@ -941,13 +946,23 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
             operations_response = client.get(
                 "/api/admin/embedding-provider-routes/operations-summary"
             )
+            created_run_id = response.json()["preflight_run"]["run_id"]
+            detail_response = client.get(
+                f"/api/admin/embedding-provider-routes/preflight-runs/{created_run_id}"
+            )
+            invalid_detail_response = client.get(
+                "/api/admin/embedding-provider-routes/preflight-runs/0"
+            )
 
         assert response.status_code == 200
         assert history_response.status_code == 200
         assert operations_response.status_code == 200
+        assert detail_response.status_code == 200
+        assert invalid_detail_response.status_code == 400
         body = response.json()
         preflight_run = body["preflight_run"]
         operations_summary = operations_response.json()["operations_summary"]
+        detail = detail_response.json()["run"]
         route_results = [
             result
             for result in body["results"]
@@ -970,6 +985,15 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
         assert route_result["contract_snapshot"]["route_id"] == route.route_id
         assert route_result["contract_snapshot"]["status"] == "passed"
         assert preflight_run["run_id"] in [run["run_id"] for run in history_response.json()["runs"]]
+        assert detail["run_id"] == preflight_run["run_id"]
+        assert detail["result"]["sample_set"]["sample_set_name"] == "default_route_contract"
+        detail_route_results = [
+            result
+            for result in detail["result"]["results"]
+            if result["route"]["provider_name"] == provider_name
+        ]
+        assert detail_route_results
+        assert detail_route_results[0]["contract"]["status"] == "passed"
         assert operations_summary["active_route_count"] >= 1
         assert operations_summary["ready_route_count"] >= 1
         assert operations_summary["latest_preflight_run"] is not None
@@ -996,6 +1020,13 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
                 limit=10,
             )
         ]
+        assert (
+            get_embedding_provider_preflight_run(
+                migrated_database_url,
+                preflight_run["run_id"],
+            ).run_id
+            == preflight_run["run_id"]
+        )
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])
 
