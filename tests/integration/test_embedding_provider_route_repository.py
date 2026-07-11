@@ -243,6 +243,11 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                 f"/api/admin/embedding-provider-routes/{route['route_id']}/health-check"
                 in page_response.text
             )
+            assert "data-contract-button" in page_response.text
+            assert (
+                f"/api/admin/embedding-provider-routes/{route['route_id']}/contract-check"
+                in page_response.text
+            )
             assert "data-route-health-history-panel" in page_response.text
             assert (
                 "/api/admin/embedding-provider-routes/health-snapshots?limit=10"

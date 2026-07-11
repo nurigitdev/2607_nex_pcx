@@ -197,13 +197,22 @@
             {% endif %}
           </td>
           <td>
-            <button
-              class="btn btn-outline-primary btn-sm"
-              type="button"
-              data-manual-health-button
-              data-health-action-url="/api/admin/embedding-provider-routes/{{ route.route_id }}/health-check"
-            >{{ t("embedding_routes.run_health_check") }}</button>
+            <div class="d-flex flex-wrap gap-2">
+              <button
+                class="btn btn-outline-primary btn-sm"
+                type="button"
+                data-manual-health-button
+                data-health-action-url="/api/admin/embedding-provider-routes/{{ route.route_id }}/health-check"
+              >{{ t("embedding_routes.run_health_check") }}</button>
+              <button
+                class="btn btn-outline-secondary btn-sm"
+                type="button"
+                data-contract-button
+                data-contract-action-url="/api/admin/embedding-provider-routes/{{ route.route_id }}/contract-check"
+              >{{ t("embedding_routes.run_contract_check") }}</button>
+            </div>
             <div class="small text-secondary mt-1" data-manual-health-status></div>
+            <div class="small text-secondary mt-1" data-contract-status></div>
           </td>
         </tr>
         {% else %}
@@ -235,6 +244,10 @@
     manualChecking: {{ t("embedding_routes.manual_checking") | tojson }},
     manualSaved: {{ t("embedding_routes.manual_snapshot_saved") | tojson }},
     manualFailed: {{ t("embedding_routes.manual_check_failed") | tojson }},
+    contractChecking: {{ t("embedding_routes.contract_checking") | tojson }},
+    contractPassed: {{ t("embedding_routes.contract_passed") | tojson }},
+    contractFailed: {{ t("embedding_routes.contract_failed") | tojson }},
+    contractCheckFailed: {{ t("embedding_routes.contract_check_failed") | tojson }},
     loadingHistory: {{ t("embedding_routes.loading_history") | tojson }},
     noSnapshots: {{ t("embedding_routes.no_health_snapshots") | tojson }},
     none: "-",
@@ -267,6 +280,15 @@
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
+    if (!statusNode) {
+      return;
+    }
+    statusNode.className = `small mt-1 ${className}`;
+    statusNode.textContent = message;
+  }
+
+  function setContractStatus(button, message, className = "text-secondary") {
+    const statusNode = button.closest("td")?.querySelector("[data-contract-status]");
     if (!statusNode) {
       return;
     }
@@ -485,7 +507,68 @@
     });
   }
 
+  function contractStatusMessage(contract) {
+    const parts = [contract.passed ? labels.contractPassed : labels.contractFailed];
+    if (contract.provider_model_id) {
+      parts.push(contract.provider_model_id);
+    }
+    if (contract.dimension != null) {
+      parts.push(`${contract.dimension}d`);
+    }
+    if (contract.elapsed_ms != null) {
+      parts.push(`${contract.elapsed_ms}ms`);
+    }
+    const detailMessages = [
+      ...(contract.validation_errors || []),
+      ...(contract.error_message ? [contract.error_message] : []),
+    ];
+    if (detailMessages.length) {
+      return `${parts.join(" · ")}: ${detailMessages.join("; ")}`;
+    }
+    return parts.join(" · ");
+  }
+
+  function contractStatusClass(contract) {
+    if (contract.passed) {
+      return "text-success";
+    }
+    if (contract.status === "mismatch" || contract.status?.startsWith("health_mismatch")) {
+      return "text-warning";
+    }
+    return "text-danger";
+  }
+
+  function wireContractButtons() {
+    document.querySelectorAll("[data-contract-button]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = labels.contractChecking;
+        setContractStatus(button, labels.contractChecking);
+
+        try {
+          const response = await fetch(button.dataset.contractActionUrl, {
+            method: "POST",
+            headers: {Accept: "application/json"},
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            throw new Error(body.detail || labels.contractCheckFailed);
+          }
+          const contract = body.contract || {};
+          setContractStatus(button, contractStatusMessage(contract), contractStatusClass(contract));
+        } catch (error) {
+          setContractStatus(button, error.message || labels.contractCheckFailed, "text-danger");
+        } finally {
+          button.disabled = false;
+          button.textContent = originalText;
+        }
+      });
+    });
+  }
+
   wireManualHealthButtons();
+  wireContractButtons();
   loadHealth();
   loadHistory();
 })();
