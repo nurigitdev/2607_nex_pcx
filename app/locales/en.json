@@ -62,6 +62,21 @@
     "hidden": "Hidden",
     "no_evaluation_runs": "No evaluation runs found"
   },
+  "embedding_backlog": {
+    "title": "Embedding Queue Backlog",
+    "help": "Summarizes queue, failure, and stale lease state by profile.",
+    "claimable": "Claimable",
+    "pending": "Pending",
+    "retryable_failed": "Retryable Failed",
+    "attention": "Attention",
+    "profile": "Profile",
+    "running": "Running",
+    "stale": "Stale",
+    "failed": "Failed",
+    "retryable": "Retryable",
+    "oldest_pending": "Oldest Pending",
+    "no_jobs": "No embedding jobs found."
+  },
   "embedding_models": {
     "title": "Embedding Model Readiness",
     "subtitle": "Check the local models bundle download state and profile mapping.",

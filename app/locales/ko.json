@@ -62,6 +62,21 @@
     "hidden": "숨김",
     "no_evaluation_runs": "평가 실행이 없습니다."
   },
+  "embedding_backlog": {
+    "title": "임베딩 Queue Backlog",
+    "help": "profile별 대기열, 실패, lease 만료 상태를 요약합니다.",
+    "claimable": "Claimable",
+    "pending": "Pending",
+    "retryable_failed": "Retryable Failed",
+    "attention": "Attention",
+    "profile": "Profile",
+    "running": "Running",
+    "stale": "Stale",
+    "failed": "Failed",
+    "retryable": "Retryable",
+    "oldest_pending": "Oldest Pending",
+    "no_jobs": "임베딩 job이 없습니다."
+  },
   "embedding_models": {
     "title": "임베딩 모델 준비도",
     "subtitle": "로컬 models bundle의 다운로드 상태와 profile 매핑을 확인합니다.",

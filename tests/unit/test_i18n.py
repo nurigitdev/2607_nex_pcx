@@ -35,6 +35,10 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("embedding_batch_runs.retry_complete") == (
         "Retry requested: {retried_count} retried, {skipped_count} skipped"
     )
+    assert korean("embedding_backlog.title") == "임베딩 Queue Backlog"
+    assert english("embedding_backlog.help") == (
+        "Summarizes queue, failure, and stale lease state by profile."
+    )
     assert korean("nav.embedding_routes") == "Provider 라우팅"
     assert english("embedding_routes.title") == "Embedding Provider Routing"
     assert korean("embedding_routes.playbook") == "운영 Playbook"

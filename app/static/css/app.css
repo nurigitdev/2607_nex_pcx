@@ -674,6 +674,30 @@ main.container-fluid {
   font-weight: 700;
 }
 
+.job-filter-form .form-select {
+  min-width: 8rem;
+}
+
+.job-filter-form #profile_name {
+  min-width: 13rem;
+}
+
+.embedding-backlog-summary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.embedding-backlog-table th,
+.embedding-backlog-table td {
+  white-space: nowrap;
+}
+
+.embedding-backlog-table td:first-child {
+  min-width: 12rem;
+  white-space: normal;
+}
+
 .batch-run-filter-form .form-control,
 .batch-run-filter-form .form-select {
   min-width: 0;
@@ -2580,6 +2604,7 @@ main.container-fluid {
   .design-principle-grid,
   .design-token-layout,
   .document-detail-grid,
+  .embedding-backlog-summary-grid,
   .feedback-comment-list,
   .feedback-summary-grid,
   .golden-fieldset,

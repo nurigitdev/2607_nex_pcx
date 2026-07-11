@@ -7,7 +7,12 @@ from psycopg.types.json import Json
 
 from app.core.config import Settings
 from app.core.database import connect
-from app.core.embedding_jobs import EmbeddingJobInput, create_embedding_job, mark_embedding_job_failed
+from app.core.embedding_jobs import (
+    EmbeddingJobInput,
+    create_embedding_job,
+    get_embedding_job_backlog_summary,
+    mark_embedding_job_failed,
+)
 from app.core.embedding_worker import process_next_mock_embedding_job
 from app.main import create_app
 
@@ -73,6 +78,40 @@ def _cleanup_file(database_url: str, file_id: int) -> None:
             cursor.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
 
 
+def _cleanup_files_and_profile(
+    database_url: str,
+    file_ids: list[int],
+    profile_name: str,
+) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM files WHERE file_id = ANY(%s)", (file_ids,))
+            cursor.execute(
+                "DELETE FROM embedding_profiles WHERE profile_name = %s",
+                (profile_name,),
+            )
+
+
+def _create_test_embedding_profile(database_url: str) -> str:
+    profile_name = f"slice_145_{uuid4().hex}"
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO embedding_profiles (
+                    profile_name,
+                    model_name,
+                    dimension,
+                    storage_type,
+                    is_active
+                )
+                VALUES (%s, 'example/slice-145-model', 3, 'vector', true)
+                """,
+                (profile_name,),
+            )
+    return profile_name
+
+
 def _update_embedding_job_runtime_metadata(
     database_url: str,
     job_id: int,
@@ -88,6 +127,125 @@ def _update_embedding_job_runtime_metadata(
                 """,
                 (Json(runtime_metadata), job_id),
             )
+
+
+def test_embedding_job_backlog_summary_api_and_ui(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    profile_name = _create_test_embedding_profile(migrated_database_url)
+    file_ids: list[int] = []
+    try:
+        job_ids: list[int] = []
+        for label in ["pending", "stale", "running", "retryable", "exhausted"]:
+            file_id, chunk_id = _create_chunk(
+                migrated_database_url,
+                f"Embedding backlog {label} fixture",
+            )
+            file_ids.append(file_id)
+            created = create_embedding_job(
+                migrated_database_url,
+                EmbeddingJobInput(
+                    chunk_id=chunk_id,
+                    profile_name=profile_name,
+                    max_attempts=3,
+                ),
+            )
+            job_ids.append(created.job.job_id)
+
+        with connect(migrated_database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE embedding_jobs
+                    SET status = 'running',
+                        attempts = 1,
+                        lease_owner = 'stale-worker',
+                        lease_expires_at = now() - interval '5 minutes',
+                        started_at = now() - interval '10 minutes',
+                        updated_at = now()
+                    WHERE job_id = %s
+                    """,
+                    (job_ids[1],),
+                )
+                cursor.execute(
+                    """
+                    UPDATE embedding_jobs
+                    SET status = 'running',
+                        attempts = 1,
+                        lease_owner = 'active-worker',
+                        lease_expires_at = now() + interval '5 minutes',
+                        started_at = now(),
+                        updated_at = now()
+                    WHERE job_id = %s
+                    """,
+                    (job_ids[2],),
+                )
+
+        retryable_failed = mark_embedding_job_failed(
+            migrated_database_url,
+            job_ids[3],
+            error_code="SLICE_145_RETRYABLE",
+            error_message="retryable provider failure",
+        )
+        exhausted_failed = mark_embedding_job_failed(
+            migrated_database_url,
+            job_ids[4],
+            error_code="SLICE_145_EXHAUSTED",
+            error_message="exhausted provider failure",
+        )
+        assert retryable_failed is not None
+        assert exhausted_failed is not None
+        with connect(migrated_database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE embedding_jobs
+                    SET attempts = max_attempts
+                    WHERE job_id = %s
+                    """,
+                    (exhausted_failed.job_id,),
+                )
+
+        summary = get_embedding_job_backlog_summary(migrated_database_url)
+        profile_summary = next(
+            item for item in summary.profile_summaries if item.profile_name == profile_name
+        )
+        app = create_app(
+            Settings(database_url=migrated_database_url, upload_storage_dir=tmp_path),
+        )
+
+        with TestClient(app) as client:
+            api_response = client.get("/api/admin/embedding-jobs/backlog-summary")
+            page_response = client.get("/admin/embedding-jobs")
+
+        api_profile = next(
+            item
+            for item in api_response.json()["backlog"]["profiles"]
+            if item["profile_name"] == profile_name
+        )
+
+        assert profile_summary.total_count == 5
+        assert profile_summary.pending_count == 1
+        assert profile_summary.running_count == 2
+        assert profile_summary.stale_running_count == 1
+        assert profile_summary.reclaimable_stale_running_count == 1
+        assert profile_summary.failed_count == 2
+        assert profile_summary.retryable_failed_count == 1
+        assert profile_summary.exhausted_failed_count == 1
+        assert profile_summary.claimable_count == 2
+        assert profile_summary.attention_count == 3
+        assert api_response.status_code == 200
+        assert api_response.json()["backlog"]["claimable_count"] >= 2
+        assert api_profile["claimable_count"] == 2
+        assert api_profile["attention_count"] == 3
+        assert api_profile["oldest_pending_at"] is not None
+        assert page_response.status_code == 200
+        assert "임베딩 Queue Backlog" in page_response.text
+        assert "/api/admin/embedding-jobs/backlog-summary" in page_response.text
+        assert profile_name in page_response.text
+    finally:
+        _cleanup_files_and_profile(migrated_database_url, file_ids, profile_name)
 
 
 def test_embedding_job_monitor_api_and_ui(
@@ -197,7 +355,10 @@ def test_embedding_job_monitor_shows_readiness_gate_failure(
             migrated_database_url,
             created.job.job_id,
             error_code="EMBEDDING_PROVIDER_ROUTE_NOT_READY",
-            error_message="No provider route passed the readiness gate (gpu-blocked:needs_contract)",
+            error_message=(
+                "No provider route passed the readiness gate "
+                "(gpu-blocked:needs_contract)"
+            ),
             runtime_metadata={
                 "provider_route_readiness_gate": "blocked_all_routes",
                 "provider_route_readiness_blocked_count": 1,

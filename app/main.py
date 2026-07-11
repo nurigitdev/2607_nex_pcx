@@ -48,10 +48,13 @@ from app.core.document_inventory import (
     update_document_permission,
 )
 from app.core.embedding_jobs import (
+    EmbeddingJobBacklogProfileSummary,
+    EmbeddingJobBacklogSummary,
     EmbeddingJobRecord,
     EmbeddingProfileRecord,
     InvalidEmbeddingJobError,
     get_embedding_job,
+    get_embedding_job_backlog_summary,
     list_active_embedding_profiles,
     list_embedding_jobs,
     retry_embedding_job,
@@ -728,6 +731,53 @@ def embedding_job_payload(job: EmbeddingJobRecord) -> dict[str, object]:
         "started_at": _datetime_response(job.started_at),
         "finished_at": _datetime_response(job.finished_at),
         "updated_at": _datetime_response(job.updated_at),
+    }
+
+
+def embedding_job_backlog_profile_payload(
+    profile_summary: EmbeddingJobBacklogProfileSummary,
+) -> dict[str, object]:
+    return {
+        "profile_name": profile_summary.profile_name,
+        "total_count": profile_summary.total_count,
+        "pending_count": profile_summary.pending_count,
+        "running_count": profile_summary.running_count,
+        "stale_running_count": profile_summary.stale_running_count,
+        "reclaimable_stale_running_count": profile_summary.reclaimable_stale_running_count,
+        "failed_count": profile_summary.failed_count,
+        "retryable_failed_count": profile_summary.retryable_failed_count,
+        "exhausted_failed_count": profile_summary.exhausted_failed_count,
+        "succeeded_count": profile_summary.succeeded_count,
+        "skipped_count": profile_summary.skipped_count,
+        "claimable_count": profile_summary.claimable_count,
+        "attention_count": profile_summary.attention_count,
+        "oldest_pending_at": _datetime_response(profile_summary.oldest_pending_at),
+        "oldest_stale_lease_expires_at": _datetime_response(
+            profile_summary.oldest_stale_lease_expires_at
+        ),
+    }
+
+
+def embedding_job_backlog_summary_payload(
+    summary: EmbeddingJobBacklogSummary,
+) -> dict[str, object]:
+    return {
+        "total_count": summary.total_count,
+        "pending_count": summary.pending_count,
+        "running_count": summary.running_count,
+        "stale_running_count": summary.stale_running_count,
+        "reclaimable_stale_running_count": summary.reclaimable_stale_running_count,
+        "failed_count": summary.failed_count,
+        "retryable_failed_count": summary.retryable_failed_count,
+        "exhausted_failed_count": summary.exhausted_failed_count,
+        "succeeded_count": summary.succeeded_count,
+        "skipped_count": summary.skipped_count,
+        "claimable_count": summary.claimable_count,
+        "attention_count": summary.attention_count,
+        "profiles": [
+            embedding_job_backlog_profile_payload(profile_summary)
+            for profile_summary in summary.profile_summaries
+        ],
     }
 
 
@@ -4271,6 +4321,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content={"jobs": [embedding_job_payload(job) for job in jobs]})
 
+    @app.get("/api/admin/embedding-jobs/backlog-summary")
+    def api_get_embedding_job_backlog_summary() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        summary = get_embedding_job_backlog_summary(settings.database_url)
+        return JSONResponse(content={"backlog": embedding_job_backlog_summary_payload(summary)})
+
     @app.get("/api/embedding/jobs/{job_id}")
     def api_get_embedding_job(job_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -6170,12 +6231,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         jobs: list[EmbeddingJobRecord] = []
         selected_job = None
         selected_vector = None
+        backlog_summary: EmbeddingJobBacklogSummary | None = None
+        profiles: list[EmbeddingProfileRecord] = []
         error_message = None
 
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
+                backlog_summary = get_embedding_job_backlog_summary(settings.database_url)
+                profiles = list_active_embedding_profiles(settings.database_url)
                 jobs = list_embedding_jobs(
                     settings.database_url,
                     status=status_filter,
@@ -6205,6 +6270,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 jobs=jobs,
                 selected_job=selected_job,
                 selected_vector=selected_vector,
+                backlog_summary=backlog_summary,
+                profiles=profiles,
                 selected_status=status_filter or "",
                 selected_profile_name=profile_name or "",
                 selected_job_id=job_id,

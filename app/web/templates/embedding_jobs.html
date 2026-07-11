@@ -17,8 +17,8 @@
     <label class="form-label mb-0 text-secondary" for="profile_name">Profile</label>
     <select class="form-select form-select-sm" id="profile_name" name="profile_name" onchange="this.form.submit()">
       <option value="" {% if not selected_profile_name %}selected{% endif %}>All</option>
-      {% for profile in ["kure_v1_1024", "bge_m3_1024", "qwen3_4b_1000", "qwen3_4b_2560"] %}
-      <option value="{{ profile }}" {% if selected_profile_name == profile %}selected{% endif %}>{{ profile }}</option>
+      {% for profile in profiles %}
+      <option value="{{ profile.profile_name }}" {% if selected_profile_name == profile.profile_name %}selected{% endif %}>{{ profile.profile_name }}</option>
       {% endfor %}
     </select>
   </form>
@@ -27,6 +27,82 @@
 {% if error_message %}
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-embedding-backlog-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_backlog.title") }}</h2>
+      <div class="text-secondary">{{ t("embedding_backlog.help") }}</div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/api/admin/embedding-jobs/backlog-summary">{{ t("common.api") }}</a>
+  </div>
+  {% if backlog_summary %}
+  <div class="embedding-backlog-summary-grid p-3 border-top">
+    <div class="metric-card bg-light p-3">
+      <div class="metric-label">{{ t("embedding_backlog.claimable") }}</div>
+      <div class="metric-value fs-4">{{ backlog_summary.claimable_count }}</div>
+    </div>
+    <div class="metric-card bg-light p-3">
+      <div class="metric-label">{{ t("embedding_backlog.pending") }}</div>
+      <div class="metric-value fs-4">{{ backlog_summary.pending_count }}</div>
+    </div>
+    <div class="metric-card bg-light p-3">
+      <div class="metric-label">{{ t("embedding_backlog.retryable_failed") }}</div>
+      <div class="metric-value fs-4">{{ backlog_summary.retryable_failed_count }}</div>
+    </div>
+    <div class="metric-card bg-light p-3">
+      <div class="metric-label">{{ t("embedding_backlog.attention") }}</div>
+      <div class="metric-value fs-4">{{ backlog_summary.attention_count }}</div>
+    </div>
+  </div>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0 embedding-backlog-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_backlog.profile") }}</th>
+          <th scope="col">{{ t("embedding_backlog.claimable") }}</th>
+          <th scope="col">{{ t("embedding_backlog.pending") }}</th>
+          <th scope="col">{{ t("embedding_backlog.running") }}</th>
+          <th scope="col">{{ t("embedding_backlog.stale") }}</th>
+          <th scope="col">{{ t("embedding_backlog.failed") }}</th>
+          <th scope="col">{{ t("embedding_backlog.retryable") }}</th>
+          <th scope="col">{{ t("embedding_backlog.oldest_pending") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for profile in backlog_summary.profile_summaries %}
+        <tr>
+          <td class="text-break">
+            <a class="job-link" href="/admin/embedding-jobs?profile_name={{ profile.profile_name|urlencode }}">{{ profile.profile_name }}</a>
+          </td>
+          <td>{{ profile.claimable_count }}</td>
+          <td>{{ profile.pending_count }}</td>
+          <td>{{ profile.running_count }}</td>
+          <td>{{ profile.stale_running_count }}</td>
+          <td>{{ profile.failed_count }}</td>
+          <td>{{ profile.retryable_failed_count }}</td>
+          <td>
+            {% if profile.oldest_pending_at %}
+            {{ profile.oldest_pending_at.strftime("%Y-%m-%d %H:%M:%S") }}
+            {% else %}
+            -
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="8">{{ t("embedding_backlog.no_jobs") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-secondary text-center py-5">
+    {% if database_configured %}{{ t("embedding_backlog.no_jobs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+  </div>
+  {% endif %}
+</section>
 
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="table-responsive">

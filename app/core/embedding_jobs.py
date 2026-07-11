@@ -64,6 +64,62 @@ class CreateEmbeddingJobResult:
     created: bool
 
 
+@dataclass(frozen=True)
+class EmbeddingJobBacklogProfileSummary:
+    profile_name: str
+    total_count: int
+    pending_count: int
+    running_count: int
+    stale_running_count: int
+    reclaimable_stale_running_count: int
+    failed_count: int
+    retryable_failed_count: int
+    exhausted_failed_count: int
+    succeeded_count: int
+    skipped_count: int
+    oldest_pending_at: datetime | None
+    oldest_stale_lease_expires_at: datetime | None
+
+    @property
+    def claimable_count(self) -> int:
+        return self.pending_count + self.reclaimable_stale_running_count
+
+    @property
+    def attention_count(self) -> int:
+        return (
+            self.retryable_failed_count
+            + self.exhausted_failed_count
+            + self.stale_running_count
+        )
+
+
+@dataclass(frozen=True)
+class EmbeddingJobBacklogSummary:
+    profile_summaries: tuple[EmbeddingJobBacklogProfileSummary, ...]
+    total_count: int
+    pending_count: int
+    running_count: int
+    stale_running_count: int
+    reclaimable_stale_running_count: int
+    failed_count: int
+    retryable_failed_count: int
+    exhausted_failed_count: int
+    succeeded_count: int
+    skipped_count: int
+
+    @property
+    def claimable_count(self) -> int:
+        return self.pending_count + self.reclaimable_stale_running_count
+
+    @property
+    def attention_count(self) -> int:
+        return (
+            self.retryable_failed_count
+            + self.exhausted_failed_count
+            + self.stale_running_count
+        )
+
+
 class InvalidEmbeddingJobError(ValueError):
     """Raised when an embedding job operation is invalid before reaching the DB."""
 
@@ -158,6 +214,26 @@ def _row_to_embedding_job_record(row: dict[str, Any]) -> EmbeddingJobRecord:
         started_at=row["started_at"],
         finished_at=row["finished_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _row_to_embedding_job_backlog_profile_summary(
+    row: dict[str, Any],
+) -> EmbeddingJobBacklogProfileSummary:
+    return EmbeddingJobBacklogProfileSummary(
+        profile_name=str(row["profile_name"]),
+        total_count=int(row["total_count"]),
+        pending_count=int(row["pending_count"]),
+        running_count=int(row["running_count"]),
+        stale_running_count=int(row["stale_running_count"]),
+        reclaimable_stale_running_count=int(row["reclaimable_stale_running_count"]),
+        failed_count=int(row["failed_count"]),
+        retryable_failed_count=int(row["retryable_failed_count"]),
+        exhausted_failed_count=int(row["exhausted_failed_count"]),
+        succeeded_count=int(row["succeeded_count"]),
+        skipped_count=int(row["skipped_count"]),
+        oldest_pending_at=row["oldest_pending_at"],
+        oldest_stale_lease_expires_at=row["oldest_stale_lease_expires_at"],
     )
 
 
@@ -279,6 +355,72 @@ def list_embedding_jobs(
             )
             rows = cursor.fetchall()
     return [_row_to_embedding_job_record(dict(row)) for row in rows]
+
+
+def get_embedding_job_backlog_summary(database_url: str) -> EmbeddingJobBacklogSummary:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    profile_name,
+                    COUNT(*)::int AS total_count,
+                    COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_count,
+                    COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'running'
+                          AND lease_expires_at < now()
+                    )::int AS stale_running_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'running'
+                          AND lease_expires_at < now()
+                          AND attempts < max_attempts
+                    )::int AS reclaimable_stale_running_count,
+                    COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'failed'
+                          AND attempts < max_attempts
+                    )::int AS retryable_failed_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'failed'
+                          AND attempts >= max_attempts
+                    )::int AS exhausted_failed_count,
+                    COUNT(*) FILTER (WHERE status = 'succeeded')::int AS succeeded_count,
+                    COUNT(*) FILTER (WHERE status = 'skipped')::int AS skipped_count,
+                    MIN(created_at) FILTER (WHERE status = 'pending') AS oldest_pending_at,
+                    MIN(lease_expires_at) FILTER (
+                        WHERE status = 'running'
+                          AND lease_expires_at < now()
+                    ) AS oldest_stale_lease_expires_at
+                FROM embedding_jobs
+                GROUP BY profile_name
+                ORDER BY profile_name ASC
+                """
+            )
+            rows = cursor.fetchall()
+
+    profile_summaries = tuple(
+        _row_to_embedding_job_backlog_profile_summary(dict(row)) for row in rows
+    )
+    return EmbeddingJobBacklogSummary(
+        profile_summaries=profile_summaries,
+        total_count=sum(summary.total_count for summary in profile_summaries),
+        pending_count=sum(summary.pending_count for summary in profile_summaries),
+        running_count=sum(summary.running_count for summary in profile_summaries),
+        stale_running_count=sum(summary.stale_running_count for summary in profile_summaries),
+        reclaimable_stale_running_count=sum(
+            summary.reclaimable_stale_running_count for summary in profile_summaries
+        ),
+        failed_count=sum(summary.failed_count for summary in profile_summaries),
+        retryable_failed_count=sum(
+            summary.retryable_failed_count for summary in profile_summaries
+        ),
+        exhausted_failed_count=sum(
+            summary.exhausted_failed_count for summary in profile_summaries
+        ),
+        succeeded_count=sum(summary.succeeded_count for summary in profile_summaries),
+        skipped_count=sum(summary.skipped_count for summary in profile_summaries),
+    )
 
 
 def create_embedding_job_in_connection(

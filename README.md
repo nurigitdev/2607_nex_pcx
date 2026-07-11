@@ -252,6 +252,8 @@ reason, elapsed time, and per-job result details for operator review.
 Operators can review the same history at `/admin/embedding-batch-runs` or through
 `/api/admin/embedding-batch-runs`, then requeue retryable failed jobs from a selected
 batch run with `/api/admin/embedding-batch-runs/{batch_run_id}/retry-failed`.
+Queue backlog by profile is summarized on `/admin/embedding-jobs` and exposed through
+`/api/admin/embedding-jobs/backlog-summary`.
 
 Force the legacy runtime-config-only path when you want to ignore route records:
 
