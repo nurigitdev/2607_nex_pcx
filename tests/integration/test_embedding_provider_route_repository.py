@@ -263,6 +263,8 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                 f"/api/admin/embedding-provider-routes/{route['route_id']}/contract-check"
                 in page_response.text
             )
+            assert "data-route-preflight-button" in page_response.text
+            assert "/api/admin/embedding-provider-routes/preflight" in page_response.text
             assert "data-route-health-history-panel" in page_response.text
             assert (
                 "/api/admin/embedding-provider-routes/health-snapshots?limit=10"
@@ -571,6 +573,63 @@ def test_embedding_provider_route_contract_check_api_logs_failed_contract(
                 migrated_database_url,
                 [f"embedding-provider-route:{route.route_id}:contract"],
             )
+        _cleanup_routes(migrated_database_url, [provider_name])
+
+
+def test_embedding_provider_route_preflight_api_persists_health_and_contract_snapshots(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"mock-route-preflight-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=provider_name,
+                provider_mode="mock",
+                provider_base_url=None,
+                priority=2,
+                runtime_metadata={"purpose": "preflight-test"},
+            ),
+        )
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/admin/embedding-provider-routes/preflight",
+                params={"profile_name": "kure_v1_1024"},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        route_results = [
+            result
+            for result in body["results"]
+            if result["route"]["provider_name"] == provider_name
+        ]
+        assert route_results
+        route_result = route_results[0]
+        assert body["route_count"] >= 1
+        assert body["passed_count"] >= 1
+        assert route_result["health"]["status"] == "ready"
+        assert route_result["health_snapshot"]["route_id"] == route.route_id
+        assert route_result["contract"]["passed"] is True
+        assert route_result["contract_snapshot"]["route_id"] == route.route_id
+        assert route_result["contract_snapshot"]["status"] == "passed"
+
+        health_snapshots = list_embedding_provider_route_health_snapshots(
+            migrated_database_url,
+            route_id=route.route_id,
+        )
+        contract_snapshots = list_embedding_provider_route_contract_snapshots(
+            migrated_database_url,
+            route_id=route.route_id,
+        )
+        assert len(health_snapshots) == 1
+        assert len(contract_snapshots) == 1
+    finally:
         _cleanup_routes(migrated_database_url, [provider_name])
 
 

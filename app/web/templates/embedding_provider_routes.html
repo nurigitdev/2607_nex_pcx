@@ -79,7 +79,19 @@
       <h2 class="h5 mb-1">{{ t("embedding_routes.health_summary") }}</h2>
       <div class="text-secondary">{{ t("embedding_routes.health_help") }}</div>
     </div>
-    <span class="badge text-bg-light border" data-route-health-loading>{{ t("embedding_routes.loading_health") }}</span>
+    <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
+      <button
+        class="btn btn-outline-primary btn-sm"
+        type="button"
+        data-route-preflight-button
+        data-preflight-action-url="/api/admin/embedding-provider-routes/preflight"
+        {% if not database_configured %}disabled{% endif %}
+      >{{ t("embedding_routes.run_preflight") }}</button>
+      <span class="badge text-bg-light border" data-route-health-loading>{{ t("embedding_routes.loading_health") }}</span>
+    </div>
+  </div>
+  <div class="px-3 pb-3">
+    <div class="small text-secondary" data-route-preflight-status></div>
   </div>
   <section class="document-detail-grid p-3 pt-0">
     <div class="bg-white p-3 border rounded-2">
@@ -285,6 +297,9 @@
     contractPassed: {{ t("embedding_routes.contract_passed") | tojson }},
     contractFailed: {{ t("embedding_routes.contract_failed") | tojson }},
     contractCheckFailed: {{ t("embedding_routes.contract_check_failed") | tojson }},
+    preflightRunning: {{ t("embedding_routes.preflight_running") | tojson }},
+    preflightComplete: {{ t("embedding_routes.preflight_complete") | tojson }},
+    preflightFailed: {{ t("embedding_routes.preflight_failed") | tojson }},
     loadingHistory: {{ t("embedding_routes.loading_history") | tojson }},
     noSnapshots: {{ t("embedding_routes.no_health_snapshots") | tojson }},
     loadingContractHistory: {{ t("embedding_routes.loading_contract_history") | tojson }},
@@ -318,6 +333,8 @@
   const historyTbody = historyPanel?.querySelector("[data-route-health-history-table]");
   const contractHistoryPanel = document.querySelector("[data-route-contract-history-panel]");
   const contractHistoryTbody = contractHistoryPanel?.querySelector("[data-route-contract-history-table]");
+  const preflightButton = document.querySelector("[data-route-preflight-button]");
+  const preflightStatus = document.querySelector("[data-route-preflight-status]");
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
@@ -335,6 +352,14 @@
     }
     statusNode.className = `small mt-1 ${className}`;
     statusNode.textContent = message;
+  }
+
+  function setPreflightStatus(message, className = "text-secondary") {
+    if (!preflightStatus) {
+      return;
+    }
+    preflightStatus.className = `small ${className}`;
+    preflightStatus.textContent = message;
   }
 
   function setSummary(body) {
@@ -685,8 +710,42 @@
     });
   }
 
+  function wirePreflightButton() {
+    if (!preflightButton) {
+      return;
+    }
+    preflightButton.addEventListener("click", async () => {
+      const originalText = preflightButton.textContent;
+      preflightButton.disabled = true;
+      preflightButton.textContent = labels.preflightRunning;
+      setPreflightStatus(labels.preflightRunning);
+
+      try {
+        const response = await fetch(preflightButton.dataset.preflightActionUrl, {
+          method: "POST",
+          headers: {Accept: "application/json"},
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(body.detail || labels.preflightFailed);
+        }
+        const message = `${labels.preflightComplete}: ${body.passed_count}/${body.route_count}`;
+        setPreflightStatus(message, body.failed_count ? "text-warning" : "text-success");
+        await loadHealth();
+        await loadHistory();
+        await loadContractHistory();
+      } catch (error) {
+        setPreflightStatus(error.message || labels.preflightFailed, "text-danger");
+      } finally {
+        preflightButton.disabled = false;
+        preflightButton.textContent = originalText;
+      }
+    });
+  }
+
   wireManualHealthButtons();
   wireContractButtons();
+  wirePreflightButton();
   loadHealth();
   loadHistory();
   loadContractHistory();

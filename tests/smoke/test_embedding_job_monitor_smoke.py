@@ -84,6 +84,8 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "임베딩 Provider 라우팅" in response.text
     assert "Provider Route Health" in response.text
     assert "data-route-health-panel" in response.text
+    assert "Preflight 실행" in response.text
+    assert "data-route-preflight-button" in response.text
     assert "Health Snapshot 이력" in response.text
     assert "data-route-health-history-panel" in response.text
     assert "Contract Snapshot 이력" in response.text
@@ -92,6 +94,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert "/api/admin/embedding-provider-routes" in response.text
     assert "/api/admin/embedding-provider-routes/health" in response.text
+    assert "/api/admin/embedding-provider-routes/preflight" in response.text
     assert "/api/admin/embedding-provider-routes/health-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/contract-snapshots?limit=10" in response.text
 

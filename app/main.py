@@ -3031,6 +3031,75 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.post("/api/admin/embedding-provider-routes/preflight")
+    def api_preflight_embedding_provider_routes(
+        profile_name: str | None = None,
+        active_only: bool = True,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            routes = list_embedding_provider_routes(
+                settings.database_url,
+                profile_name=profile_name,
+                active_only=active_only,
+            )
+            results = []
+            for route in routes:
+                contract = check_embedding_provider_route_contract(route)
+                health_snapshot = None
+                if contract.health is not None:
+                    health_snapshot = record_embedding_provider_route_health_snapshot(
+                        settings.database_url,
+                        contract.health,
+                    )
+                    log_embedding_provider_route_health_alert(
+                        settings.database_url, contract.health
+                    )
+                contract_snapshot = record_embedding_provider_route_contract_snapshot(
+                    settings.database_url,
+                    contract,
+                )
+                log_embedding_provider_route_contract_alert(settings.database_url, contract)
+                results.append(
+                    {
+                        "route": embedding_provider_route_payload(route),
+                        "health": (
+                            embedding_provider_route_health_payload(contract.health)
+                            if contract.health is not None
+                            else None
+                        ),
+                        "health_snapshot": (
+                            embedding_provider_route_health_snapshot_payload(health_snapshot)
+                            if health_snapshot is not None
+                            else None
+                        ),
+                        "contract": embedding_provider_route_contract_payload(contract),
+                        "contract_snapshot": embedding_provider_route_contract_snapshot_payload(
+                            contract_snapshot,
+                        ),
+                    }
+                )
+        except (
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderRouteHealthSnapshotError,
+            InvalidEmbeddingProviderRouteContractSnapshotError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        passed_count = sum(1 for result in results if result["contract"]["passed"])
+        return JSONResponse(
+            content={
+                "route_count": len(routes),
+                "passed_count": passed_count,
+                "failed_count": len(routes) - passed_count,
+                "results": results,
+            }
+        )
+
     @app.post("/api/admin/embedding-provider-routes/{route_id}/health-check")
     def api_check_embedding_provider_route_health(route_id: int) -> JSONResponse:
         if not settings.database_url:
