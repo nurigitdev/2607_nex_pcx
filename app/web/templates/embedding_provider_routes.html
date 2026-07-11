@@ -212,6 +212,8 @@
   class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-preflight-schedule-panel
   data-preflight-schedules-api-url="/api/admin/embedding-provider-routes/preflight-schedules"
+  data-preflight-due-api-url="/api/admin/embedding-provider-routes/preflight-schedules/due"
+  data-preflight-run-due-api-url="/api/admin/embedding-provider-routes/preflight-schedules/run-due"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
 >
   <div class="dashboard-panel-header p-3">
@@ -299,6 +301,79 @@
       </div>
     </div>
   </form>
+  <div class="border-top p-3" data-due-schedule-controls>
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+      <div>
+        <h3 class="h6 mb-1">{{ t("embedding_routes.preflight_due_operations") }}</h3>
+        <div class="text-secondary small">{{ t("embedding_routes.preflight_due_help") }}</div>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge text-bg-light border">
+          {{ t("embedding_routes.due_schedule_count") }} <span data-due-schedule-count>-</span>
+        </span>
+        <span class="badge text-bg-light border">
+          {{ t("embedding_routes.due_failed_count") }} <span data-due-failed-count>-</span>
+        </span>
+      </div>
+    </div>
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-lg-4">
+        <label class="form-label" for="preflight_due_schedule_name">{{ t("embedding_routes.due_schedule_filter") }}</label>
+        <input
+          class="form-control"
+          id="preflight_due_schedule_name"
+          data-due-schedule-name
+          placeholder="default_provider_route_preflight"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="preflight_due_limit">{{ t("embedding_routes.due_limit") }}</label>
+        <input
+          class="form-control"
+          type="number"
+          min="1"
+          max="100"
+          id="preflight_due_limit"
+          data-due-limit
+          value="20"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+          <button class="btn btn-outline-primary" type="button" data-due-preview {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.preview_due_schedules") }}</button>
+          <button class="btn btn-primary" type="button" data-run-due {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.run_due_schedules") }}</button>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="small text-secondary" data-due-status aria-live="polite">
+          {% if database_configured %}{{ t("embedding_routes.loading_due_schedules") }}{% else %}{{ t("common.no_database") }}{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="table-responsive mt-3 border rounded-2">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("embedding_routes.schedule_name") }}</th>
+            <th scope="col">{{ t("embedding_routes.profile") }}</th>
+            <th scope="col">{{ t("embedding_routes.next_run_at") }}</th>
+            <th scope="col">{{ t("embedding_routes.last_status") }}</th>
+            <th scope="col">{{ t("embedding_routes.run_count") }}</th>
+            <th scope="col">{{ t("embedding_routes.failure_count") }}</th>
+          </tr>
+        </thead>
+        <tbody data-due-schedule-table>
+          <tr>
+            <td class="text-secondary text-center py-4" colspan="6">
+              {% if database_configured %}{{ t("embedding_routes.loading_due_schedules") }}{% else %}{{ t("common.no_database") }}{% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
   <div class="table-responsive border-top">
     <table class="table table-sm align-middle mb-0">
       <thead>
@@ -665,6 +740,11 @@
     noSchedules: {{ t("embedding_routes.no_schedules") | tojson }},
     scheduleSaved: {{ t("embedding_routes.schedule_saved") | tojson }},
     scheduleSaveFailed: {{ t("embedding_routes.schedule_save_failed") | tojson }},
+    loadingDueSchedules: {{ t("embedding_routes.loading_due_schedules") | tojson }},
+    noDueSchedules: {{ t("embedding_routes.no_due_schedules") | tojson }},
+    duePreviewComplete: {{ t("embedding_routes.due_preview_complete") | tojson }},
+    dueRunComplete: {{ t("embedding_routes.due_run_complete") | tojson }},
+    dueRunFailed: {{ t("embedding_routes.due_run_failed") | tojson }},
     loadingPreflightRuns: {{ t("embedding_routes.loading_preflight_runs") | tojson }},
     noPreflightRuns: {{ t("embedding_routes.no_preflight_runs") | tojson }},
     preflightRunsFailed: {{ t("embedding_routes.preflight_runs_failed") | tojson }},
@@ -744,6 +824,14 @@
   const scheduleStatus = schedulePanel?.querySelector("[data-schedule-status]");
   const scheduleTbody = schedulePanel?.querySelector("[data-schedule-table]");
   const scheduleReset = schedulePanel?.querySelector("[data-schedule-reset]");
+  const dueScheduleNameInput = schedulePanel?.querySelector("[data-due-schedule-name]");
+  const dueLimitInput = schedulePanel?.querySelector("[data-due-limit]");
+  const duePreviewButton = schedulePanel?.querySelector("[data-due-preview]");
+  const dueRunButton = schedulePanel?.querySelector("[data-run-due]");
+  const dueStatus = schedulePanel?.querySelector("[data-due-status]");
+  const dueTbody = schedulePanel?.querySelector("[data-due-schedule-table]");
+  const dueScheduleCount = schedulePanel?.querySelector("[data-due-schedule-count]");
+  const dueFailedCount = schedulePanel?.querySelector("[data-due-failed-count]");
   const preflightRunPanel = document.querySelector("[data-preflight-run-history-panel]");
   const preflightRunTbody = preflightRunPanel?.querySelector("[data-preflight-run-history-table]");
   const retentionPanel = document.querySelector("[data-provider-route-retention-panel]");
@@ -805,6 +893,14 @@
     }
     scheduleStatus.className = `small ${className}`;
     scheduleStatus.textContent = message;
+  }
+
+  function setDueStatus(message, className = "text-secondary") {
+    if (!dueStatus) {
+      return;
+    }
+    dueStatus.className = `small ${className}`;
+    dueStatus.textContent = message;
   }
 
   function setSummary(body) {
@@ -1087,6 +1183,52 @@
       row.appendChild(actionCell);
 
       scheduleTbody.appendChild(row);
+    }
+  }
+
+  function renderDueSchedulesEmpty(message) {
+    if (!dueTbody) {
+      return;
+    }
+    dueTbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 6;
+    cell.textContent = message;
+    row.appendChild(cell);
+    dueTbody.appendChild(row);
+  }
+
+  function setDueSummary(scheduleCount, failedCount = 0) {
+    if (dueScheduleCount) {
+      dueScheduleCount.textContent = String(scheduleCount ?? "-");
+    }
+    if (dueFailedCount) {
+      dueFailedCount.textContent = String(failedCount ?? "-");
+    }
+  }
+
+  function renderDueSchedules(schedules) {
+    if (!dueTbody) {
+      return;
+    }
+    setDueSummary(schedules.length, 0);
+    dueTbody.replaceChildren();
+    if (!schedules.length) {
+      renderDueSchedulesEmpty(labels.noDueSchedules);
+      return;
+    }
+
+    for (const schedule of schedules) {
+      const row = document.createElement("tr");
+      appendTextCell(row, schedule.schedule_name);
+      appendTextCell(row, schedule.profile_name);
+      appendTextCell(row, formatDateTime(schedule.next_run_at));
+      appendTextCell(row, schedule.last_status);
+      appendTextCell(row, String(schedule.run_count ?? 0));
+      appendTextCell(row, String(schedule.failure_count ?? 0));
+      dueTbody.appendChild(row);
     }
   }
 
@@ -1521,8 +1663,94 @@
       fillScheduleForm(body.schedule || {});
       setScheduleStatus(labels.scheduleSaved, "text-success");
       await loadSchedules();
+      await loadDueSchedules(false);
     } catch (error) {
       setScheduleStatus(error.message || labels.scheduleSaveFailed, "text-danger");
+    }
+  }
+
+  function dueSchedulePayload() {
+    return {
+      schedule_name: dueScheduleNameInput?.value.trim() || null,
+      limit: Number(dueLimitInput?.value || 20),
+    };
+  }
+
+  function dueScheduleQueryString() {
+    const payload = dueSchedulePayload();
+    const params = new URLSearchParams();
+    params.set("limit", String(payload.limit || 20));
+    if (payload.schedule_name) {
+      params.set("schedule_name", payload.schedule_name);
+    }
+    return params.toString();
+  }
+
+  async function loadDueSchedules(announce = true) {
+    if (!schedulePanel || !dueTbody) {
+      return;
+    }
+    if (schedulePanel.dataset.databaseConfigured !== "true") {
+      renderDueSchedulesEmpty(labels.noDatabase);
+      setDueSummary("-", "-");
+      setDueStatus(labels.noDatabase);
+      return;
+    }
+    try {
+      if (announce) {
+        setDueStatus(labels.loadingDueSchedules);
+      }
+      const response = await fetch(
+        `${schedulePanel.dataset.preflightDueApiUrl}?${dueScheduleQueryString()}`,
+        {headers: {Accept: "application/json"}},
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.dueRunFailed);
+      }
+      renderDueSchedules(body.schedules || []);
+      if (announce) {
+        setDueStatus(labels.duePreviewComplete, "text-success");
+      }
+    } catch (error) {
+      renderDueSchedulesEmpty(error.message || labels.dueRunFailed);
+      setDueSummary("-", "-");
+      setDueStatus(error.message || labels.dueRunFailed, "text-danger");
+    }
+  }
+
+  async function runDueSchedules() {
+    if (!schedulePanel || !dueRunButton) {
+      return;
+    }
+    const originalText = dueRunButton.textContent;
+    dueRunButton.disabled = true;
+    dueRunButton.textContent = labels.preflightRunning;
+    setDueStatus(labels.preflightRunning);
+    try {
+      const response = await fetch(schedulePanel.dataset.preflightRunDueApiUrl, {
+        method: "POST",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify(dueSchedulePayload()),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.dueRunFailed);
+      }
+      setDueSummary(body.run_count ?? 0, body.failed_count ?? 0);
+      await loadDueSchedules(false);
+      await loadSchedules();
+      await loadPreflightRuns();
+      await loadHistory();
+      await loadContractHistory();
+      await loadAlerts();
+      const message = `${labels.dueRunComplete}: ${body.run_count ?? 0}/${body.failed_count ?? 0}`;
+      setDueStatus(message, body.failed_count ? "text-warning" : "text-success");
+    } catch (error) {
+      setDueStatus(error.message || labels.dueRunFailed, "text-danger");
+    } finally {
+      dueRunButton.disabled = false;
+      dueRunButton.textContent = originalText;
     }
   }
 
@@ -1906,6 +2134,8 @@
   function wireScheduleForm() {
     scheduleForm?.addEventListener("submit", saveSchedule);
     scheduleReset?.addEventListener("click", resetScheduleForm);
+    duePreviewButton?.addEventListener("click", () => loadDueSchedules());
+    dueRunButton?.addEventListener("click", runDueSchedules);
   }
 
   function wireRetentionControls() {
@@ -1925,6 +2155,7 @@
   loadAlerts();
   loadSampleSets();
   loadSchedules();
+  loadDueSchedules();
   loadPreflightRuns();
   loadRetentionSettings();
   loadHistory();

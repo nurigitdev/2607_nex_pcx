@@ -53,6 +53,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert korean("embedding_routes.preflight_schedules") == "Preflight 스케줄"
     assert english("embedding_routes.save_schedule") == "Save Schedule"
     assert korean("embedding_routes.schedule_saved") == "스케줄 저장됨"
+    assert korean("embedding_routes.preflight_due_operations") == "Due 스케줄 실행"
+    assert english("embedding_routes.run_due_schedules") == "Run Due Schedules"
     assert korean("search_reproducibility.title") == "검색 재현성 Metadata"
     assert english("search_reproducibility.title") == "Search Reproducibility Metadata"
     assert korean("search_reproducibility.fingerprint") == "Fingerprint"
