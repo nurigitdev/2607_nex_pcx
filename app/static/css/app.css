@@ -1184,6 +1184,12 @@ main.container-fluid {
   white-space: pre-wrap;
 }
 
+.preflight-run-json-viewer {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre;
+}
+
 .metric-label {
   color: var(--pcx-muted);
   font-size: 0.875rem;

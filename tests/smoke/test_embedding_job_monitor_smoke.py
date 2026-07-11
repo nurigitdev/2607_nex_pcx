@@ -98,6 +98,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-preflight-run-history-panel" in response.text
     assert "data-preflight-run-detail-panel" in response.text
     assert "data-preflight-run-detail-routes-table" in response.text
+    assert "preflight-run-json-viewer" in response.text
     assert "운영 데이터 보존 설정" in response.text
     assert "data-provider-route-retention-panel" in response.text
     assert "Health Snapshot 이력" in response.text
