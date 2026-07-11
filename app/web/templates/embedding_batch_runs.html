@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div
+  class="job-monitor-header d-flex align-items-center justify-content-between mb-4"
+  data-embedding-batch-runs-page
+  data-batch-runs-api-url="/api/admin/embedding-batch-runs"
+  data-batch-run-detail-api-url="/api/admin/embedding-batch-runs"
+>
+  <div>
+    <h1 class="h3 mb-1">{{ t("embedding_batch_runs.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("embedding_batch_runs.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary" href="/api/admin/embedding-batch-runs?limit={{ selected_limit }}">
+    {{ t("common.api") }}
+  </a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form class="batch-run-filter-form metric-card bg-white p-3 mb-4" method="get">
+  <div class="row g-3 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="worker_name">{{ t("embedding_batch_runs.worker") }}</label>
+      <input
+        class="form-control"
+        id="worker_name"
+        name="worker_name"
+        type="text"
+        value="{{ selected_worker_name }}"
+        placeholder="{{ t("embedding_batch_runs.worker_placeholder") }}"
+      >
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="profile_name">{{ t("embedding_batch_runs.profile") }}</label>
+      <select class="form-select" id="profile_name" name="profile_name">
+        <option value="" {% if not selected_profile_name %}selected{% endif %}>{{ t("embedding_batch_runs.all_profiles") }}</option>
+        {% for profile in profiles %}
+        <option value="{{ profile.profile_name }}" {% if selected_profile_name == profile.profile_name %}selected{% endif %}>{{ profile.profile_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="stopped_reason">{{ t("embedding_batch_runs.stopped_reason") }}</label>
+      <select class="form-select" id="stopped_reason" name="stopped_reason">
+        <option value="" {% if not selected_stopped_reason %}selected{% endif %}>{{ t("embedding_batch_runs.all_stop_reasons") }}</option>
+        {% for reason in ["queue_empty", "limit_reached"] %}
+        <option value="{{ reason }}" {% if selected_stopped_reason == reason %}selected{% endif %}>{{ t("embedding_batch_runs.stop_" ~ reason) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-8 col-md-2">
+      <label class="form-label" for="limit">{{ t("embedding_batch_runs.limit") }}</label>
+      <select class="form-select" id="limit" name="limit">
+        {% for option in [20, 50, 100, 200] %}
+        <option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-4 col-md-1">
+      <button class="btn btn-primary w-100" type="submit">{{ t("embedding_batch_runs.apply") }}</button>
+    </div>
+  </div>
+</form>
+
+<section class="batch-run-summary-grid mb-4" aria-label="{{ t("embedding_batch_runs.summary") }}">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_batch_runs.runs") }}</div>
+    <div class="metric-value fs-4">{{ batch_run_summary.run_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_batch_runs.processed") }}</div>
+    <div class="metric-value fs-4">{{ batch_run_summary.processed_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_batch_runs.failed") }}</div>
+    <div class="metric-value fs-4">{{ batch_run_summary.failed_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_batch_runs.avg_elapsed") }}</div>
+    <div class="metric-value fs-4">{{ batch_run_summary.avg_elapsed_ms }} ms</div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_batch_runs.history") }}</h2>
+      <div class="text-secondary">{{ t("embedding_batch_runs.history_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 batch-run-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_batch_runs.run") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.completed_at") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.worker") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.profile") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.provider") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.stop") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.counts") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.elapsed") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in batch_runs %}
+        <tr class="{% if selected_batch_run_id == run.batch_run_id %}table-active{% endif %}">
+          <td>
+            <a
+              class="job-link"
+              href="/admin/embedding-batch-runs?batch_run_id={{ run.batch_run_id }}&limit={{ selected_limit }}{% if selected_worker_name %}&worker_name={{ selected_worker_name|urlencode }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name|urlencode }}{% endif %}{% if selected_stopped_reason %}&stopped_reason={{ selected_stopped_reason|urlencode }}{% endif %}"
+            >
+              #{{ run.batch_run_id }}
+            </a>
+          </td>
+          <td>{{ run.completed_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+          <td class="text-break">{{ run.worker_name }}</td>
+          <td>{{ run.profile_name or t("embedding_batch_runs.all_profiles_short") }}</td>
+          <td>
+            <span class="badge text-bg-light border">{{ run.provider_source }}</span>
+            <span class="badge text-bg-light border">{{ run.provider_mode }}</span>
+          </td>
+          <td>
+            <span class="badge status-badge status-{{ run.stopped_reason|replace('_', '-') }}">
+              {{ t("embedding_batch_runs.stop_" ~ run.stopped_reason) }}
+            </span>
+          </td>
+          <td class="text-nowrap">
+            {{ t("embedding_batch_runs.succeeded_short") }} {{ run.succeeded_count }}
+            · {{ t("embedding_batch_runs.failed_short") }} {{ run.failed_count }}
+            · {{ t("embedding_batch_runs.deferred_short") }} {{ run.deferred_count }}
+            · {{ t("embedding_batch_runs.idle_short") }} {{ run.idle_count }}
+          </td>
+          <td>{{ run.elapsed_ms }} ms</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="8">
+            {% if database_configured %}{{ t("embedding_batch_runs.no_runs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if selected_batch_run %}
+{% set results = (selected_batch_run.runtime_metadata or {}).get("results") or [] %}
+<div class="row g-3">
+  <div class="col-12 col-xl-5">
+    <section class="metric-card bg-white p-3">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="h5 mb-0">{{ t("embedding_batch_runs.detail_title") }} #{{ selected_batch_run.batch_run_id }}</h2>
+        <span class="badge status-badge status-{{ selected_batch_run.stopped_reason|replace('_', '-') }}">
+          {{ t("embedding_batch_runs.stop_" ~ selected_batch_run.stopped_reason) }}
+        </span>
+      </div>
+      <dl class="job-detail-list mb-0">
+        <dt>{{ t("embedding_batch_runs.worker") }}</dt>
+        <dd>{{ selected_batch_run.worker_name }}</dd>
+        <dt>{{ t("embedding_batch_runs.profile") }}</dt>
+        <dd>{{ selected_batch_run.profile_name or t("embedding_batch_runs.all_profiles_short") }}</dd>
+        <dt>{{ t("embedding_batch_runs.provider") }}</dt>
+        <dd>
+          {{ selected_batch_run.provider_source }} / {{ selected_batch_run.provider_mode }}
+          {% if selected_batch_run.remote_provider_url %}
+          <br><span class="text-secondary">{{ selected_batch_run.remote_provider_url }}</span>
+          {% endif %}
+        </dd>
+        <dt>{{ t("embedding_batch_runs.readiness_gate") }}</dt>
+        <dd>
+          {% if selected_batch_run.require_route_readiness %}
+          {{ t("common.yes") }} · {{ selected_batch_run.readiness_gate_failure_mode }} · {{ selected_batch_run.readiness_gate_defer_seconds }}s
+          {% else %}
+          {{ t("common.no") }}
+          {% endif %}
+        </dd>
+        <dt>{{ t("embedding_batch_runs.limit") }}</dt>
+        <dd>{{ selected_batch_run.limit_requested }}</dd>
+        <dt>{{ t("embedding_batch_runs.started_at") }}</dt>
+        <dd>{{ selected_batch_run.started_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
+        <dt>{{ t("embedding_batch_runs.completed_at") }}</dt>
+        <dd>{{ selected_batch_run.completed_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
+      </dl>
+    </section>
+  </div>
+  <div class="col-12 col-xl-7">
+    <section class="metric-card bg-white p-3">
+      <h2 class="h5 mb-3">{{ t("embedding_batch_runs.counts") }}</h2>
+      <div class="batch-run-count-grid">
+        <div>
+          <span class="metric-label">{{ t("embedding_batch_runs.result_count") }}</span>
+          <strong>{{ selected_batch_run.result_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("embedding_batch_runs.processed") }}</span>
+          <strong>{{ selected_batch_run.processed_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("embedding_batch_runs.succeeded") }}</span>
+          <strong>{{ selected_batch_run.succeeded_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("embedding_batch_runs.failed") }}</span>
+          <strong>{{ selected_batch_run.failed_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("embedding_batch_runs.deferred") }}</span>
+          <strong>{{ selected_batch_run.deferred_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("embedding_batch_runs.idle") }}</span>
+          <strong>{{ selected_batch_run.idle_count }}</strong>
+        </div>
+      </div>
+      <div class="border-top mt-3 pt-3">
+        <div class="metric-label mb-2">{{ t("embedding_batch_runs.job_ids") }}</div>
+        <div class="batch-run-job-list">
+          {% for job_id in selected_batch_run.job_ids %}
+          <a class="badge text-bg-light border" href="/admin/embedding-jobs?job_id={{ job_id }}">#{{ job_id }}</a>
+          {% else %}
+          <span class="text-secondary">{{ t("embedding_batch_runs.no_job_ids") }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="col-12">
+    <section class="metric-card bg-white p-0 overflow-hidden">
+      <div class="dashboard-panel-header p-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("embedding_batch_runs.result_detail") }}</h2>
+          <div class="text-secondary">{{ t("embedding_batch_runs.result_detail_help") }}</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 batch-run-result-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("embedding_batch_runs.job") }}</th>
+              <th scope="col">{{ t("embedding_batch_runs.chunk") }}</th>
+              <th scope="col">{{ t("embedding_batch_runs.profile") }}</th>
+              <th scope="col">{{ t("embedding_batch_runs.status") }}</th>
+              <th scope="col">{{ t("embedding_batch_runs.provider") }}</th>
+              <th scope="col">{{ t("embedding_batch_runs.elapsed") }}</th>
+              <th scope="col">{{ t("embedding_batch_runs.message") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for result in results %}
+            <tr>
+              <td>
+                {% if result.get("job_id") %}
+                <a class="job-link" href="/admin/embedding-jobs?job_id={{ result.get("job_id") }}">#{{ result.get("job_id") }}</a>
+                {% else %}
+                -
+                {% endif %}
+              </td>
+              <td>{% if result.get("chunk_id") %}#{{ result.get("chunk_id") }}{% else %}-{% endif %}</td>
+              <td class="text-break">{{ result.get("profile_name") or "-" }}</td>
+              <td>
+                {% if result.get("status") %}
+                <span class="badge status-badge status-{{ result.get("status") }}">{{ result.get("status") }}</span>
+                {% elif result.get("processed") is sameas false %}
+                <span class="badge status-badge status-pending">{{ t("embedding_batch_runs.idle") }}</span>
+                {% else %}
+                -
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge text-bg-light border">{{ result.get("provider_source") or "-" }}</span>
+                <span class="badge text-bg-light border">{{ result.get("provider_mode") or "-" }}</span>
+              </td>
+              <td>{% if result.get("elapsed_ms") is not none %}{{ result.get("elapsed_ms") }} ms{% else %}-{% endif %}</td>
+              <td class="text-break">{{ result.get("message") or "" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-5" colspan="7">
+                {{ t("embedding_batch_runs.no_result_detail") }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="border-top p-3">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h3 class="h6 mb-0">{{ t("embedding_batch_runs.raw_json") }}</h3>
+          <span class="text-secondary small">{{ t("embedding_batch_runs.raw_json_help") }}</span>
+        </div>
+        <pre class="batch-run-json-viewer bg-light border rounded-2 p-3 mb-0 small overflow-auto">{{ selected_batch_run_json }}</pre>
+      </div>
+    </section>
+  </div>
+</div>
+{% else %}
+<section class="metric-card bg-white p-3">
+  <div class="text-secondary text-center py-4">
+    {% if database_configured %}{{ t("embedding_batch_runs.no_run_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

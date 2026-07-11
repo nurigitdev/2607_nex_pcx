@@ -25,6 +25,12 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("design_system.title") == "Design System"
     assert korean("nav.embedding_provider") == "Provider 상태"
     assert english("embedding_provider.title") == "Embedding Provider Health"
+    assert korean("nav.embedding_batches") == "Batch 실행"
+    assert english("embedding_batch_runs.title") == "Embedding Batch Run History"
+    assert korean("embedding_batch_runs.stop_queue_empty") == "Queue Empty"
+    assert english("embedding_batch_runs.no_run_selected") == (
+        "Select a batch run to review detail."
+    )
     assert korean("nav.embedding_routes") == "Provider 라우팅"
     assert english("embedding_routes.title") == "Embedding Provider Routing"
     assert korean("embedding_routes.playbook") == "운영 Playbook"

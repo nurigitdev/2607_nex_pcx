@@ -674,6 +674,92 @@ main.container-fluid {
   font-weight: 700;
 }
 
+.batch-run-filter-form .form-control,
+.batch-run-filter-form .form-select {
+  min-width: 0;
+}
+
+.batch-run-summary-grid,
+.batch-run-count-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.batch-run-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.batch-run-count-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.batch-run-count-grid > div {
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+}
+
+.batch-run-count-grid strong {
+  font-size: 1.25rem;
+}
+
+.batch-run-job-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.batch-run-table td:nth-child(1),
+.batch-run-table td:nth-child(2),
+.batch-run-table td:nth-child(5),
+.batch-run-table td:nth-child(6),
+.batch-run-table td:nth-child(7),
+.batch-run-table td:nth-child(8),
+.batch-run-result-table td:nth-child(1),
+.batch-run-result-table td:nth-child(2),
+.batch-run-result-table td:nth-child(4),
+.batch-run-result-table td:nth-child(5),
+.batch-run-result-table td:nth-child(6) {
+  white-space: nowrap;
+}
+
+.batch-run-table td:nth-child(3),
+.batch-run-result-table td:nth-child(7) {
+  min-width: 12rem;
+}
+
+.batch-run-table th,
+.batch-run-table td {
+  font-size: 0.925rem;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
+
+.batch-run-table td:nth-child(2) {
+  min-width: 9.5rem;
+}
+
+.batch-run-table td:nth-child(3) {
+  min-width: 10rem;
+}
+
+.batch-run-table td:nth-child(4) {
+  min-width: 7.5rem;
+}
+
+.batch-run-table td:nth-child(7) {
+  min-width: 11rem;
+}
+
+.batch-run-json-viewer {
+  max-height: 22rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .job-detail-list {
   display: grid;
   gap: 0.625rem 1rem;
@@ -764,6 +850,18 @@ main.container-fluid {
 .status-skipped {
   background: #f8fafc;
   color: var(--pcx-muted);
+}
+
+.status-queue-empty {
+  background: #eefaf8;
+  border-color: #99f6e4;
+  color: #115e59;
+}
+
+.status-limit-reached {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #92400e;
 }
 
 .btn {

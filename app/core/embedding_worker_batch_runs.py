@@ -154,6 +154,7 @@ def list_embedding_worker_batch_runs(
     *,
     worker_name: str | None = None,
     profile_name: str | None = None,
+    stopped_reason: str | None = None,
     limit: int = 50,
 ) -> list[EmbeddingWorkerBatchRunRecord]:
     _validate_limit(limit)
@@ -165,6 +166,9 @@ def list_embedding_worker_batch_runs(
     if profile_name is not None:
         where_clauses.append("profile_name = %s")
         params.append(_validate_nonblank(profile_name, "profile_name"))
+    if stopped_reason is not None:
+        where_clauses.append("stopped_reason = %s")
+        params.append(_validate_stopped_reason(stopped_reason))
 
     where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
     with connect(database_url) as connection:

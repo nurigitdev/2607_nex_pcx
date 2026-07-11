@@ -25,6 +25,35 @@ def test_embedding_job_retry_api_requires_database_url() -> None:
     assert response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
 
 
+def test_embedding_batch_runs_page_shows_configuration_message_without_database_url() -> None:
+    app = create_app(Settings())
+
+    with TestClient(app) as client:
+        response = client.get("/admin/embedding-batch-runs")
+
+    assert response.status_code == 200
+    assert "임베딩 Batch 실행 이력" in response.text
+    assert "data-embedding-batch-runs-page" in response.text
+    assert "/api/admin/embedding-batch-runs" in response.text
+    assert "NEX_PCX_DATABASE_URL is not configured." in response.text
+
+
+def test_embedding_batch_run_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        responses = [
+            client.get("/api/admin/embedding-batch-runs"),
+            client.get("/api/admin/embedding-batch-runs/1"),
+        ]
+
+    assert [response.status_code for response in responses] == [503, 503]
+    assert all(
+        response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
+        for response in responses
+    )
+
+
 def test_embedding_model_readiness_api_reports_local_bundle_state(tmp_path) -> None:
     kure_dir = tmp_path / "kure_v1"
     kure_dir.mkdir()

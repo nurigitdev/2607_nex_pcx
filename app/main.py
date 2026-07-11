@@ -60,7 +60,6 @@ from app.core.embedding_model_distribution import (
     EmbeddingModelReadiness,
     audit_embedding_model_readiness,
 )
-from app.core.embedding_worker import ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY
 from app.core.embedding_provider_contract_sample_sets import (
     EmbeddingProviderContractSampleSetInput,
     EmbeddingProviderContractSampleSetRecord,
@@ -139,6 +138,13 @@ from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
     InvalidEmbeddingVectorError,
     get_chunk_embedding,
+)
+from app.core.embedding_worker import ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY
+from app.core.embedding_worker_batch_runs import (
+    EmbeddingWorkerBatchRunRecord,
+    InvalidEmbeddingWorkerBatchRunError,
+    get_embedding_worker_batch_run,
+    list_embedding_worker_batch_runs,
 )
 from app.core.evaluation_dashboard import (
     EvaluationDashboardRecentRun,
@@ -736,6 +742,53 @@ def embedding_vector_payload(vector: EmbeddingVectorRecord | None) -> dict[str, 
         "storage_type": vector.storage_type,
         "elapsed_ms": vector.elapsed_ms,
         "created_at": _datetime_response(vector.created_at),
+    }
+
+
+def embedding_worker_batch_run_payload(
+    batch_run: EmbeddingWorkerBatchRunRecord,
+) -> dict[str, object]:
+    return {
+        "batch_run_id": batch_run.batch_run_id,
+        "worker_name": batch_run.worker_name,
+        "profile_name": batch_run.profile_name,
+        "provider_source": batch_run.provider_source,
+        "provider_mode": batch_run.provider_mode,
+        "remote_provider_url": batch_run.remote_provider_url,
+        "require_route_readiness": batch_run.require_route_readiness,
+        "readiness_gate_failure_mode": batch_run.readiness_gate_failure_mode,
+        "readiness_gate_defer_seconds": batch_run.readiness_gate_defer_seconds,
+        "limit_requested": batch_run.limit_requested,
+        "result_count": batch_run.result_count,
+        "processed_count": batch_run.processed_count,
+        "succeeded_count": batch_run.succeeded_count,
+        "failed_count": batch_run.failed_count,
+        "deferred_count": batch_run.deferred_count,
+        "idle_count": batch_run.idle_count,
+        "stopped_reason": batch_run.stopped_reason,
+        "job_ids": list(batch_run.job_ids),
+        "runtime_metadata": batch_run.runtime_metadata,
+        "elapsed_ms": batch_run.elapsed_ms,
+        "started_at": _datetime_response(batch_run.started_at),
+        "completed_at": _datetime_response(batch_run.completed_at),
+        "created_at": _datetime_response(batch_run.created_at),
+    }
+
+
+def embedding_worker_batch_run_summary(
+    batch_runs: list[EmbeddingWorkerBatchRunRecord],
+) -> dict[str, object]:
+    elapsed_values = [run.elapsed_ms for run in batch_runs if run.elapsed_ms is not None]
+    return {
+        "run_count": len(batch_runs),
+        "processed_count": sum(run.processed_count for run in batch_runs),
+        "succeeded_count": sum(run.succeeded_count for run in batch_runs),
+        "failed_count": sum(run.failed_count for run in batch_runs),
+        "deferred_count": sum(run.deferred_count for run in batch_runs),
+        "idle_count": sum(run.idle_count for run in batch_runs),
+        "avg_elapsed_ms": (
+            round(sum(elapsed_values) / len(elapsed_values), 1) if elapsed_values else 0
+        ),
     }
 
 
@@ -4192,6 +4245,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return JSONResponse(content={"job": embedding_job_payload(retried)})
 
+    @app.get("/api/admin/embedding-batch-runs")
+    def api_list_embedding_batch_runs(
+        worker_name: str | None = None,
+        profile_name: str | None = None,
+        stopped_reason: str | None = None,
+        limit: int = 50,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            batch_runs = list_embedding_worker_batch_runs(
+                settings.database_url,
+                worker_name=worker_name,
+                profile_name=profile_name,
+                stopped_reason=stopped_reason,
+                limit=limit,
+            )
+        except InvalidEmbeddingWorkerBatchRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "batch_run_count": len(batch_runs),
+                "summary": embedding_worker_batch_run_summary(batch_runs),
+                "batch_runs": [
+                    embedding_worker_batch_run_payload(batch_run) for batch_run in batch_runs
+                ],
+            }
+        )
+
+    @app.get("/api/admin/embedding-batch-runs/{batch_run_id}")
+    def api_get_embedding_batch_run(batch_run_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            batch_run = get_embedding_worker_batch_run(settings.database_url, batch_run_id)
+        except InvalidEmbeddingWorkerBatchRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if batch_run is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Embedding batch run not found.",
+            )
+
+        return JSONResponse(
+            content={"batch_run": embedding_worker_batch_run_payload(batch_run)}
+        )
+
     @app.post("/api/search/compare")
     def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:
         if not settings.database_url:
@@ -5988,6 +6097,73 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_status=status_filter or "",
                 selected_profile_name=profile_name or "",
                 selected_job_id=job_id,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/embedding-batch-runs", response_class=HTMLResponse)
+    def embedding_batch_runs_page(
+        request: Request,
+        worker_name: str | None = None,
+        profile_name: str | None = None,
+        stopped_reason: str | None = None,
+        limit: int = 50,
+        batch_run_id: int | None = None,
+    ) -> HTMLResponse:
+        batch_runs: list[EmbeddingWorkerBatchRunRecord] = []
+        selected_batch_run = None
+        profiles: list[EmbeddingProfileRecord] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                batch_runs = list_embedding_worker_batch_runs(
+                    settings.database_url,
+                    worker_name=worker_name,
+                    profile_name=profile_name,
+                    stopped_reason=stopped_reason,
+                    limit=limit,
+                )
+                profiles = list_active_embedding_profiles(settings.database_url)
+                if batch_run_id is not None:
+                    selected_batch_run = get_embedding_worker_batch_run(
+                        settings.database_url,
+                        batch_run_id,
+                    )
+                    if selected_batch_run is None:
+                        error_message = f"Embedding batch run not found: {batch_run_id}"
+            except (InvalidEmbeddingWorkerBatchRunError, InvalidEmbeddingJobError) as exc:
+                error_message = str(exc)
+
+        selected_payload = (
+            embedding_worker_batch_run_payload(selected_batch_run)
+            if selected_batch_run is not None
+            else None
+        )
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "embedding_batch_runs.html",
+            template_context(
+                request,
+                batch_runs=batch_runs,
+                selected_batch_run=selected_batch_run,
+                selected_batch_run_payload=selected_payload,
+                selected_batch_run_json=(
+                    json.dumps(selected_payload, ensure_ascii=False, indent=2)
+                    if selected_payload is not None
+                    else ""
+                ),
+                batch_run_summary=embedding_worker_batch_run_summary(batch_runs),
+                profiles=profiles,
+                selected_worker_name=worker_name or "",
+                selected_profile_name=profile_name or "",
+                selected_stopped_reason=stopped_reason or "",
+                selected_limit=limit,
+                selected_batch_run_id=batch_run_id,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

@@ -249,6 +249,8 @@ Process a bounded batch of pending embedding jobs in one worker run:
 Batch runs persist a compact summary in `embedding_worker_batch_runs`; the script JSON
 response includes `batch_run_id`, processed/succeeded/failed/deferred/idle counts, stop
 reason, elapsed time, and per-job result details for operator review.
+Operators can review the same history at `/admin/embedding-batch-runs` or through
+`/api/admin/embedding-batch-runs`.
 
 Force the legacy runtime-config-only path when you want to ignore route records:
 

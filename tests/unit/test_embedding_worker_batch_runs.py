@@ -96,3 +96,11 @@ def test_validate_embedding_worker_batch_run_input_rejects_invalid_values(
 def test_list_embedding_worker_batch_runs_rejects_invalid_limit(limit: int) -> None:
     with pytest.raises(InvalidEmbeddingWorkerBatchRunError, match="limit"):
         list_embedding_worker_batch_runs("postgresql://example/db", limit=limit)
+
+
+def test_list_embedding_worker_batch_runs_rejects_invalid_stopped_reason() -> None:
+    with pytest.raises(InvalidEmbeddingWorkerBatchRunError, match="Unsupported stopped_reason"):
+        list_embedding_worker_batch_runs(
+            "postgresql://example/db",
+            stopped_reason="stopped",
+        )
