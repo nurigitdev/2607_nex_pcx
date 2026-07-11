@@ -16,7 +16,10 @@ from app.core.embedding_worker import (
     ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY,
     ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING,
     ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
+    EMBEDDING_WORKER_BATCH_STOP_LIMIT_REACHED,
+    EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY,
     EmbeddingWorkerResult,
+    process_embedding_worker_batch,
     process_next_embedding_job_with_provider_routes,
     process_next_mock_embedding_job,
 )
@@ -88,6 +91,66 @@ class FakeClosableProvider:
 
     def close(self) -> None:
         self.closed = True
+
+
+def test_embedding_worker_batch_stops_when_queue_is_empty() -> None:
+    first_job = make_job(job_id=1, status="succeeded")
+    second_job = make_job(job_id=2, status="failed")
+    results = iter(
+        (
+            EmbeddingWorkerResult(processed=True, job=first_job, message="stored"),
+            EmbeddingWorkerResult(processed=True, job=second_job, message="failed"),
+            EmbeddingWorkerResult(processed=False, job=None, message="idle"),
+        )
+    )
+
+    batch = process_embedding_worker_batch(lambda: next(results), limit=5)
+
+    assert batch.stopped_reason == EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY
+    assert batch.result_count == 3
+    assert batch.processed_count == 2
+    assert batch.succeeded_count == 1
+    assert batch.failed_count == 1
+    assert batch.idle_count == 1
+    assert batch.job_ids == (1, 2)
+
+
+def test_embedding_worker_batch_stops_at_limit_and_counts_deferred_jobs() -> None:
+    first_job = make_job(job_id=1, status="succeeded")
+    deferred_job = make_job(
+        job_id=2,
+        status="running",
+        error_code=ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING,
+    )
+    results = iter(
+        (
+            EmbeddingWorkerResult(processed=True, job=first_job, message="stored"),
+            EmbeddingWorkerResult(processed=True, job=deferred_job, message="deferred"),
+            EmbeddingWorkerResult(processed=False, job=None, message="idle"),
+        )
+    )
+
+    batch = process_embedding_worker_batch(lambda: next(results), limit=2)
+
+    assert batch.stopped_reason == EMBEDDING_WORKER_BATCH_STOP_LIMIT_REACHED
+    assert batch.result_count == 2
+    assert batch.processed_count == 2
+    assert batch.deferred_count == 1
+    assert batch.idle_count == 0
+    assert batch.job_ids == (1, 2)
+
+
+def test_embedding_worker_batch_rejects_invalid_limits() -> None:
+    for limit in (0, 101):
+        try:
+            process_embedding_worker_batch(
+                lambda: EmbeddingWorkerResult(processed=False, job=None),
+                limit=limit,
+            )
+        except ValueError as exc:
+            assert "limit" in str(exc)
+        else:
+            raise AssertionError("Expected invalid batch limit to raise ValueError")
 
 
 def test_process_next_mock_embedding_job_returns_idle_when_queue_is_empty(monkeypatch) -> None:

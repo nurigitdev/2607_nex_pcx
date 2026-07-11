@@ -51,6 +51,9 @@ ERROR_CODE_EMBEDDING_PROVIDER_ERROR = "EMBEDDING_PROVIDER_ERROR"
 ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY = "EMBEDDING_PROVIDER_ROUTE_NOT_READY"
 ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING = "EMBEDDING_PROVIDER_ROUTE_WAITING"
 ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE = "UNSUPPORTED_EMBEDDING_PROFILE"
+EMBEDDING_WORKER_BATCH_STOP_LIMIT_REACHED = "limit_reached"
+EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY = "queue_empty"
+MAX_EMBEDDING_WORKER_BATCH_LIMIT = 100
 READINESS_GATE_FAILURE_MODE_FAIL = "fail"
 READINESS_GATE_FAILURE_MODE_DEFER = "defer"
 READINESS_GATE_FAILURE_MODES = (
@@ -68,6 +71,7 @@ EmbeddingProviderRouteReadinessSummaryGetter = Callable[
     [str, str],
     EmbeddingProviderRouteReadinessSummary,
 ]
+EmbeddingWorkerBatchProcessor = Callable[[], "EmbeddingWorkerResult"]
 
 
 @dataclass(frozen=True)
@@ -83,10 +87,83 @@ EmbeddingWorkerResult = MockEmbeddingWorkerResult
 
 
 @dataclass(frozen=True)
+class EmbeddingWorkerBatchResult:
+    limit: int
+    results: tuple[EmbeddingWorkerResult, ...]
+    stopped_reason: str
+
+    @property
+    def result_count(self) -> int:
+        return len(self.results)
+
+    @property
+    def processed_count(self) -> int:
+        return sum(1 for result in self.results if result.processed)
+
+    @property
+    def idle_count(self) -> int:
+        return sum(1 for result in self.results if not result.processed)
+
+    @property
+    def succeeded_count(self) -> int:
+        return sum(
+            1
+            for result in self.results
+            if result.job is not None and result.job.status == "succeeded"
+        )
+
+    @property
+    def failed_count(self) -> int:
+        return sum(
+            1
+            for result in self.results
+            if result.job is not None and result.job.status == "failed"
+        )
+
+    @property
+    def deferred_count(self) -> int:
+        return sum(
+            1
+            for result in self.results
+            if result.job is not None
+            and result.job.error_code == ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING
+        )
+
+    @property
+    def job_ids(self) -> tuple[int, ...]:
+        return tuple(result.job.job_id for result in self.results if result.job is not None)
+
+
+@dataclass(frozen=True)
 class _RouteReadinessGateResult:
     routes: list[EmbeddingProviderRouteRecord]
     readiness_by_id: dict[int, EmbeddingProviderRouteReadinessItem]
     blocked_routes: tuple[EmbeddingProviderRouteReadinessItem, ...]
+
+
+def process_embedding_worker_batch(
+    process_next_job: EmbeddingWorkerBatchProcessor,
+    *,
+    limit: int,
+) -> EmbeddingWorkerBatchResult:
+    """Process pending embedding jobs sequentially until the limit or an idle result."""
+
+    _validate_embedding_worker_batch_limit(limit)
+    results: list[EmbeddingWorkerResult] = []
+    for _ in range(limit):
+        result = process_next_job()
+        results.append(result)
+        if not result.processed:
+            return EmbeddingWorkerBatchResult(
+                limit=limit,
+                results=tuple(results),
+                stopped_reason=EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY,
+            )
+    return EmbeddingWorkerBatchResult(
+        limit=limit,
+        results=tuple(results),
+        stopped_reason=EMBEDDING_WORKER_BATCH_STOP_LIMIT_REACHED,
+    )
 
 
 def process_next_mock_embedding_job(
@@ -107,6 +184,15 @@ def process_next_mock_embedding_job(
         success_message="Mock embedding stored",
         provider_error_code=ERROR_CODE_MOCK_EMBEDDING_ERROR,
     )
+
+
+def _validate_embedding_worker_batch_limit(limit: int) -> None:
+    if limit <= 0:
+        raise ValueError("limit must be greater than 0")
+    if limit > MAX_EMBEDDING_WORKER_BATCH_LIMIT:
+        raise ValueError(
+            f"limit must be less than or equal to {MAX_EMBEDDING_WORKER_BATCH_LIMIT}"
+        )
 
 
 def process_next_embedding_job_with_provider(

@@ -240,6 +240,12 @@ Process one pending embedding job with route-aware provider selection:
   --remote-provider-url http://127.0.0.1:9000
 ```
 
+Process a bounded batch of pending embedding jobs in one worker run:
+
+```bash
+./.venv/bin/python scripts/process_embedding_job.py --provider-mode mock --limit 10
+```
+
 Force the legacy runtime-config-only path when you want to ignore route records:
 
 ```bash

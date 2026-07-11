@@ -21,7 +21,9 @@ from app.core.embedding_providers import (  # noqa: E402
 from app.core.embedding_worker import (  # noqa: E402
     ERROR_CODE_EMBEDDING_PROVIDER_ERROR,
     ERROR_CODE_MOCK_EMBEDDING_ERROR,
+    EmbeddingWorkerBatchResult,
     EmbeddingWorkerResult,
+    process_embedding_worker_batch,
     process_next_embedding_job_with_provider,
     process_next_embedding_job_with_provider_routes,
 )
@@ -90,6 +92,53 @@ def _process_next_job(
             provider.close()  # type: ignore[attr-defined]
 
 
+def _process_job_batch(
+    database_url: str,
+    *,
+    worker_name: str,
+    profile_name: str | None,
+    lease_seconds: int,
+    runtime_config: EmbeddingProviderRuntimeConfig,
+    provider_source: str = PROVIDER_SOURCE_ROUTE,
+    require_route_readiness: bool = False,
+    readiness_gate_failure_mode: str = "fail",
+    readiness_gate_defer_seconds: int = 300,
+    limit: int,
+) -> EmbeddingWorkerBatchResult:
+    if provider_source == PROVIDER_SOURCE_RUNTIME:
+        provider = build_embedding_provider_from_runtime_config(runtime_config)
+        try:
+            return process_embedding_worker_batch(
+                lambda: process_next_embedding_job_with_provider(
+                    database_url,
+                    worker_name=worker_name,
+                    provider=provider,
+                    profile_name=profile_name,
+                    lease_seconds=lease_seconds,
+                    success_message=_success_message(runtime_config.mode),
+                    provider_error_code=_provider_error_code(runtime_config.mode),
+                ),
+                limit=limit,
+            )
+        finally:
+            if hasattr(provider, "close"):
+                provider.close()  # type: ignore[attr-defined]
+
+    return process_embedding_worker_batch(
+        lambda: process_next_embedding_job_with_provider_routes(
+            database_url,
+            worker_name=worker_name,
+            profile_name=profile_name,
+            lease_seconds=lease_seconds,
+            fallback_runtime_config=runtime_config,
+            require_route_readiness=require_route_readiness,
+            readiness_gate_failure_mode=readiness_gate_failure_mode,
+            readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+        ),
+        limit=limit,
+    )
+
+
 def _success_message(provider_mode: str) -> str:
     if provider_mode == MOCK_EMBEDDING_PROVIDER_TYPE:
         return "Mock embedding stored"
@@ -135,12 +184,57 @@ def _result_payload(
     }
 
 
+def _batch_payload(
+    batch: EmbeddingWorkerBatchResult,
+    *,
+    runtime_config: EmbeddingProviderRuntimeConfig,
+    provider_source: str,
+    require_route_readiness: bool,
+    readiness_gate_failure_mode: str,
+    readiness_gate_defer_seconds: int,
+) -> dict[str, object]:
+    return {
+        "provider_source": provider_source,
+        "provider_mode": runtime_config.mode,
+        "remote_provider_url": runtime_config.remote_base_url,
+        "require_route_readiness": require_route_readiness,
+        "readiness_gate_failure_mode": readiness_gate_failure_mode,
+        "readiness_gate_defer_seconds": readiness_gate_defer_seconds,
+        "limit": batch.limit,
+        "result_count": batch.result_count,
+        "processed_count": batch.processed_count,
+        "succeeded_count": batch.succeeded_count,
+        "failed_count": batch.failed_count,
+        "deferred_count": batch.deferred_count,
+        "idle_count": batch.idle_count,
+        "stopped_reason": batch.stopped_reason,
+        "job_ids": list(batch.job_ids),
+        "results": [
+            _result_payload(
+                result,
+                runtime_config=runtime_config,
+                provider_source=provider_source,
+                require_route_readiness=require_route_readiness,
+                readiness_gate_failure_mode=readiness_gate_failure_mode,
+                readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+            )
+            for result in batch.results
+        ],
+    }
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Process one pending embedding job.")
+    parser = argparse.ArgumentParser(description="Process pending embedding jobs.")
     parser.add_argument("--database-url", default=None)
     parser.add_argument("--worker-name", default="embedding-worker")
     parser.add_argument("--profile-name", default=None)
     parser.add_argument("--lease-seconds", type=int, default=DEFAULT_LEASE_SECONDS)
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=1,
+        help="Maximum pending embedding jobs to process before exiting.",
+    )
     parser.add_argument(
         "--provider-source",
         choices=PROVIDER_SOURCES,
@@ -214,25 +308,50 @@ def main() -> int:
         if args.readiness_gate_defer_seconds is not None
         else settings.embedding_route_readiness_defer_seconds
     )
-    result = _process_next_job(
-        database_url,
-        worker_name=args.worker_name,
-        profile_name=args.profile_name,
-        lease_seconds=args.lease_seconds,
-        runtime_config=runtime_config,
-        provider_source=args.provider_source,
-        require_route_readiness=require_route_readiness,
-        readiness_gate_failure_mode=readiness_gate_failure_mode,
-        readiness_gate_defer_seconds=readiness_gate_defer_seconds,
-    )
-    payload = _result_payload(
-        result,
-        runtime_config=runtime_config,
-        provider_source=args.provider_source,
-        require_route_readiness=require_route_readiness,
-        readiness_gate_failure_mode=readiness_gate_failure_mode,
-        readiness_gate_defer_seconds=readiness_gate_defer_seconds,
-    )
+    try:
+        if args.limit == 1:
+            result = _process_next_job(
+                database_url,
+                worker_name=args.worker_name,
+                profile_name=args.profile_name,
+                lease_seconds=args.lease_seconds,
+                runtime_config=runtime_config,
+                provider_source=args.provider_source,
+                require_route_readiness=require_route_readiness,
+                readiness_gate_failure_mode=readiness_gate_failure_mode,
+                readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+            )
+            payload = _result_payload(
+                result,
+                runtime_config=runtime_config,
+                provider_source=args.provider_source,
+                require_route_readiness=require_route_readiness,
+                readiness_gate_failure_mode=readiness_gate_failure_mode,
+                readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+            )
+        else:
+            batch = _process_job_batch(
+                database_url,
+                worker_name=args.worker_name,
+                profile_name=args.profile_name,
+                lease_seconds=args.lease_seconds,
+                runtime_config=runtime_config,
+                provider_source=args.provider_source,
+                require_route_readiness=require_route_readiness,
+                readiness_gate_failure_mode=readiness_gate_failure_mode,
+                readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+                limit=args.limit,
+            )
+            payload = _batch_payload(
+                batch,
+                runtime_config=runtime_config,
+                provider_source=args.provider_source,
+                require_route_readiness=require_route_readiness,
+                readiness_gate_failure_mode=readiness_gate_failure_mode,
+                readiness_gate_defer_seconds=readiness_gate_defer_seconds,
+            )
+    except ValueError as exc:
+        parser.error(str(exc))
     print(json.dumps(payload, ensure_ascii=False))
     return 0
 

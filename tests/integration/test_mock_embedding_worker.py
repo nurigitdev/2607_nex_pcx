@@ -18,6 +18,8 @@ from app.core.embedding_providers import (
 from app.core.embedding_vectors import get_chunk_embedding
 from app.core.embedding_worker import (
     ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
+    EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY,
+    process_embedding_worker_batch,
     process_next_embedding_job_with_provider,
     process_next_embedding_job_with_provider_routes,
     process_next_mock_embedding_job,
@@ -199,6 +201,66 @@ def test_mock_embedding_worker_marks_unsupported_profile_failed(
         assert "Unsupported embedding profile" in stored_job.error_message
     finally:
         _cleanup_fixture(migrated_database_url, file_id, profile_name)
+
+
+def test_mock_embedding_worker_batch_processes_until_queue_is_empty(
+    migrated_database_url: str,
+) -> None:
+    first_file_id, first_chunk_id = _create_chunk(
+        migrated_database_url,
+        "First batch embedding worker chunk.",
+    )
+    second_file_id, second_chunk_id = _create_chunk(
+        migrated_database_url,
+        "Second batch embedding worker chunk.",
+    )
+    try:
+        first_job = create_embedding_job(
+            migrated_database_url,
+            EmbeddingJobInput(chunk_id=first_chunk_id, profile_name="kure_v1_1024"),
+        )
+        second_job = create_embedding_job(
+            migrated_database_url,
+            EmbeddingJobInput(chunk_id=second_chunk_id, profile_name="kure_v1_1024"),
+        )
+
+        batch = process_embedding_worker_batch(
+            lambda: process_next_mock_embedding_job(
+                migrated_database_url,
+                worker_name="mock-batch-worker",
+                profile_name="kure_v1_1024",
+            ),
+            limit=5,
+        )
+
+        first_stored_job = get_embedding_job(migrated_database_url, first_job.job.job_id)
+        second_stored_job = get_embedding_job(migrated_database_url, second_job.job.job_id)
+        first_vector = get_chunk_embedding(
+            migrated_database_url,
+            profile_name="kure_v1_1024",
+            chunk_id=first_chunk_id,
+        )
+        second_vector = get_chunk_embedding(
+            migrated_database_url,
+            profile_name="kure_v1_1024",
+            chunk_id=second_chunk_id,
+        )
+
+        assert batch.stopped_reason == EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY
+        assert batch.processed_count == 2
+        assert batch.succeeded_count == 2
+        assert batch.idle_count == 1
+        assert first_stored_job is not None
+        assert second_stored_job is not None
+        assert first_stored_job.status == "succeeded"
+        assert second_stored_job.status == "succeeded"
+        assert first_vector is not None
+        assert second_vector is not None
+        assert first_vector.dimension == 1024
+        assert second_vector.dimension == 1024
+    finally:
+        _cleanup_fixture(migrated_database_url, first_file_id)
+        _cleanup_fixture(migrated_database_url, second_file_id)
 
 
 def test_embedding_worker_can_store_vector_from_custom_provider(
