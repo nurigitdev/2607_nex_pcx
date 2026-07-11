@@ -59,6 +59,8 @@ def test_embedding_batch_runs_page_shows_configuration_message_without_database_
     assert "임베딩 Batch 실행 이력" in response.text
     assert "data-embedding-batch-runs-page" in response.text
     assert "/api/admin/embedding-batch-runs" in response.text
+    assert "Embedding Throughput Trend" in response.text
+    assert "/api/admin/embedding-batch-runs/throughput-summary" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
 
 
@@ -68,11 +70,12 @@ def test_embedding_batch_run_api_requires_database_url() -> None:
     with TestClient(app) as client:
         responses = [
             client.get("/api/admin/embedding-batch-runs"),
+            client.get("/api/admin/embedding-batch-runs/throughput-summary"),
             client.get("/api/admin/embedding-batch-runs/1"),
             client.post("/api/admin/embedding-batch-runs/1/retry-failed"),
         ]
 
-    assert [response.status_code for response in responses] == [503, 503, 503]
+    assert [response.status_code for response in responses] == [503, 503, 503, 503]
     assert all(
         response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
         for response in responses

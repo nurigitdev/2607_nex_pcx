@@ -84,6 +84,75 @@
   </div>
 </section>
 
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-batch-throughput-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_batch_runs.throughput_title") }}</h2>
+      <div class="text-secondary">{{ t("embedding_batch_runs.throughput_help") }}</div>
+    </div>
+    <a
+      class="btn btn-outline-secondary btn-sm"
+      href="/api/admin/embedding-batch-runs/throughput-summary?limit={{ selected_limit }}{% if selected_worker_name %}&worker_name={{ selected_worker_name|urlencode }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name|urlencode }}{% endif %}{% if selected_stopped_reason %}&stopped_reason={{ selected_stopped_reason|urlencode }}{% endif %}"
+    >
+      {{ t("common.api") }}
+    </a>
+  </div>
+  <div class="embedding-throughput-summary-grid p-3 border-top">
+    <div class="metric-card bg-light p-3">
+      <div class="metric-label">{{ t("embedding_batch_runs.throughput") }}</div>
+      <div class="metric-value fs-4">{{ throughput_summary.overall.throughput_per_second }}</div>
+      <div class="text-secondary small">{{ t("embedding_batch_runs.jobs_per_sec") }}</div>
+    </div>
+    <div class="metric-card bg-light p-3">
+      <div class="metric-label">{{ t("embedding_batch_runs.success_rate") }}</div>
+      <div class="metric-value fs-4">{{ throughput_summary.overall.success_rate_pct }}%</div>
+    </div>
+    <div class="metric-card bg-light p-3">
+      <div class="metric-label">{{ t("embedding_batch_runs.avg_processed") }}</div>
+      <div class="metric-value fs-4">{{ throughput_summary.overall.avg_processed_per_run }}</div>
+    </div>
+    <div class="metric-card bg-light p-3">
+      <div class="metric-label">{{ t("embedding_batch_runs.elapsed_total") }}</div>
+      <div class="metric-value fs-4">{{ throughput_summary.overall.elapsed_ms }} ms</div>
+    </div>
+  </div>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0 embedding-throughput-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_batch_runs.profile") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.provider") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.runs") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.processed") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.success_rate") }}</th>
+          <th scope="col">{{ t("embedding_batch_runs.jobs_per_sec") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for group in throughput_summary.groups %}
+        <tr>
+          <td class="text-break">{{ group.profile_name }}</td>
+          <td>
+            <span class="badge text-bg-light border">{{ group.provider_source }}</span>
+            <span class="badge text-bg-light border">{{ group.provider_mode }}</span>
+          </td>
+          <td>{{ group.run_count }}</td>
+          <td>{{ group.processed_count }}</td>
+          <td>{{ group.success_rate_pct }}%</td>
+          <td>{{ group.throughput_per_second }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="6">
+            {% if database_configured %}{{ t("embedding_batch_runs.no_trend_groups") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="dashboard-panel-header p-3">
     <div>

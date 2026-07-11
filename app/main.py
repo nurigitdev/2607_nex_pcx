@@ -849,6 +849,70 @@ def embedding_worker_batch_run_summary(
     }
 
 
+def embedding_worker_batch_run_throughput_summary(
+    batch_runs: list[EmbeddingWorkerBatchRunRecord],
+) -> dict[str, object]:
+    def metrics_for_runs(runs: list[EmbeddingWorkerBatchRunRecord]) -> dict[str, object]:
+        elapsed_ms = sum(max(0, run.elapsed_ms or 0) for run in runs)
+        processed_count = sum(run.processed_count for run in runs)
+        succeeded_count = sum(run.succeeded_count for run in runs)
+        failed_count = sum(run.failed_count for run in runs)
+        run_count = len(runs)
+        elapsed_seconds = elapsed_ms / 1000
+        return {
+            "run_count": run_count,
+            "processed_count": processed_count,
+            "succeeded_count": succeeded_count,
+            "failed_count": failed_count,
+            "elapsed_ms": elapsed_ms,
+            "throughput_per_second": (
+                round(processed_count / elapsed_seconds, 2) if elapsed_seconds > 0 else 0
+            ),
+            "success_rate_pct": (
+                round((succeeded_count / processed_count) * 100, 1)
+                if processed_count > 0
+                else 0
+            ),
+            "avg_processed_per_run": (
+                round(processed_count / run_count, 1) if run_count > 0 else 0
+            ),
+        }
+
+    grouped_runs: dict[tuple[str, str, str], list[EmbeddingWorkerBatchRunRecord]] = {}
+    for run in batch_runs:
+        key = (
+            run.profile_name or "all",
+            run.provider_source,
+            run.provider_mode,
+        )
+        grouped_runs.setdefault(key, []).append(run)
+
+    groups = []
+    for (profile_name, provider_source, provider_mode), runs in grouped_runs.items():
+        metrics = metrics_for_runs(runs)
+        groups.append(
+            {
+                "profile_name": profile_name,
+                "provider_source": provider_source,
+                "provider_mode": provider_mode,
+                **metrics,
+            }
+        )
+
+    groups.sort(
+        key=lambda item: (
+            -int(item["processed_count"]),
+            str(item["profile_name"]),
+            str(item["provider_source"]),
+            str(item["provider_mode"]),
+        )
+    )
+    return {
+        "overall": metrics_for_runs(batch_runs),
+        "groups": groups,
+    }
+
+
 def embedding_worker_batch_run_failed_job_ids(
     batch_run: EmbeddingWorkerBatchRunRecord,
 ) -> list[int]:
@@ -4555,6 +4619,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/admin/embedding-batch-runs/throughput-summary")
+    def api_get_embedding_batch_run_throughput_summary(
+        worker_name: str | None = None,
+        profile_name: str | None = None,
+        stopped_reason: str | None = None,
+        limit: int = 50,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            batch_runs = list_embedding_worker_batch_runs(
+                settings.database_url,
+                worker_name=worker_name,
+                profile_name=profile_name,
+                stopped_reason=stopped_reason,
+                limit=limit,
+            )
+        except InvalidEmbeddingWorkerBatchRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "batch_run_count": len(batch_runs),
+                "throughput": embedding_worker_batch_run_throughput_summary(batch_runs),
+            }
+        )
+
     @app.get("/api/admin/embedding-batch-runs/{batch_run_id}")
     def api_get_embedding_batch_run(batch_run_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -6487,6 +6582,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     else ""
                 ),
                 batch_run_summary=embedding_worker_batch_run_summary(batch_runs),
+                throughput_summary=embedding_worker_batch_run_throughput_summary(
+                    batch_runs
+                ),
                 profiles=profiles,
                 selected_worker_name=worker_name or "",
                 selected_profile_name=profile_name or "",

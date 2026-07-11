@@ -116,8 +116,22 @@ def test_embedding_batch_run_api_and_ui(
             detail_response = client.get(
                 f"/api/admin/embedding-batch-runs/{run.batch_run_id}"
             )
+            throughput_response = client.get(
+                "/api/admin/embedding-batch-runs/throughput-summary",
+                params={
+                    "worker_name": worker_name,
+                    "profile_name": "kure_v1_1024",
+                    "limit": 20,
+                },
+            )
             page_response = client.get(
-                f"/admin/embedding-batch-runs?batch_run_id={run.batch_run_id}"
+                "/admin/embedding-batch-runs",
+                params={
+                    "batch_run_id": run.batch_run_id,
+                    "worker_name": worker_name,
+                    "profile_name": "kure_v1_1024",
+                    "limit": 20,
+                },
             )
             invalid_response = client.get(
                 "/api/admin/embedding-batch-runs",
@@ -127,6 +141,7 @@ def test_embedding_batch_run_api_and_ui(
 
         list_payload = list_response.json()
         detail_payload = detail_response.json()
+        throughput_payload = throughput_response.json()
 
         assert list_response.status_code == 200
         assert list_payload["batch_run_count"] == 1
@@ -136,10 +151,22 @@ def test_embedding_batch_run_api_and_ui(
         assert detail_response.status_code == 200
         assert detail_payload["batch_run"]["worker_name"] == worker_name
         assert detail_payload["batch_run"]["runtime_metadata"]["results"][0]["job_id"] == 91001
+        assert throughput_response.status_code == 200
+        assert throughput_payload["batch_run_count"] == 1
+        assert throughput_payload["throughput"]["overall"]["run_count"] == 1
+        assert throughput_payload["throughput"]["overall"]["processed_count"] == 1
+        assert throughput_payload["throughput"]["overall"]["success_rate_pct"] == 100
+        assert throughput_payload["throughput"]["overall"]["throughput_per_second"] == 66.67
+        assert throughput_payload["throughput"]["groups"][0]["profile_name"] == "kure_v1_1024"
+        assert throughput_payload["throughput"]["groups"][0]["provider_source"] == "route"
         assert page_response.status_code == 200
         assert "임베딩 Batch 실행 이력" in page_response.text
         assert "data-embedding-batch-runs-page" in page_response.text
         assert "/api/admin/embedding-batch-runs" in page_response.text
+        assert "Embedding Throughput Trend" in page_response.text
+        assert "/api/admin/embedding-batch-runs/throughput-summary" in page_response.text
+        assert "Jobs/sec" in page_response.text
+        assert "66.67" in page_response.text
         assert worker_name in page_response.text
         assert f"#{run.batch_run_id}" in page_response.text
         assert "Mock embedding stored" in page_response.text

@@ -714,12 +714,14 @@ main.container-fluid {
 }
 
 .batch-run-summary-grid,
+.embedding-throughput-summary-grid,
 .batch-run-count-grid {
   display: grid;
   gap: 1rem;
 }
 
-.batch-run-summary-grid {
+.batch-run-summary-grid,
+.embedding-throughput-summary-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -786,6 +788,16 @@ main.container-fluid {
 
 .batch-run-table td:nth-child(7) {
   min-width: 11rem;
+}
+
+.embedding-throughput-table th,
+.embedding-throughput-table td {
+  white-space: nowrap;
+}
+
+.embedding-throughput-table td:first-child {
+  min-width: 12rem;
+  white-space: normal;
 }
 
 .batch-run-json-viewer {
