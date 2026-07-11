@@ -278,6 +278,8 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                 "/api/admin/embedding-provider-routes/contract-snapshots?limit=10"
                 in page_response.text
             )
+            assert "data-route-alerts-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/alerts" in page_response.text
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
 
@@ -570,6 +572,82 @@ def test_embedding_provider_route_contract_check_api_logs_failed_contract(
         assert log_row["detail"]["route_id"] == route.route_id
         assert log_row["detail"]["status"] == "health_unreachable"
         assert "Remote provider request failed" in log_row["detail"]["error_message"]
+    finally:
+        if "route" in locals():
+            _cleanup_app_logs(
+                migrated_database_url,
+                [f"embedding-provider-route:{route.route_id}:contract"],
+            )
+        _cleanup_routes(migrated_database_url, [provider_name])
+
+
+def test_embedding_provider_route_alert_api_filters_and_acknowledges_alerts(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"mock-route-alert-ack-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        route = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=provider_name,
+                provider_mode="remote",
+                provider_base_url="http://127.0.0.1:9",
+                timeout_seconds=0.1,
+                priority=4,
+                runtime_metadata={"purpose": "alert-ack-test"},
+            ),
+        )
+        correlation_id = f"embedding-provider-route:{route.route_id}:contract"
+        _cleanup_app_logs(migrated_database_url, [correlation_id])
+
+        with TestClient(app) as client:
+            contract_response = client.post(
+                f"/api/admin/embedding-provider-routes/{route.route_id}/contract-check",
+            )
+            alerts_response = client.get(
+                "/api/admin/embedding-provider-routes/alerts",
+                params={"level": "ERROR", "acknowledged": "false"},
+            )
+
+        assert contract_response.status_code == 200
+        assert alerts_response.status_code == 200
+        matching_alerts = [
+            alert
+            for alert in alerts_response.json()["alerts"]
+            if alert["correlation_id"] == correlation_id
+        ]
+        assert matching_alerts
+        alert = matching_alerts[0]
+        assert alert["acknowledged_at"] is None
+        assert alert["detail"]["provider_name"] == provider_name
+        assert alert["detail"]["status"] == "health_unreachable"
+
+        with TestClient(app) as client:
+            acknowledge_response = client.post(
+                f"/api/admin/embedding-provider-routes/alerts/{alert['log_id']}/acknowledge",
+                json={
+                    "acknowledged_by": "integration-test",
+                    "acknowledgement_note": "operator reviewed",
+                },
+            )
+            acknowledged_response = client.get(
+                "/api/admin/embedding-provider-routes/alerts",
+                params={"acknowledged": "true"},
+            )
+
+        assert acknowledge_response.status_code == 200
+        acknowledged_alert = acknowledge_response.json()["alert"]
+        assert acknowledged_alert["log_id"] == alert["log_id"]
+        assert acknowledged_alert["acknowledged_at"] is not None
+        assert acknowledged_alert["acknowledged_by"] == "integration-test"
+        assert acknowledged_alert["acknowledgement_note"] == "operator reviewed"
+        assert any(
+            item["log_id"] == alert["log_id"] for item in acknowledged_response.json()["alerts"]
+        )
     finally:
         if "route" in locals():
             _cleanup_app_logs(

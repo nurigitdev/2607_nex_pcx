@@ -34,6 +34,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("embedding_routes.status_mismatch") == "Mismatch"
     assert english("embedding_routes.manual_snapshot_saved") == "Snapshot saved"
     assert english("embedding_routes.no_health_snapshots") == "No health snapshots saved."
+    assert korean("embedding_routes.alerts") == "Provider Route Alert"
+    assert english("embedding_routes.acknowledge") == "Acknowledge"
     assert korean("search_reproducibility.title") == "검색 재현성 Metadata"
     assert english("search_reproducibility.title") == "Search Reproducibility Metadata"
     assert korean("search_reproducibility.fingerprint") == "Fingerprint"

@@ -28,9 +28,24 @@ def test_admin_logging_tables_and_default_settings(migrated_database_url: str) -
         WHERE setting_name = 'log_retention_days'
         """,
     )
+    acknowledgement_columns = fetch_one(
+        migrated_database_url,
+        """
+        SELECT count(*) AS count
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'app_logs'
+          AND column_name IN (
+              'acknowledged_at',
+              'acknowledged_by',
+              'acknowledgement_note'
+          )
+        """,
+    )
 
     assert settings_count["count"] == 4
     assert retention["setting_value"] == "7"
+    assert acknowledgement_columns["count"] == 3
 
 
 def test_log_event_persists_and_purges_expired_rows(migrated_database_url: str) -> None:

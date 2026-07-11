@@ -15,6 +15,10 @@ LOG_LEVELS = {
     "ERROR": 40,
     "CRITICAL": 50,
 }
+PROVIDER_ROUTE_ALERT_EVENT_TYPES = (
+    "embedding_provider_route_health_alert",
+    "embedding_provider_route_contract_alert",
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +27,10 @@ class LogSettings:
     min_level: str = "INFO"
     retention_days: int = 7
     page_size: int = 100
+
+
+class InvalidAdminLogError(ValueError):
+    """Raised when admin log filters or actions are invalid."""
 
 
 def normalize_level(level: str) -> str:
@@ -171,3 +179,86 @@ def list_logs(
                     (row_limit,),
                 )
             return [dict(row) for row in cursor.fetchall()]
+
+
+def list_provider_route_alert_logs(
+    database_url: str,
+    *,
+    level: str | None = None,
+    acknowledged: bool | None = False,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    with connect(database_url) as connection:
+        settings = load_log_settings(connection)
+        row_limit = _normalize_limit(limit or settings.page_size)
+        where_clauses = ["event_type = ANY(%s)"]
+        params: list[object] = [list(PROVIDER_ROUTE_ALERT_EVENT_TYPES)]
+        if level:
+            where_clauses.append("level = %s")
+            params.append(normalize_level(level))
+        if acknowledged is True:
+            where_clauses.append("acknowledged_at IS NOT NULL")
+        elif acknowledged is False:
+            where_clauses.append("acknowledged_at IS NULL")
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT *
+                FROM app_logs
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY occurred_at DESC, log_id DESC
+                LIMIT %s
+                """,
+                (*params, row_limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+
+def acknowledge_log(
+    database_url: str,
+    log_id: int,
+    *,
+    acknowledged_by: str = "operator",
+    acknowledgement_note: str | None = None,
+) -> dict[str, Any] | None:
+    if log_id <= 0:
+        raise InvalidAdminLogError("log_id must be greater than 0")
+    acknowledged_by = _validate_nonblank(acknowledged_by, "acknowledged_by")
+    note = acknowledgement_note.strip() if acknowledgement_note else None
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE app_logs
+                SET acknowledged_at = COALESCE(acknowledged_at, now()),
+                    acknowledged_by = %s,
+                    acknowledgement_note = %s
+                WHERE log_id = %s
+                  AND event_type = ANY(%s)
+                RETURNING *
+                """,
+                (
+                    acknowledged_by,
+                    note,
+                    log_id,
+                    list(PROVIDER_ROUTE_ALERT_EVENT_TYPES),
+                ),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+
+def _normalize_limit(limit: int) -> int:
+    if limit <= 0:
+        raise InvalidAdminLogError("limit must be greater than 0")
+    if limit > 500:
+        raise InvalidAdminLogError("limit must be less than or equal to 500")
+    return limit
+
+
+def _validate_nonblank(value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise InvalidAdminLogError(f"{field_name} is required")
+    return normalized

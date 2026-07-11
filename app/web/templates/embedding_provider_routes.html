@@ -134,6 +134,55 @@
 
 <section
   class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-route-alerts-panel
+  data-alerts-api-url="/api/admin/embedding-provider-routes/alerts"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.alerts") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.alerts_help") }}</div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center justify-content-end gap-2">
+      <select class="form-select form-select-sm w-auto" data-route-alert-level-filter {% if not database_configured %}disabled{% endif %}>
+        <option value="">{{ t("embedding_routes.alert_level_all") }}</option>
+        <option value="WARNING">WARNING</option>
+        <option value="ERROR">ERROR</option>
+        <option value="CRITICAL">CRITICAL</option>
+      </select>
+      <select class="form-select form-select-sm w-auto" data-route-alert-ack-filter {% if not database_configured %}disabled{% endif %}>
+        <option value="false">{{ t("embedding_routes.alert_unacknowledged") }}</option>
+        <option value="all">{{ t("embedding_routes.alert_all") }}</option>
+        <option value="true">{{ t("embedding_routes.alert_acknowledged") }}</option>
+      </select>
+      <button class="btn btn-outline-secondary btn-sm text-nowrap" type="button" data-route-alert-refresh {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.refresh") }}</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.occurred_at") }}</th>
+          <th scope="col">{{ t("embedding_routes.level") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.message") }}</th>
+          <th scope="col">{{ t("embedding_routes.acknowledgement") }}</th>
+        </tr>
+      </thead>
+      <tbody data-route-alerts-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="6">
+            {% if database_configured %}{{ t("embedding_routes.loading_alerts") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-route-health-history-panel
   data-health-snapshots-api-url="/api/admin/embedding-provider-routes/health-snapshots?limit=10"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
@@ -304,6 +353,13 @@
     noSnapshots: {{ t("embedding_routes.no_health_snapshots") | tojson }},
     loadingContractHistory: {{ t("embedding_routes.loading_contract_history") | tojson }},
     noContractSnapshots: {{ t("embedding_routes.no_contract_snapshots") | tojson }},
+    loadingAlerts: {{ t("embedding_routes.loading_alerts") | tojson }},
+    noAlerts: {{ t("embedding_routes.no_alerts") | tojson }},
+    alertsFailed: {{ t("embedding_routes.alerts_failed") | tojson }},
+    acknowledge: {{ t("embedding_routes.acknowledge") | tojson }},
+    acknowledging: {{ t("embedding_routes.acknowledging") | tojson }},
+    acknowledged: {{ t("embedding_routes.acknowledged") | tojson }},
+    acknowledgeFailed: {{ t("embedding_routes.acknowledge_failed") | tojson }},
     none: "-",
     status: {
       ready: {{ t("embedding_routes.status_ready") | tojson }},
@@ -333,6 +389,11 @@
   const historyTbody = historyPanel?.querySelector("[data-route-health-history-table]");
   const contractHistoryPanel = document.querySelector("[data-route-contract-history-panel]");
   const contractHistoryTbody = contractHistoryPanel?.querySelector("[data-route-contract-history-table]");
+  const alertsPanel = document.querySelector("[data-route-alerts-panel]");
+  const alertsTbody = alertsPanel?.querySelector("[data-route-alerts-table]");
+  const alertLevelFilter = alertsPanel?.querySelector("[data-route-alert-level-filter]");
+  const alertAckFilter = alertsPanel?.querySelector("[data-route-alert-ack-filter]");
+  const alertRefreshButton = alertsPanel?.querySelector("[data-route-alert-refresh]");
   const preflightButton = document.querySelector("[data-route-preflight-button]");
   const preflightStatus = document.querySelector("[data-route-preflight-status]");
 
@@ -542,6 +603,141 @@
     }
   }
 
+  function renderAlertsEmpty(message) {
+    if (!alertsTbody) {
+      return;
+    }
+    alertsTbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 6;
+    cell.textContent = message;
+    row.appendChild(cell);
+    alertsTbody.appendChild(row);
+  }
+
+  function alertStatus(alert) {
+    const detail = alert.detail || {};
+    return detail.status || alert.event_type || labels.none;
+  }
+
+  function alertProvider(alert) {
+    const detail = alert.detail || {};
+    return detail.provider_name || detail.route_id || labels.none;
+  }
+
+  async function acknowledgeAlert(alert, button) {
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = labels.acknowledging;
+    try {
+      const response = await fetch(
+        `/api/admin/embedding-provider-routes/alerts/${alert.log_id}/acknowledge`,
+        {
+          method: "POST",
+          headers: {"Accept": "application/json", "Content-Type": "application/json"},
+          body: JSON.stringify({acknowledged_by: "operator"}),
+        },
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.acknowledgeFailed);
+      }
+      await loadAlerts();
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = error.message || labels.acknowledgeFailed;
+      button.classList.remove("btn-outline-primary");
+      button.classList.add("btn-outline-danger");
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.classList.add("btn-outline-primary");
+        button.classList.remove("btn-outline-danger");
+      }, 1800);
+    }
+  }
+
+  function renderAlerts(alerts) {
+    if (!alertsTbody) {
+      return;
+    }
+    alertsTbody.replaceChildren();
+    if (!alerts.length) {
+      renderAlertsEmpty(labels.noAlerts);
+      return;
+    }
+
+    for (const alert of alerts) {
+      const row = document.createElement("tr");
+      appendTextCell(row, formatDateTime(alert.occurred_at));
+
+      const levelCell = document.createElement("td");
+      const levelBadge = document.createElement("span");
+      levelBadge.className = alert.level === "ERROR" || alert.level === "CRITICAL"
+        ? "badge text-bg-danger"
+        : "badge text-bg-warning";
+      levelBadge.textContent = alert.level || labels.none;
+      levelCell.appendChild(levelBadge);
+      row.appendChild(levelCell);
+
+      appendTextCell(row, alertProvider(alert));
+      appendTextCell(row, alertStatus(alert));
+      appendTextCell(row, alert.message);
+
+      const actionCell = document.createElement("td");
+      if (alert.acknowledged_at) {
+        const badge = document.createElement("span");
+        badge.className = "badge text-bg-light border";
+        badge.textContent = labels.acknowledged;
+        actionCell.appendChild(badge);
+      } else {
+        const button = document.createElement("button");
+        button.className = "btn btn-outline-primary btn-sm";
+        button.type = "button";
+        button.textContent = labels.acknowledge;
+        button.addEventListener("click", () => acknowledgeAlert(alert, button));
+        actionCell.appendChild(button);
+      }
+      row.appendChild(actionCell);
+      alertsTbody.appendChild(row);
+    }
+  }
+
+  function alertQueryString() {
+    const params = new URLSearchParams();
+    params.set("acknowledged", alertAckFilter?.value || "false");
+    params.set("limit", "10");
+    if (alertLevelFilter?.value) {
+      params.set("level", alertLevelFilter.value);
+    }
+    return params.toString();
+  }
+
+  async function loadAlerts() {
+    if (!alertsPanel || !alertsTbody) {
+      return;
+    }
+    if (alertsPanel.dataset.databaseConfigured !== "true") {
+      renderAlertsEmpty(labels.noDatabase);
+      return;
+    }
+
+    try {
+      renderAlertsEmpty(labels.loadingAlerts);
+      const response = await fetch(`${alertsPanel.dataset.alertsApiUrl}?${alertQueryString()}`, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.alertsFailed);
+      }
+      renderAlerts(body.alerts || []);
+    } catch (error) {
+      renderAlertsEmpty(error.message || labels.alertsFailed);
+    }
+  }
+
   async function loadHistory() {
     if (!historyPanel || !historyTbody) {
       return;
@@ -639,6 +835,7 @@
           setManualStatus(button, message, "text-success");
           await loadHealth();
           await loadHistory();
+          await loadAlerts();
         } catch (error) {
           setManualStatus(button, error.message || labels.manualFailed, "text-danger");
         } finally {
@@ -700,6 +897,7 @@
           const contract = body.contract || {};
           setContractStatus(button, contractStatusMessage(contract), contractStatusClass(contract));
           await loadContractHistory();
+          await loadAlerts();
         } catch (error) {
           setContractStatus(button, error.message || labels.contractCheckFailed, "text-danger");
         } finally {
@@ -734,6 +932,7 @@
         await loadHealth();
         await loadHistory();
         await loadContractHistory();
+        await loadAlerts();
       } catch (error) {
         setPreflightStatus(error.message || labels.preflightFailed, "text-danger");
       } finally {
@@ -743,10 +942,18 @@
     });
   }
 
+  function wireAlertFilters() {
+    alertRefreshButton?.addEventListener("click", () => loadAlerts());
+    alertLevelFilter?.addEventListener("change", () => loadAlerts());
+    alertAckFilter?.addEventListener("change", () => loadAlerts());
+  }
+
   wireManualHealthButtons();
   wireContractButtons();
   wirePreflightButton();
+  wireAlertFilters();
   loadHealth();
+  loadAlerts();
   loadHistory();
   loadContractHistory();
 })();

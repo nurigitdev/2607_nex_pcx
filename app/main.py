@@ -16,7 +16,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from app.core.admin_logging import list_logs, log_event
+from app.core.admin_logging import (
+    InvalidAdminLogError,
+    acknowledge_log,
+    list_logs,
+    list_provider_route_alert_logs,
+    log_event,
+)
 from app.core.chunk_policies import (
     ChunkPolicySummaryRecord,
     InvalidChunkPolicyManagementError,
@@ -332,6 +338,11 @@ class EmbeddingProviderRouteRequest(BaseModel):
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
 
 
+class ProviderRouteAlertAcknowledgeRequest(BaseModel):
+    acknowledged_by: str = "operator"
+    acknowledgement_note: str | None = Field(default=None, max_length=1000)
+
+
 class GoldenQuestionSetRequest(BaseModel):
     set_name: str
     description: str | None = None
@@ -494,6 +505,35 @@ def pipeline_job_response_payload(
 
 def _datetime_response(value: object | None) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else None
+
+
+def admin_log_payload(log: dict[str, object]) -> dict[str, object]:
+    return {
+        "log_id": log["log_id"],
+        "occurred_at": _datetime_response(log.get("occurred_at")),
+        "level": log["level"],
+        "event_type": log["event_type"],
+        "source": log.get("source"),
+        "message": log["message"],
+        "detail": dict(log.get("detail") or {}),
+        "traceback": log.get("traceback"),
+        "request_path": log.get("request_path"),
+        "correlation_id": log.get("correlation_id"),
+        "acknowledged_at": _datetime_response(log.get("acknowledged_at")),
+        "acknowledged_by": log.get("acknowledged_by"),
+        "acknowledgement_note": log.get("acknowledgement_note"),
+    }
+
+
+def parse_acknowledged_filter(value: str) -> bool | None:
+    normalized = value.strip().lower()
+    if normalized in {"", "all"}:
+        return None
+    if normalized in {"1", "true", "yes", "acknowledged"}:
+        return True
+    if normalized in {"0", "false", "no", "unacknowledged"}:
+        return False
+    raise ValueError("acknowledged must be one of false, true, or all")
 
 
 def pipeline_job_detail_payload(pipeline_job: PipelineJobRecord) -> dict[str, object]:
@@ -3097,6 +3137,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content=embedding_provider_route_readiness_summary_payload(readiness))
+
+    @app.get("/api/admin/embedding-provider-routes/alerts")
+    def api_list_embedding_provider_route_alerts(
+        level: str | None = None,
+        acknowledged: str = "false",
+        limit: int = 20,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            alerts = list_provider_route_alert_logs(
+                settings.database_url,
+                level=level,
+                acknowledged=parse_acknowledged_filter(acknowledged),
+                limit=limit,
+            )
+        except (InvalidAdminLogError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "alert_count": len(alerts),
+                "alerts": [admin_log_payload(alert) for alert in alerts],
+            }
+        )
+
+    @app.post("/api/admin/embedding-provider-routes/alerts/{log_id}/acknowledge")
+    def api_acknowledge_embedding_provider_route_alert(
+        log_id: int,
+        payload: ProviderRouteAlertAcknowledgeRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            alert = acknowledge_log(
+                settings.database_url,
+                log_id,
+                acknowledged_by=payload.acknowledged_by,
+                acknowledgement_note=payload.acknowledgement_note,
+            )
+        except InvalidAdminLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if alert is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Provider route alert not found.",
+            )
+
+        return JSONResponse(content={"alert": admin_log_payload(alert)})
 
     @app.post("/api/admin/embedding-provider-routes/preflight")
     def api_preflight_embedding_provider_routes(
