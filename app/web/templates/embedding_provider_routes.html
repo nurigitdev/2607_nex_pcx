@@ -246,6 +246,90 @@
 
 <section
   class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-provider-route-retention-panel
+  data-retention-settings-api-url="/api/admin/embedding-provider-routes/retention-settings"
+  data-retention-cleanup-api-url="/api/admin/embedding-provider-routes/cleanup"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.retention_settings") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.retention_settings_help") }}</div>
+    </div>
+    <span class="small text-secondary" data-retention-status aria-live="polite">
+      {% if database_configured %}{{ t("embedding_routes.loading_retention") }}{% else %}{{ t("common.no_database") }}{% endif %}
+    </span>
+  </div>
+  <form class="p-3 border-top" data-retention-form>
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-lg-3">
+        <div class="form-check">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="provider_route_retention_enabled"
+            name="enabled"
+            {% if not database_configured %}disabled{% endif %}
+          >
+          <label class="form-check-label" for="provider_route_retention_enabled">
+            {{ t("embedding_routes.retention_enabled") }}
+          </label>
+        </div>
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="provider_route_retention_days">{{ t("embedding_routes.retention_days") }}</label>
+        <input
+          class="form-control"
+          type="number"
+          min="1"
+          max="3650"
+          id="provider_route_retention_days"
+          name="retention_days"
+          value="30"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="provider_route_cleanup_batch_size">{{ t("embedding_routes.cleanup_batch_size") }}</label>
+        <input
+          class="form-control"
+          type="number"
+          min="1"
+          max="100000"
+          id="provider_route_cleanup_batch_size"
+          name="cleanup_batch_size"
+          value="1000"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-12 col-lg-5">
+        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+          <button class="btn btn-primary" type="submit" {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.save_retention") }}</button>
+          <button class="btn btn-outline-secondary" type="button" data-retention-preview {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.preview_cleanup") }}</button>
+          <button class="btn btn-outline-danger" type="button" data-retention-cleanup {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.run_cleanup") }}</button>
+        </div>
+      </div>
+    </div>
+  </form>
+  <div class="border-top p-3">
+    <div class="row g-3" data-retention-summary>
+      <div class="col-12 col-md-3">
+        <div class="metric-label">{{ t("embedding_routes.expired") }}</div>
+        <div class="metric-value" data-retention-expired-count>-</div>
+      </div>
+      <div class="col-12 col-md-3">
+        <div class="metric-label">{{ t("embedding_routes.deleted") }}</div>
+        <div class="metric-value" data-retention-deleted-count>-</div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div class="small text-secondary" data-retention-breakdown>-</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-route-alerts-panel
   data-alerts-api-url="/api/admin/embedding-provider-routes/alerts"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
@@ -464,6 +548,15 @@
     loadingPreflightRuns: {{ t("embedding_routes.loading_preflight_runs") | tojson }},
     noPreflightRuns: {{ t("embedding_routes.no_preflight_runs") | tojson }},
     preflightRunsFailed: {{ t("embedding_routes.preflight_runs_failed") | tojson }},
+    loadingRetention: {{ t("embedding_routes.loading_retention") | tojson }},
+    retentionSaved: {{ t("embedding_routes.retention_saved") | tojson }},
+    retentionSaveFailed: {{ t("embedding_routes.retention_save_failed") | tojson }},
+    cleanupPreviewComplete: {{ t("embedding_routes.cleanup_preview_complete") | tojson }},
+    cleanupComplete: {{ t("embedding_routes.cleanup_complete") | tojson }},
+    cleanupFailed: {{ t("embedding_routes.cleanup_failed") | tojson }},
+    healthSnapshots: {{ t("embedding_routes.health_snapshots") | tojson }},
+    contractSnapshots: {{ t("embedding_routes.contract_snapshots") | tojson }},
+    preflightRuns: {{ t("embedding_routes.preflight_runs") | tojson }},
     loadingHistory: {{ t("embedding_routes.loading_history") | tojson }},
     noSnapshots: {{ t("embedding_routes.no_health_snapshots") | tojson }},
     loadingContractHistory: {{ t("embedding_routes.loading_contract_history") | tojson }},
@@ -528,6 +621,14 @@
   const sampleSetReset = sampleSetPanel?.querySelector("[data-sample-set-reset]");
   const preflightRunPanel = document.querySelector("[data-preflight-run-history-panel]");
   const preflightRunTbody = preflightRunPanel?.querySelector("[data-preflight-run-history-table]");
+  const retentionPanel = document.querySelector("[data-provider-route-retention-panel]");
+  const retentionForm = retentionPanel?.querySelector("[data-retention-form]");
+  const retentionStatus = retentionPanel?.querySelector("[data-retention-status]");
+  const retentionPreviewButton = retentionPanel?.querySelector("[data-retention-preview]");
+  const retentionCleanupButton = retentionPanel?.querySelector("[data-retention-cleanup]");
+  const retentionExpiredCount = retentionPanel?.querySelector("[data-retention-expired-count]");
+  const retentionDeletedCount = retentionPanel?.querySelector("[data-retention-deleted-count]");
+  const retentionBreakdown = retentionPanel?.querySelector("[data-retention-breakdown]");
   const preflightButton = document.querySelector("[data-route-preflight-button]");
   const preflightStatus = document.querySelector("[data-route-preflight-status]");
 
@@ -563,6 +664,14 @@
     }
     sampleSetStatus.className = `small ms-auto ${className}`;
     sampleSetStatus.textContent = message;
+  }
+
+  function setRetentionStatus(message, className = "text-secondary") {
+    if (!retentionStatus) {
+      return;
+    }
+    retentionStatus.className = `small ${className}`;
+    retentionStatus.textContent = message;
   }
 
   function setSummary(body) {
@@ -940,6 +1049,36 @@
     }
   }
 
+  function fillRetentionForm(settings) {
+    if (!retentionForm) {
+      return;
+    }
+    retentionForm.enabled.checked = Boolean(settings.enabled);
+    retentionForm.retention_days.value = String(settings.retention_days ?? 30);
+    retentionForm.cleanup_batch_size.value = String(settings.cleanup_batch_size ?? 1000);
+  }
+
+  function retentionPayload() {
+    return {
+      enabled: retentionForm.enabled.checked,
+      retention_days: Number(retentionForm.retention_days.value || 30),
+      cleanup_batch_size: Number(retentionForm.cleanup_batch_size.value || 1000),
+    };
+  }
+
+  function renderRetentionCleanup(cleanup) {
+    if (!retentionExpiredCount || !retentionDeletedCount || !retentionBreakdown) {
+      return;
+    }
+    retentionExpiredCount.textContent = String(cleanup.expired_count ?? "-");
+    retentionDeletedCount.textContent = String(cleanup.deleted_count ?? "-");
+    retentionBreakdown.textContent = [
+      `${labels.healthSnapshots}: ${cleanup.expired_health_snapshot_count ?? 0}/${cleanup.deleted_health_snapshot_count ?? 0}`,
+      `${labels.contractSnapshots}: ${cleanup.expired_contract_snapshot_count ?? 0}/${cleanup.deleted_contract_snapshot_count ?? 0}`,
+      `${labels.preflightRuns}: ${cleanup.expired_preflight_run_count ?? 0}/${cleanup.deleted_preflight_run_count ?? 0}`,
+    ].join(" · ");
+  }
+
   function alertStatus(alert) {
     const detail = alert.detail || {};
     return detail.status || alert.event_type || labels.none;
@@ -1081,6 +1220,92 @@
       renderPreflightRuns(body.runs || []);
     } catch (error) {
       renderPreflightRunsEmpty(error.message || labels.preflightRunsFailed);
+    }
+  }
+
+  async function loadRetentionSettings() {
+    if (!retentionPanel || !retentionForm) {
+      return;
+    }
+    if (retentionPanel.dataset.databaseConfigured !== "true") {
+      setRetentionStatus(labels.noDatabase);
+      return;
+    }
+    try {
+      setRetentionStatus(labels.loadingRetention);
+      const response = await fetch(retentionPanel.dataset.retentionSettingsApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.retentionSaveFailed);
+      }
+      fillRetentionForm(body.settings || {});
+      setRetentionStatus("");
+    } catch (error) {
+      setRetentionStatus(error.message || labels.retentionSaveFailed, "text-danger");
+    }
+  }
+
+  async function saveRetentionSettings(event) {
+    event.preventDefault();
+    if (!retentionPanel || !retentionForm) {
+      return;
+    }
+    try {
+      const response = await fetch(retentionPanel.dataset.retentionSettingsApiUrl, {
+        method: "PUT",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify(retentionPayload()),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.retentionSaveFailed);
+      }
+      fillRetentionForm(body.settings || {});
+      setRetentionStatus(labels.retentionSaved, "text-success");
+    } catch (error) {
+      setRetentionStatus(error.message || labels.retentionSaveFailed, "text-danger");
+    }
+  }
+
+  async function runRetentionCleanup(dryRun) {
+    if (!retentionPanel) {
+      return;
+    }
+    const button = dryRun ? retentionPreviewButton : retentionCleanupButton;
+    const originalText = button?.textContent || "";
+    if (button) {
+      button.disabled = true;
+      button.textContent = labels.loadingRetention;
+    }
+    try {
+      const response = await fetch(retentionPanel.dataset.retentionCleanupApiUrl, {
+        method: "POST",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify({dry_run: dryRun}),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.cleanupFailed);
+      }
+      renderRetentionCleanup(body.cleanup || {});
+      setRetentionStatus(
+        dryRun ? labels.cleanupPreviewComplete : labels.cleanupComplete,
+        "text-success",
+      );
+      if (!dryRun) {
+        await loadHistory();
+        await loadContractHistory();
+        await loadPreflightRuns();
+      }
+    } catch (error) {
+      setRetentionStatus(error.message || labels.cleanupFailed, "text-danger");
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
     }
   }
 
@@ -1375,15 +1600,23 @@
     sampleSetReset?.addEventListener("click", resetSampleSetForm);
   }
 
+  function wireRetentionControls() {
+    retentionForm?.addEventListener("submit", saveRetentionSettings);
+    retentionPreviewButton?.addEventListener("click", () => runRetentionCleanup(true));
+    retentionCleanupButton?.addEventListener("click", () => runRetentionCleanup(false));
+  }
+
   wireManualHealthButtons();
   wireContractButtons();
   wirePreflightButton();
   wireAlertFilters();
   wireSampleSetForm();
+  wireRetentionControls();
   loadHealth();
   loadAlerts();
   loadSampleSets();
   loadPreflightRuns();
+  loadRetentionSettings();
   loadHistory();
   loadContractHistory();
 })();

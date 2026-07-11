@@ -497,6 +497,9 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert (
                 "/api/admin/embedding-provider-routes/preflight-runs?limit=10" in page_response.text
             )
+            assert "data-provider-route-retention-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/retention-settings" in page_response.text
+            assert "/api/admin/embedding-provider-routes/cleanup" in page_response.text
             assert "data-route-health-history-panel" in page_response.text
             assert (
                 "/api/admin/embedding-provider-routes/health-snapshots?limit=10"

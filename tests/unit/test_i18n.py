@@ -46,6 +46,10 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("embedding_routes.preflight_runs_failed") == (
         "Preflight run history failed to load"
     )
+    assert korean("embedding_routes.retention_settings") == "운영 데이터 보존 설정"
+    assert english("embedding_routes.preview_cleanup") == "Preview Cleanup"
+    assert korean("embedding_routes.cleanup_complete") == "Cleanup 완료"
+    assert english("embedding_routes.preflight_runs") == "Preflight Runs"
     assert korean("search_reproducibility.title") == "검색 재현성 Metadata"
     assert english("search_reproducibility.title") == "Search Reproducibility Metadata"
     assert korean("search_reproducibility.fingerprint") == "Fingerprint"
