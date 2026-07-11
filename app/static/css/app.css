@@ -1190,6 +1190,27 @@ main.container-fluid {
   white-space: pre;
 }
 
+.provider-playbook-source {
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  color: var(--pcx-ink);
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  max-height: 30rem;
+  overflow: auto;
+  padding: 0.875rem;
+  white-space: pre-wrap;
+}
+
 .metric-label {
   color: var(--pcx-muted);
   font-size: 0.875rem;

@@ -296,6 +296,7 @@ from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=BASE_DIR / "web" / "templates")
+PROVIDER_OPERATIONS_PLAYBOOK_PATH = BASE_DIR.parent / "docs" / "provider_operations_playbook.md"
 UPLOAD_FILE_FORM = File(...)
 DOCUMENT_GROUP_FORM = Form("default")
 SECURITY_LEVEL_FORM = Form("internal")
@@ -1019,6 +1020,10 @@ def embedding_provider_route_operations_status(
     if due_schedule_count > 0:
         return "attention", "due_schedules"
     return "ready", "ready"
+
+
+def read_provider_operations_playbook_markdown() -> str:
+    return PROVIDER_OPERATIONS_PLAYBOOK_PATH.read_text(encoding="utf-8")
 
 
 def embedding_provider_preflight_run_payload(
@@ -6041,6 +6046,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 error_message=error_message,
                 success_message=None,
                 database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/embedding-provider-routes/playbook", response_class=HTMLResponse)
+    def embedding_provider_routes_playbook_page(request: Request) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request,
+            "embedding_provider_route_playbook.html",
+            template_context(
+                request,
+                playbook_markdown=read_provider_operations_playbook_markdown(),
+                playbook_source="docs/provider_operations_playbook.md",
             ),
         )
 

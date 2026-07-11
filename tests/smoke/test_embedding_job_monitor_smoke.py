@@ -83,6 +83,8 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert response.status_code == 200
     assert "임베딩 Provider 라우팅" in response.text
     assert "Provider 운영 요약" in response.text
+    assert "운영 Playbook" in response.text
+    assert "/admin/embedding-provider-routes/playbook" in response.text
     assert "data-provider-operations-summary-panel" in response.text
     assert "data-operations-summary-refresh" in response.text
     assert "Provider Route Health" in response.text
@@ -134,6 +136,20 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "/api/admin/embedding-provider-routes/health-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/contract-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/alerts" in response.text
+
+
+def test_embedding_provider_route_playbook_page_loads_document_source() -> None:
+    app = create_app(Settings())
+
+    with TestClient(app) as client:
+        response = client.get("/admin/embedding-provider-routes/playbook")
+
+    assert response.status_code == 200
+    assert "Provider 운영 Playbook" in response.text
+    assert "data-provider-playbook-page" in response.text
+    assert "docs/provider_operations_playbook.md" in response.text
+    assert "Embedding Provider Operations Playbook" in response.text
+    assert "Release Checklist" in response.text
 
 
 def test_embedding_provider_contract_sample_set_api_requires_database_url() -> None:

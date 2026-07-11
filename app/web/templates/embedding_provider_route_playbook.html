@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4" data-provider-playbook-page>
+  <div>
+    <h1 class="h3 mb-1">{{ t("embedding_routes.playbook_title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("embedding_routes.playbook_help") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="/admin/embedding-provider-routes">{{ t("embedding_routes.back_to_routes") }}</a>
+    <a class="btn btn-outline-secondary" href="/admin/logs">{{ t("nav.logs") }}</a>
+  </div>
+</div>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.playbook_quick_check") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.playbook_quick_check_help") }}</div>
+    </div>
+    <span class="badge text-bg-light border">{{ playbook_source }}</span>
+  </div>
+  <div class="document-detail-grid p-3 border-top">
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.playbook_daily_check") }}</div>
+      <p class="mb-3 text-secondary">{{ t("embedding_routes.playbook_daily_check_help") }}</p>
+      <a class="btn btn-sm btn-outline-primary" href="/admin/embedding-provider-routes">{{ t("embedding_routes.open_routes") }}</a>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.playbook_preflight") }}</div>
+      <p class="mb-3 text-secondary">{{ t("embedding_routes.playbook_preflight_help") }}</p>
+      <a class="btn btn-sm btn-outline-primary" href="/api/admin/embedding-provider-routes/readiness">{{ t("embedding_routes.readiness") }}</a>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.playbook_alerts") }}</div>
+      <p class="mb-3 text-secondary">{{ t("embedding_routes.playbook_alerts_help") }}</p>
+      <a class="btn btn-sm btn-outline-primary" href="/admin/logs">{{ t("nav.logs") }}</a>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.playbook_release_checklist") }}</div>
+      <p class="mb-3 text-secondary">{{ t("embedding_routes.playbook_release_checklist_help") }}</p>
+      <a class="btn btn-sm btn-outline-primary" href="/admin/embedding-jobs">{{ t("nav.embeddings") }}</a>
+    </div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.playbook_source") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.playbook_source_help") }}</div>
+    </div>
+  </div>
+  <div class="p-3 border-top">
+    <pre class="provider-playbook-source mb-0">{{ playbook_markdown }}</pre>
+  </div>
+</section>
+{% endblock %}
