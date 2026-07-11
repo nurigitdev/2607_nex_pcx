@@ -935,6 +935,10 @@
     acknowledging: {{ t("embedding_routes.acknowledging") | tojson }},
     acknowledged: {{ t("embedding_routes.acknowledged") | tojson }},
     acknowledgeFailed: {{ t("embedding_routes.acknowledge_failed") | tojson }},
+    acknowledgementNotePlaceholder: {{ t("embedding_routes.acknowledgement_note_placeholder") | tojson }},
+    acknowledgedBy: {{ t("embedding_routes.acknowledged_by") | tojson }},
+    acknowledgedAt: {{ t("embedding_routes.acknowledged_at") | tojson }},
+    acknowledgementNote: {{ t("embedding_routes.acknowledgement_note") | tojson }},
     loadingSampleSets: {{ t("embedding_routes.loading_sample_sets") | tojson }},
     noSampleSets: {{ t("embedding_routes.no_sample_sets") | tojson }},
     sampleSetSaved: {{ t("embedding_routes.sample_set_saved") | tojson }},
@@ -1957,17 +1961,18 @@
     return detail.provider_name || detail.route_id || labels.none;
   }
 
-  async function acknowledgeAlert(alert, button) {
+  async function acknowledgeAlert(alert, button, noteInput) {
     const originalText = button.textContent;
     button.disabled = true;
     button.textContent = labels.acknowledging;
+    const note = noteInput?.value.trim() || null;
     try {
       const response = await fetch(
         `/api/admin/embedding-provider-routes/alerts/${alert.log_id}/acknowledge`,
         {
           method: "POST",
           headers: {"Accept": "application/json", "Content-Type": "application/json"},
-          body: JSON.stringify({acknowledged_by: "operator"}),
+          body: JSON.stringify({acknowledged_by: "operator", acknowledgement_note: note}),
         },
       );
       const body = await response.json();
@@ -2021,13 +2026,36 @@
         badge.className = "badge text-bg-light border";
         badge.textContent = labels.acknowledged;
         actionCell.appendChild(badge);
+
+        const meta = document.createElement("div");
+        meta.className = "small text-secondary mt-1";
+        const metaParts = [
+          `${labels.acknowledgedAt}: ${formatDateTime(alert.acknowledged_at)}`,
+          `${labels.acknowledgedBy}: ${alert.acknowledged_by || labels.none}`,
+        ];
+        if (alert.acknowledgement_note) {
+          metaParts.push(`${labels.acknowledgementNote}: ${alert.acknowledgement_note}`);
+        }
+        meta.textContent = metaParts.join(" · ");
+        actionCell.appendChild(meta);
       } else {
+        const actionGroup = document.createElement("div");
+        actionGroup.className = "input-group input-group-sm";
+
+        const noteInput = document.createElement("input");
+        noteInput.className = "form-control";
+        noteInput.type = "text";
+        noteInput.placeholder = labels.acknowledgementNotePlaceholder;
+        noteInput.dataset.routeAlertNote = String(alert.log_id);
+        actionGroup.appendChild(noteInput);
+
         const button = document.createElement("button");
         button.className = "btn btn-outline-primary btn-sm";
         button.type = "button";
         button.textContent = labels.acknowledge;
-        button.addEventListener("click", () => acknowledgeAlert(alert, button));
-        actionCell.appendChild(button);
+        button.addEventListener("click", () => acknowledgeAlert(alert, button, noteInput));
+        actionGroup.appendChild(button);
+        actionCell.appendChild(actionGroup);
       }
       row.appendChild(actionCell);
       alertsTbody.appendChild(row);

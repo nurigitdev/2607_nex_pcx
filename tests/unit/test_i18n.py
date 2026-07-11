@@ -43,6 +43,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("embedding_routes.no_health_snapshots") == "No health snapshots saved."
     assert korean("embedding_routes.alerts") == "Provider Route Alert"
     assert english("embedding_routes.acknowledge") == "Acknowledge"
+    assert korean("embedding_routes.acknowledgement_note_placeholder") == "확인 메모"
+    assert english("embedding_routes.acknowledged_by") == "Acknowledged By"
     assert korean("embedding_routes.sample_sets") == "Contract Sample Sets"
     assert english("embedding_routes.save_sample_set") == "Save Sample Set"
     assert korean("embedding_routes.preflight_run_history") == "Preflight 실행 이력"

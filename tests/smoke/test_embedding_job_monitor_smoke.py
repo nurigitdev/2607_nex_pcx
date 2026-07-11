@@ -110,6 +110,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-route-contract-history-panel" in response.text
     assert "Provider Route Alert" in response.text
     assert "data-route-alerts-panel" in response.text
+    assert "routeAlertNote" in response.text
     assert "Contract Sample Sets" in response.text
     assert "data-contract-sample-set-panel" in response.text
     assert "data-sample-set-form" in response.text
