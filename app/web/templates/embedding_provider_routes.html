@@ -156,6 +156,43 @@
   </div>
 </section>
 
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-route-contract-history-panel
+  data-contract-snapshots-api-url="/api/admin/embedding-provider-routes/contract-snapshots?limit=10"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.contract_history") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.contract_history_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.checked_at") }}</th>
+          <th scope="col">{{ t("embedding_routes.profile") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_model") }}</th>
+          <th scope="col">{{ t("embedding_routes.dimension") }}</th>
+          <th scope="col">{{ t("embedding_routes.elapsed") }}</th>
+          <th scope="col">{{ t("embedding_routes.validation") }}</th>
+        </tr>
+      </thead>
+      <tbody data-route-contract-history-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="8">
+            {% if database_configured %}{{ t("embedding_routes.loading_contract_history") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden">
   <div class="dashboard-panel-header p-3">
     <div>
@@ -250,6 +287,8 @@
     contractCheckFailed: {{ t("embedding_routes.contract_check_failed") | tojson }},
     loadingHistory: {{ t("embedding_routes.loading_history") | tojson }},
     noSnapshots: {{ t("embedding_routes.no_health_snapshots") | tojson }},
+    loadingContractHistory: {{ t("embedding_routes.loading_contract_history") | tojson }},
+    noContractSnapshots: {{ t("embedding_routes.no_contract_snapshots") | tojson }},
     none: "-",
     status: {
       ready: {{ t("embedding_routes.status_ready") | tojson }},
@@ -277,6 +316,8 @@
   const tbody = panel.querySelector("[data-route-health-table]");
   const historyPanel = document.querySelector("[data-route-health-history-panel]");
   const historyTbody = historyPanel?.querySelector("[data-route-health-history-table]");
+  const contractHistoryPanel = document.querySelector("[data-route-contract-history-panel]");
+  const contractHistoryTbody = contractHistoryPanel?.querySelector("[data-route-contract-history-table]");
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
@@ -423,6 +464,59 @@
     }
   }
 
+  function renderContractHistoryEmpty(message) {
+    if (!contractHistoryTbody) {
+      return;
+    }
+    contractHistoryTbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 8;
+    cell.textContent = message;
+    row.appendChild(cell);
+    contractHistoryTbody.appendChild(row);
+  }
+
+  function renderContractHistory(snapshots) {
+    if (!contractHistoryTbody) {
+      return;
+    }
+    contractHistoryTbody.replaceChildren();
+    if (!snapshots.length) {
+      renderContractHistoryEmpty(labels.noContractSnapshots);
+      return;
+    }
+
+    for (const snapshot of snapshots) {
+      const row = document.createElement("tr");
+      appendTextCell(row, formatDateTime(snapshot.checked_at));
+      appendTextCell(row, snapshot.profile_name);
+      appendTextCell(row, snapshot.provider_name);
+
+      const statusCell = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = snapshot.passed ? "badge text-bg-success" : "badge text-bg-danger";
+      badge.textContent = snapshot.status || labels.none;
+      statusCell.appendChild(badge);
+      row.appendChild(statusCell);
+
+      appendTextCell(row, snapshot.provider_model_id);
+      appendTextCell(row, snapshot.dimension == null ? labels.none : `${snapshot.dimension}d`);
+      appendTextCell(row, snapshot.elapsed_ms == null ? labels.none : `${snapshot.elapsed_ms}ms`);
+
+      const validationCell = document.createElement("td");
+      const validationMessages = [
+        ...(snapshot.validation_errors || []),
+        ...(snapshot.error_message ? [snapshot.error_message] : []),
+      ];
+      validationCell.className = validationMessages.length ? "text-danger" : "text-secondary";
+      validationCell.textContent = validationMessages.length ? validationMessages.join("; ") : labels.none;
+      row.appendChild(validationCell);
+      contractHistoryTbody.appendChild(row);
+    }
+  }
+
   async function loadHistory() {
     if (!historyPanel || !historyTbody) {
       return;
@@ -443,6 +537,29 @@
       renderHistory(body.snapshots || []);
     } catch (error) {
       renderHistoryEmpty(error.message || labels.healthFailed);
+    }
+  }
+
+  async function loadContractHistory() {
+    if (!contractHistoryPanel || !contractHistoryTbody) {
+      return;
+    }
+    if (contractHistoryPanel.dataset.databaseConfigured !== "true") {
+      renderContractHistoryEmpty(labels.noDatabase);
+      return;
+    }
+
+    try {
+      const response = await fetch(contractHistoryPanel.dataset.contractSnapshotsApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.contractCheckFailed);
+      }
+      renderContractHistory(body.snapshots || []);
+    } catch (error) {
+      renderContractHistoryEmpty(error.message || labels.contractCheckFailed);
     }
   }
 
@@ -557,6 +674,7 @@
           }
           const contract = body.contract || {};
           setContractStatus(button, contractStatusMessage(contract), contractStatusClass(contract));
+          await loadContractHistory();
         } catch (error) {
           setContractStatus(button, error.message || labels.contractCheckFailed, "text-danger");
         } finally {
@@ -571,6 +689,7 @@
   wireContractButtons();
   loadHealth();
   loadHistory();
+  loadContractHistory();
 })();
 </script>
 {% endblock %}

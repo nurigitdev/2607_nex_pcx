@@ -56,6 +56,7 @@ from app.core.embedding_provider_health import get_embedding_provider_health_sta
 from app.core.embedding_provider_route_contract_snapshots import (
     EmbeddingProviderRouteContractSnapshotRecord,
     InvalidEmbeddingProviderRouteContractSnapshotError,
+    list_embedding_provider_route_contract_snapshots,
     record_embedding_provider_route_contract_snapshot,
 )
 from app.core.embedding_provider_route_contracts import (
@@ -2994,6 +2995,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "snapshot_count": len(snapshots),
                 "snapshots": [
                     embedding_provider_route_health_snapshot_payload(snapshot)
+                    for snapshot in snapshots
+                ],
+            }
+        )
+
+    @app.get("/api/admin/embedding-provider-routes/contract-snapshots")
+    def api_list_embedding_provider_route_contract_snapshots(
+        profile_name: str | None = None,
+        route_id: int | None = None,
+        limit: int = 20,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            snapshots = list_embedding_provider_route_contract_snapshots(
+                settings.database_url,
+                profile_name=profile_name,
+                route_id=route_id,
+                limit=limit,
+            )
+        except InvalidEmbeddingProviderRouteContractSnapshotError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "snapshot_count": len(snapshots),
+                "snapshots": [
+                    embedding_provider_route_contract_snapshot_payload(snapshot)
                     for snapshot in snapshots
                 ],
             }

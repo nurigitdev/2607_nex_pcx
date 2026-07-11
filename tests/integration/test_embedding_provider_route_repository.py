@@ -268,6 +268,11 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                 "/api/admin/embedding-provider-routes/health-snapshots?limit=10"
                 in page_response.text
             )
+            assert "data-route-contract-history-panel" in page_response.text
+            assert (
+                "/api/admin/embedding-provider-routes/contract-snapshots?limit=10"
+                in page_response.text
+            )
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
 
@@ -458,9 +463,15 @@ def test_embedding_provider_route_contract_check_api_validates_mock_route(
             response = client.post(
                 f"/api/admin/embedding-provider-routes/{route.route_id}/contract-check",
             )
+            history_response = client.get(
+                "/api/admin/embedding-provider-routes/contract-snapshots",
+                params={"route_id": route.route_id, "limit": "5"},
+            )
 
         assert response.status_code == 200
+        assert history_response.status_code == 200
         body = response.json()
+        history_body = history_response.json()
         contract = body["contract"]
         snapshot = body["snapshot"]
         assert contract["passed"] is True
@@ -483,6 +494,8 @@ def test_embedding_provider_route_contract_check_api_validates_mock_route(
         assert snapshot["expected_dimension"] == 1024
         assert snapshot["dimension"] == 1024
         assert snapshot["input_count"] == 1
+        assert history_body["snapshot_count"] == 1
+        assert history_body["snapshots"][0]["snapshot_id"] == snapshot["snapshot_id"]
 
         snapshots = list_embedding_provider_route_contract_snapshots(
             migrated_database_url,
