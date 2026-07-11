@@ -921,6 +921,32 @@ def embedding_provider_route_readiness_summary_payload(
     }
 
 
+def embedding_provider_route_operations_summary_payload(
+    *,
+    readiness: EmbeddingProviderRouteReadinessSummary,
+    schedules: list[EmbeddingProviderPreflightScheduleRecord],
+    due_schedules: list[EmbeddingProviderPreflightScheduleRecord],
+    latest_run: EmbeddingProviderPreflightRunRecord | None,
+) -> dict[str, object]:
+    failed_schedule_count = sum(
+        1 for schedule in schedules if schedule.last_status in {"failed", "error"}
+    )
+    return {
+        "route_count": readiness.route_count,
+        "active_route_count": readiness.active_count,
+        "ready_route_count": readiness.ready_count,
+        "blocked_route_count": readiness.blocked_count,
+        "needs_preflight_count": readiness.needs_preflight_count,
+        "schedule_count": len(schedules),
+        "enabled_schedule_count": sum(1 for schedule in schedules if schedule.is_enabled),
+        "due_schedule_count": len(due_schedules),
+        "failed_schedule_count": failed_schedule_count,
+        "latest_preflight_run": (
+            embedding_provider_preflight_run_payload(latest_run) if latest_run is not None else None
+        ),
+    }
+
+
 def embedding_provider_preflight_run_payload(
     run: EmbeddingProviderPreflightRunRecord,
 ) -> dict[str, object]:
@@ -3486,6 +3512,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content=embedding_provider_route_readiness_summary_payload(readiness))
+
+    @app.get("/api/admin/embedding-provider-routes/operations-summary")
+    def api_embedding_provider_route_operations_summary() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            readiness = get_embedding_provider_route_readiness_summary(settings.database_url)
+            schedules = list_embedding_provider_preflight_schedules(settings.database_url)
+            due_schedules = list_due_embedding_provider_preflight_schedules(
+                settings.database_url,
+                limit=100,
+            )
+            latest_runs = list_embedding_provider_preflight_runs(
+                settings.database_url,
+                limit=1,
+            )
+        except (
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderRouteHealthSnapshotError,
+            InvalidEmbeddingProviderRouteContractSnapshotError,
+            InvalidEmbeddingProviderPreflightScheduleError,
+            InvalidEmbeddingProviderPreflightRunError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "operations_summary": embedding_provider_route_operations_summary_payload(
+                    readiness=readiness,
+                    schedules=schedules,
+                    due_schedules=due_schedules,
+                    latest_run=latest_runs[0] if latest_runs else None,
+                )
+            }
+        )
 
     @app.get("/api/admin/embedding-provider-routes/alerts")
     def api_list_embedding_provider_route_alerts(

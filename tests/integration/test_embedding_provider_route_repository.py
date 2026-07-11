@@ -481,6 +481,8 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert api_provider_name in page_response.text
             assert form_provider_name in page_response.text
             assert "/api/admin/embedding-provider-routes" in page_response.text
+            assert "data-provider-operations-summary-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/operations-summary" in page_response.text
             assert "data-manual-health-button" in page_response.text
             assert (
                 f"/api/admin/embedding-provider-routes/{route['route_id']}/health-check"
@@ -936,11 +938,16 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
                 "/api/admin/embedding-provider-routes/preflight-runs",
                 params={"limit": "10"},
             )
+            operations_response = client.get(
+                "/api/admin/embedding-provider-routes/operations-summary"
+            )
 
         assert response.status_code == 200
         assert history_response.status_code == 200
+        assert operations_response.status_code == 200
         body = response.json()
         preflight_run = body["preflight_run"]
+        operations_summary = operations_response.json()["operations_summary"]
         route_results = [
             result
             for result in body["results"]
@@ -963,6 +970,14 @@ def test_embedding_provider_route_preflight_api_persists_health_and_contract_sna
         assert route_result["contract_snapshot"]["route_id"] == route.route_id
         assert route_result["contract_snapshot"]["status"] == "passed"
         assert preflight_run["run_id"] in [run["run_id"] for run in history_response.json()["runs"]]
+        assert operations_summary["active_route_count"] >= 1
+        assert operations_summary["ready_route_count"] >= 1
+        assert operations_summary["latest_preflight_run"] is not None
+        assert operations_summary["latest_preflight_run"]["status"] in {
+            "succeeded",
+            "failed",
+            "error",
+        }
 
         health_snapshots = list_embedding_provider_route_health_snapshots(
             migrated_database_url,

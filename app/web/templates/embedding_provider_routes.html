@@ -70,6 +70,45 @@
 
 <section
   class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-provider-operations-summary-panel
+  data-operations-summary-api-url="/api/admin/embedding-provider-routes/operations-summary"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.operations_summary") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.operations_summary_help") }}</div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="small text-secondary" data-operations-summary-status aria-live="polite">
+        {% if database_configured %}{{ t("embedding_routes.loading_operations_summary") }}{% else %}{{ t("common.no_database") }}{% endif %}
+      </span>
+      <button class="btn btn-outline-secondary btn-sm" type="button" data-operations-summary-refresh {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.refresh") }}</button>
+    </div>
+  </div>
+  <section class="document-detail-grid p-3 border-top">
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.active_routes") }}</div>
+      <div class="metric-value" data-operations-active-routes>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.ready_routes") }}</div>
+      <div class="metric-value" data-operations-ready-routes>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.due_schedules") }}</div>
+      <div class="metric-value" data-operations-due-schedules>-</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.latest_preflight") }}</div>
+      <div class="metric-value fs-5" data-operations-latest-preflight>-</div>
+      <div class="small text-secondary" data-operations-latest-preflight-detail>-</div>
+    </div>
+  </section>
+</section>
+
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-contract-sample-set-panel
   data-sample-sets-api-url="/api/admin/embedding-provider-routes/contract-sample-sets"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
@@ -724,6 +763,9 @@
   const labels = {
     noDatabase: {{ t("common.no_database") | tojson }},
     noRoutes: {{ t("embedding_routes.no_routes") | tojson }},
+    loadingOperationsSummary: {{ t("embedding_routes.loading_operations_summary") | tojson }},
+    operationsSummaryLoaded: {{ t("embedding_routes.operations_summary_loaded") | tojson }},
+    operationsSummaryFailed: {{ t("embedding_routes.operations_summary_failed") | tojson }},
     healthFailed: {{ t("embedding_routes.health_failed") | tojson }},
     healthLoaded: {{ t("embedding_routes.health_loaded") | tojson }},
     manualChecking: {{ t("embedding_routes.manual_checking") | tojson }},
@@ -804,6 +846,16 @@
   const routeCount = panel.querySelector("[data-route-health-route-count]");
   const loading = panel.querySelector("[data-route-health-loading]");
   const tbody = panel.querySelector("[data-route-health-table]");
+  const operationsPanel = document.querySelector("[data-provider-operations-summary-panel]");
+  const operationsStatus = operationsPanel?.querySelector("[data-operations-summary-status]");
+  const operationsRefresh = operationsPanel?.querySelector("[data-operations-summary-refresh]");
+  const operationsActiveRoutes = operationsPanel?.querySelector("[data-operations-active-routes]");
+  const operationsReadyRoutes = operationsPanel?.querySelector("[data-operations-ready-routes]");
+  const operationsDueSchedules = operationsPanel?.querySelector("[data-operations-due-schedules]");
+  const operationsLatestPreflight = operationsPanel?.querySelector("[data-operations-latest-preflight]");
+  const operationsLatestPreflightDetail = operationsPanel?.querySelector(
+    "[data-operations-latest-preflight-detail]",
+  );
   const historyPanel = document.querySelector("[data-route-health-history-panel]");
   const historyTbody = historyPanel?.querySelector("[data-route-health-history-table]");
   const contractHistoryPanel = document.querySelector("[data-route-contract-history-panel]");
@@ -869,6 +921,14 @@
     }
     preflightStatus.className = `small ${className}`;
     preflightStatus.textContent = message;
+  }
+
+  function setOperationsStatus(message, className = "text-secondary") {
+    if (!operationsStatus) {
+      return;
+    }
+    operationsStatus.className = `small ${className}`;
+    operationsStatus.textContent = message;
   }
 
   function setSampleSetStatus(message, className = "text-secondary") {
@@ -946,6 +1006,45 @@
     }
     const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
     return localDate.toISOString().slice(0, 16);
+  }
+
+  function setOperationsEmpty(message) {
+    if (operationsActiveRoutes) {
+      operationsActiveRoutes.textContent = "-";
+    }
+    if (operationsReadyRoutes) {
+      operationsReadyRoutes.textContent = "-";
+    }
+    if (operationsDueSchedules) {
+      operationsDueSchedules.textContent = "-";
+    }
+    if (operationsLatestPreflight) {
+      operationsLatestPreflight.textContent = "-";
+    }
+    if (operationsLatestPreflightDetail) {
+      operationsLatestPreflightDetail.textContent = message;
+    }
+  }
+
+  function renderOperationsSummary(summary) {
+    if (operationsActiveRoutes) {
+      operationsActiveRoutes.textContent = `${summary.active_route_count ?? 0}/${summary.route_count ?? 0}`;
+    }
+    if (operationsReadyRoutes) {
+      operationsReadyRoutes.textContent = String(summary.ready_route_count ?? 0);
+    }
+    if (operationsDueSchedules) {
+      operationsDueSchedules.textContent = `${summary.due_schedule_count ?? 0}/${summary.enabled_schedule_count ?? 0}`;
+    }
+    const latestRun = summary.latest_preflight_run;
+    if (operationsLatestPreflight) {
+      operationsLatestPreflight.textContent = latestRun?.status || labels.none;
+    }
+    if (operationsLatestPreflightDetail) {
+      operationsLatestPreflightDetail.textContent = latestRun
+        ? `${formatDateTime(latestRun.completed_at)} · ${latestRun.passed_count}/${latestRun.route_count}`
+        : labels.noPreflightRuns;
+    }
   }
 
   function resetSampleSetForm() {
@@ -1592,6 +1691,32 @@
     }
   }
 
+  async function loadOperationsSummary() {
+    if (!operationsPanel) {
+      return;
+    }
+    if (operationsPanel.dataset.databaseConfigured !== "true") {
+      setOperationsEmpty(labels.noDatabase);
+      setOperationsStatus(labels.noDatabase);
+      return;
+    }
+    try {
+      setOperationsStatus(labels.loadingOperationsSummary);
+      const response = await fetch(operationsPanel.dataset.operationsSummaryApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.operationsSummaryFailed);
+      }
+      renderOperationsSummary(body.operations_summary || {});
+      setOperationsStatus(labels.operationsSummaryLoaded, "text-success");
+    } catch (error) {
+      setOperationsEmpty(error.message || labels.operationsSummaryFailed);
+      setOperationsStatus(error.message || labels.operationsSummaryFailed, "text-danger");
+    }
+  }
+
   async function loadPreflightRuns() {
     if (!preflightRunPanel || !preflightRunTbody) {
       return;
@@ -1664,6 +1789,7 @@
       setScheduleStatus(labels.scheduleSaved, "text-success");
       await loadSchedules();
       await loadDueSchedules(false);
+      await loadOperationsSummary();
     } catch (error) {
       setScheduleStatus(error.message || labels.scheduleSaveFailed, "text-danger");
     }
@@ -1744,6 +1870,7 @@
       await loadHistory();
       await loadContractHistory();
       await loadAlerts();
+      await loadOperationsSummary();
       const message = `${labels.dueRunComplete}: ${body.run_count ?? 0}/${body.failed_count ?? 0}`;
       setDueStatus(message, body.failed_count ? "text-warning" : "text-success");
     } catch (error) {
@@ -2013,6 +2140,7 @@
           await loadHealth();
           await loadHistory();
           await loadAlerts();
+          await loadOperationsSummary();
         } catch (error) {
           setManualStatus(button, error.message || labels.manualFailed, "text-danger");
         } finally {
@@ -2075,6 +2203,7 @@
           setContractStatus(button, contractStatusMessage(contract), contractStatusClass(contract));
           await loadContractHistory();
           await loadAlerts();
+          await loadOperationsSummary();
         } catch (error) {
           setContractStatus(button, error.message || labels.contractCheckFailed, "text-danger");
         } finally {
@@ -2111,6 +2240,7 @@
         await loadContractHistory();
         await loadAlerts();
         await loadPreflightRuns();
+        await loadOperationsSummary();
       } catch (error) {
         setPreflightStatus(error.message || labels.preflightFailed, "text-danger");
       } finally {
@@ -2124,6 +2254,10 @@
     alertRefreshButton?.addEventListener("click", () => loadAlerts());
     alertLevelFilter?.addEventListener("change", () => loadAlerts());
     alertAckFilter?.addEventListener("change", () => loadAlerts());
+  }
+
+  function wireOperationsSummaryControls() {
+    operationsRefresh?.addEventListener("click", () => loadOperationsSummary());
   }
 
   function wireSampleSetForm() {
@@ -2148,9 +2282,11 @@
   wireContractButtons();
   wirePreflightButton();
   wireAlertFilters();
+  wireOperationsSummaryControls();
   wireSampleSetForm();
   wireScheduleForm();
   wireRetentionControls();
+  loadOperationsSummary();
   loadHealth();
   loadAlerts();
   loadSampleSets();

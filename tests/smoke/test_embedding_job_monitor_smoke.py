@@ -82,6 +82,9 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
 
     assert response.status_code == 200
     assert "임베딩 Provider 라우팅" in response.text
+    assert "Provider 운영 요약" in response.text
+    assert "data-provider-operations-summary-panel" in response.text
+    assert "data-operations-summary-refresh" in response.text
     assert "Provider Route Health" in response.text
     assert "data-route-health-panel" in response.text
     assert "Preflight 실행" in response.text
@@ -107,6 +110,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "wireContractButtons" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
     assert "/api/admin/embedding-provider-routes" in response.text
+    assert "/api/admin/embedding-provider-routes/operations-summary" in response.text
     assert "/api/admin/embedding-provider-routes/health" in response.text
     assert "/api/admin/embedding-provider-routes/contract-sample-sets" in response.text
     assert "/api/admin/embedding-provider-routes/preflight" in response.text
@@ -182,6 +186,16 @@ def test_embedding_provider_route_retention_api_requires_database_url() -> None:
         response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
         for response in responses
     )
+
+
+def test_embedding_provider_operations_summary_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.get("/api/admin/embedding-provider-routes/operations-summary")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."
 
 
 def test_embedding_provider_preflight_schedule_api_requires_database_url() -> None:
