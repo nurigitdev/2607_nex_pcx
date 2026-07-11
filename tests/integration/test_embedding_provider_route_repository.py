@@ -493,6 +493,8 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             )
             assert "data-route-preflight-button" in page_response.text
             assert "/api/admin/embedding-provider-routes/preflight" in page_response.text
+            assert "data-preflight-schedule-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/preflight-schedules" in page_response.text
             assert "data-preflight-run-history-panel" in page_response.text
             assert (
                 "/api/admin/embedding-provider-routes/preflight-runs?limit=10" in page_response.text

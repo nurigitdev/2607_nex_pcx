@@ -210,6 +210,122 @@
 
 <section
   class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-preflight-schedule-panel
+  data-preflight-schedules-api-url="/api/admin/embedding-provider-routes/preflight-schedules"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.preflight_schedules") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.preflight_schedules_help") }}</div>
+    </div>
+    <span class="small text-secondary" data-schedule-status aria-live="polite">
+      {% if database_configured %}{{ t("embedding_routes.loading_schedules") }}{% else %}{{ t("common.no_database") }}{% endif %}
+    </span>
+  </div>
+  <form class="p-3 border-top" data-schedule-form>
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="preflight_schedule_name">{{ t("embedding_routes.schedule_name") }}</label>
+        <input
+          class="form-control"
+          id="preflight_schedule_name"
+          name="schedule_name"
+          value="default_provider_route_preflight"
+          required
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="preflight_schedule_profile">{{ t("embedding_routes.profile") }}</label>
+        <input
+          class="form-control"
+          id="preflight_schedule_profile"
+          name="profile_name"
+          placeholder="kure_v1_1024"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="preflight_schedule_interval">{{ t("embedding_routes.interval_minutes") }}</label>
+        <input
+          class="form-control"
+          type="number"
+          min="1"
+          max="10080"
+          id="preflight_schedule_interval"
+          name="interval_minutes"
+          value="60"
+          required
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="preflight_schedule_next_run_at">{{ t("embedding_routes.next_run_at") }}</label>
+        <input
+          class="form-control"
+          type="datetime-local"
+          id="preflight_schedule_next_run_at"
+          name="next_run_at"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-12 col-lg-2">
+        <div class="d-flex flex-column gap-2">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="preflight_schedule_enabled" name="is_enabled" {% if not database_configured %}disabled{% endif %}>
+            <label class="form-check-label" for="preflight_schedule_enabled">{{ t("common.active") }}</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="preflight_schedule_active_only" name="active_only" checked {% if not database_configured %}disabled{% endif %}>
+            <label class="form-check-label" for="preflight_schedule_active_only">{{ t("embedding_routes.active") }}</label>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-8">
+        <label class="form-label" for="preflight_schedule_description">{{ t("embedding_routes.description") }}</label>
+        <input
+          class="form-control"
+          id="preflight_schedule_description"
+          name="description"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+          <button class="btn btn-primary" type="submit" {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.save_schedule") }}</button>
+          <button class="btn btn-outline-secondary" type="button" data-schedule-reset {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.reset") }}</button>
+        </div>
+      </div>
+    </div>
+  </form>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.schedule_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.profile") }}</th>
+          <th scope="col">{{ t("embedding_routes.interval_minutes") }}</th>
+          <th scope="col">{{ t("embedding_routes.next_run_at") }}</th>
+          <th scope="col">{{ t("embedding_routes.last_status") }}</th>
+          <th scope="col">{{ t("embedding_routes.run_count") }}</th>
+          <th scope="col">{{ t("embedding_routes.failure_count") }}</th>
+          <th scope="col">{{ t("embedding_routes.actions") }}</th>
+        </tr>
+      </thead>
+      <tbody data-schedule-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="8">
+            {% if database_configured %}{{ t("embedding_routes.loading_schedules") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-preflight-run-history-panel
   data-preflight-runs-api-url="/api/admin/embedding-provider-routes/preflight-runs?limit=10"
   data-database-configured="{{ 'true' if database_configured else 'false' }}"
@@ -545,6 +661,10 @@
     preflightRunning: {{ t("embedding_routes.preflight_running") | tojson }},
     preflightComplete: {{ t("embedding_routes.preflight_complete") | tojson }},
     preflightFailed: {{ t("embedding_routes.preflight_failed") | tojson }},
+    loadingSchedules: {{ t("embedding_routes.loading_schedules") | tojson }},
+    noSchedules: {{ t("embedding_routes.no_schedules") | tojson }},
+    scheduleSaved: {{ t("embedding_routes.schedule_saved") | tojson }},
+    scheduleSaveFailed: {{ t("embedding_routes.schedule_save_failed") | tojson }},
     loadingPreflightRuns: {{ t("embedding_routes.loading_preflight_runs") | tojson }},
     noPreflightRuns: {{ t("embedding_routes.no_preflight_runs") | tojson }},
     preflightRunsFailed: {{ t("embedding_routes.preflight_runs_failed") | tojson }},
@@ -619,6 +739,11 @@
   const sampleSetCount = sampleSetPanel?.querySelector("[data-sample-set-count]");
   const sampleSetStatus = sampleSetPanel?.querySelector("[data-sample-set-status]");
   const sampleSetReset = sampleSetPanel?.querySelector("[data-sample-set-reset]");
+  const schedulePanel = document.querySelector("[data-preflight-schedule-panel]");
+  const scheduleForm = schedulePanel?.querySelector("[data-schedule-form]");
+  const scheduleStatus = schedulePanel?.querySelector("[data-schedule-status]");
+  const scheduleTbody = schedulePanel?.querySelector("[data-schedule-table]");
+  const scheduleReset = schedulePanel?.querySelector("[data-schedule-reset]");
   const preflightRunPanel = document.querySelector("[data-preflight-run-history-panel]");
   const preflightRunTbody = preflightRunPanel?.querySelector("[data-preflight-run-history-table]");
   const retentionPanel = document.querySelector("[data-provider-route-retention-panel]");
@@ -674,6 +799,14 @@
     retentionStatus.textContent = message;
   }
 
+  function setScheduleStatus(message, className = "text-secondary") {
+    if (!scheduleStatus) {
+      return;
+    }
+    scheduleStatus.className = `small ${className}`;
+    scheduleStatus.textContent = message;
+  }
+
   function setSummary(body) {
     readyCount.textContent = body.ready_count ?? "-";
     checkedCount.textContent = body.checked_count ?? "-";
@@ -707,6 +840,18 @@
     return date.toLocaleString();
   }
 
+  function formatDateTimeLocal(value) {
+    if (!value) {
+      return "";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return localDate.toISOString().slice(0, 16);
+  }
+
   function resetSampleSetForm() {
     if (!sampleSetForm) {
       return;
@@ -720,6 +865,50 @@
     sampleSetForm.is_default.checked = false;
     sampleSetForm.sample_texts.value = "NeX-PCX embedding provider contract check sample.";
     setSampleSetStatus("");
+  }
+
+  function resetScheduleForm() {
+    if (!scheduleForm) {
+      return;
+    }
+    scheduleForm.schedule_name.readOnly = false;
+    scheduleForm.schedule_name.value = "default_provider_route_preflight";
+    scheduleForm.description.value = "";
+    scheduleForm.profile_name.value = "";
+    scheduleForm.active_only.checked = true;
+    scheduleForm.interval_minutes.value = "60";
+    scheduleForm.is_enabled.checked = false;
+    scheduleForm.next_run_at.value = "";
+    setScheduleStatus("");
+  }
+
+  function fillScheduleForm(schedule) {
+    if (!scheduleForm) {
+      return;
+    }
+    scheduleForm.schedule_name.readOnly = true;
+    scheduleForm.schedule_name.value = schedule.schedule_name || "";
+    scheduleForm.description.value = schedule.description || "";
+    scheduleForm.profile_name.value = schedule.profile_name || "";
+    scheduleForm.active_only.checked = Boolean(schedule.active_only);
+    scheduleForm.interval_minutes.value = String(schedule.interval_minutes ?? 60);
+    scheduleForm.is_enabled.checked = Boolean(schedule.is_enabled);
+    scheduleForm.next_run_at.value = formatDateTimeLocal(schedule.next_run_at);
+    setScheduleStatus("");
+  }
+
+  function schedulePayload() {
+    const nextRunAt = scheduleForm.next_run_at.value
+      ? new Date(scheduleForm.next_run_at.value).toISOString()
+      : null;
+    return {
+      description: scheduleForm.description.value.trim() || null,
+      profile_name: scheduleForm.profile_name.value.trim() || null,
+      active_only: scheduleForm.active_only.checked,
+      interval_minutes: Number(scheduleForm.interval_minutes.value || 60),
+      is_enabled: scheduleForm.is_enabled.checked,
+      next_run_at: nextRunAt,
+    };
   }
 
   function fillSampleSetForm(sampleSet) {
@@ -837,6 +1026,67 @@
       actionCell.appendChild(actionGroup);
       row.appendChild(actionCell);
       sampleSetTbody.appendChild(row);
+    }
+  }
+
+  function renderSchedulesEmpty(message) {
+    if (!scheduleTbody) {
+      return;
+    }
+    scheduleTbody.replaceChildren();
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "text-secondary text-center py-4";
+    cell.colSpan = 8;
+    cell.textContent = message;
+    row.appendChild(cell);
+    scheduleTbody.appendChild(row);
+  }
+
+  function renderSchedules(schedules) {
+    if (!scheduleTbody) {
+      return;
+    }
+    scheduleTbody.replaceChildren();
+    if (!schedules.length) {
+      renderSchedulesEmpty(labels.noSchedules);
+      return;
+    }
+    if (!scheduleForm?.schedule_name.readOnly) {
+      fillScheduleForm(schedules[0]);
+    }
+
+    for (const schedule of schedules) {
+      const row = document.createElement("tr");
+      const nameCell = document.createElement("td");
+      const name = document.createElement("strong");
+      name.textContent = schedule.schedule_name || labels.none;
+      nameCell.appendChild(name);
+      if (schedule.is_enabled) {
+        const activeBadge = document.createElement("span");
+        activeBadge.className = "badge text-bg-success ms-2";
+        activeBadge.textContent = {{ t("common.active") | tojson }};
+        nameCell.appendChild(activeBadge);
+      }
+      row.appendChild(nameCell);
+
+      appendTextCell(row, schedule.profile_name);
+      appendTextCell(row, String(schedule.interval_minutes ?? labels.none));
+      appendTextCell(row, formatDateTime(schedule.next_run_at));
+      appendTextCell(row, schedule.last_status);
+      appendTextCell(row, String(schedule.run_count ?? 0));
+      appendTextCell(row, String(schedule.failure_count ?? 0));
+
+      const actionCell = document.createElement("td");
+      const editButton = document.createElement("button");
+      editButton.className = "btn btn-outline-primary btn-sm";
+      editButton.type = "button";
+      editButton.textContent = labels.edit;
+      editButton.addEventListener("click", () => fillScheduleForm(schedule));
+      actionCell.appendChild(editButton);
+      row.appendChild(actionCell);
+
+      scheduleTbody.appendChild(row);
     }
   }
 
@@ -1223,6 +1473,59 @@
     }
   }
 
+  async function loadSchedules() {
+    if (!schedulePanel || !scheduleTbody) {
+      return;
+    }
+    if (schedulePanel.dataset.databaseConfigured !== "true") {
+      renderSchedulesEmpty(labels.noDatabase);
+      setScheduleStatus(labels.noDatabase);
+      return;
+    }
+    try {
+      setScheduleStatus(labels.loadingSchedules);
+      const response = await fetch(schedulePanel.dataset.preflightSchedulesApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.scheduleSaveFailed);
+      }
+      renderSchedules(body.schedules || []);
+      setScheduleStatus("");
+    } catch (error) {
+      renderSchedulesEmpty(error.message || labels.scheduleSaveFailed);
+      setScheduleStatus(error.message || labels.scheduleSaveFailed, "text-danger");
+    }
+  }
+
+  async function saveSchedule(event) {
+    event.preventDefault();
+    if (!schedulePanel || !scheduleForm) {
+      return;
+    }
+    const scheduleName = scheduleForm.schedule_name.value.trim();
+    try {
+      const response = await fetch(
+        `${schedulePanel.dataset.preflightSchedulesApiUrl}/${encodeURIComponent(scheduleName)}`,
+        {
+          method: "PUT",
+          headers: {"Accept": "application/json", "Content-Type": "application/json"},
+          body: JSON.stringify(schedulePayload()),
+        },
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.scheduleSaveFailed);
+      }
+      fillScheduleForm(body.schedule || {});
+      setScheduleStatus(labels.scheduleSaved, "text-success");
+      await loadSchedules();
+    } catch (error) {
+      setScheduleStatus(error.message || labels.scheduleSaveFailed, "text-danger");
+    }
+  }
+
   async function loadRetentionSettings() {
     if (!retentionPanel || !retentionForm) {
       return;
@@ -1600,6 +1903,11 @@
     sampleSetReset?.addEventListener("click", resetSampleSetForm);
   }
 
+  function wireScheduleForm() {
+    scheduleForm?.addEventListener("submit", saveSchedule);
+    scheduleReset?.addEventListener("click", resetScheduleForm);
+  }
+
   function wireRetentionControls() {
     retentionForm?.addEventListener("submit", saveRetentionSettings);
     retentionPreviewButton?.addEventListener("click", () => runRetentionCleanup(true));
@@ -1611,10 +1919,12 @@
   wirePreflightButton();
   wireAlertFilters();
   wireSampleSetForm();
+  wireScheduleForm();
   wireRetentionControls();
   loadHealth();
   loadAlerts();
   loadSampleSets();
+  loadSchedules();
   loadPreflightRuns();
   loadRetentionSettings();
   loadHistory();
