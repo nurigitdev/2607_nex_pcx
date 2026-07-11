@@ -179,6 +179,59 @@
     </section>
   </div>
   {% endif %}
+  {% set readiness_gate_metadata = selected_job.runtime_metadata or {} %}
+  {% set blocked_routes = readiness_gate_metadata.get("provider_route_readiness_blocked_routes") or [] %}
+  {% if selected_job.error_code == "EMBEDDING_PROVIDER_ROUTE_NOT_READY" or blocked_routes %}
+  <div class="col-12">
+    <section class="metric-card bg-white p-3">
+      <h2 class="h5 mb-3">Provider Route Readiness Gate</h2>
+      <dl class="job-detail-list mb-3">
+        <dt>Error Code</dt>
+        <dd>{{ selected_job.error_code or "-" }}</dd>
+        <dt>Blocked Routes</dt>
+        <dd>{{ readiness_gate_metadata.get("provider_route_readiness_blocked_count") or blocked_routes|length }}</dd>
+        <dt>Error</dt>
+        <dd class="text-danger">{{ selected_job.error_message or "-" }}</dd>
+      </dl>
+      {% if blocked_routes %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Provider</th>
+              <th scope="col">Profile</th>
+              <th scope="col">Status</th>
+              <th scope="col">Reasons</th>
+              <th scope="col">Snapshots</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for route in blocked_routes %}
+            <tr>
+              <td>
+                {{ route.get("provider_name") or "-" }}
+                {% if route.get("route_id") %}
+                #{{ route.get("route_id") }}
+                {% endif %}
+              </td>
+              <td>{{ route.get("profile_name") or "-" }}</td>
+              <td><span class="badge text-bg-warning">{{ route.get("status") or "-" }}</span></td>
+              <td>{{ (route.get("reasons") or [])|join(", ") or "-" }}</td>
+              <td>
+                H: {{ route.get("health_snapshot_id") or "-" }}
+                · C: {{ route.get("contract_snapshot_id") or "-" }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-secondary">No blocked route detail recorded</div>
+      {% endif %}
+    </section>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}

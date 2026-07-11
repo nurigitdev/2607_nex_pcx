@@ -549,6 +549,7 @@ def mark_embedding_job_failed_in_connection(
     *,
     error_code: str,
     error_message: str,
+    runtime_metadata: dict[str, Any] | None = None,
 ) -> EmbeddingJobRecord | None:
     _require_positive_id(job_id, "job_id")
     if not error_code.strip():
@@ -565,13 +566,14 @@ def mark_embedding_job_failed_in_connection(
                 lease_expires_at = NULL,
                 error_code = %s,
                 error_message = %s,
+                runtime_metadata = runtime_metadata || %s::jsonb,
                 last_error_at = now(),
                 finished_at = now(),
                 updated_at = now()
             WHERE job_id = %s
             RETURNING {_select_embedding_job_columns()}
             """,
-            (error_code.strip(), error_message.strip(), job_id),
+            (error_code.strip(), error_message.strip(), Json(runtime_metadata or {}), job_id),
         )
         row = cursor.fetchone()
     return _row_to_embedding_job_record(dict(row)) if row else None
@@ -583,6 +585,7 @@ def mark_embedding_job_failed(
     *,
     error_code: str,
     error_message: str,
+    runtime_metadata: dict[str, Any] | None = None,
 ) -> EmbeddingJobRecord | None:
     with connect(database_url) as connection:
         return mark_embedding_job_failed_in_connection(
@@ -590,6 +593,7 @@ def mark_embedding_job_failed(
             job_id,
             error_code=error_code,
             error_message=error_message,
+            runtime_metadata=runtime_metadata,
         )
 
 

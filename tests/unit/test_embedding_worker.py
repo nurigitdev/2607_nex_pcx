@@ -112,12 +112,19 @@ def test_process_next_mock_embedding_job_fails_unsupported_profile(monkeypatch) 
         lambda *args, **kwargs: job,
     )
 
-    def fake_mark_failed(*args, error_code: str, error_message: str, **kwargs):
+    def fake_mark_failed(
+        *args,
+        error_code: str,
+        error_message: str,
+        runtime_metadata: dict[str, object] | None = None,
+        **kwargs,
+    ):
         return replace(
             job,
             status="failed",
             error_code=error_code,
             error_message=error_message,
+            runtime_metadata=runtime_metadata or {},
         )
 
     monkeypatch.setattr("app.core.embedding_worker.mark_embedding_job_failed", fake_mark_failed)
@@ -166,12 +173,19 @@ def test_route_aware_embedding_worker_marks_job_failed_when_provider_build_fails
         captured_config = runtime_config
         raise InvalidEmbeddingProviderError("provider unavailable")
 
-    def fake_mark_failed(*args, error_code: str, error_message: str, **kwargs):
+    def fake_mark_failed(
+        *args,
+        error_code: str,
+        error_message: str,
+        runtime_metadata: dict[str, object] | None = None,
+        **kwargs,
+    ):
         return replace(
             job,
             status="failed",
             error_code=error_code,
             error_message=error_message,
+            runtime_metadata=runtime_metadata or {},
         )
 
     monkeypatch.setattr("app.core.embedding_worker.mark_embedding_job_failed", fake_mark_failed)
@@ -356,12 +370,19 @@ def test_route_aware_embedding_worker_fails_when_readiness_gate_blocks_all_route
         lambda *args, **kwargs: job,
     )
 
-    def fake_mark_failed(*args, error_code: str, error_message: str, **kwargs):
+    def fake_mark_failed(
+        *args,
+        error_code: str,
+        error_message: str,
+        runtime_metadata: dict[str, object] | None = None,
+        **kwargs,
+    ):
         return replace(
             job,
             status="failed",
             error_code=error_code,
             error_message=error_message,
+            runtime_metadata=runtime_metadata or {},
         )
 
     def fake_readiness_summary(_database_url: str, _profile_name: str):
@@ -386,6 +407,17 @@ def test_route_aware_embedding_worker_fails_when_readiness_gate_blocks_all_route
     assert result.job.error_code == ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY
     assert "No provider route passed the readiness gate" in result.message
     assert "gpu-blocked:needs_contract" in result.message
+    assert result.job.runtime_metadata["provider_route_readiness_gate"] == "blocked_all_routes"
+    assert result.job.runtime_metadata["provider_route_readiness_blocked_count"] == 1
+    assert result.job.runtime_metadata["provider_route_readiness_blocked_routes"] == [
+        {
+            "route_id": blocked_route.route_id,
+            "provider_name": "gpu-blocked",
+            "profile_name": blocked_route.profile_name,
+            "status": "needs_contract",
+            "reasons": ["needs_contract_reason"],
+        }
+    ]
 
 
 def test_route_aware_embedding_worker_marks_failed_when_all_routes_fail(

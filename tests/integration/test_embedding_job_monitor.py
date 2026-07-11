@@ -7,7 +7,7 @@ from psycopg.types.json import Json
 
 from app.core.config import Settings
 from app.core.database import connect
-from app.core.embedding_jobs import EmbeddingJobInput, create_embedding_job
+from app.core.embedding_jobs import EmbeddingJobInput, create_embedding_job, mark_embedding_job_failed
 from app.core.embedding_worker import process_next_mock_embedding_job
 from app.main import create_app
 
@@ -176,6 +176,65 @@ def test_embedding_job_monitor_api_and_ui(
         assert "Provider Route Failover" in page_response.text
         assert "gpu-ready" in page_response.text
         assert "gpu-down unavailable" in page_response.text
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_embedding_job_monitor_shows_readiness_gate_failure(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    file_id, chunk_id = _create_chunk(
+        migrated_database_url,
+        "Embedding monitor readiness gate fixture",
+    )
+    try:
+        created = create_embedding_job(
+            migrated_database_url,
+            EmbeddingJobInput(chunk_id=chunk_id, profile_name="kure_v1_1024"),
+        )
+        failed = mark_embedding_job_failed(
+            migrated_database_url,
+            created.job.job_id,
+            error_code="EMBEDDING_PROVIDER_ROUTE_NOT_READY",
+            error_message="No provider route passed the readiness gate (gpu-blocked:needs_contract)",
+            runtime_metadata={
+                "provider_route_readiness_gate": "blocked_all_routes",
+                "provider_route_readiness_blocked_count": 1,
+                "provider_route_readiness_blocked_routes": [
+                    {
+                        "route_id": 40,
+                        "provider_name": "gpu-blocked",
+                        "profile_name": "kure_v1_1024",
+                        "status": "needs_contract",
+                        "reasons": ["contract_snapshot_missing"],
+                        "health_snapshot_id": 7,
+                        "contract_snapshot_id": None,
+                    }
+                ],
+            },
+        )
+        assert failed is not None
+
+        app = create_app(
+            Settings(database_url=migrated_database_url, upload_storage_dir=tmp_path),
+        )
+
+        with TestClient(app) as client:
+            detail_response = client.get(f"/api/embedding/jobs/{created.job.job_id}")
+            page_response = client.get(f"/admin/embedding-jobs?job_id={created.job.job_id}")
+
+        assert detail_response.status_code == 200
+        gate = detail_response.json()["job"]["provider_route_readiness_gate"]
+        assert gate["gate"] == "blocked_all_routes"
+        assert gate["blocked_count"] == 1
+        assert gate["blocked_routes"][0]["provider_name"] == "gpu-blocked"
+        assert gate["blocked_routes"][0]["status"] == "needs_contract"
+        assert page_response.status_code == 200
+        assert "Provider Route Readiness Gate" in page_response.text
+        assert "EMBEDDING_PROVIDER_ROUTE_NOT_READY" in page_response.text
+        assert "gpu-blocked" in page_response.text
+        assert "contract_snapshot_missing" in page_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)
 

@@ -271,6 +271,7 @@ def test_failed_job_can_retry_and_expired_running_job_can_be_reclaimed(
             claimed.job_id,
             error_code="EMBEDDING_ERROR",
             error_message="model failed",
+            runtime_metadata={"provider_route_readiness_gate": "blocked_all_routes"},
         )
         retried = retry_embedding_job(migrated_database_url, claimed.job_id)
 
@@ -299,6 +300,7 @@ def test_failed_job_can_retry_and_expired_running_job_can_be_reclaimed(
         assert failed.error_code == "EMBEDDING_ERROR"
         assert failed.error_message == "model failed"
         assert failed.last_error_at is not None
+        assert failed.runtime_metadata["provider_route_readiness_gate"] == "blocked_all_routes"
         assert retried is not None
         assert retried.status == "pending"
         assert retried.error_code is None

@@ -191,6 +191,7 @@ def process_next_embedding_job_with_provider_routes(
                 job,
                 error_code=ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY,
                 error_message=message,
+                runtime_metadata=_readiness_gate_failure_metadata(gate_result.blocked_routes),
             )
             return EmbeddingWorkerResult(
                 processed=True,
@@ -504,12 +505,14 @@ def _fail_claimed_embedding_job(
     *,
     error_code: str,
     error_message: str,
+    runtime_metadata: dict[str, object] | None = None,
 ) -> EmbeddingJobRecord:
     failed_job = mark_embedding_job_failed(
         database_url,
         job.job_id,
         error_code=error_code,
         error_message=error_message,
+        runtime_metadata=runtime_metadata,
     )
     return failed_job or get_embedding_job(database_url, job.job_id) or job
 
@@ -630,6 +633,37 @@ def _readiness_gate_failure_message(
         return "No provider route passed the readiness gate"
     providers = ", ".join(f"{item.route.provider_name}:{item.status}" for item in blocked_routes)
     return f"No provider route passed the readiness gate ({providers})"
+
+
+def _readiness_gate_failure_metadata(
+    blocked_routes: Sequence[EmbeddingProviderRouteReadinessItem],
+) -> dict[str, object]:
+    return {
+        "provider_route_readiness_gate": "blocked_all_routes",
+        "provider_route_readiness_blocked_count": len(blocked_routes),
+        "provider_route_readiness_blocked_routes": [
+            _readiness_gate_blocked_route_metadata(item) for item in blocked_routes
+        ],
+    }
+
+
+def _readiness_gate_blocked_route_metadata(
+    item: EmbeddingProviderRouteReadinessItem,
+) -> dict[str, object]:
+    metadata: dict[str, object] = {
+        "route_id": item.route.route_id,
+        "provider_name": item.route.provider_name,
+        "profile_name": item.route.profile_name,
+        "status": item.status,
+        "reasons": list(item.reasons),
+    }
+    if item.latest_health_snapshot is not None:
+        metadata["health_snapshot_id"] = item.latest_health_snapshot.snapshot_id
+        metadata["health_status"] = item.latest_health_snapshot.status
+    if item.latest_contract_snapshot is not None:
+        metadata["contract_snapshot_id"] = item.latest_contract_snapshot.snapshot_id
+        metadata["contract_status"] = item.latest_contract_snapshot.status
+    return metadata
 
 
 def _success_message_for_provider_mode(provider_mode: str) -> str:

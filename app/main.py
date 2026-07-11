@@ -59,6 +59,7 @@ from app.core.embedding_model_distribution import (
     EmbeddingModelReadiness,
     audit_embedding_model_readiness,
 )
+from app.core.embedding_worker import ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY
 from app.core.embedding_provider_contract_sample_sets import (
     EmbeddingProviderContractSampleSetInput,
     EmbeddingProviderContractSampleSetRecord,
@@ -680,6 +681,25 @@ def embedding_job_provider_route_failover_payload(
     }
 
 
+def embedding_job_readiness_gate_payload(
+    job: EmbeddingJobRecord,
+) -> dict[str, object] | None:
+    metadata = job.runtime_metadata or {}
+    blocked_routes = metadata.get("provider_route_readiness_blocked_routes")
+    if (
+        job.error_code != ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY
+        and not blocked_routes
+    ):
+        return None
+    return {
+        "gate": metadata.get("provider_route_readiness_gate", "blocked_all_routes"),
+        "blocked_count": metadata.get("provider_route_readiness_blocked_count", 0),
+        "blocked_routes": blocked_routes if isinstance(blocked_routes, list) else [],
+        "error_code": job.error_code,
+        "error_message": job.error_message,
+    }
+
+
 def embedding_job_payload(job: EmbeddingJobRecord) -> dict[str, object]:
     return {
         "job_id": job.job_id,
@@ -695,6 +715,7 @@ def embedding_job_payload(job: EmbeddingJobRecord) -> dict[str, object]:
         "last_error_at": _datetime_response(job.last_error_at),
         "runtime_metadata": job.runtime_metadata,
         "provider_route_failover": embedding_job_provider_route_failover_payload(job),
+        "provider_route_readiness_gate": embedding_job_readiness_gate_payload(job),
         "created_at": _datetime_response(job.created_at),
         "started_at": _datetime_response(job.started_at),
         "finished_at": _datetime_response(job.finished_at),
