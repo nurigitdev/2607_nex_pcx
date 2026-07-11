@@ -133,7 +133,7 @@
           </td>
           <td>{{ job.attempts }} / {{ job.max_attempts }}</td>
           <td>{{ job.lease_owner or "" }}</td>
-          <td>{{ job.updated_at }}</td>
+          <td>{{ job.updated_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
         </tr>
         {% else %}
         <tr>
@@ -180,9 +180,9 @@
         <dt>Error</dt>
         <dd>{{ selected_job.error_message or "" }}</dd>
         <dt>Created</dt>
-        <dd>{{ selected_job.created_at }}</dd>
+        <dd>{{ selected_job.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
         <dt>Updated</dt>
-        <dd>{{ selected_job.updated_at }}</dd>
+        <dd>{{ selected_job.updated_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
       </dl>
     </section>
   </div>
