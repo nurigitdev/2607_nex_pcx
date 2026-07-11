@@ -16,6 +16,11 @@ from app.core.embedding_model_distribution import (
     InvalidEmbeddingModelDistributionError,
     get_embedding_model_distribution_for_profile,
 )
+from app.core.embedding_provider_route_readiness import (
+    EmbeddingProviderRouteReadinessItem,
+    EmbeddingProviderRouteReadinessSummary,
+    get_embedding_provider_route_readiness_summary,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteRecord,
     list_embedding_provider_routes,
@@ -42,6 +47,7 @@ from app.core.pipeline_jobs import DEFAULT_LEASE_SECONDS
 ERROR_CODE_CHUNK_NOT_FOUND = "CHUNK_NOT_FOUND"
 ERROR_CODE_MOCK_EMBEDDING_ERROR = "MOCK_EMBEDDING_ERROR"
 ERROR_CODE_EMBEDDING_PROVIDER_ERROR = "EMBEDDING_PROVIDER_ERROR"
+ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY = "EMBEDDING_PROVIDER_ROUTE_NOT_READY"
 ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE = "UNSUPPORTED_EMBEDDING_PROFILE"
 
 EmbeddingProviderBuilder = Callable[[EmbeddingProviderRuntimeConfig], EmbeddingProvider]
@@ -49,6 +55,10 @@ EmbeddingProviderRouteSelector = Callable[[str, str], EmbeddingProviderRouteReco
 EmbeddingProviderRouteCandidatesSelector = Callable[
     [str, str],
     Sequence[EmbeddingProviderRouteRecord],
+]
+EmbeddingProviderRouteReadinessSummaryGetter = Callable[
+    [str, str],
+    EmbeddingProviderRouteReadinessSummary,
 ]
 
 
@@ -62,6 +72,13 @@ class MockEmbeddingWorkerResult:
 
 
 EmbeddingWorkerResult = MockEmbeddingWorkerResult
+
+
+@dataclass(frozen=True)
+class _RouteReadinessGateResult:
+    routes: list[EmbeddingProviderRouteRecord]
+    readiness_by_id: dict[int, EmbeddingProviderRouteReadinessItem]
+    blocked_routes: tuple[EmbeddingProviderRouteReadinessItem, ...]
 
 
 def process_next_mock_embedding_job(
@@ -128,6 +145,8 @@ def process_next_embedding_job_with_provider_routes(
     provider_builder: EmbeddingProviderBuilder = build_embedding_provider_from_runtime_config,
     route_selector: EmbeddingProviderRouteSelector | None = None,
     route_candidates_selector: EmbeddingProviderRouteCandidatesSelector | None = None,
+    require_route_readiness: bool = False,
+    route_readiness_summary_getter: EmbeddingProviderRouteReadinessSummaryGetter | None = None,
 ) -> EmbeddingWorkerResult:
     """Claim and process one embedding job using a profile-specific provider route."""
 
@@ -152,6 +171,33 @@ def process_next_embedding_job_with_provider_routes(
             route_candidates_selector or _select_embedding_provider_route_candidates
         ),
     )
+    route_readiness_by_id: dict[int, EmbeddingProviderRouteReadinessItem] = {}
+    if require_route_readiness and route_candidates:
+        gate_result = _filter_route_candidates_by_readiness(
+            database_url,
+            job.profile_name,
+            route_candidates,
+            route_readiness_summary_getter=(
+                route_readiness_summary_getter
+                or _get_embedding_provider_route_readiness_summary_for_worker
+            ),
+        )
+        route_candidates = gate_result.routes
+        route_readiness_by_id = gate_result.readiness_by_id
+        if not route_candidates:
+            message = _readiness_gate_failure_message(gate_result.blocked_routes)
+            failed_job = _fail_claimed_embedding_job(
+                database_url,
+                job,
+                error_code=ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY,
+                error_message=message,
+            )
+            return EmbeddingWorkerResult(
+                processed=True,
+                job=failed_job,
+                message=message,
+            )
+
     if len(route_candidates) > 1:
         return _process_claimed_embedding_job_with_provider_route_failover(
             database_url,
@@ -159,6 +205,7 @@ def process_next_embedding_job_with_provider_routes(
             routes=route_candidates,
             fallback_runtime_config=fallback_runtime_config,
             provider_builder=provider_builder,
+            route_readiness_by_id=route_readiness_by_id,
         )
 
     route = route_candidates[0] if route_candidates else None
@@ -166,7 +213,11 @@ def process_next_embedding_job_with_provider_routes(
         route,
         fallback_runtime_config=fallback_runtime_config,
     )
-    runtime_metadata = _runtime_metadata_for_job_provider(route, runtime_config=runtime_config)
+    runtime_metadata = _runtime_metadata_for_job_provider(
+        route,
+        runtime_config=runtime_config,
+        route_readiness=route_readiness_by_id.get(route.route_id) if route else None,
+    )
     provider = None
     try:
         provider = provider_builder(runtime_config)
@@ -219,6 +270,49 @@ def _route_candidates_for_job(
     return list(route_candidates_selector(database_url, profile_name))
 
 
+def _get_embedding_provider_route_readiness_summary_for_worker(
+    database_url: str,
+    profile_name: str,
+) -> EmbeddingProviderRouteReadinessSummary:
+    return get_embedding_provider_route_readiness_summary(
+        database_url,
+        profile_name=profile_name,
+        active_only=False,
+    )
+
+
+def _filter_route_candidates_by_readiness(
+    database_url: str,
+    profile_name: str,
+    routes: Sequence[EmbeddingProviderRouteRecord],
+    *,
+    route_readiness_summary_getter: EmbeddingProviderRouteReadinessSummaryGetter,
+) -> _RouteReadinessGateResult:
+    summary = route_readiness_summary_getter(database_url, profile_name)
+    readiness_by_id = {item.route.route_id: item for item in summary.routes}
+    ready_routes = []
+    blocked_routes = []
+    for route in routes:
+        readiness = readiness_by_id.get(route.route_id) or EmbeddingProviderRouteReadinessItem(
+            route=route,
+            ready=False,
+            status="readiness_unknown",
+            reasons=("readiness_summary_missing",),
+            latest_health_snapshot=None,
+            latest_contract_snapshot=None,
+        )
+        readiness_by_id[route.route_id] = readiness
+        if readiness.ready:
+            ready_routes.append(route)
+        else:
+            blocked_routes.append(readiness)
+    return _RouteReadinessGateResult(
+        routes=ready_routes,
+        readiness_by_id=readiness_by_id,
+        blocked_routes=tuple(blocked_routes),
+    )
+
+
 def _process_claimed_embedding_job_with_provider_route_failover(
     database_url: str,
     *,
@@ -226,6 +320,7 @@ def _process_claimed_embedding_job_with_provider_route_failover(
     routes: Sequence[EmbeddingProviderRouteRecord],
     fallback_runtime_config: EmbeddingProviderRuntimeConfig,
     provider_builder: EmbeddingProviderBuilder,
+    route_readiness_by_id: Mapping[int, EmbeddingProviderRouteReadinessItem] | None = None,
 ) -> EmbeddingWorkerResult:
     failed_attempts: list[dict[str, object]] = []
     provider = None
@@ -237,6 +332,9 @@ def _process_claimed_embedding_job_with_provider_route_failover(
         runtime_metadata = _runtime_metadata_for_job_provider(
             route,
             runtime_config=runtime_config,
+            route_readiness=(
+                route_readiness_by_id.get(route.route_id) if route_readiness_by_id else None
+            ),
             failover_attempt_index=attempt_index,
             failover_candidate_count=len(routes),
             failed_route_attempts=failed_attempts,
@@ -436,6 +534,7 @@ def _runtime_metadata_for_job_provider(
     route: EmbeddingProviderRouteRecord | None,
     *,
     runtime_config: EmbeddingProviderRuntimeConfig,
+    route_readiness: EmbeddingProviderRouteReadinessItem | None = None,
     failover_attempt_index: int | None = None,
     failover_candidate_count: int | None = None,
     failed_route_attempts: Sequence[Mapping[str, object]] | None = None,
@@ -465,6 +564,18 @@ def _runtime_metadata_for_job_provider(
     }
     if route.runtime_metadata:
         metadata["provider_route_metadata"] = dict(route.runtime_metadata)
+    if route_readiness is not None:
+        metadata["provider_route_readiness_status"] = route_readiness.status
+        metadata["provider_route_readiness_ready"] = route_readiness.ready
+        metadata["provider_route_readiness_reasons"] = list(route_readiness.reasons)
+        if route_readiness.latest_health_snapshot is not None:
+            metadata["provider_route_health_snapshot_id"] = (
+                route_readiness.latest_health_snapshot.snapshot_id
+            )
+        if route_readiness.latest_contract_snapshot is not None:
+            metadata["provider_route_contract_snapshot_id"] = (
+                route_readiness.latest_contract_snapshot.snapshot_id
+            )
     _add_failover_metadata(
         metadata,
         failover_attempt_index=failover_attempt_index,
@@ -510,6 +621,15 @@ def _failover_failure_message(failed_attempts: Sequence[Mapping[str, object]]) -
     providers = ", ".join(str(attempt["provider_name"]) for attempt in failed_attempts)
     last_error = str(failed_attempts[-1]["error_message"])
     return f"All provider routes failed ({providers}): {last_error}"
+
+
+def _readiness_gate_failure_message(
+    blocked_routes: Sequence[EmbeddingProviderRouteReadinessItem],
+) -> str:
+    if not blocked_routes:
+        return "No provider route passed the readiness gate"
+    providers = ", ".join(f"{item.route.provider_name}:{item.status}" for item in blocked_routes)
+    return f"No provider route passed the readiness gate ({providers})"
 
 
 def _success_message_for_provider_mode(provider_mode: str) -> str:

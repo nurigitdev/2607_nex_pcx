@@ -2,6 +2,10 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 from app.core.embedding_jobs import EmbeddingJobRecord
+from app.core.embedding_provider_route_readiness import (
+    EmbeddingProviderRouteReadinessItem,
+    EmbeddingProviderRouteReadinessSummary,
+)
 from app.core.embedding_provider_routes import EmbeddingProviderRouteRecord
 from app.core.embedding_providers import (
     EmbeddingProviderRuntimeConfig,
@@ -9,6 +13,7 @@ from app.core.embedding_providers import (
 )
 from app.core.embedding_worker import (
     ERROR_CODE_EMBEDDING_PROVIDER_ERROR,
+    ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY,
     ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
     EmbeddingWorkerResult,
     process_next_embedding_job_with_provider_routes,
@@ -58,6 +63,22 @@ def make_route(**overrides) -> EmbeddingProviderRouteRecord:
     }
     values.update(overrides)
     return EmbeddingProviderRouteRecord(**values)
+
+
+def make_readiness_item(
+    route: EmbeddingProviderRouteRecord,
+    *,
+    ready: bool,
+    status: str,
+) -> EmbeddingProviderRouteReadinessItem:
+    return EmbeddingProviderRouteReadinessItem(
+        route=route,
+        ready=ready,
+        status=status,
+        reasons=() if ready else (f"{status}_reason",),
+        latest_health_snapshot=None,
+        latest_contract_snapshot=None,
+    )
 
 
 class FakeClosableProvider:
@@ -247,6 +268,124 @@ def test_route_aware_embedding_worker_fails_over_to_next_route(monkeypatch) -> N
             "error_message": "gpu-down unavailable",
         }
     ]
+
+
+def test_route_aware_embedding_worker_skips_not_ready_routes_when_gate_enabled(
+    monkeypatch,
+) -> None:
+    job = make_job()
+    blocked_route = make_route(
+        route_id=30,
+        provider_name="gpu-blocked",
+        provider_base_url="http://gpu-blocked.local",
+        priority=0,
+    )
+    ready_route = make_route(
+        route_id=31,
+        provider_name="gpu-ready",
+        provider_base_url="http://gpu-ready.local",
+        priority=1,
+    )
+    built_urls: list[str | None] = []
+    captured_metadata: dict[str, object] = {}
+    monkeypatch.setattr(
+        "app.core.embedding_worker.claim_next_embedding_job",
+        lambda *args, **kwargs: job,
+    )
+
+    def fake_provider_builder(runtime_config: EmbeddingProviderRuntimeConfig):
+        built_urls.append(runtime_config.remote_base_url)
+        return FakeClosableProvider()
+
+    def fake_process_claimed_job(*args, runtime_metadata=None, **kwargs):
+        nonlocal captured_metadata
+        captured_metadata = dict(runtime_metadata or {})
+        return EmbeddingWorkerResult(
+            processed=True,
+            job=replace(job, status="succeeded", runtime_metadata=captured_metadata),
+            message=kwargs["success_message"],
+        )
+
+    def fake_readiness_summary(_database_url: str, _profile_name: str):
+        return EmbeddingProviderRouteReadinessSummary(
+            routes=(
+                make_readiness_item(blocked_route, ready=False, status="contract_failed"),
+                make_readiness_item(ready_route, ready=True, status="ready"),
+            )
+        )
+
+    monkeypatch.setattr(
+        "app.core.embedding_worker._process_claimed_embedding_job_with_provider",
+        fake_process_claimed_job,
+    )
+
+    result = process_next_embedding_job_with_provider_routes(
+        "postgresql://example/db",
+        worker_name="unit-route-worker",
+        fallback_runtime_config=EmbeddingProviderRuntimeConfig(mode="mock"),
+        provider_builder=fake_provider_builder,
+        route_candidates_selector=lambda _database_url, _profile_name: [
+            blocked_route,
+            ready_route,
+        ],
+        require_route_readiness=True,
+        route_readiness_summary_getter=fake_readiness_summary,
+    )
+
+    assert result.processed is True
+    assert result.job is not None
+    assert result.job.status == "succeeded"
+    assert built_urls == ["http://gpu-ready.local"]
+    assert captured_metadata["provider_route_id"] == ready_route.route_id
+    assert captured_metadata["provider_route_readiness_status"] == "ready"
+    assert captured_metadata["provider_route_readiness_ready"] is True
+    assert captured_metadata["provider_route_readiness_reasons"] == []
+
+
+def test_route_aware_embedding_worker_fails_when_readiness_gate_blocks_all_routes(
+    monkeypatch,
+) -> None:
+    job = make_job()
+    blocked_route = make_route(
+        route_id=40,
+        provider_name="gpu-blocked",
+        provider_base_url="http://gpu-blocked.local",
+    )
+    monkeypatch.setattr(
+        "app.core.embedding_worker.claim_next_embedding_job",
+        lambda *args, **kwargs: job,
+    )
+
+    def fake_mark_failed(*args, error_code: str, error_message: str, **kwargs):
+        return replace(
+            job,
+            status="failed",
+            error_code=error_code,
+            error_message=error_message,
+        )
+
+    def fake_readiness_summary(_database_url: str, _profile_name: str):
+        return EmbeddingProviderRouteReadinessSummary(
+            routes=(make_readiness_item(blocked_route, ready=False, status="needs_contract"),)
+        )
+
+    monkeypatch.setattr("app.core.embedding_worker.mark_embedding_job_failed", fake_mark_failed)
+
+    result = process_next_embedding_job_with_provider_routes(
+        "postgresql://example/db",
+        worker_name="unit-route-worker",
+        fallback_runtime_config=EmbeddingProviderRuntimeConfig(mode="mock"),
+        route_candidates_selector=lambda _database_url, _profile_name: [blocked_route],
+        require_route_readiness=True,
+        route_readiness_summary_getter=fake_readiness_summary,
+    )
+
+    assert result.processed is True
+    assert result.job is not None
+    assert result.job.status == "failed"
+    assert result.job.error_code == ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY
+    assert "No provider route passed the readiness gate" in result.message
+    assert "gpu-blocked:needs_contract" in result.message
 
 
 def test_route_aware_embedding_worker_marks_failed_when_all_routes_fail(
