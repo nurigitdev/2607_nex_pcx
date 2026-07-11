@@ -59,6 +59,8 @@ def _process_next_job(
     runtime_config: EmbeddingProviderRuntimeConfig,
     provider_source: str = PROVIDER_SOURCE_ROUTE,
     require_route_readiness: bool = False,
+    readiness_gate_failure_mode: str = "fail",
+    readiness_gate_defer_seconds: int = 300,
 ) -> EmbeddingWorkerResult:
     if provider_source == PROVIDER_SOURCE_ROUTE:
         return process_next_embedding_job_with_provider_routes(
@@ -68,6 +70,8 @@ def _process_next_job(
             lease_seconds=lease_seconds,
             fallback_runtime_config=runtime_config,
             require_route_readiness=require_route_readiness,
+            readiness_gate_failure_mode=readiness_gate_failure_mode,
+            readiness_gate_defer_seconds=readiness_gate_defer_seconds,
         )
 
     provider = build_embedding_provider_from_runtime_config(runtime_config)
@@ -104,6 +108,8 @@ def _result_payload(
     runtime_config: EmbeddingProviderRuntimeConfig,
     provider_source: str,
     require_route_readiness: bool,
+    readiness_gate_failure_mode: str,
+    readiness_gate_defer_seconds: int,
 ) -> dict[str, object]:
     runtime_metadata = result.job.runtime_metadata if result.job else {}
     return {
@@ -116,6 +122,8 @@ def _result_payload(
         "provider_route_id": runtime_metadata.get("provider_route_id"),
         "provider_route_name": runtime_metadata.get("provider_route_name"),
         "require_route_readiness": require_route_readiness,
+        "readiness_gate_failure_mode": readiness_gate_failure_mode,
+        "readiness_gate_defer_seconds": readiness_gate_defer_seconds,
         "processed": result.processed,
         "job_id": result.job.job_id if result.job else None,
         "chunk_id": result.job.chunk_id if result.job else None,
@@ -173,6 +181,18 @@ def main() -> int:
         default=None,
         help="Remote provider request timeout override.",
     )
+    parser.add_argument(
+        "--readiness-gate-failure-mode",
+        choices=("fail", "defer"),
+        default=None,
+        help="How route-aware workers handle jobs when no route passes readiness.",
+    )
+    parser.add_argument(
+        "--readiness-gate-defer-seconds",
+        type=int,
+        default=None,
+        help="Seconds to defer a claimed job when readiness-gate failure mode is defer.",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -186,6 +206,14 @@ def main() -> int:
         if args.require_route_readiness is not None
         else settings.embedding_require_route_readiness
     )
+    readiness_gate_failure_mode = (
+        args.readiness_gate_failure_mode or settings.embedding_route_readiness_failure_mode
+    )
+    readiness_gate_defer_seconds = (
+        args.readiness_gate_defer_seconds
+        if args.readiness_gate_defer_seconds is not None
+        else settings.embedding_route_readiness_defer_seconds
+    )
     result = _process_next_job(
         database_url,
         worker_name=args.worker_name,
@@ -194,12 +222,16 @@ def main() -> int:
         runtime_config=runtime_config,
         provider_source=args.provider_source,
         require_route_readiness=require_route_readiness,
+        readiness_gate_failure_mode=readiness_gate_failure_mode,
+        readiness_gate_defer_seconds=readiness_gate_defer_seconds,
     )
     payload = _result_payload(
         result,
         runtime_config=runtime_config,
         provider_source=args.provider_source,
         require_route_readiness=require_route_readiness,
+        readiness_gate_failure_mode=readiness_gate_failure_mode,
+        readiness_gate_defer_seconds=readiness_gate_defer_seconds,
     )
     print(json.dumps(payload, ensure_ascii=False))
     return 0

@@ -142,6 +142,8 @@ def test_process_embedding_job_uses_route_aware_worker_by_default(monkeypatch) -
     assert calls["kwargs"]["lease_seconds"] == 13
     assert calls["kwargs"]["fallback_runtime_config"] == runtime_config
     assert calls["kwargs"]["require_route_readiness"] is False
+    assert calls["kwargs"]["readiness_gate_failure_mode"] == "fail"
+    assert calls["kwargs"]["readiness_gate_defer_seconds"] == 300
 
 
 def test_process_embedding_job_passes_route_readiness_gate_setting(monkeypatch) -> None:
@@ -170,6 +172,8 @@ def test_process_embedding_job_passes_route_readiness_gate_setting(monkeypatch) 
         lease_seconds=13,
         runtime_config=runtime_config,
         require_route_readiness=True,
+        readiness_gate_failure_mode="defer",
+        readiness_gate_defer_seconds=120,
     )
 
     assert result.message == "idle"
@@ -177,6 +181,8 @@ def test_process_embedding_job_passes_route_readiness_gate_setting(monkeypatch) 
     assert calls["kwargs"]["worker_name"] == "route-worker-gated"
     assert calls["kwargs"]["profile_name"] == "kure_v1_1024"
     assert calls["kwargs"]["require_route_readiness"] is True
+    assert calls["kwargs"]["readiness_gate_failure_mode"] == "defer"
+    assert calls["kwargs"]["readiness_gate_defer_seconds"] == 120
 
 
 class _ClosableProvider:

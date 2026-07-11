@@ -14,6 +14,7 @@ from app.core.embedding_providers import (
 from app.core.embedding_worker import (
     ERROR_CODE_EMBEDDING_PROVIDER_ERROR,
     ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY,
+    ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING,
     ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
     EmbeddingWorkerResult,
     process_next_embedding_job_with_provider_routes,
@@ -418,6 +419,61 @@ def test_route_aware_embedding_worker_fails_when_readiness_gate_blocks_all_route
             "reasons": ["needs_contract_reason"],
         }
     ]
+
+
+def test_route_aware_embedding_worker_defers_when_readiness_gate_blocks_all_routes(
+    monkeypatch,
+) -> None:
+    job = make_job()
+    blocked_route = make_route(
+        route_id=41,
+        provider_name="gpu-warming",
+        provider_base_url="http://gpu-warming.local",
+    )
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "app.core.embedding_worker.claim_next_embedding_job",
+        lambda *args, **kwargs: job,
+    )
+
+    def fake_defer_job(*args, **kwargs):
+        captured.update(kwargs)
+        return replace(
+            job,
+            status="running",
+            lease_owner=kwargs["lease_owner"],
+            error_code=kwargs["error_code"],
+            error_message=kwargs["error_message"],
+            runtime_metadata=kwargs["runtime_metadata"],
+        )
+
+    def fake_readiness_summary(_database_url: str, _profile_name: str):
+        return EmbeddingProviderRouteReadinessSummary(
+            routes=(make_readiness_item(blocked_route, ready=False, status="health_not_ready"),)
+        )
+
+    monkeypatch.setattr("app.core.embedding_worker.defer_embedding_job", fake_defer_job)
+
+    result = process_next_embedding_job_with_provider_routes(
+        "postgresql://example/db",
+        worker_name="unit-route-worker",
+        fallback_runtime_config=EmbeddingProviderRuntimeConfig(mode="mock"),
+        route_candidates_selector=lambda _database_url, _profile_name: [blocked_route],
+        require_route_readiness=True,
+        readiness_gate_failure_mode="defer",
+        readiness_gate_defer_seconds=45,
+        route_readiness_summary_getter=fake_readiness_summary,
+    )
+
+    assert result.processed is True
+    assert result.job is not None
+    assert result.job.status == "running"
+    assert result.job.lease_owner == "readiness-gate"
+    assert result.job.error_code == ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING
+    assert captured["defer_seconds"] == 45
+    assert result.job.runtime_metadata["provider_route_readiness_blocked_routes"][0][
+        "provider_name"
+    ] == "gpu-warming"
 
 
 def test_route_aware_embedding_worker_marks_failed_when_all_routes_fail(

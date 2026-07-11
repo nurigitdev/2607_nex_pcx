@@ -8,6 +8,7 @@ from app.core.database import connect
 from app.core.embedding_jobs import (
     EmbeddingJobRecord,
     claim_next_embedding_job,
+    defer_embedding_job,
     get_embedding_job,
     mark_embedding_job_failed,
     mark_embedding_job_succeeded_in_connection,
@@ -48,7 +49,14 @@ ERROR_CODE_CHUNK_NOT_FOUND = "CHUNK_NOT_FOUND"
 ERROR_CODE_MOCK_EMBEDDING_ERROR = "MOCK_EMBEDDING_ERROR"
 ERROR_CODE_EMBEDDING_PROVIDER_ERROR = "EMBEDDING_PROVIDER_ERROR"
 ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY = "EMBEDDING_PROVIDER_ROUTE_NOT_READY"
+ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING = "EMBEDDING_PROVIDER_ROUTE_WAITING"
 ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE = "UNSUPPORTED_EMBEDDING_PROFILE"
+READINESS_GATE_FAILURE_MODE_FAIL = "fail"
+READINESS_GATE_FAILURE_MODE_DEFER = "defer"
+READINESS_GATE_FAILURE_MODES = (
+    READINESS_GATE_FAILURE_MODE_FAIL,
+    READINESS_GATE_FAILURE_MODE_DEFER,
+)
 
 EmbeddingProviderBuilder = Callable[[EmbeddingProviderRuntimeConfig], EmbeddingProvider]
 EmbeddingProviderRouteSelector = Callable[[str, str], EmbeddingProviderRouteRecord | None]
@@ -146,6 +154,8 @@ def process_next_embedding_job_with_provider_routes(
     route_selector: EmbeddingProviderRouteSelector | None = None,
     route_candidates_selector: EmbeddingProviderRouteCandidatesSelector | None = None,
     require_route_readiness: bool = False,
+    readiness_gate_failure_mode: str = READINESS_GATE_FAILURE_MODE_FAIL,
+    readiness_gate_defer_seconds: int = 300,
     route_readiness_summary_getter: EmbeddingProviderRouteReadinessSummaryGetter | None = None,
 ) -> EmbeddingWorkerResult:
     """Claim and process one embedding job using a profile-specific provider route."""
@@ -173,6 +183,10 @@ def process_next_embedding_job_with_provider_routes(
     )
     route_readiness_by_id: dict[int, EmbeddingProviderRouteReadinessItem] = {}
     if require_route_readiness and route_candidates:
+        _validate_readiness_gate_policy(
+            readiness_gate_failure_mode,
+            readiness_gate_defer_seconds,
+        )
         gate_result = _filter_route_candidates_by_readiness(
             database_url,
             job.profile_name,
@@ -186,12 +200,26 @@ def process_next_embedding_job_with_provider_routes(
         route_readiness_by_id = gate_result.readiness_by_id
         if not route_candidates:
             message = _readiness_gate_failure_message(gate_result.blocked_routes)
+            metadata = _readiness_gate_failure_metadata(gate_result.blocked_routes)
+            if readiness_gate_failure_mode == READINESS_GATE_FAILURE_MODE_DEFER:
+                deferred_job = _defer_claimed_embedding_job(
+                    database_url,
+                    job,
+                    error_message=message,
+                    defer_seconds=readiness_gate_defer_seconds,
+                    runtime_metadata=metadata,
+                )
+                return EmbeddingWorkerResult(
+                    processed=True,
+                    job=deferred_job,
+                    message=message,
+                )
             failed_job = _fail_claimed_embedding_job(
                 database_url,
                 job,
                 error_code=ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY,
                 error_message=message,
-                runtime_metadata=_readiness_gate_failure_metadata(gate_result.blocked_routes),
+                runtime_metadata=metadata,
             )
             return EmbeddingWorkerResult(
                 processed=True,
@@ -515,6 +543,37 @@ def _fail_claimed_embedding_job(
         runtime_metadata=runtime_metadata,
     )
     return failed_job or get_embedding_job(database_url, job.job_id) or job
+
+
+def _defer_claimed_embedding_job(
+    database_url: str,
+    job: EmbeddingJobRecord,
+    *,
+    error_message: str,
+    defer_seconds: int,
+    runtime_metadata: dict[str, object] | None = None,
+) -> EmbeddingJobRecord:
+    deferred_job = defer_embedding_job(
+        database_url,
+        job.job_id,
+        lease_owner="readiness-gate",
+        defer_seconds=defer_seconds,
+        error_code=ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING,
+        error_message=error_message,
+        runtime_metadata=runtime_metadata,
+    )
+    return deferred_job or get_embedding_job(database_url, job.job_id) or job
+
+
+def _validate_readiness_gate_policy(
+    failure_mode: str,
+    defer_seconds: int,
+) -> None:
+    if failure_mode not in READINESS_GATE_FAILURE_MODES:
+        msg = f"Unsupported readiness gate failure mode: {failure_mode}"
+        raise ValueError(msg)
+    if defer_seconds <= 0:
+        raise ValueError("readiness_gate_defer_seconds must be greater than 0")
 
 
 def _runtime_config_for_job(

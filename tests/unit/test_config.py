@@ -13,6 +13,8 @@ def test_default_settings(monkeypatch) -> None:
     monkeypatch.delenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_URL", raising=False)
     monkeypatch.delenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS", raising=False)
+    monkeypatch.delenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_FAILURE_MODE", raising=False)
+    monkeypatch.delenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS", raising=False)
 
     settings = get_settings()
 
@@ -29,6 +31,8 @@ def test_default_settings(monkeypatch) -> None:
     assert settings.remote_embedding_provider_url is None
     assert settings.remote_embedding_provider_timeout_seconds == 30.0
     assert settings.embedding_require_route_readiness is False
+    assert settings.embedding_route_readiness_failure_mode == "fail"
+    assert settings.embedding_route_readiness_defer_seconds == 300
 
 
 def test_database_settings_from_environment(monkeypatch) -> None:
@@ -43,6 +47,8 @@ def test_database_settings_from_environment(monkeypatch) -> None:
     )
     monkeypatch.setenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS", "12.5")
     monkeypatch.setenv("NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS", "true")
+    monkeypatch.setenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_FAILURE_MODE", "defer")
+    monkeypatch.setenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS", "900")
 
     settings = get_settings()
 
@@ -54,3 +60,5 @@ def test_database_settings_from_environment(monkeypatch) -> None:
     assert settings.remote_embedding_provider_url == "http://embedding-provider.local"
     assert settings.remote_embedding_provider_timeout_seconds == 12.5
     assert settings.embedding_require_route_readiness is True
+    assert settings.embedding_route_readiness_failure_mode == "defer"
+    assert settings.embedding_route_readiness_defer_seconds == 900

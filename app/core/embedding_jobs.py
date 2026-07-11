@@ -597,6 +597,76 @@ def mark_embedding_job_failed(
         )
 
 
+def defer_embedding_job_in_connection(
+    connection: Connection,
+    job_id: int,
+    *,
+    lease_owner: str,
+    defer_seconds: int,
+    error_code: str,
+    error_message: str,
+    runtime_metadata: dict[str, Any] | None = None,
+) -> EmbeddingJobRecord | None:
+    _require_positive_id(job_id, "job_id")
+    worker = _validate_worker(lease_owner)
+    _validate_lease_seconds(defer_seconds)
+    if not error_code.strip():
+        raise InvalidEmbeddingJobError("error_code is required")
+    if not error_message.strip():
+        raise InvalidEmbeddingJobError("error_message is required")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            UPDATE embedding_jobs
+            SET status = 'running',
+                lease_owner = %s,
+                lease_expires_at = now() + (%s * interval '1 second'),
+                error_code = %s,
+                error_message = %s,
+                last_error_at = now(),
+                runtime_metadata = runtime_metadata || %s::jsonb,
+                started_at = COALESCE(started_at, now()),
+                finished_at = NULL,
+                updated_at = now()
+            WHERE job_id = %s
+            RETURNING {_select_embedding_job_columns()}
+            """,
+            (
+                worker,
+                defer_seconds,
+                error_code.strip(),
+                error_message.strip(),
+                Json(runtime_metadata or {}),
+                job_id,
+            ),
+        )
+        row = cursor.fetchone()
+    return _row_to_embedding_job_record(dict(row)) if row else None
+
+
+def defer_embedding_job(
+    database_url: str,
+    job_id: int,
+    *,
+    lease_owner: str,
+    defer_seconds: int,
+    error_code: str,
+    error_message: str,
+    runtime_metadata: dict[str, Any] | None = None,
+) -> EmbeddingJobRecord | None:
+    with connect(database_url) as connection:
+        return defer_embedding_job_in_connection(
+            connection,
+            job_id,
+            lease_owner=lease_owner,
+            defer_seconds=defer_seconds,
+            error_code=error_code,
+            error_message=error_message,
+            runtime_metadata=runtime_metadata,
+        )
+
+
 def mark_embedding_job_skipped_in_connection(
     connection: Connection,
     job_id: int,

@@ -8,6 +8,7 @@ from app.core.embedding_jobs import (
     claim_next_embedding_job,
     create_embedding_job,
     create_embedding_jobs_for_chunk,
+    defer_embedding_job,
     get_embedding_job,
     heartbeat_embedding_job,
     list_active_embedding_profiles,
@@ -311,6 +312,50 @@ def test_failed_job_can_retry_and_expired_running_job_can_be_reclaimed(
         assert reclaimed.status == "running"
         assert reclaimed.lease_owner == "recovery-worker"
         assert reclaimed.attempts == 2
+    finally:
+        _cleanup_fixture(migrated_database_url, file_id, profile_name)
+
+
+def test_embedding_job_can_be_deferred_until_readiness_gate_recovers(
+    migrated_database_url: str,
+) -> None:
+    file_id, chunk_id = _create_chunk(migrated_database_url)
+    profile_name = _create_inactive_profile(migrated_database_url)
+    try:
+        created = create_embedding_job(
+            migrated_database_url,
+            EmbeddingJobInput(chunk_id=chunk_id, profile_name=profile_name),
+        )
+        claimed = claim_next_embedding_job(
+            migrated_database_url,
+            "embedding-worker-one",
+            profile_name=profile_name,
+        )
+        assert claimed is not None
+
+        deferred = defer_embedding_job(
+            migrated_database_url,
+            claimed.job_id,
+            lease_owner="readiness-gate",
+            defer_seconds=300,
+            error_code="EMBEDDING_PROVIDER_ROUTE_WAITING",
+            error_message="No provider route passed the readiness gate",
+            runtime_metadata={"provider_route_readiness_gate": "blocked_all_routes"},
+        )
+        unavailable = claim_next_embedding_job(
+            migrated_database_url,
+            "another-worker",
+            profile_name=profile_name,
+        )
+
+        assert deferred is not None
+        assert deferred.job_id == created.job.job_id
+        assert deferred.status == "running"
+        assert deferred.lease_owner == "readiness-gate"
+        assert deferred.lease_expires_at is not None
+        assert deferred.error_code == "EMBEDDING_PROVIDER_ROUTE_WAITING"
+        assert deferred.runtime_metadata["provider_route_readiness_gate"] == "blocked_all_routes"
+        assert unavailable is None
     finally:
         _cleanup_fixture(migrated_database_url, file_id, profile_name)
 

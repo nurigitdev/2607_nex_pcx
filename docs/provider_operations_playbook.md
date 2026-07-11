@@ -136,6 +136,10 @@ part of the deployment process.
 Enable the gate for worker runs with `NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS=true`, or
 override a single run with `scripts/process_embedding_job.py --require-route-readiness`.
 Use `--skip-route-readiness` for smoke/debug runs that should bypass the gate.
+By default, blocked jobs fail with `EMBEDDING_PROVIDER_ROUTE_NOT_READY`. To keep them in
+the queue while providers warm up, set `NEX_PCX_EMBEDDING_ROUTE_READINESS_FAILURE_MODE=defer`
+and tune `NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS`, or use the matching CLI
+`--readiness-gate-failure-mode defer` and `--readiness-gate-defer-seconds` options.
 
 Expected behavior:
 

@@ -27,6 +27,8 @@ class Settings:
     remote_embedding_provider_url: str | None = None
     remote_embedding_provider_timeout_seconds: float = 30.0
     embedding_require_route_readiness: bool = False
+    embedding_route_readiness_failure_mode: str = "fail"
+    embedding_route_readiness_defer_seconds: int = 300
 
 
 def get_settings() -> Settings:
@@ -46,5 +48,12 @@ def get_settings() -> Settings:
         embedding_require_route_readiness=_env_bool(
             "NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS",
             False,
+        ),
+        embedding_route_readiness_failure_mode=getenv(
+            "NEX_PCX_EMBEDDING_ROUTE_READINESS_FAILURE_MODE",
+            "fail",
+        ),
+        embedding_route_readiness_defer_seconds=int(
+            getenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS", "300")
         ),
     )
