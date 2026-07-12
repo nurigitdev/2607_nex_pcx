@@ -26,6 +26,11 @@ from app.core.evaluation_runs import (
     create_evaluation_result,
     create_evaluation_run,
 )
+from app.core.pipeline_jobs import (
+    PipelineJobInput,
+    create_pipeline_job,
+    get_pipeline_queue_summary,
+)
 from app.main import create_app
 
 pytestmark = pytest.mark.integration
@@ -96,8 +101,85 @@ def _create_dashboard_embedding_backlog_fixture(database_url: str) -> dict[str, 
     )
     return {
         "file_id": file_id,
+        "document_id": document_id,
         "job_id": job.job.job_id,
         "profile_name": profile_name,
+    }
+
+
+def _create_dashboard_pipeline_queue_fixture(
+    database_url: str,
+    *,
+    file_id: int,
+    document_id: int,
+    user_id: int,
+) -> dict[str, int]:
+    queued = create_pipeline_job(
+        database_url,
+        PipelineJobInput(
+            job_type="document_ingestion",
+            file_id=file_id,
+            document_id=document_id,
+            requested_by_user_id=user_id,
+            total_units=4,
+        ),
+    )
+    stale_running = create_pipeline_job(
+        database_url,
+        PipelineJobInput(
+            job_type="parsing",
+            file_id=file_id,
+            document_id=document_id,
+            requested_by_user_id=user_id,
+            total_units=6,
+        ),
+    )
+    failed = create_pipeline_job(
+        database_url,
+        PipelineJobInput(
+            job_type="chunking",
+            file_id=file_id,
+            document_id=document_id,
+            requested_by_user_id=user_id,
+            total_units=3,
+        ),
+    )
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE pipeline_jobs
+                SET status = 'running',
+                    stage = 'parsing',
+                    processed_units = 2,
+                    progress_percent = 33.33,
+                    attempts = 1,
+                    lease_owner = 'dashboard-stale-worker',
+                    lease_expires_at = now() - interval '5 minutes',
+                    heartbeat_at = now() - interval '10 minutes',
+                    updated_at = now()
+                WHERE job_id = %s
+                """,
+                (stale_running.job_id,),
+            )
+            cursor.execute(
+                """
+                UPDATE pipeline_jobs
+                SET status = 'failed',
+                    stage = 'chunking',
+                    attempts = 1,
+                    error_code = 'SLICE_152_FAILED',
+                    error_message = 'dashboard pipeline fixture failed',
+                    finished_at = now(),
+                    updated_at = now()
+                WHERE job_id = %s
+                """,
+                (failed.job_id,),
+            )
+    return {
+        "queued_job_id": queued.job_id,
+        "stale_job_id": stale_running.job_id,
+        "failed_job_id": failed.job_id,
     }
 
 
@@ -184,6 +266,13 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
             )
             search_log_id = cursor.fetchone()["search_log_id"]
 
+    pipeline_fixture = _create_dashboard_pipeline_queue_fixture(
+        database_url,
+        file_id=int(backlog_fixture["file_id"]),
+        document_id=int(backlog_fixture["document_id"]),
+        user_id=int(user_id),
+    )
+
     metric = evaluate_question(
         QuestionEvaluationInput(
             question_id=question_id,
@@ -231,6 +320,9 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
         "embedding_file_id": backlog_fixture["file_id"],
         "embedding_job_id": backlog_fixture["job_id"],
         "embedding_profile_name": backlog_fixture["profile_name"],
+        "pipeline_queued_job_id": pipeline_fixture["queued_job_id"],
+        "pipeline_stale_job_id": pipeline_fixture["stale_job_id"],
+        "pipeline_failed_job_id": pipeline_fixture["failed_job_id"],
         "search_log_id": search_log_id,
     }
 
@@ -260,11 +352,13 @@ def test_evaluation_dashboard_summary_api_and_page(
     try:
         summary = get_evaluation_dashboard_summary(migrated_database_url, recent_limit=10)
         core_metrics = get_dashboard_core_metrics(migrated_database_url)
+        pipeline_queue = get_pipeline_queue_summary(migrated_database_url)
         backlog_summary = get_embedding_job_backlog_summary(migrated_database_url)
         status_counts = {item.status: item.count for item in summary.status_counts}
 
         with TestClient(app) as client:
             core_metrics_response = client.get("/api/dashboard/core-metrics")
+            pipeline_queue_response = client.get("/api/dashboard/pipeline-queue")
             api_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 10})
             backlog_api_response = client.get("/api/dashboard/embedding-backlog")
             bad_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 0})
@@ -272,6 +366,7 @@ def test_evaluation_dashboard_summary_api_and_page(
 
         api_payload = api_response.json()["evaluations"]
         core_metrics_payload = core_metrics_response.json()["core_metrics"]
+        pipeline_queue_payload = pipeline_queue_response.json()["pipeline_queue"]
         recent_run_ids = {run.evaluation_run_id for run in summary.recent_runs}
         api_recent_run_ids = {run["evaluation_run_id"] for run in api_payload["recent_runs"]}
 
@@ -292,6 +387,20 @@ def test_evaluation_dashboard_summary_api_and_page(
             item["chunk_policy_name"] == "heading_512_64"
             for item in core_metrics_payload["chunk_policies"]
         )
+        assert pipeline_queue.queued_count >= 1
+        assert pipeline_queue.stale_running_count >= 1
+        assert pipeline_queue.failed_count >= 1
+        assert pipeline_queue_response.status_code == 200
+        assert pipeline_queue_payload["total_count"] == pipeline_queue.total_count
+        assert pipeline_queue_payload["queued_count"] == pipeline_queue.queued_count
+        assert pipeline_queue_payload["stale_running_count"] >= 1
+        assert pipeline_queue_payload["failed_count"] >= 1
+        assert pipeline_queue_payload["claimable_count"] >= 3
+        assert any(item["stage"] == "parsing" for item in pipeline_queue_payload["stages"])
+        assert any(
+            item["job_type"] == "document_ingestion"
+            for item in pipeline_queue_payload["job_types"]
+        )
         assert summary.active_question_set_count >= 1
         assert summary.question_count >= 1
         assert summary.expected_target_count >= 1
@@ -310,6 +419,9 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "Core Metrics" in page_response.text
         assert "slice-151" in page_response.text
         assert "/api/dashboard/core-metrics" in page_response.text
+        assert "Pipeline Queue 스냅샷" in page_response.text
+        assert "/api/dashboard/pipeline-queue" in page_response.text
+        assert "dashboard-stale-worker" not in page_response.text
         assert "임베딩 Queue 스냅샷" in page_response.text
         assert fixture["embedding_profile_name"] in page_response.text
         assert "/api/dashboard/embedding-backlog" in page_response.text

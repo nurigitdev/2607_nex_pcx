@@ -276,7 +276,11 @@ from app.core.pipeline_jobs import (
     PipelineJobEventRecord,
     PipelineJobListItem,
     PipelineJobRecord,
+    PipelineQueueStageSummary,
+    PipelineQueueSummary,
+    PipelineQueueTypeSummary,
     get_pipeline_job,
+    get_pipeline_queue_summary,
     list_pipeline_job_events,
     list_pipeline_jobs,
     retry_pipeline_job,
@@ -624,6 +628,10 @@ def _datetime_response(value: object | None) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else None
 
 
+def _datetime_label(value: object | None) -> str:
+    return value.strftime("%Y-%m-%d %H:%M:%S") if hasattr(value, "strftime") else "-"
+
+
 def _byte_count_label(value: int | float | None) -> str:
     if value is None:
         return "-"
@@ -717,6 +725,73 @@ def pipeline_job_event_payload(event: PipelineJobEventRecord) -> dict[str, objec
         "message": event.message,
         "event_metadata": event.event_metadata,
         "created_at": _datetime_response(event.created_at),
+    }
+
+
+def pipeline_queue_stage_summary_payload(
+    summary: PipelineQueueStageSummary,
+) -> dict[str, object]:
+    return {
+        "stage": summary.stage,
+        "total_count": summary.total_count,
+        "queued_count": summary.queued_count,
+        "running_count": summary.running_count,
+        "failed_count": summary.failed_count,
+        "average_progress_percent": (
+            str(summary.average_progress_percent)
+            if summary.average_progress_percent is not None
+            else None
+        ),
+        "oldest_queued_at": _datetime_response(summary.oldest_queued_at),
+        "oldest_queued_label": _datetime_label(summary.oldest_queued_at),
+    }
+
+
+def pipeline_queue_type_summary_payload(
+    summary: PipelineQueueTypeSummary,
+) -> dict[str, object]:
+    return {
+        "job_type": summary.job_type,
+        "total_count": summary.total_count,
+        "queued_count": summary.queued_count,
+        "running_count": summary.running_count,
+        "failed_count": summary.failed_count,
+    }
+
+
+def pipeline_queue_summary_payload(summary: PipelineQueueSummary) -> dict[str, object]:
+    return {
+        "total_count": summary.total_count,
+        "queued_count": summary.queued_count,
+        "running_count": summary.running_count,
+        "stale_running_count": summary.stale_running_count,
+        "reclaimable_stale_running_count": summary.reclaimable_stale_running_count,
+        "failed_count": summary.failed_count,
+        "retryable_failed_count": summary.retryable_failed_count,
+        "exhausted_failed_count": summary.exhausted_failed_count,
+        "canceled_count": summary.canceled_count,
+        "retryable_canceled_count": summary.retryable_canceled_count,
+        "exhausted_canceled_count": summary.exhausted_canceled_count,
+        "succeeded_count": summary.succeeded_count,
+        "skipped_count": summary.skipped_count,
+        "claimable_count": summary.claimable_count,
+        "attention_count": summary.attention_count,
+        "oldest_queued_at": _datetime_response(summary.oldest_queued_at),
+        "oldest_queued_label": _datetime_label(summary.oldest_queued_at),
+        "oldest_stale_lease_expires_at": _datetime_response(
+            summary.oldest_stale_lease_expires_at
+        ),
+        "oldest_stale_lease_expires_label": _datetime_label(
+            summary.oldest_stale_lease_expires_at
+        ),
+        "stages": [
+            pipeline_queue_stage_summary_payload(stage_summary)
+            for stage_summary in summary.stage_summaries
+        ],
+        "job_types": [
+            pipeline_queue_type_summary_payload(type_summary)
+            for type_summary in summary.type_summaries
+        ],
     }
 
 
@@ -3322,6 +3397,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         metrics = get_dashboard_core_metrics(settings.database_url)
         return JSONResponse(content={"core_metrics": dashboard_core_metrics_payload(metrics)})
+
+    @app.get("/api/dashboard/pipeline-queue")
+    def api_get_dashboard_pipeline_queue() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        summary = get_pipeline_queue_summary(settings.database_url)
+        return JSONResponse(content={"pipeline_queue": pipeline_queue_summary_payload(summary)})
 
     @app.get("/api/dashboard/embedding-backlog")
     def api_get_dashboard_embedding_backlog() -> JSONResponse:
@@ -6122,6 +6208,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def dashboard(request: Request) -> HTMLResponse:
         core_metrics: DashboardCoreMetrics | None = None
+        pipeline_queue: PipelineQueueSummary | None = None
         evaluation_dashboard: EvaluationDashboardSummary | None = None
         embedding_backlog: EmbeddingJobBacklogSummary | None = None
         error_message = None
@@ -6132,6 +6219,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 core_metrics = get_dashboard_core_metrics(settings.database_url)
             except Exception as exc:
                 error_message = str(exc)
+            try:
+                pipeline_queue = get_pipeline_queue_summary(settings.database_url)
+            except InvalidPipelineJobError as exc:
+                if error_message is None:
+                    error_message = str(exc)
+            except Exception as exc:
+                if error_message is None:
+                    error_message = str(exc)
             try:
                 evaluation_dashboard = get_evaluation_dashboard_summary(
                     settings.database_url,
@@ -6161,6 +6256,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 core_metrics=(
                     dashboard_core_metrics_payload(core_metrics)
                     if core_metrics is not None
+                    else None
+                ),
+                pipeline_queue=(
+                    pipeline_queue_summary_payload(pipeline_queue)
+                    if pipeline_queue is not None
                     else None
                 ),
                 evaluation_dashboard=evaluation_dashboard,

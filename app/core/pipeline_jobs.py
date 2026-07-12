@@ -111,6 +111,64 @@ class PipelineJobListItem:
     requested_by_display_name: str | None
 
 
+@dataclass(frozen=True)
+class PipelineQueueStageSummary:
+    stage: str
+    total_count: int
+    queued_count: int
+    running_count: int
+    failed_count: int
+    average_progress_percent: Decimal | None
+    oldest_queued_at: datetime | None
+
+
+@dataclass(frozen=True)
+class PipelineQueueTypeSummary:
+    job_type: str
+    total_count: int
+    queued_count: int
+    running_count: int
+    failed_count: int
+
+
+@dataclass(frozen=True)
+class PipelineQueueSummary:
+    stage_summaries: tuple[PipelineQueueStageSummary, ...]
+    type_summaries: tuple[PipelineQueueTypeSummary, ...]
+    total_count: int
+    queued_count: int
+    running_count: int
+    stale_running_count: int
+    reclaimable_stale_running_count: int
+    failed_count: int
+    retryable_failed_count: int
+    exhausted_failed_count: int
+    canceled_count: int
+    retryable_canceled_count: int
+    exhausted_canceled_count: int
+    succeeded_count: int
+    skipped_count: int
+    oldest_queued_at: datetime | None
+    oldest_stale_lease_expires_at: datetime | None
+
+    @property
+    def claimable_count(self) -> int:
+        return (
+            self.queued_count
+            + self.reclaimable_stale_running_count
+            + self.retryable_failed_count
+            + self.retryable_canceled_count
+        )
+
+    @property
+    def attention_count(self) -> int:
+        return (
+            self.stale_running_count
+            + self.failed_count
+            + self.canceled_count
+        )
+
+
 class InvalidPipelineJobError(ValueError):
     """Raised when a pipeline job operation is invalid before reaching the DB."""
 
@@ -225,6 +283,28 @@ def _row_to_pipeline_job_list_item(row: dict[str, Any]) -> PipelineJobListItem:
         document_title=row["document_title"],
         requested_by_login_id=row["requested_by_login_id"],
         requested_by_display_name=row["requested_by_display_name"],
+    )
+
+
+def _row_to_pipeline_queue_stage_summary(row: dict[str, Any]) -> PipelineQueueStageSummary:
+    return PipelineQueueStageSummary(
+        stage=str(row["stage"]),
+        total_count=int(row["total_count"]),
+        queued_count=int(row["queued_count"]),
+        running_count=int(row["running_count"]),
+        failed_count=int(row["failed_count"]),
+        average_progress_percent=row["average_progress_percent"],
+        oldest_queued_at=row["oldest_queued_at"],
+    )
+
+
+def _row_to_pipeline_queue_type_summary(row: dict[str, Any]) -> PipelineQueueTypeSummary:
+    return PipelineQueueTypeSummary(
+        job_type=str(row["job_type"]),
+        total_count=int(row["total_count"]),
+        queued_count=int(row["queued_count"]),
+        running_count=int(row["running_count"]),
+        failed_count=int(row["failed_count"]),
     )
 
 
@@ -349,6 +429,115 @@ def list_pipeline_job_events(
             )
             rows = cursor.fetchall()
     return [_row_to_pipeline_job_event_record(dict(row)) for row in rows]
+
+
+def get_pipeline_queue_summary(database_url: str) -> PipelineQueueSummary:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*)::int AS total_count,
+                    COUNT(*) FILTER (WHERE status = 'queued')::int AS queued_count,
+                    COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'running'
+                          AND lease_expires_at < now()
+                    )::int AS stale_running_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'running'
+                          AND lease_expires_at < now()
+                          AND attempts < max_attempts
+                    )::int AS reclaimable_stale_running_count,
+                    COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'failed'
+                          AND attempts < max_attempts
+                    )::int AS retryable_failed_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'failed'
+                          AND attempts >= max_attempts
+                    )::int AS exhausted_failed_count,
+                    COUNT(*) FILTER (WHERE status = 'canceled')::int AS canceled_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'canceled'
+                          AND attempts < max_attempts
+                    )::int AS retryable_canceled_count,
+                    COUNT(*) FILTER (
+                        WHERE status = 'canceled'
+                          AND attempts >= max_attempts
+                    )::int AS exhausted_canceled_count,
+                    COUNT(*) FILTER (WHERE status = 'succeeded')::int AS succeeded_count,
+                    COUNT(*) FILTER (WHERE status = 'skipped')::int AS skipped_count,
+                    MIN(queued_at) FILTER (WHERE status = 'queued') AS oldest_queued_at,
+                    MIN(lease_expires_at) FILTER (
+                        WHERE status = 'running'
+                          AND lease_expires_at < now()
+                    ) AS oldest_stale_lease_expires_at
+                FROM pipeline_jobs
+                """
+            )
+            summary_row = dict(cursor.fetchone() or {})
+
+            cursor.execute(
+                """
+                SELECT
+                    stage,
+                    COUNT(*)::int AS total_count,
+                    COUNT(*) FILTER (WHERE status = 'queued')::int AS queued_count,
+                    COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+                    COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+                    AVG(progress_percent) AS average_progress_percent,
+                    MIN(queued_at) FILTER (WHERE status = 'queued') AS oldest_queued_at
+                FROM pipeline_jobs
+                GROUP BY stage
+                ORDER BY total_count DESC, stage ASC
+                LIMIT 8
+                """
+            )
+            stage_rows = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT
+                    job_type,
+                    COUNT(*)::int AS total_count,
+                    COUNT(*) FILTER (WHERE status = 'queued')::int AS queued_count,
+                    COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+                    COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count
+                FROM pipeline_jobs
+                GROUP BY job_type
+                ORDER BY total_count DESC, job_type ASC
+                LIMIT 8
+                """
+            )
+            type_rows = cursor.fetchall()
+
+    return PipelineQueueSummary(
+        stage_summaries=tuple(
+            _row_to_pipeline_queue_stage_summary(dict(row)) for row in stage_rows
+        ),
+        type_summaries=tuple(
+            _row_to_pipeline_queue_type_summary(dict(row)) for row in type_rows
+        ),
+        total_count=int(summary_row["total_count"]),
+        queued_count=int(summary_row["queued_count"]),
+        running_count=int(summary_row["running_count"]),
+        stale_running_count=int(summary_row["stale_running_count"]),
+        reclaimable_stale_running_count=int(
+            summary_row["reclaimable_stale_running_count"]
+        ),
+        failed_count=int(summary_row["failed_count"]),
+        retryable_failed_count=int(summary_row["retryable_failed_count"]),
+        exhausted_failed_count=int(summary_row["exhausted_failed_count"]),
+        canceled_count=int(summary_row["canceled_count"]),
+        retryable_canceled_count=int(summary_row["retryable_canceled_count"]),
+        exhausted_canceled_count=int(summary_row["exhausted_canceled_count"]),
+        succeeded_count=int(summary_row["succeeded_count"]),
+        skipped_count=int(summary_row["skipped_count"]),
+        oldest_queued_at=summary_row["oldest_queued_at"],
+        oldest_stale_lease_expires_at=summary_row["oldest_stale_lease_expires_at"],
+    )
 
 
 def create_pipeline_job_in_connection(

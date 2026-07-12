@@ -1108,6 +1108,12 @@ main.container-fluid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.dashboard-pipeline-tables {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+}
+
 .dashboard-status-item {
   align-items: center;
   background: #f8fafc;
@@ -1158,6 +1164,15 @@ main.container-fluid {
 
 .dashboard-core-table td:first-child {
   min-width: 8rem;
+}
+
+.dashboard-pipeline-table td:nth-child(n + 2) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dashboard-pipeline-table td:first-child {
+  min-width: 9rem;
 }
 
 .model-path {
@@ -2658,6 +2673,7 @@ main.container-fluid {
   .evaluation-execute-form,
   .dashboard-core-grid,
   .dashboard-core-tables,
+  .dashboard-pipeline-tables,
   .dashboard-status-grid,
   .design-component-grid,
   .design-doc-grid,

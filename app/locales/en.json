@@ -64,6 +64,9 @@
     "chunk_policy": "Chunk Policy",
     "avg_tokens": "Avg Tokens",
     "no_core_metrics": "No core metrics to summarize.",
+    "pipeline_queue_snapshot": "Pipeline Queue Snapshot",
+    "pipeline_queue_snapshot_subtitle": "Review post-upload queue, running, failed, and stale lease state.",
+    "open_pipeline_monitor": "Pipeline Monitor",
     "embedding_queue_snapshot": "Embedding Queue Snapshot",
     "embedding_queue_snapshot_subtitle": "Quickly review pending, running, failed, and stale lease state from home.",
     "open_job_monitor": "Job Monitor",
@@ -92,6 +95,22 @@
     "retryable": "Retryable",
     "oldest_pending": "Oldest Pending",
     "no_jobs": "No embedding jobs found."
+  },
+  "pipeline_queue": {
+    "claimable": "Claimable",
+    "queued": "Queued",
+    "running": "Running",
+    "attention": "Attention",
+    "failed": "Failed",
+    "canceled": "Canceled",
+    "stale": "Stale Lease",
+    "oldest_queued": "Oldest Queued",
+    "oldest_stale": "Oldest Stale",
+    "stage": "Stage",
+    "job_type": "Job Type",
+    "total": "Total",
+    "avg_progress": "Avg Progress",
+    "no_jobs": "No pipeline jobs found."
   },
   "embedding_stale_leases": {
     "title": "Stale Lease Recovery",

@@ -41,6 +41,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     )
     assert korean("dashboard.core_metrics") == "Core Metrics"
     assert english("dashboard.core_metrics") == "Core Metrics"
+    assert korean("dashboard.pipeline_queue_snapshot") == "Pipeline Queue 스냅샷"
+    assert english("dashboard.pipeline_queue_snapshot") == "Pipeline Queue Snapshot"
     assert korean("dashboard.embedding_queue_snapshot") == "임베딩 Queue 스냅샷"
     assert english("dashboard.embedding_queue_snapshot") == "Embedding Queue Snapshot"
     assert korean("nav.embedding_routes") == "Provider 라우팅"

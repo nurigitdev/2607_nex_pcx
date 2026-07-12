@@ -198,6 +198,133 @@
   </div>
 </section>
 
+<section class="metric-card bg-white p-0 overflow-hidden mt-4" data-dashboard-pipeline-queue-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dashboard.pipeline_queue_snapshot") }}</h2>
+      <div class="text-secondary">{{ t("dashboard.pipeline_queue_snapshot_subtitle") }}</div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="/api/dashboard/pipeline-queue">{{ t("common.api") }}</a>
+      <a class="btn btn-primary btn-sm" href="/admin/jobs">{{ t("dashboard.open_pipeline_monitor") }}</a>
+    </div>
+  </div>
+
+  <div class="dashboard-evaluation-body p-3">
+    <div class="dashboard-status-grid">
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.claimable") }}</span>
+        <strong>{{ pipeline_queue.claimable_count if pipeline_queue else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.queued") }}</span>
+        <strong>{{ pipeline_queue.queued_count if pipeline_queue else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.running") }}</span>
+        <strong>{{ pipeline_queue.running_count if pipeline_queue else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.attention") }}</span>
+        <strong>{{ pipeline_queue.attention_count if pipeline_queue else 0 }}</strong>
+      </div>
+    </div>
+
+    <div class="dashboard-core-grid">
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.failed") }}</span>
+        <strong>{{ pipeline_queue.failed_count if pipeline_queue else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.canceled") }}</span>
+        <strong>{{ pipeline_queue.canceled_count if pipeline_queue else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.stale") }}</span>
+        <strong>{{ pipeline_queue.stale_running_count if pipeline_queue else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.oldest_queued") }}</span>
+        <strong>{{ pipeline_queue.oldest_queued_label if pipeline_queue else "-" }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("pipeline_queue.oldest_stale") }}</span>
+        <strong>{{ pipeline_queue.oldest_stale_lease_expires_label if pipeline_queue else "-" }}</strong>
+      </div>
+    </div>
+
+    <div class="dashboard-pipeline-tables">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dashboard-pipeline-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("pipeline_queue.stage") }}</th>
+              <th scope="col">{{ t("pipeline_queue.total") }}</th>
+              <th scope="col">{{ t("pipeline_queue.queued") }}</th>
+              <th scope="col">{{ t("pipeline_queue.running") }}</th>
+              <th scope="col">{{ t("pipeline_queue.failed") }}</th>
+              <th scope="col">{{ t("pipeline_queue.avg_progress") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if pipeline_queue and pipeline_queue.stages %}
+              {% for stage in pipeline_queue.stages %}
+              <tr>
+                <td class="text-break">{{ stage.stage }}</td>
+                <td>{{ stage.total_count }}</td>
+                <td>{{ stage.queued_count }}</td>
+                <td>{{ stage.running_count }}</td>
+                <td>{{ stage.failed_count }}</td>
+                <td>{{ stage.average_progress_percent if stage.average_progress_percent is not none else "-" }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="6">
+                {% if database_configured %}{{ t("pipeline_queue.no_jobs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dashboard-pipeline-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("pipeline_queue.job_type") }}</th>
+              <th scope="col">{{ t("pipeline_queue.total") }}</th>
+              <th scope="col">{{ t("pipeline_queue.queued") }}</th>
+              <th scope="col">{{ t("pipeline_queue.running") }}</th>
+              <th scope="col">{{ t("pipeline_queue.failed") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if pipeline_queue and pipeline_queue.job_types %}
+              {% for job_type in pipeline_queue.job_types %}
+              <tr>
+                <td class="text-break">{{ job_type.job_type }}</td>
+                <td>{{ job_type.total_count }}</td>
+                <td>{{ job_type.queued_count }}</td>
+                <td>{{ job_type.running_count }}</td>
+                <td>{{ job_type.failed_count }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="5">
+                {% if database_configured %}{{ t("pipeline_queue.no_jobs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mt-4" data-dashboard-embedding-backlog-panel>
   <div class="dashboard-panel-header p-3">
     <div>
