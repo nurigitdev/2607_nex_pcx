@@ -57,7 +57,7 @@
               <div class="progress progress-compact" role="progressbar" aria-label="Pipeline progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ item.job.progress_percent }}">
                 <div class="progress-bar" style="width: {{ item.job.progress_percent }}%"></div>
               </div>
-              <span class="text-secondary text-nowrap">{{ item.job.progress_percent }}%</span>
+              <span class="text-secondary text-nowrap">{{ item.job.progress_label }}</span>
             </div>
           </td>
           <td>{{ item.job.attempts }} / {{ item.job.max_attempts }}</td>
@@ -102,7 +102,7 @@
         <dt>Stage</dt>
         <dd>{{ selected_job.stage }}</dd>
         <dt>Progress</dt>
-        <dd>{{ selected_job.progress_percent }}%</dd>
+        <dd>{{ selected_job.progress_label }}</dd>
         <dt>File ID</dt>
         <dd>{{ selected_job.file_id or "" }}</dd>
         <dt>Document ID</dt>

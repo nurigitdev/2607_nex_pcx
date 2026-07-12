@@ -1114,6 +1114,16 @@ main.container-fluid {
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
 }
 
+.dashboard-throughput-tables {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-throughput-tables .table-responsive:first-child {
+  grid-column: 1 / -1;
+}
+
 .dashboard-status-item {
   align-items: center;
   background: #f8fafc;
@@ -1235,6 +1245,17 @@ main.container-fluid {
 
 .dashboard-pipeline-table td:first-child {
   min-width: 9rem;
+}
+
+.dashboard-throughput-table th:nth-child(n + 2),
+.dashboard-throughput-table td:nth-child(n + 2) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dashboard-throughput-table th:first-child,
+.dashboard-throughput-table td:first-child {
+  min-width: 10rem;
 }
 
 .model-path {
@@ -1471,6 +1492,8 @@ main.container-fluid {
 .metric-label {
   color: var(--pcx-muted);
   font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .metric-value {
@@ -2738,6 +2761,7 @@ main.container-fluid {
   .dashboard-failure-detail-grid,
   .dashboard-pipeline-tables,
   .dashboard-status-grid,
+  .dashboard-throughput-tables,
   .design-component-grid,
   .design-doc-grid,
   .design-principle-grid,

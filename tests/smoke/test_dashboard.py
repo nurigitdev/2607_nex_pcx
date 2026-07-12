@@ -7,12 +7,14 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "RAG 실험 벤치 운영 현황" in response.text
     assert "문서" in response.text
     assert "Core Metrics" in response.text
+    assert "처리량 / Latency 스냅샷" in response.text
     assert "Pipeline Queue 스냅샷" in response.text
     assert "최근 운영 실패" in response.text
     assert "임베딩 Queue 스냅샷" in response.text
     assert "골든 평가 스냅샷" in response.text
     assert "활성 질문 세트" in response.text
     assert "/api/dashboard/core-metrics" in response.text
+    assert "/api/dashboard/throughput-latency" in response.text
     assert "/api/dashboard/pipeline-queue" in response.text
     assert "/api/dashboard/recent-failures" in response.text
     assert "data-failure-detail-panel" in response.text
@@ -31,6 +33,7 @@ def test_dashboard_supports_english_language_switch(client) -> None:
     assert "Dashboard" in response.text
     assert "RAG experiment bench operations" in response.text
     assert "Core Metrics" in response.text
+    assert "Throughput / Latency Snapshot" in response.text
     assert "Pipeline Queue Snapshot" in response.text
     assert "Recent Operational Failures" in response.text
     assert "Embedding Queue Snapshot" in response.text
@@ -62,6 +65,12 @@ def test_dashboard_core_metrics_api_requires_database(client) -> None:
 
 def test_dashboard_pipeline_queue_api_requires_database(client) -> None:
     response = client.get("/api/dashboard/pipeline-queue")
+
+    assert response.status_code == 503
+
+
+def test_dashboard_throughput_latency_api_requires_database(client) -> None:
+    response = client.get("/api/dashboard/throughput-latency")
 
     assert response.status_code == 503
 

@@ -159,9 +159,11 @@ def test_embedding_batch_run_api_and_ui(
         assert throughput_payload["throughput"]["overall"]["run_count"] == 1
         assert throughput_payload["throughput"]["overall"]["processed_count"] == 1
         assert throughput_payload["throughput"]["overall"]["success_rate_pct"] == 100
+        assert throughput_payload["throughput"]["overall"]["success_rate_label"] == "100.00%"
         assert throughput_payload["throughput"]["overall"]["throughput_per_second"] == 66.67
         assert throughput_payload["throughput"]["groups"][0]["profile_name"] == "kure_v1_1024"
         assert throughput_payload["throughput"]["groups"][0]["provider_source"] == "route"
+        assert throughput_payload["throughput"]["groups"][0]["success_rate_label"] == "100.00%"
         assert page_response.status_code == 200
         assert "임베딩 Batch 실행 이력" in page_response.text
         assert "data-embedding-batch-runs-page" in page_response.text
@@ -170,6 +172,7 @@ def test_embedding_batch_run_api_and_ui(
         assert "/api/admin/embedding-batch-runs/throughput-summary" in page_response.text
         assert "Jobs/sec" in page_response.text
         assert "66.67" in page_response.text
+        assert "100.00%" in page_response.text
         assert worker_name in page_response.text
         assert f"#{run.batch_run_id}" in page_response.text
         assert "Mock embedding stored" in page_response.text

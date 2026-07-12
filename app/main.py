@@ -54,6 +54,17 @@ from app.core.dashboard_metrics import (
     DashboardFileTypeSummary,
     get_dashboard_core_metrics,
 )
+from app.core.dashboard_throughput import (
+    DashboardEmbeddingProfileThroughput,
+    DashboardEmbeddingThroughput,
+    DashboardPipelineStageLatency,
+    DashboardPipelineThroughput,
+    DashboardSearchLatency,
+    DashboardSearchProfileLatency,
+    DashboardThroughputLatencySnapshot,
+    InvalidDashboardThroughputError,
+    get_dashboard_throughput_latency_snapshot,
+)
 from app.core.database import connect
 from app.core.document_inventory import (
     DocumentInventoryItem,
@@ -629,7 +640,8 @@ def pipeline_job_response_payload(
         "job_id": pipeline_job.job_id,
         "status": pipeline_job.status,
         "stage": pipeline_job.stage,
-        "progress_percent": str(pipeline_job.progress_percent),
+        "progress_percent": _percent_value(pipeline_job.progress_percent),
+        "progress_label": _percent_label(pipeline_job.progress_percent),
     }
 
 
@@ -681,6 +693,28 @@ def _byte_count_label(value: int | float | None) -> str:
     return f"{amount:,.1f} {units[unit_index]}"
 
 
+def _duration_ms_label(value: int | float | None) -> str:
+    if value is None:
+        return "-"
+    amount = float(value)
+    if amount >= 1000:
+        return f"{amount / 1000:.2f}s"
+    return f"{amount:.1f} ms"
+
+
+def _percent_value(value: object | None) -> str | None:
+    if value is None:
+        return None
+    return f"{float(value):.2f}"
+
+
+def _percent_label(value: object | None) -> str:
+    formatted = _percent_value(value)
+    if formatted is None:
+        return "-"
+    return f"{formatted}%"
+
+
 def admin_log_payload(log: dict[str, object]) -> dict[str, object]:
     return {
         "log_id": log["log_id"],
@@ -723,7 +757,8 @@ def pipeline_job_detail_payload(pipeline_job: PipelineJobRecord) -> dict[str, ob
         "priority": pipeline_job.priority,
         "total_units": pipeline_job.total_units,
         "processed_units": pipeline_job.processed_units,
-        "progress_percent": str(pipeline_job.progress_percent),
+        "progress_percent": _percent_value(pipeline_job.progress_percent),
+        "progress_label": _percent_label(pipeline_job.progress_percent),
         "current_message": pipeline_job.current_message,
         "attempts": pipeline_job.attempts,
         "max_attempts": pipeline_job.max_attempts,
@@ -772,11 +807,8 @@ def pipeline_queue_stage_summary_payload(
         "queued_count": summary.queued_count,
         "running_count": summary.running_count,
         "failed_count": summary.failed_count,
-        "average_progress_percent": (
-            str(summary.average_progress_percent)
-            if summary.average_progress_percent is not None
-            else None
-        ),
+        "average_progress_percent": _percent_value(summary.average_progress_percent),
+        "average_progress_label": _percent_label(summary.average_progress_percent),
         "oldest_queued_at": _datetime_response(summary.oldest_queued_at),
         "oldest_queued_label": _datetime_label(summary.oldest_queued_at),
     }
@@ -1009,6 +1041,11 @@ def embedding_worker_batch_run_throughput_summary(
         failed_count = sum(run.failed_count for run in runs)
         run_count = len(runs)
         elapsed_seconds = elapsed_ms / 1000
+        success_rate_pct = (
+            round((succeeded_count / processed_count) * 100, 2)
+            if processed_count > 0
+            else 0.0
+        )
         return {
             "run_count": run_count,
             "processed_count": processed_count,
@@ -1018,11 +1055,8 @@ def embedding_worker_batch_run_throughput_summary(
             "throughput_per_second": (
                 round(processed_count / elapsed_seconds, 2) if elapsed_seconds > 0 else 0
             ),
-            "success_rate_pct": (
-                round((succeeded_count / processed_count) * 100, 1)
-                if processed_count > 0
-                else 0
-            ),
+            "success_rate_pct": success_rate_pct,
+            "success_rate_label": _percent_label(success_rate_pct),
             "avg_processed_per_run": (
                 round(processed_count / run_count, 1) if run_count > 0 else 0
             ),
@@ -3101,6 +3135,144 @@ def dashboard_core_metrics_payload(
     }
 
 
+def dashboard_pipeline_stage_latency_payload(
+    stage: DashboardPipelineStageLatency,
+) -> dict[str, object]:
+    return {
+        "stage": stage.stage,
+        "completed_count": stage.completed_count,
+        "succeeded_count": stage.succeeded_count,
+        "failed_count": stage.failed_count,
+        "canceled_count": stage.canceled_count,
+        "average_duration_ms": stage.average_duration_ms,
+        "average_duration_label": _duration_ms_label(stage.average_duration_ms),
+    }
+
+
+def dashboard_pipeline_throughput_payload(
+    pipeline: DashboardPipelineThroughput,
+) -> dict[str, object]:
+    return {
+        "completed_count": pipeline.completed_count,
+        "succeeded_count": pipeline.succeeded_count,
+        "failed_count": pipeline.failed_count,
+        "canceled_count": pipeline.canceled_count,
+        "skipped_count": pipeline.skipped_count,
+        "average_duration_ms": pipeline.average_duration_ms,
+        "average_duration_label": _duration_ms_label(pipeline.average_duration_ms),
+        "latest_finished_at": _datetime_response(pipeline.latest_finished_at),
+        "latest_finished_label": _datetime_label(pipeline.latest_finished_at),
+        "stages": [
+            dashboard_pipeline_stage_latency_payload(stage) for stage in pipeline.stages
+        ],
+    }
+
+
+def dashboard_embedding_profile_throughput_payload(
+    profile: DashboardEmbeddingProfileThroughput,
+) -> dict[str, object]:
+    return {
+        "profile_name": profile.profile_name,
+        "completed_job_count": profile.completed_job_count,
+        "succeeded_job_count": profile.succeeded_job_count,
+        "failed_job_count": profile.failed_job_count,
+        "skipped_job_count": profile.skipped_job_count,
+        "average_job_duration_ms": profile.average_job_duration_ms,
+        "average_job_duration_label": _duration_ms_label(profile.average_job_duration_ms),
+        "batch_run_count": profile.batch_run_count,
+        "processed_count": profile.processed_count,
+        "succeeded_count": profile.succeeded_count,
+        "failed_count": profile.failed_count,
+        "deferred_count": profile.deferred_count,
+        "average_batch_elapsed_ms": profile.average_batch_elapsed_ms,
+        "average_batch_elapsed_label": _duration_ms_label(
+            profile.average_batch_elapsed_ms
+        ),
+        "throughput_per_second": profile.throughput_per_second,
+        "success_rate_percent": profile.success_rate_percent,
+        "success_rate_label": _percent_label(profile.success_rate_percent),
+    }
+
+
+def dashboard_embedding_throughput_payload(
+    embedding: DashboardEmbeddingThroughput,
+) -> dict[str, object]:
+    return {
+        "completed_job_count": embedding.completed_job_count,
+        "succeeded_job_count": embedding.succeeded_job_count,
+        "failed_job_count": embedding.failed_job_count,
+        "skipped_job_count": embedding.skipped_job_count,
+        "average_job_duration_ms": embedding.average_job_duration_ms,
+        "average_job_duration_label": _duration_ms_label(
+            embedding.average_job_duration_ms
+        ),
+        "batch_run_count": embedding.batch_run_count,
+        "processed_count": embedding.processed_count,
+        "succeeded_count": embedding.succeeded_count,
+        "failed_count": embedding.failed_count,
+        "deferred_count": embedding.deferred_count,
+        "average_batch_elapsed_ms": embedding.average_batch_elapsed_ms,
+        "average_batch_elapsed_label": _duration_ms_label(
+            embedding.average_batch_elapsed_ms
+        ),
+        "throughput_per_second": embedding.throughput_per_second,
+        "latest_completed_at": _datetime_response(embedding.latest_completed_at),
+        "latest_completed_label": _datetime_label(embedding.latest_completed_at),
+        "profiles": [
+            dashboard_embedding_profile_throughput_payload(profile)
+            for profile in embedding.profiles
+        ],
+    }
+
+
+def dashboard_search_profile_latency_payload(
+    profile: DashboardSearchProfileLatency,
+) -> dict[str, object]:
+    return {
+        "profile_name": profile.profile_name,
+        "search_log_count": profile.search_log_count,
+        "result_count": profile.result_count,
+        "average_profile_elapsed_ms": profile.average_profile_elapsed_ms,
+        "average_profile_elapsed_label": _duration_ms_label(
+            profile.average_profile_elapsed_ms
+        ),
+    }
+
+
+def dashboard_search_latency_payload(
+    search: DashboardSearchLatency,
+) -> dict[str, object]:
+    return {
+        "search_log_count": search.search_log_count,
+        "result_count": search.result_count,
+        "average_total_elapsed_ms": search.average_total_elapsed_ms,
+        "average_total_elapsed_label": _duration_ms_label(
+            search.average_total_elapsed_ms
+        ),
+        "average_profile_elapsed_ms": search.average_profile_elapsed_ms,
+        "average_profile_elapsed_label": _duration_ms_label(
+            search.average_profile_elapsed_ms
+        ),
+        "latest_search_at": _datetime_response(search.latest_search_at),
+        "latest_search_label": _datetime_label(search.latest_search_at),
+        "profiles": [
+            dashboard_search_profile_latency_payload(profile)
+            for profile in search.profiles
+        ],
+    }
+
+
+def dashboard_throughput_latency_snapshot_payload(
+    snapshot: DashboardThroughputLatencySnapshot,
+) -> dict[str, object]:
+    return {
+        "lookback_hours": snapshot.lookback_hours,
+        "pipeline": dashboard_pipeline_throughput_payload(snapshot.pipeline),
+        "embedding": dashboard_embedding_throughput_payload(snapshot.embedding),
+        "search": dashboard_search_latency_payload(snapshot.search),
+    }
+
+
 def dashboard_failure_record_payload(record: DashboardFailureRecord) -> dict[str, object]:
     return {
         "source": record.source,
@@ -3176,10 +3348,11 @@ def document_inventory_item_payload(item: DocumentInventoryItem) -> dict[str, ob
         "latest_pipeline_job_id": item.latest_pipeline_job_id,
         "latest_pipeline_status": item.latest_pipeline_status,
         "latest_pipeline_stage": item.latest_pipeline_stage,
-        "latest_pipeline_progress_percent": (
-            str(item.latest_pipeline_progress_percent)
-            if item.latest_pipeline_progress_percent is not None
-            else None
+        "latest_pipeline_progress_percent": _percent_value(
+            item.latest_pipeline_progress_percent
+        ),
+        "latest_pipeline_progress_label": _percent_label(
+            item.latest_pipeline_progress_percent
         ),
         "uploaded_at": _datetime_response(item.uploaded_at),
         "updated_at": _datetime_response(item.updated_at),
@@ -3277,6 +3450,11 @@ def permission_readiness_summary_payload(
         "personal_missing_owner_count": summary.personal_missing_owner_count,
         "scoped_missing_org_count": summary.scoped_missing_org_count,
         "readiness_percent": summary.readiness_percent,
+        "readiness_percent_label": _percent_label(
+            summary.readiness_percent * 100
+            if summary.readiness_percent is not None
+            else None
+        ),
         "issues": [permission_readiness_issue_payload(issue) for issue in summary.issues],
     }
 
@@ -3489,6 +3667,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         summary = get_pipeline_queue_summary(settings.database_url)
         return JSONResponse(content={"pipeline_queue": pipeline_queue_summary_payload(summary)})
+
+    @app.get("/api/dashboard/throughput-latency")
+    def api_get_dashboard_throughput_latency(lookback_hours: int = 24) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            snapshot = get_dashboard_throughput_latency_snapshot(
+                settings.database_url,
+                lookback_hours=lookback_hours,
+            )
+        except InvalidDashboardThroughputError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "throughput_latency": dashboard_throughput_latency_snapshot_payload(
+                    snapshot
+                )
+            }
+        )
 
     @app.get("/api/dashboard/embedding-backlog")
     def api_get_dashboard_embedding_backlog() -> JSONResponse:
@@ -6332,6 +6534,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         recent_failures: DashboardFailureSummary | None = None
         evaluation_dashboard: EvaluationDashboardSummary | None = None
         embedding_backlog: EmbeddingJobBacklogSummary | None = None
+        throughput_latency: DashboardThroughputLatencySnapshot | None = None
         error_message = None
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
@@ -6343,6 +6546,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 pipeline_queue = get_pipeline_queue_summary(settings.database_url)
             except InvalidPipelineJobError as exc:
+                if error_message is None:
+                    error_message = str(exc)
+            except Exception as exc:
+                if error_message is None:
+                    error_message = str(exc)
+            try:
+                throughput_latency = get_dashboard_throughput_latency_snapshot(
+                    settings.database_url,
+                )
+            except InvalidDashboardThroughputError as exc:
                 if error_message is None:
                     error_message = str(exc)
             except Exception as exc:
@@ -6398,6 +6611,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 recent_failures=(
                     dashboard_failure_summary_payload(recent_failures)
                     if recent_failures is not None
+                    else None
+                ),
+                throughput_latency=(
+                    dashboard_throughput_latency_snapshot_payload(throughput_latency)
+                    if throughput_latency is not None
                     else None
                 ),
                 evaluation_dashboard=evaluation_dashboard,

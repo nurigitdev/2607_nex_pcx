@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -8,12 +9,18 @@ from app.core.admin_logging import log_event
 from app.core.config import Settings
 from app.core.dashboard_failures import get_dashboard_recent_failures
 from app.core.dashboard_metrics import get_dashboard_core_metrics
+from app.core.dashboard_throughput import get_dashboard_throughput_latency_snapshot
 from app.core.database import connect
 from app.core.embedding_jobs import (
     EmbeddingJobInput,
     create_embedding_job,
     get_embedding_job_backlog_summary,
     mark_embedding_job_failed,
+)
+from app.core.embedding_worker import EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY
+from app.core.embedding_worker_batch_runs import (
+    EmbeddingWorkerBatchRunInput,
+    record_embedding_worker_batch_run,
 )
 from app.core.evaluation_dashboard import get_evaluation_dashboard_summary
 from app.core.evaluation_metrics import (
@@ -149,6 +156,7 @@ def _create_dashboard_embedding_backlog_fixture(database_url: str) -> dict[str, 
     return {
         "file_id": file_id,
         "document_id": document_id,
+        "chunk_id": chunk_id,
         "job_id": job.job.job_id,
         "failed_job_id": marked_failed_job.job_id if marked_failed_job else failed_job.job.job_id,
         "profile_name": profile_name,
@@ -297,6 +305,7 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
                     top_k,
                     profiles,
                     query_runtime_metadata,
+                    total_elapsed_ms,
                     created_by
                 )
                 VALUES (
@@ -306,6 +315,7 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
                     5,
                     %s,
                     %s,
+                    37,
                     'integration-test'
                 )
                 RETURNING search_log_id
@@ -313,12 +323,52 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
                 (Json(["kure_v1_1024"]), Json({"purpose": "slice-151"})),
             )
             search_log_id = cursor.fetchone()["search_log_id"]
+            cursor.execute(
+                """
+                INSERT INTO search_log_results (
+                    search_log_id,
+                    profile_name,
+                    rank,
+                    chunk_id,
+                    score,
+                    profile_elapsed_ms
+                )
+                VALUES (%s, 'kure_v1_1024', 1, %s, 0.91, 11)
+                """,
+                (search_log_id, backlog_fixture["chunk_id"]),
+            )
 
     pipeline_fixture = _create_dashboard_pipeline_queue_fixture(
         database_url,
         file_id=int(backlog_fixture["file_id"]),
         document_id=int(backlog_fixture["document_id"]),
         user_id=int(user_id),
+    )
+    batch_started_at = datetime.now(UTC) - timedelta(milliseconds=20)
+    batch_run = record_embedding_worker_batch_run(
+        database_url,
+        EmbeddingWorkerBatchRunInput(
+            worker_name=f"dashboard-throughput-worker-{uuid4()}",
+            profile_name=str(backlog_fixture["profile_name"]),
+            provider_source="route",
+            provider_mode="mock",
+            limit_requested=2,
+            result_count=2,
+            processed_count=2,
+            succeeded_count=1,
+            failed_count=1,
+            deferred_count=0,
+            idle_count=0,
+            stopped_reason=EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY,
+            job_ids=(
+                int(backlog_fixture["job_id"]),
+                int(backlog_fixture["failed_job_id"]),
+            ),
+            runtime_metadata={"purpose": "slice-155-dashboard-throughput"},
+            elapsed_ms=20,
+            started_at=batch_started_at,
+            completed_at=batch_started_at + timedelta(milliseconds=20),
+        ),
     )
     app_error_log_id = log_event(
         database_url,
@@ -390,6 +440,7 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
         "pipeline_queued_job_id": pipeline_fixture["queued_job_id"],
         "pipeline_stale_job_id": pipeline_fixture["stale_job_id"],
         "pipeline_failed_job_id": pipeline_fixture["failed_job_id"],
+        "batch_run_id": batch_run.batch_run_id,
         "search_log_id": search_log_id,
         "app_error_log_id": app_error_log_id,
         "provider_alert_log_id": provider_alert_log_id,
@@ -410,6 +461,10 @@ def _cleanup_dashboard_fixture(database_url: str, fixture: dict[str, object]) ->
             cursor.execute(
                 "DELETE FROM files WHERE file_id = %s",
                 (fixture["embedding_file_id"],),
+            )
+            cursor.execute(
+                "DELETE FROM embedding_worker_batch_runs WHERE batch_run_id = %s",
+                (fixture["batch_run_id"],),
             )
             log_ids = [
                 log_id
@@ -432,6 +487,9 @@ def test_evaluation_dashboard_summary_api_and_page(
         summary = get_evaluation_dashboard_summary(migrated_database_url, recent_limit=10)
         core_metrics = get_dashboard_core_metrics(migrated_database_url)
         pipeline_queue = get_pipeline_queue_summary(migrated_database_url)
+        throughput_latency = get_dashboard_throughput_latency_snapshot(
+            migrated_database_url,
+        )
         backlog_summary = get_embedding_job_backlog_summary(migrated_database_url)
         recent_failures = get_dashboard_recent_failures(migrated_database_url, limit=20)
         status_counts = {item.status: item.count for item in summary.status_counts}
@@ -439,6 +497,7 @@ def test_evaluation_dashboard_summary_api_and_page(
         with TestClient(app) as client:
             core_metrics_response = client.get("/api/dashboard/core-metrics")
             pipeline_queue_response = client.get("/api/dashboard/pipeline-queue")
+            throughput_latency_response = client.get("/api/dashboard/throughput-latency")
             api_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 10})
             backlog_api_response = client.get("/api/dashboard/embedding-backlog")
             failures_api_response = client.get(
@@ -465,6 +524,10 @@ def test_evaluation_dashboard_summary_api_and_page(
                 "/api/dashboard/recent-failures",
                 params={"limit": 0},
             )
+            bad_throughput_response = client.get(
+                "/api/dashboard/throughput-latency",
+                params={"lookback_hours": 0},
+            )
             bad_failure_detail_response = client.get("/api/dashboard/recent-failures/unknown/1")
             missing_failure_detail_response = client.get(
                 "/api/dashboard/recent-failures/pipeline/999999999"
@@ -474,6 +537,9 @@ def test_evaluation_dashboard_summary_api_and_page(
         api_payload = api_response.json()["evaluations"]
         core_metrics_payload = core_metrics_response.json()["core_metrics"]
         pipeline_queue_payload = pipeline_queue_response.json()["pipeline_queue"]
+        throughput_latency_payload = throughput_latency_response.json()[
+            "throughput_latency"
+        ]
         failures_payload = failures_api_response.json()["recent_failures"]
         pipeline_detail = pipeline_detail_response.json()["failure_detail"]
         embedding_detail = embedding_detail_response.json()["failure_detail"]
@@ -513,7 +579,35 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert pipeline_queue_payload["claimable_count"] >= 3
         assert any(item["stage"] == "parsing" for item in pipeline_queue_payload["stages"])
         assert any(
+            item["stage"] == "parsing"
+            and item["average_progress_percent"] == "33.33"
+            and item["average_progress_label"] == "33.33%"
+            for item in pipeline_queue_payload["stages"]
+        )
+        assert any(
             item["job_type"] == "document_ingestion" for item in pipeline_queue_payload["job_types"]
+        )
+        assert throughput_latency.pipeline.completed_count >= 1
+        assert throughput_latency.embedding.processed_count >= 2
+        assert throughput_latency.search.search_log_count >= 1
+        assert throughput_latency_response.status_code == 200
+        assert throughput_latency_payload["lookback_hours"] == 24
+        assert throughput_latency_payload["pipeline"]["completed_count"] == (
+            throughput_latency.pipeline.completed_count
+        )
+        assert throughput_latency_payload["embedding"]["processed_count"] >= 2
+        assert throughput_latency_payload["embedding"]["throughput_per_second"] > 0
+        assert throughput_latency_payload["search"]["average_total_elapsed_ms"] is not None
+        assert any(
+            item["profile_name"] == fixture["embedding_profile_name"]
+            and item["processed_count"] >= 2
+            for item in throughput_latency_payload["embedding"]["profiles"]
+        )
+        assert any(
+            item["profile_name"] == fixture["embedding_profile_name"]
+            and item["result_count"] >= 1
+            and item["average_profile_elapsed_ms"] is not None
+            for item in throughput_latency_payload["search"]["profiles"]
         )
         assert summary.active_question_set_count >= 1
         assert summary.question_count >= 1
@@ -571,6 +665,7 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert provider_alert_detail["context"]["traceback_present"] is False
         assert bad_response.status_code == 400
         assert bad_failures_response.status_code == 400
+        assert bad_throughput_response.status_code == 400
         assert bad_failure_detail_response.status_code == 400
         assert missing_failure_detail_response.status_code == 404
         assert page_response.status_code == 200
@@ -579,6 +674,11 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "/api/dashboard/core-metrics" in page_response.text
         assert "Pipeline Queue 스냅샷" in page_response.text
         assert "/api/dashboard/pipeline-queue" in page_response.text
+        assert "처리량 / Latency 스냅샷" in page_response.text
+        assert "/api/dashboard/throughput-latency" in page_response.text
+        assert "jobs/sec" in page_response.text
+        assert "33.33%" in page_response.text
+        assert "0E-20" not in page_response.text
         assert "dashboard-stale-worker" not in page_response.text
         assert "최근 운영 실패" in page_response.text
         assert "/api/dashboard/recent-failures" in page_response.text

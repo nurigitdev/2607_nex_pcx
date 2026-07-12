@@ -105,7 +105,7 @@
     </div>
     <div class="metric-card bg-light p-3">
       <div class="metric-label">{{ t("embedding_batch_runs.success_rate") }}</div>
-      <div class="metric-value fs-4">{{ throughput_summary.overall.success_rate_pct }}%</div>
+      <div class="metric-value fs-4">{{ throughput_summary.overall.success_rate_label }}</div>
     </div>
     <div class="metric-card bg-light p-3">
       <div class="metric-label">{{ t("embedding_batch_runs.avg_processed") }}</div>
@@ -138,7 +138,7 @@
           </td>
           <td>{{ group.run_count }}</td>
           <td>{{ group.processed_count }}</td>
-          <td>{{ group.success_rate_pct }}%</td>
+          <td>{{ group.success_rate_label }}</td>
           <td>{{ group.throughput_per_second }}</td>
         </tr>
         {% else %}

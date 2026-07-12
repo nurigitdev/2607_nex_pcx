@@ -198,6 +198,143 @@
   </div>
 </section>
 
+<section class="metric-card bg-white p-0 overflow-hidden mt-4" data-dashboard-throughput-latency-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dashboard.throughput_latency_snapshot") }}</h2>
+      <div class="text-secondary">
+        {{ t("dashboard.throughput_latency_subtitle") }}
+        {% if throughput_latency %}
+        <span class="text-nowrap">{{ t("dashboard.lookback_hours", hours=throughput_latency.lookback_hours) }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/api/dashboard/throughput-latency">{{ t("common.api") }}</a>
+  </div>
+
+  <div class="dashboard-evaluation-body p-3">
+    <div class="dashboard-core-grid">
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.pipeline_completed") }}</span>
+        <strong>{{ throughput_latency.pipeline.completed_count if throughput_latency else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.avg_pipeline_duration") }}</span>
+        <strong>{{ throughput_latency.pipeline.average_duration_label if throughput_latency else "-" }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.embedding_processed") }}</span>
+        <strong>{{ throughput_latency.embedding.processed_count if throughput_latency else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.embedding_jobs_per_sec") }}</span>
+        <strong>{{ throughput_latency.embedding.throughput_per_second if throughput_latency else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.avg_search_latency") }}</span>
+        <strong>{{ throughput_latency.search.average_total_elapsed_label if throughput_latency else "-" }}</strong>
+      </div>
+    </div>
+
+    <div class="dashboard-throughput-tables">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dashboard-throughput-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("dashboard.stage") }}</th>
+              <th scope="col">{{ t("dashboard.completed") }}</th>
+              <th scope="col">{{ t("dashboard.failed") }}</th>
+              <th scope="col">{{ t("dashboard.avg_duration") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if throughput_latency and throughput_latency.pipeline.stages %}
+              {% for stage in throughput_latency.pipeline.stages %}
+              <tr>
+                <td class="text-break">{{ stage.stage }}</td>
+                <td>{{ stage.completed_count }}</td>
+                <td>{{ stage.failed_count + stage.canceled_count }}</td>
+                <td>{{ stage.average_duration_label }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="4">
+                {% if database_configured %}{{ t("dashboard.no_throughput_metrics") }}{% else %}{{ t("common.no_database") }}{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dashboard-throughput-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("dashboard.profile") }}</th>
+              <th scope="col">{{ t("dashboard.completed") }}</th>
+              <th scope="col">{{ t("dashboard.processed") }}</th>
+              <th scope="col">{{ t("dashboard.jobs_per_sec") }}</th>
+              <th scope="col">{{ t("dashboard.avg_duration") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if throughput_latency and throughput_latency.embedding.profiles %}
+              {% for profile in throughput_latency.embedding.profiles %}
+              <tr>
+                <td class="text-break">{{ profile.profile_name }}</td>
+                <td>{{ profile.completed_job_count }}</td>
+                <td>{{ profile.processed_count }}</td>
+                <td>{{ profile.throughput_per_second }}</td>
+                <td>{{ profile.average_job_duration_label }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="5">
+                {% if database_configured %}{{ t("dashboard.no_throughput_metrics") }}{% else %}{{ t("common.no_database") }}{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dashboard-throughput-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("dashboard.profile") }}</th>
+              <th scope="col">{{ t("dashboard.searches") }}</th>
+              <th scope="col">{{ t("dashboard.results") }}</th>
+              <th scope="col">{{ t("dashboard.avg_latency") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if throughput_latency and throughput_latency.search.profiles %}
+              {% for profile in throughput_latency.search.profiles %}
+              <tr>
+                <td class="text-break">{{ profile.profile_name }}</td>
+                <td>{{ profile.search_log_count }}</td>
+                <td>{{ profile.result_count }}</td>
+                <td>{{ profile.average_profile_elapsed_label }}</td>
+              </tr>
+              {% endfor %}
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="4">
+                {% if database_configured %}{{ t("dashboard.no_throughput_metrics") }}{% else %}{{ t("common.no_database") }}{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mt-4" data-dashboard-pipeline-queue-panel>
   <div class="dashboard-panel-header p-3">
     <div>
@@ -275,7 +412,7 @@
                 <td>{{ stage.queued_count }}</td>
                 <td>{{ stage.running_count }}</td>
                 <td>{{ stage.failed_count }}</td>
-                <td>{{ stage.average_progress_percent if stage.average_progress_percent is not none else "-" }}</td>
+                <td>{{ stage.average_progress_label }}</td>
               </tr>
               {% endfor %}
             {% else %}

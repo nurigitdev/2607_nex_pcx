@@ -126,6 +126,7 @@ def test_upload_file_api_stores_file_and_metadata(
             "status": "queued",
             "stage": "upload_saved",
             "progress_percent": "0.00",
+            "progress_label": "0.00%",
         }
         assert file_payload["original_file_name"] == "slice-006.md"
         assert file_payload["file_ext"] == ".md"

@@ -79,7 +79,7 @@
             {% if document.latest_pipeline_job_id %}
             <a class="job-link" href="/admin/jobs?job_id={{ document.latest_pipeline_job_id }}">#{{ document.latest_pipeline_job_id }}</a>
             <span class="badge status-badge status-{{ document.latest_pipeline_status }}">{{ document.latest_pipeline_status }}</span>
-            <div class="text-secondary small">{{ document.latest_pipeline_stage or "" }} · {{ document.latest_pipeline_progress_percent or "0.00" }}%</div>
+            <div class="text-secondary small">{{ document.latest_pipeline_stage or "" }} · {{ document.latest_pipeline_progress_label or "0.00%" }}</div>
             {% else %}
             <span class="text-secondary">No job</span>
             {% endif %}
