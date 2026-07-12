@@ -131,6 +131,134 @@
   </form>
 </section>
 
+<section class="metric-card bg-white p-3 mb-4 golden-search-experiment-panel">
+  <div class="evaluation-execute-header">
+    <div>
+      <h2 class="h5 mb-1">Run Search Experiment Batch</h2>
+      <div class="text-secondary" id="golden-search-experiment-status">Ready</div>
+    </div>
+    <a class="btn btn-outline-secondary" href="/search/experiments">Experiments</a>
+  </div>
+  <form id="golden-search-experiment-form" class="golden-search-experiment-form">
+    <div>
+      <label class="form-label" for="search_experiment_question_set_id">Set</label>
+      <select
+        class="form-select"
+        id="search_experiment_question_set_id"
+        name="question_set_id"
+        required
+        {% if not database_configured or not question_sets %}disabled{% endif %}
+      >
+        <option value="">Select</option>
+        {% for question_set in question_sets %}
+        <option value="{{ question_set.question_set_id }}" {% if selected_question_set_id == question_set.question_set_id %}selected{% endif %}>
+          {{ question_set.set_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="search_experiment_strategy_name">Strategy</label>
+      <select
+        class="form-select"
+        id="search_experiment_strategy_name"
+        name="strategy_name"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="vector_cosine">Cosine</option>
+        <option value="vector_cosine_threshold">Cosine + Threshold</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="search_experiment_top_k">Top K</label>
+      <input
+        class="form-control"
+        id="search_experiment_top_k"
+        name="top_k"
+        type="number"
+        min="1"
+        max="50"
+        value="5"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div>
+      <label class="form-label" for="search_experiment_score_threshold">Threshold</label>
+      <input
+        class="form-control"
+        id="search_experiment_score_threshold"
+        name="score_threshold"
+        type="number"
+        step="0.01"
+        min="0"
+        max="1"
+        placeholder="optional"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div>
+      <label class="form-label" for="search_experiment_chunk_policy_name">Chunk Policy</label>
+      <input
+        class="form-control"
+        id="search_experiment_chunk_policy_name"
+        name="chunk_policy_name"
+        type="text"
+        placeholder="per question"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <div class="golden-search-run-name">
+      <label class="form-label" for="search_experiment_run_name_prefix">Run Prefix</label>
+      <input
+        class="form-control"
+        id="search_experiment_run_name_prefix"
+        name="run_name_prefix"
+        type="text"
+        placeholder="auto"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+
+    <fieldset class="golden-search-profile-field">
+      <legend class="form-label">Profiles</legend>
+      <div class="golden-search-profile-list">
+        {% for profile in profile_options %}
+        <label class="form-check golden-search-profile-option">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            name="profiles"
+            value="{{ profile }}"
+            {% if selected_profile_name == profile or (not selected_profile_name and loop.first) %}checked{% endif %}
+            {% if not database_configured %}disabled{% endif %}
+          >
+          <span class="form-check-label">{{ profile }}</span>
+        </label>
+        {% else %}
+        <span class="text-secondary small">No active profiles</span>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="evaluation-execute-actions">
+      <button
+        class="btn btn-primary"
+        id="golden-search-experiment-submit"
+        type="submit"
+        {% if not database_configured or not question_sets or not profile_options %}disabled{% endif %}
+      >
+        Run Batch
+      </button>
+    </div>
+  </form>
+  <div class="golden-search-experiment-results" id="golden-search-experiment-results" hidden></div>
+</section>
+
 {% if selected_question_set_id %}
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="evaluation-report-header p-3">
@@ -465,6 +593,142 @@
     } finally {
       submitButton.disabled = false;
       submitButton.textContent = "Run";
+    }
+  });
+})();
+
+(() => {
+  const form = document.getElementById("golden-search-experiment-form");
+  if (!form) {
+    return;
+  }
+
+  const statusEl = document.getElementById("golden-search-experiment-status");
+  const resultsEl = document.getElementById("golden-search-experiment-results");
+  const submitButton = document.getElementById("golden-search-experiment-submit");
+  const canExecute = {{ "true" if database_configured else "false" }};
+
+  const formData = () => new FormData(form);
+
+  const fieldValue = (name) => {
+    const value = formData().get(name);
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
+
+  const setStatus = (message) => {
+    statusEl.textContent = message;
+  };
+
+  const clearResults = () => {
+    resultsEl.replaceChildren();
+    resultsEl.hidden = true;
+  };
+
+  const elapsedLabel = (value) => {
+    if (typeof value !== "number") {
+      return "-";
+    }
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(2)}s`;
+    }
+    return `${value.toFixed(1)} ms`;
+  };
+
+  const questionText = (item) => item?.question?.question_text || "";
+
+  const experimentRun = (item) => item?.experiment?.experiment_run || {};
+
+  const renderResult = (item) => {
+    const run = experimentRun(item);
+    const runId = run.experiment_run_id;
+    const wrapper = document.createElement("div");
+    wrapper.className = "golden-search-experiment-result";
+
+    const heading = document.createElement("div");
+    heading.className = "golden-search-experiment-result-title";
+    const link = document.createElement("a");
+    link.href = `/search/experiments?experiment_run_id=${runId}`;
+    link.textContent = `Experiment #${runId}`;
+    heading.append(link);
+
+    const summary = document.createElement("div");
+    summary.className = "text-secondary small";
+    summary.textContent = [
+      `Question #${item?.question?.question_id || "-"}`,
+      `${run.result_count || 0} results`,
+      elapsedLabel(run.total_elapsed_ms),
+    ].join(" · ");
+
+    const question = document.createElement("div");
+    question.className = "golden-search-experiment-question";
+    question.textContent = questionText(item);
+
+    wrapper.append(heading, summary, question);
+    return wrapper;
+  };
+
+  const renderResults = (batch) => {
+    clearResults();
+    const header = document.createElement("div");
+    header.className = "golden-search-experiment-result-summary";
+    header.textContent = `Completed ${batch.question_count || 0} questions in ${elapsedLabel(batch.total_elapsed_ms)}.`;
+    resultsEl.append(header);
+
+    for (const item of batch.questions || []) {
+      resultsEl.append(renderResult(item));
+    }
+    resultsEl.hidden = false;
+  };
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearResults();
+    if (!canExecute) {
+      setStatus("Database unavailable");
+      return;
+    }
+
+    const data = formData();
+    const questionSetId = Number(data.get("question_set_id"));
+    const profiles = Array.from(form.querySelectorAll('input[name="profiles"]:checked'))
+      .map((input) => input.value);
+    if (!questionSetId || profiles.length === 0) {
+      setStatus("Select set and at least one profile.");
+      return;
+    }
+
+    const threshold = fieldValue("score_threshold");
+    submitButton.disabled = true;
+    submitButton.textContent = "Running";
+    setStatus("Running golden question search experiments");
+    try {
+      const response = await fetch("/api/search/experiments/golden-question-set/run", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          question_set_id: questionSetId,
+          run_name_prefix: fieldValue("run_name_prefix"),
+          profiles,
+          strategy_name: fieldValue("strategy_name") || "vector_cosine",
+          top_k: Number(data.get("top_k") || 5),
+          score_threshold: threshold === null ? null : Number(threshold),
+          chunk_policy_name: fieldValue("chunk_policy_name"),
+          runtime_metadata: {trigger: "golden_search_experiment_batch_ui"},
+          created_by: "golden-search-experiment-ui",
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        setStatus(body.detail || "Batch failed.");
+        return;
+      }
+      renderResults(body.batch);
+      setStatus(`Completed ${body.batch.question_count || 0} search experiments.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Batch failed.");
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = "Run Batch";
     }
   });
 })();

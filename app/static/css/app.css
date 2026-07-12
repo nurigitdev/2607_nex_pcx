@@ -1056,6 +1056,90 @@ main.container-fluid {
   justify-content: flex-end;
 }
 
+.golden-search-experiment-form {
+  align-items: end;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns:
+    minmax(12rem, 1.2fr)
+    minmax(12rem, 1fr)
+    minmax(5rem, 0.35fr)
+    minmax(7rem, 0.5fr)
+    minmax(10rem, 0.8fr)
+    minmax(12rem, 1fr)
+    auto;
+}
+
+.golden-search-run-name {
+  min-width: 0;
+}
+
+.golden-search-profile-field {
+  grid-column: 1 / -2;
+  margin: 0;
+  min-width: 0;
+}
+
+.golden-search-profile-field legend {
+  float: none;
+  margin-bottom: 0.5rem;
+}
+
+.golden-search-profile-list {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-height: 2.375rem;
+}
+
+.golden-search-profile-option {
+  align-items: center;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 0.5rem;
+  margin: 0;
+  max-width: 100%;
+  padding: 0.45rem 0.7rem;
+}
+
+.golden-search-profile-option .form-check-input {
+  margin: 0;
+}
+
+.golden-search-profile-option .form-check-label {
+  overflow-wrap: anywhere;
+}
+
+.golden-search-experiment-results {
+  border-top: 1px solid var(--pcx-border);
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.golden-search-experiment-result-summary {
+  color: var(--pcx-muted);
+  font-size: 0.925rem;
+}
+
+.golden-search-experiment-result {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+.golden-search-experiment-result-title {
+  font-weight: 600;
+}
+
+.golden-search-experiment-question {
+  margin-top: 0.4rem;
+  overflow-wrap: anywhere;
+}
+
 .evaluation-report-header {
   align-items: center;
   border-bottom: 1px solid var(--pcx-border);
@@ -3143,6 +3227,7 @@ main.container-fluid {
 
   .evaluation-summary-grid,
   .evaluation-execute-form,
+  .golden-search-experiment-form,
   .dashboard-core-grid,
   .dashboard-core-tables,
   .dashboard-failure-detail-grid,
@@ -3184,6 +3269,12 @@ main.container-fluid {
     grid-column: auto;
   }
 
+  .golden-search-profile-field,
+  .golden-search-run-name,
+  .golden-search-experiment-form .evaluation-execute-actions {
+    grid-column: auto;
+  }
+
   .permission-readiness-score {
     border-right: 0;
   }
@@ -3221,7 +3312,13 @@ main.container-fluid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .golden-search-experiment-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .evaluation-execute-run-name,
+  .golden-search-run-name,
+  .golden-search-profile-field,
   .evaluation-execute-actions {
     grid-column: 1 / -1;
   }

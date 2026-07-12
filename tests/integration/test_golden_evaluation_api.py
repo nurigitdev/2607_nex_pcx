@@ -229,6 +229,10 @@ def test_golden_evaluation_read_api_returns_question_sets_runs_and_detail(
         )
         assert 'id="evaluation-execute-form"' in page_response.text
         assert "/api/evaluations/runs/execute" in page_response.text
+        assert "Run Search Experiment Batch" in page_response.text
+        assert 'id="golden-search-experiment-form"' in page_response.text
+        assert "/api/search/experiments/golden-question-set/run" in page_response.text
+        assert 'href="/search/experiments"' in page_response.text
         assert f"#{fixture['evaluation_run_id']}" in page_response.text
         assert f"/api/evaluations/runs/{fixture['evaluation_run_id']}/export?format=json" in (
             page_response.text

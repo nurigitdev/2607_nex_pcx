@@ -48,3 +48,7 @@ def test_golden_evaluation_page_shows_configuration_message_without_database_url
     assert 'href="/evaluations"' in response.text
     assert 'id="evaluation-execute-form"' in response.text
     assert "/api/evaluations/runs/execute" in response.text
+    assert "Run Search Experiment Batch" in response.text
+    assert 'id="golden-search-experiment-form"' in response.text
+    assert "/api/search/experiments/golden-question-set/run" in response.text
+    assert 'href="/search/experiments"' in response.text
