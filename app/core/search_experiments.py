@@ -9,6 +9,10 @@ from psycopg.types.json import Json
 
 from app.core.database import connect
 from app.core.search_logs import SEARCH_SCOPES, SIMILARITY_METRICS
+from app.core.search_strategies import (
+    InvalidSearchStrategyError,
+    validate_search_strategy_selection,
+)
 
 SEARCH_EXPERIMENT_RUN_STATUSES = {"pending", "running", "succeeded", "failed", "canceled"}
 SEARCH_EXPERIMENT_PROFILE_STATUSES = {
@@ -211,6 +215,21 @@ def validate_search_experiment_run_input(
     _require_positive_id(run_input.created_by_user_id, "created_by_user_id")
     if run_input.top_k <= 0:
         raise InvalidSearchExperimentError("top_k must be greater than 0")
+    strategy_name = _validate_nonblank(run_input.strategy_name, "strategy_name")
+    try:
+        strategy_selection = validate_search_strategy_selection(
+            strategy_name or run_input.strategy_name,
+            top_k=run_input.top_k,
+            score_threshold=run_input.score_threshold,
+        )
+    except InvalidSearchStrategyError as exc:
+        raise InvalidSearchExperimentError(str(exc)) from exc
+    similarity_metric = _validate_similarity_metric(run_input.similarity_metric)
+    if similarity_metric != strategy_selection.strategy.similarity_metric:
+        raise InvalidSearchExperimentError(
+            f"{strategy_selection.strategy.strategy_name} requires "
+            f"{strategy_selection.strategy.similarity_metric} similarity_metric"
+        )
     return SearchExperimentRunInput(
         run_name=_validate_nonblank(run_input.run_name, "run_name") or run_input.run_name,
         query_text=_validate_nonblank(run_input.query_text, "query_text") or run_input.query_text,
@@ -231,14 +250,10 @@ def validate_search_experiment_run_input(
         document_group=_validate_nonblank(run_input.document_group, "document_group"),
         file_type=_validate_nonblank(run_input.file_type, "file_type"),
         chunk_policy_name=_validate_nonblank(run_input.chunk_policy_name, "chunk_policy_name"),
-        strategy_name=_validate_nonblank(run_input.strategy_name, "strategy_name")
-        or run_input.strategy_name,
-        similarity_metric=_validate_similarity_metric(run_input.similarity_metric),
-        top_k=run_input.top_k,
-        score_threshold=_validate_optional_finite_float(
-            run_input.score_threshold,
-            "score_threshold",
-        ),
+        strategy_name=strategy_selection.strategy.strategy_name,
+        similarity_metric=similarity_metric,
+        top_k=strategy_selection.top_k,
+        score_threshold=strategy_selection.score_threshold,
         status=_validate_run_status(run_input.status),
         runtime_metadata=_validate_metadata(run_input.runtime_metadata, "runtime_metadata"),
         created_by=_validate_nonblank(run_input.created_by, "created_by"),

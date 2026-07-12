@@ -19,6 +19,7 @@ def test_search_experiment_run_validation_deduplicates_profiles() -> None:
             query_text="  inverter manual  ",
             profile_names=("bge_m3_1024", "bge_m3_1024", "kure_v1_1024"),
             requested_search_scope="company",
+            strategy_name="vector_cosine_threshold",
             score_threshold=0.25,
             runtime_metadata={"slice": 165},
         )
@@ -109,6 +110,7 @@ def test_search_experiment_run_validation_deduplicates_profiles() -> None:
                 run_name="trial",
                 query_text="query",
                 profile_names=("bge_m3_1024",),
+                strategy_name="vector_cosine_threshold",
                 score_threshold=math.inf,
             ),
             "score_threshold must be finite",

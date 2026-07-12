@@ -39,7 +39,7 @@ def test_search_experiment_run_repository_lifecycle(migrated_database_url: str) 
             document_group="slice-165",
             file_type=".md",
             chunk_policy_name="heading_512_64",
-            strategy_name="vector_cosine",
+            strategy_name="vector_cosine_threshold",
             similarity_metric="cosine",
             top_k=7,
             score_threshold=0.2,
@@ -54,7 +54,7 @@ def test_search_experiment_run_repository_lifecycle(migrated_database_url: str) 
             run_name=f"Slice 165 Empty Search Experiment {suffix}",
             query_text="Does fallback status update work?",
             profile_names=("bge_m3_1024",),
-            strategy_name="threshold_vector",
+            strategy_name="vector_cosine_threshold",
         ),
     )
 
@@ -69,7 +69,7 @@ def test_search_experiment_run_repository_lifecycle(migrated_database_url: str) 
                 top_score=0.92,
                 average_score=0.81,
                 elapsed_ms=35,
-                runtime_metadata={"strategy": "vector_cosine"},
+                runtime_metadata={"strategy": "vector_cosine_threshold"},
             ),
         )
         failed_profile = upsert_search_experiment_profile_run(
@@ -97,7 +97,7 @@ def test_search_experiment_run_repository_lifecycle(migrated_database_url: str) 
         listed = list_search_experiment_runs(
             migrated_database_url,
             status="succeeded",
-            strategy_name="vector_cosine",
+            strategy_name="vector_cosine_threshold",
             limit=20,
         )
         unfiltered = list_search_experiment_runs(migrated_database_url, limit=20)
