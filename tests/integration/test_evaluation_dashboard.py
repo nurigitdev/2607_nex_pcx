@@ -563,6 +563,9 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert app_log_detail_response.status_code == 200
         assert app_log_detail["source"] == "app_log"
         assert app_log_detail["summary"]["event_type"] == "dashboard_recent_failure_fixture"
+        assert app_log_detail["summary"]["occurred_at"] == app_log_detail["occurred_at_label"]
+        assert "T" not in app_log_detail["summary"]["occurred_at"]
+        assert "+" not in app_log_detail["summary"]["occurred_at"]
         assert provider_alert_detail_response.status_code == 200
         assert provider_alert_detail["source"] == "provider_alert"
         assert provider_alert_detail["context"]["traceback_present"] is False

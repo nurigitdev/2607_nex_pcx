@@ -641,15 +641,29 @@ def _datetime_label(value: object | None) -> str:
     return value.strftime("%Y-%m-%d %H:%M:%S") if hasattr(value, "strftime") else "-"
 
 
-def _json_safe_dashboard_value(value: object) -> object:
+def _json_safe_dashboard_raw_value(value: object) -> object:
     if isinstance(value, datetime):
         return _datetime_response(value)
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, dict):
-        return {str(key): _json_safe_dashboard_value(item) for key, item in value.items()}
+        return {str(key): _json_safe_dashboard_raw_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_json_safe_dashboard_value(item) for item in value]
+        return [_json_safe_dashboard_raw_value(item) for item in value]
+    return value
+
+
+def _json_safe_dashboard_display_value(value: object) -> object:
+    if isinstance(value, datetime):
+        return _datetime_label(value)
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe_dashboard_display_value(item) for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_dashboard_display_value(item) for item in value]
     return value
 
 
@@ -3127,9 +3141,9 @@ def dashboard_failure_detail_payload(detail: DashboardFailureDetail) -> dict[str
         "occurred_at": _datetime_response(detail.occurred_at),
         "occurred_at_label": _datetime_label(detail.occurred_at),
         "action_url": detail.action_url,
-        "summary": _json_safe_dashboard_value(detail.summary),
-        "context": _json_safe_dashboard_value(detail.context),
-        "raw": _json_safe_dashboard_value(detail.raw),
+        "summary": _json_safe_dashboard_display_value(detail.summary),
+        "context": _json_safe_dashboard_display_value(detail.context),
+        "raw": _json_safe_dashboard_raw_value(detail.raw),
     }
 
 
