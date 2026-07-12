@@ -348,7 +348,15 @@ from app.core.search_experiment_runner import (
     SearchExperimentProfileExecutionSummary,
     execute_search_experiment,
 )
-from app.core.search_experiments import InvalidSearchExperimentError
+from app.core.search_experiments import (
+    SEARCH_EXPERIMENT_RUN_STATUSES,
+    InvalidSearchExperimentError,
+    SearchExperimentProfileRunRecord,
+    SearchExperimentRunDetail,
+    SearchExperimentRunRecord,
+    get_search_experiment_run_detail,
+    list_search_experiment_runs,
+)
 from app.core.search_logs import (
     InvalidSearchLogError,
     SearchFeedbackCommentRecord,
@@ -2081,41 +2089,87 @@ def search_experiment_profile_execution_payload(
     }
 
 
+def search_experiment_run_record_payload(run: SearchExperimentRunRecord) -> dict[str, object]:
+    return {
+        "experiment_run_id": run.experiment_run_id,
+        "run_name": run.run_name,
+        "query_text": run.query_text,
+        "normalized_query_text": run.normalized_query_text,
+        "actor_user_id": run.actor_user_id,
+        "requested_search_scope": run.requested_search_scope,
+        "effective_search_scope": run.effective_search_scope,
+        "document_group": run.document_group,
+        "file_type": run.file_type,
+        "chunk_policy_name": run.chunk_policy_name,
+        "strategy_name": run.strategy_name,
+        "similarity_metric": run.similarity_metric,
+        "top_k": run.top_k,
+        "score_threshold": run.score_threshold,
+        "profile_names": list(run.profile_names),
+        "status": run.status,
+        "total_profile_count": run.total_profile_count,
+        "completed_profile_count": run.completed_profile_count,
+        "result_count": run.result_count,
+        "failure_count": run.failure_count,
+        "total_elapsed_ms": run.total_elapsed_ms,
+        "runtime_metadata": run.runtime_metadata,
+        "error_message": run.error_message,
+        "created_by": run.created_by,
+        "created_by_user_id": run.created_by_user_id,
+        "started_at": _datetime_response(run.started_at),
+        "started_at_label": _datetime_label(run.started_at),
+        "finished_at": _datetime_response(run.finished_at),
+        "finished_at_label": _datetime_label(run.finished_at),
+        "created_at": _datetime_response(run.created_at),
+        "created_at_label": _datetime_label(run.created_at),
+        "updated_at": _datetime_response(run.updated_at),
+        "updated_at_label": _datetime_label(run.updated_at),
+    }
+
+
+def search_experiment_profile_run_payload(
+    profile: SearchExperimentProfileRunRecord,
+) -> dict[str, object]:
+    return {
+        "experiment_profile_run_id": profile.experiment_profile_run_id,
+        "experiment_run_id": profile.experiment_run_id,
+        "profile_name": profile.profile_name,
+        "search_log_id": profile.search_log_id,
+        "status": profile.status,
+        "result_count": profile.result_count,
+        "top_score": profile.top_score,
+        "average_score": profile.average_score,
+        "elapsed_ms": profile.elapsed_ms,
+        "runtime_metadata": profile.runtime_metadata,
+        "error_message": profile.error_message,
+        "started_at": _datetime_response(profile.started_at),
+        "started_at_label": _datetime_label(profile.started_at),
+        "finished_at": _datetime_response(profile.finished_at),
+        "finished_at_label": _datetime_label(profile.finished_at),
+        "created_at": _datetime_response(profile.created_at),
+        "created_at_label": _datetime_label(profile.created_at),
+        "updated_at": _datetime_response(profile.updated_at),
+        "updated_at_label": _datetime_label(profile.updated_at),
+    }
+
+
+def search_experiment_detail_payload(
+    detail: SearchExperimentRunDetail,
+) -> dict[str, object]:
+    return {
+        "experiment_run": search_experiment_run_record_payload(detail.run),
+        "profiles": [
+            search_experiment_profile_run_payload(profile) for profile in detail.profiles
+        ],
+    }
+
+
 def search_experiment_execution_payload(
     report: SearchExperimentExecutionReport,
 ) -> dict[str, object]:
     run = report.run
     return {
-        "experiment_run": {
-            "experiment_run_id": run.experiment_run_id,
-            "run_name": run.run_name,
-            "query_text": run.query_text,
-            "actor_user_id": run.actor_user_id,
-            "requested_search_scope": run.requested_search_scope,
-            "effective_search_scope": run.effective_search_scope,
-            "document_group": run.document_group,
-            "file_type": run.file_type,
-            "chunk_policy_name": run.chunk_policy_name,
-            "strategy_name": run.strategy_name,
-            "similarity_metric": run.similarity_metric,
-            "top_k": run.top_k,
-            "score_threshold": run.score_threshold,
-            "profile_names": list(run.profile_names),
-            "status": run.status,
-            "total_profile_count": run.total_profile_count,
-            "completed_profile_count": run.completed_profile_count,
-            "result_count": run.result_count,
-            "failure_count": run.failure_count,
-            "total_elapsed_ms": run.total_elapsed_ms,
-            "runtime_metadata": run.runtime_metadata,
-            "error_message": run.error_message,
-            "created_by": run.created_by,
-            "created_by_user_id": run.created_by_user_id,
-            "started_at": _datetime_response(run.started_at),
-            "finished_at": _datetime_response(run.finished_at),
-            "created_at": _datetime_response(run.created_at),
-            "updated_at": _datetime_response(run.updated_at),
-        },
+        "experiment_run": search_experiment_run_record_payload(run),
         "strategy": {
             "strategy_name": report.strategy_selection.strategy.strategy_name,
             "display_name": report.strategy_selection.strategy.display_name,
@@ -6067,6 +6121,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=search_experiment_execution_payload(report))
 
+    @app.get("/api/search/experiments")
+    def api_list_search_experiments(
+        limit: int = Query(default=50, ge=1, le=500),
+        status_filter: str | None = Query(default=None, alias="status"),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            runs = list_search_experiment_runs(
+                settings.database_url,
+                status=status_filter,
+                limit=limit,
+            )
+        except InvalidSearchExperimentError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "experiments": [
+                    search_experiment_run_record_payload(run) for run in runs
+                ],
+            }
+        )
+
+    @app.get("/api/search/experiments/{experiment_run_id}")
+    def api_get_search_experiment_detail(experiment_run_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_search_experiment_run_detail(
+                settings.database_url,
+                experiment_run_id,
+            )
+        except InvalidSearchExperimentError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search experiment run not found.",
+            )
+
+        return JSONResponse(content=search_experiment_detail_payload(detail))
+
     @app.post("/api/search/permission-matrix")
     def api_search_permission_matrix(payload: SearchPermissionMatrixRequest) -> JSONResponse:
         if not settings.database_url:
@@ -7596,6 +7701,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 search_file_type_options=SEARCH_COMPARE_FILE_TYPES,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/search/experiments", response_class=HTMLResponse)
+    def search_experiments_page(
+        request: Request,
+        experiment_run_id: int | None = None,
+        status_filter: str | None = None,
+        limit: int = 50,
+    ) -> HTMLResponse:
+        runs: list[SearchExperimentRunRecord] = []
+        selected_detail: SearchExperimentRunDetail | None = None
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                runs = list_search_experiment_runs(
+                    settings.database_url,
+                    status=status_filter.strip() if status_filter else None,
+                    limit=limit,
+                )
+                selected_run_id = experiment_run_id
+                if selected_run_id is None and runs:
+                    selected_run_id = runs[0].experiment_run_id
+                if selected_run_id is not None:
+                    selected_detail = get_search_experiment_run_detail(
+                        settings.database_url,
+                        selected_run_id,
+                    )
+                    if selected_detail is None:
+                        error_message = f"Search experiment run not found: {selected_run_id}"
+            except (InvalidSearchExperimentError, ValueError) as exc:
+                error_message = str(exc)
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "search_experiments.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                experiments=runs,
+                selected_detail=selected_detail,
+                selected_experiment_run_id=(
+                    selected_detail.run.experiment_run_id if selected_detail else experiment_run_id
+                ),
+                selected_status_filter=status_filter or "",
+                selected_limit=limit,
+                status_options=tuple(sorted(SEARCH_EXPERIMENT_RUN_STATUSES)),
+                error_message=error_message,
             ),
         )
 

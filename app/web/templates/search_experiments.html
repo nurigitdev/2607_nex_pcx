@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4" data-search-experiments-page>
+  <div>
+    <h1 class="h3 mb-1">{{ t("search_experiments.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("search_experiments.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="/api/search/experiments">{{ t("common.api") }}</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form class="search-experiment-filter d-flex align-items-center gap-2 mb-4" method="get">
+  <label class="form-label mb-0 text-secondary" for="status_filter">{{ t("search_experiments.status") }}</label>
+  <select class="form-select form-select-sm" id="status_filter" name="status_filter" onchange="this.form.submit()">
+    <option value="" {% if not selected_status_filter %}selected{% endif %}>{{ t("search_experiments.all_statuses") }}</option>
+    {% for status in status_options %}
+    <option value="{{ status }}" {% if selected_status_filter == status %}selected{% endif %}>{{ t("status." ~ status) }}</option>
+    {% endfor %}
+  </select>
+  <label class="form-label mb-0 text-secondary" for="limit">{{ t("search_experiments.limit") }}</label>
+  <input
+    class="form-control form-control-sm search-experiment-limit"
+    id="limit"
+    name="limit"
+    min="1"
+    max="500"
+    type="number"
+    value="{{ selected_limit }}"
+  >
+  <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t("search_experiments.filter") }}</button>
+</form>
+
+{% if selected_detail %}
+<section class="search-experiment-summary-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("search_experiments.result_count") }}</div>
+    <div class="metric-value fs-4">{{ selected_detail.run.result_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("search_experiments.profiles") }}</div>
+    <div class="metric-value fs-4">{{ selected_detail.run.completed_profile_count }} / {{ selected_detail.run.total_profile_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("search_experiments.elapsed") }}</div>
+    <div class="metric-value fs-4">{{ selected_detail.run.total_elapsed_ms or 0 }} ms</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("search_experiments.updated") }}</div>
+    <div class="metric-value fs-6">{{ selected_detail.run.updated_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>
+  </div>
+</section>
+{% endif %}
+
+<div class="search-experiment-layout">
+  <section class="metric-card bg-white p-0 overflow-hidden">
+    <div class="dashboard-panel-header p-3">
+      <div>
+        <h2 class="h5 mb-1">{{ t("search_experiments.recent_runs") }}</h2>
+        <div class="text-secondary">{{ t("search_experiments.recent_runs_help") }}</div>
+      </div>
+    </div>
+    <div class="table-responsive border-top search-experiment-table-wrap">
+      <table class="table table-sm align-middle mb-0 search-experiment-table">
+        <thead>
+          <tr>
+            <th scope="col">ID</th>
+            <th scope="col">{{ t("search_experiments.run_name") }}</th>
+            <th scope="col">{{ t("search_experiments.status") }}</th>
+            <th scope="col">{{ t("search_experiments.results") }}</th>
+            <th scope="col">{{ t("search_experiments.updated") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in experiments %}
+          <tr class="{% if selected_experiment_run_id == run.experiment_run_id %}table-active{% endif %}">
+            <td>
+              <a href="/search/experiments?experiment_run_id={{ run.experiment_run_id }}{% if selected_status_filter %}&status_filter={{ selected_status_filter }}{% endif %}">#{{ run.experiment_run_id }}</a>
+            </td>
+            <td>
+              <div class="text-break fw-semibold">{{ run.run_name }}</div>
+              <div class="text-secondary small text-truncate">{{ run.query_text }}</div>
+              <div class="text-secondary small">{{ run.strategy_name }} · top_k {{ run.top_k }}</div>
+            </td>
+            <td>
+              <span class="badge search-experiment-status search-experiment-status-{{ run.status }}">{{ t("status." ~ run.status) }}</span>
+            </td>
+            <td>{{ run.result_count }}</td>
+            <td>{{ run.updated_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td class="text-secondary text-center py-5" colspan="5">
+              {% if database_configured %}{{ t("search_experiments.no_runs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="metric-card bg-white p-0 overflow-hidden">
+    <div class="dashboard-panel-header p-3">
+      <div>
+        <h2 class="h5 mb-1">{{ t("search_experiments.detail") }}</h2>
+        <div class="text-secondary">
+          {% if selected_detail %}#{{ selected_detail.run.experiment_run_id }} · {{ selected_detail.run.strategy_name }}{% else %}{{ t("search_experiments.no_selection") }}{% endif %}
+        </div>
+      </div>
+      {% if selected_detail %}
+      <a class="btn btn-outline-secondary btn-sm" href="/api/search/experiments/{{ selected_detail.run.experiment_run_id }}">{{ t("common.api") }}</a>
+      {% endif %}
+    </div>
+
+    {% if selected_detail %}
+    <div class="p-3 border-top">
+      <dl class="search-experiment-detail-list mb-0">
+        <dt>{{ t("search_experiments.query") }}</dt>
+        <dd>{{ selected_detail.run.query_text }}</dd>
+        <dt>{{ t("search_experiments.scope") }}</dt>
+        <dd>{{ selected_detail.run.requested_search_scope or "-" }} / {{ selected_detail.run.effective_search_scope or "-" }}</dd>
+        <dt>{{ t("search_experiments.filters") }}</dt>
+        <dd>{{ selected_detail.run.document_group or "all" }} · {{ selected_detail.run.file_type or "all" }} · {{ selected_detail.run.chunk_policy_name or "all" }}</dd>
+        <dt>{{ t("search_experiments.score_threshold") }}</dt>
+        <dd>{{ selected_detail.run.score_threshold if selected_detail.run.score_threshold is not none else "-" }}</dd>
+      </dl>
+    </div>
+
+    <div class="table-responsive border-top">
+      <table class="table table-sm align-middle mb-0 search-experiment-profile-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("search_experiments.profile") }}</th>
+            <th scope="col">{{ t("search_experiments.status") }}</th>
+            <th scope="col">{{ t("search_experiments.results") }}</th>
+            <th scope="col">{{ t("search_experiments.top_score") }}</th>
+            <th scope="col">{{ t("search_experiments.avg_score") }}</th>
+            <th scope="col">{{ t("search_experiments.elapsed") }}</th>
+            <th scope="col">{{ t("search_experiments.search_log") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for profile in selected_detail.profiles %}
+          <tr>
+            <td class="text-break">{{ profile.profile_name }}</td>
+            <td><span class="badge search-experiment-status search-experiment-status-{{ profile.status }}">{{ t("status." ~ profile.status) }}</span></td>
+            <td>{{ profile.result_count }}</td>
+            <td>{{ "%.4f"|format(profile.top_score) if profile.top_score is not none else "-" }}</td>
+            <td>{{ "%.4f"|format(profile.average_score) if profile.average_score is not none else "-" }}</td>
+            <td>{{ profile.elapsed_ms or 0 }} ms</td>
+            <td>
+              {% if profile.search_log_id %}
+              <a href="/search/logs?search_log_id={{ profile.search_log_id }}">#{{ profile.search_log_id }}</a>
+              {% else %}
+              -
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td class="text-secondary text-center py-4" colspan="7">{{ t("search_experiments.no_profiles") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="p-3 border-top">
+      <h3 class="h6 mb-2">{{ t("search_experiments.runtime_metadata") }}</h3>
+      <pre class="search-experiment-json-panel mb-0">{{ selected_detail.run.runtime_metadata | tojson(indent=2) }}</pre>
+    </div>
+    {% else %}
+    <div class="p-5 text-center text-secondary">
+      {% if database_configured %}{{ t("search_experiments.no_selection") }}{% else %}{{ t("common.no_database") }}{% endif %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

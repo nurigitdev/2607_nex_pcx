@@ -161,8 +161,15 @@ def test_search_experiment_run_api_executes_experiment(
                     "runtime_metadata": {"slice": 168},
                 },
             )
+            body = response.json()
+            experiment_run_id = body.get("experiment_run", {}).get("experiment_run_id")
+            list_response = client.get(
+                "/api/search/experiments",
+                params={"status": "succeeded", "limit": 10},
+            )
+            detail_response = client.get(f"/api/search/experiments/{experiment_run_id}")
+            missing_detail_response = client.get("/api/search/experiments/999999999")
 
-        body = response.json()
         assert response.status_code == 200
         experiment_run = body["experiment_run"]
         assert experiment_run["status"] == "succeeded"
@@ -172,6 +179,19 @@ def test_search_experiment_run_api_executes_experiment(
         assert body["strategy"]["score_threshold"] == 0.0
         assert body["search_result"]["search_log_id"] > 0
         assert [item["retained_result_count"] for item in body["profile_summaries"]] == [1, 1]
+        list_body = list_response.json()
+        detail_body = detail_response.json()
+        assert list_response.status_code == 200
+        assert detail_response.status_code == 200
+        assert missing_detail_response.status_code == 404
+        assert any(
+            item["experiment_run_id"] == experiment_run["experiment_run_id"]
+            for item in list_body["experiments"]
+        )
+        assert detail_body["experiment_run"]["experiment_run_id"] == experiment_run[
+            "experiment_run_id"
+        ]
+        assert [profile["result_count"] for profile in detail_body["profiles"]] == [1, 1]
     finally:
         experiment_run_id = None
         search_log_id = None
