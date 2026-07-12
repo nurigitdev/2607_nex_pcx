@@ -84,55 +84,55 @@
 
 <div class="row g-3">
   <div class="col-12 col-md-6 col-xl-3">
-    <section class="metric-card bg-white p-3">
+    <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/documents">
       <div class="metric-label">{{ t("dashboard.documents") }}</div>
       <div class="metric-value">{{ core_metrics.document_count if core_metrics else 0 }}</div>
-    </section>
+    </a>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
-    <section class="metric-card bg-white p-3">
+    <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/admin/chunk-policies">
       <div class="metric-label">{{ t("dashboard.chunks") }}</div>
       <div class="metric-value">{{ core_metrics.chunk_count if core_metrics else 0 }}</div>
-    </section>
+    </a>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
-    <section class="metric-card bg-white p-3">
+    <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/admin/embedding-jobs">
       <div class="metric-label">{{ t("dashboard.embedding_jobs") }}</div>
       <div class="metric-value">{{ core_metrics.embedding_job_count if core_metrics else 0 }}</div>
-    </section>
+    </a>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
-    <section class="metric-card bg-white p-3">
+    <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/search/logs">
       <div class="metric-label">{{ t("dashboard.search_logs") }}</div>
       <div class="metric-value">{{ core_metrics.search_log_count if core_metrics else 0 }}</div>
-    </section>
+    </a>
   </div>
 </div>
 
 <div class="row g-3 mt-3">
   <div class="col-12 col-md-6 col-xl-3">
-    <section class="metric-card bg-white p-3">
+    <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/evaluations/questions">
       <div class="metric-label">{{ t("dashboard.active_question_sets") }}</div>
       <div class="metric-value">{{ evaluation_dashboard.active_question_set_count if evaluation_dashboard else 0 }}</div>
-    </section>
+    </a>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
-    <section class="metric-card bg-white p-3">
+    <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/evaluations/questions">
       <div class="metric-label">{{ t("dashboard.golden_questions") }}</div>
       <div class="metric-value">{{ evaluation_dashboard.question_count if evaluation_dashboard else 0 }}</div>
-    </section>
+    </a>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
-    <section class="metric-card bg-white p-3">
+    <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/evaluations/questions">
       <div class="metric-label">{{ t("dashboard.expected_targets") }}</div>
       <div class="metric-value">{{ evaluation_dashboard.expected_target_count if evaluation_dashboard else 0 }}</div>
-    </section>
+    </a>
   </div>
   <div class="col-12 col-md-6 col-xl-3">
-    <section class="metric-card bg-white p-3">
+    <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/evaluations">
       <div class="metric-label">{{ t("dashboard.evaluation_runs") }}</div>
       <div class="metric-value">{{ evaluation_dashboard.evaluation_run_count if evaluation_dashboard else 0 }}</div>
-    </section>
+    </a>
   </div>
 </div>
 
@@ -426,45 +426,45 @@
 
   <div class="dashboard-evaluation-body p-3">
     <div class="dashboard-status-grid">
-      <div class="dashboard-status-item">
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs">
         <span class="metric-label">{{ t("pipeline_queue.claimable") }}</span>
         <strong>{{ pipeline_queue.claimable_count if pipeline_queue else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs?status=queued">
         <span class="metric-label">{{ t("pipeline_queue.queued") }}</span>
         <strong>{{ pipeline_queue.queued_count if pipeline_queue else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs?status=running">
         <span class="metric-label">{{ t("pipeline_queue.running") }}</span>
         <strong>{{ pipeline_queue.running_count if pipeline_queue else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs">
         <span class="metric-label">{{ t("pipeline_queue.attention") }}</span>
         <strong>{{ pipeline_queue.attention_count if pipeline_queue else 0 }}</strong>
-      </div>
+      </a>
     </div>
 
     <div class="dashboard-core-grid">
-      <div class="dashboard-status-item">
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs?status=failed">
         <span class="metric-label">{{ t("pipeline_queue.failed") }}</span>
         <strong>{{ pipeline_queue.failed_count if pipeline_queue else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs?status=canceled">
         <span class="metric-label">{{ t("pipeline_queue.canceled") }}</span>
         <strong>{{ pipeline_queue.canceled_count if pipeline_queue else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs?status=running">
         <span class="metric-label">{{ t("pipeline_queue.stale") }}</span>
         <strong>{{ pipeline_queue.stale_running_count if pipeline_queue else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs?status=queued">
         <span class="metric-label">{{ t("pipeline_queue.oldest_queued") }}</span>
         <strong>{{ pipeline_queue.oldest_queued_label if pipeline_queue else "-" }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs?status=running">
         <span class="metric-label">{{ t("pipeline_queue.oldest_stale") }}</span>
         <strong>{{ pipeline_queue.oldest_stale_lease_expires_label if pipeline_queue else "-" }}</strong>
-      </div>
+      </a>
     </div>
 
     <div class="dashboard-pipeline-tables">
@@ -553,26 +553,26 @@
 
   <div class="dashboard-evaluation-body p-3">
     <div class="dashboard-core-grid">
-      <div class="dashboard-status-item">
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/jobs?status=failed">
         <span class="metric-label">{{ t("dashboard.failure_pipeline") }}</span>
         <strong>{{ recent_failures.pipeline_failure_count if recent_failures else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/embedding-jobs?status=failed">
         <span class="metric-label">{{ t("dashboard.failure_embedding") }}</span>
         <strong>{{ recent_failures.embedding_failure_count if recent_failures else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/documents?parse_status=failed">
         <span class="metric-label">{{ t("dashboard.failure_parsing") }}</span>
         <strong>{{ recent_failures.parsing_failure_count if recent_failures else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/logs?level=ERROR">
         <span class="metric-label">{{ t("dashboard.failure_app_log") }}</span>
         <strong>{{ recent_failures.app_error_count if recent_failures else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/embedding-provider-routes">
         <span class="metric-label">{{ t("dashboard.failure_provider_alert") }}</span>
         <strong>{{ recent_failures.provider_alert_count if recent_failures else 0 }}</strong>
-      </div>
+      </a>
     </div>
 
     <div class="table-responsive">
@@ -686,22 +686,22 @@
 
   <div class="dashboard-evaluation-body p-3">
     <div class="dashboard-status-grid">
-      <div class="dashboard-status-item">
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/embedding-jobs">
         <span class="metric-label">{{ t("embedding_backlog.claimable") }}</span>
         <strong>{{ embedding_backlog.claimable_count if embedding_backlog else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/embedding-jobs?status=pending">
         <span class="metric-label">{{ t("embedding_backlog.pending") }}</span>
         <strong>{{ embedding_backlog.pending_count if embedding_backlog else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/embedding-jobs?status=running">
         <span class="metric-label">{{ t("embedding_backlog.running") }}</span>
         <strong>{{ embedding_backlog.running_count if embedding_backlog else 0 }}</strong>
-      </div>
-      <div class="dashboard-status-item">
+      </a>
+      <a class="dashboard-status-item dashboard-drilldown-card" href="/admin/embedding-jobs?status=failed">
         <span class="metric-label">{{ t("embedding_backlog.attention") }}</span>
         <strong>{{ embedding_backlog.attention_count if embedding_backlog else 0 }}</strong>
-      </div>
+      </a>
     </div>
 
     <div class="table-responsive">
@@ -756,17 +756,17 @@
     <div class="dashboard-status-grid">
       {% if evaluation_dashboard %}
         {% for status_count in evaluation_dashboard.status_counts %}
-        <div class="dashboard-status-item">
+        <a class="dashboard-status-item dashboard-drilldown-card" href="/evaluations?status={{ status_count.status }}">
           <span class="badge status-badge status-{{ status_count.status }}">{{ t("status." ~ status_count.status) }}</span>
           <strong>{{ status_count.count }}</strong>
-        </div>
+        </a>
         {% endfor %}
       {% else %}
         {% for status_name in ["pending", "running", "succeeded", "failed"] %}
-        <div class="dashboard-status-item">
+        <a class="dashboard-status-item dashboard-drilldown-card" href="/evaluations?status={{ status_name }}">
           <span class="badge status-badge status-{{ status_name }}">{{ t("status." ~ status_name) }}</span>
           <strong>0</strong>
-        </div>
+        </a>
         {% endfor %}
       {% endif %}
     </div>

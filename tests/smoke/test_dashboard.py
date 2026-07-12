@@ -9,6 +9,10 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "정상" in response.text
     assert "/api/dashboard/operational-health" in response.text
     assert "문서" in response.text
+    assert 'href="/documents"' in response.text
+    assert 'href="/admin/chunk-policies"' in response.text
+    assert 'href="/admin/embedding-jobs"' in response.text
+    assert 'href="/search/logs"' in response.text
     assert "Core Metrics" in response.text
     assert "마지막 갱신" in response.text
     assert "자동 갱신" in response.text
@@ -28,10 +32,15 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "/api/dashboard/core-metrics" in response.text
     assert "/api/dashboard/throughput-latency" in response.text
     assert "/api/dashboard/pipeline-queue" in response.text
+    assert 'href="/admin/jobs?status=queued"' in response.text
+    assert 'href="/admin/jobs?status=failed"' in response.text
     assert "/api/dashboard/recent-failures" in response.text
     assert "data-failure-detail-panel" in response.text
+    assert 'href="/documents?parse_status=failed"' in response.text
     assert "/api/dashboard/embedding-backlog" in response.text
+    assert 'href="/admin/embedding-jobs?status=pending"' in response.text
     assert "/api/dashboard/evaluations" in response.text
+    assert 'href="/evaluations?status=failed"' in response.text
     assert "업로드" in response.text
     assert "로그" in response.text
 

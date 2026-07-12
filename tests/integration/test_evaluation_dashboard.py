@@ -701,8 +701,13 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "위험" in page_response.text
         assert "Pipeline stale lease" in page_response.text
         assert "/api/dashboard/operational-health" in page_response.text
+        assert 'href="/documents"' in page_response.text
+        assert 'href="/admin/embedding-jobs"' in page_response.text
+        assert 'href="/search/logs"' in page_response.text
         assert "Pipeline Queue 스냅샷" in page_response.text
         assert "/api/dashboard/pipeline-queue" in page_response.text
+        assert 'href="/admin/jobs?status=queued"' in page_response.text
+        assert 'href="/admin/jobs?status=failed"' in page_response.text
         assert "처리량 / Latency 스냅샷" in page_response.text
         assert "마지막 갱신" in page_response.text
         assert "자동 갱신" in page_response.text
@@ -717,6 +722,7 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "dashboard-stale-worker" not in page_response.text
         assert "최근 운영 실패" in page_response.text
         assert "/api/dashboard/recent-failures" in page_response.text
+        assert 'href="/documents?parse_status=failed"' in page_response.text
         assert "data-failure-detail-button" in page_response.text
         assert "data-failure-detail-panel" in page_response.text
         assert "운영 실패 상세" in page_response.text
@@ -728,8 +734,10 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "임베딩 Queue 스냅샷" in page_response.text
         assert fixture["embedding_profile_name"] in page_response.text
         assert "/api/dashboard/embedding-backlog" in page_response.text
+        assert 'href="/admin/embedding-jobs?status=pending"' in page_response.text
         assert "골든 평가 스냅샷" in page_response.text
         assert "활성 질문 세트" in page_response.text
+        assert 'href="/evaluations?status=succeeded"' in page_response.text
         assert fixture["set_name"] in page_response.text
         assert f"#{fixture['succeeded_run_id']}" in page_response.text
         assert "/api/dashboard/evaluations" in page_response.text
