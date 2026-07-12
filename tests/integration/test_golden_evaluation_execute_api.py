@@ -343,6 +343,10 @@ def test_golden_search_experiment_batch_api_runs_question_set(
             batch_detail_response = client.get(
                 f"/api/search/experiments/golden-question-batches/{batch_summary['batch_key']}"
             )
+            batch_metric_response = client.get(
+                "/api/search/experiments/golden-question-batches/"
+                f"{batch_summary['batch_key']}/metrics"
+            )
             batch_page_response = client.get(
                 f"/search/experiments?golden_batch_key={batch_summary['batch_key']}"
             )
@@ -352,6 +356,7 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         experiment_run = experiment["experiment_run"]
         runtime_metadata = experiment_run["runtime_metadata"]
         batch_detail = batch_detail_response.json()
+        batch_metrics = batch_metric_response.json()
 
         assert response.status_code == 201
         assert batch["question_count"] == 1
@@ -386,12 +391,45 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         assert batch_detail["questions"][0]["experiment_run"]["experiment_run_id"] == (
             experiment_run_id
         )
+        assert batch_metric_response.status_code == 200
+        assert batch_metrics["batch"]["batch_key"] == batch_summary["batch_key"]
+        assert batch_metrics["overall"]["question_count"] == 2
+        assert batch_metrics["overall"]["mean_recall_at_k"] == pytest.approx(1)
+        assert batch_metrics["overall"]["mean_reciprocal_rank"] == pytest.approx(1)
+        assert batch_metrics["overall"]["mean_ndcg"] == pytest.approx(1)
+        assert batch_metrics["overall"]["hidden_violation_count"] == 0
+        assert {item["profile_name"] for item in batch_metrics["profiles"]} == {
+            "kure_v1_1024",
+            "bge_m3_1024",
+        }
+        for profile_metric in batch_metrics["profiles"]:
+            assert profile_metric["question_count"] == 1
+            assert profile_metric["mean_recall_at_k"] == pytest.approx(1)
+            assert profile_metric["mean_reciprocal_rank"] == pytest.approx(1)
+            assert profile_metric["mean_ndcg"] == pytest.approx(1)
+            assert profile_metric["average_result_count"] == pytest.approx(1)
+        assert len(batch_metrics["questions"]) == 2
+        for question_metric in batch_metrics["questions"]:
+            assert question_metric["question_id"] == fixture["question_id"]
+            assert question_metric["experiment_run_id"] == experiment_run_id
+            assert question_metric["search_log_id"] == experiment["search_result"]["search_log_id"]
+            assert question_metric["matched_chunk_ids"] == [fixture["chunk_id"]]
+            assert question_metric["recall_at_k"] == pytest.approx(1)
+            assert question_metric["reciprocal_rank"] == pytest.approx(1)
+            assert question_metric["ndcg"] == pytest.approx(1)
+            assert question_metric["hidden_violation_count"] == 0
         assert batch_page_response.status_code == 200
         assert "골든 질문 Batch 결과" in batch_page_response.text
+        assert "Recall@K" in batch_page_response.text
+        assert "Metric API" in batch_page_response.text
         assert run_name_prefix in batch_page_response.text
         assert f"/api/search/experiments/golden-question-batches/{batch_summary['batch_key']}" in (
             batch_page_response.text
         )
+        assert (
+            "/api/search/experiments/golden-question-batches/"
+            f"{batch_summary['batch_key']}/metrics"
+        ) in batch_page_response.text
     finally:
         if batch is not None:
             _cleanup_search_experiment_batch(migrated_database_url, batch)

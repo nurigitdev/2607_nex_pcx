@@ -11,7 +11,18 @@ from typing import Any
 from psycopg.types.json import Json
 
 from app.core.database import connect
-from app.core.search_logs import SEARCH_SCOPES, SIMILARITY_METRICS
+from app.core.evaluation_metrics import (
+    EvaluationSummaryRecord,
+    ExpectedTarget,
+    InvalidEvaluationMetricError,
+    QuestionEvaluationInput,
+    QuestionMetricRecord,
+    RankedSearchResult,
+    evaluate_question,
+    summarize_question_metrics,
+)
+from app.core.golden_questions import list_expected_targets
+from app.core.search_logs import SEARCH_SCOPES, SIMILARITY_METRICS, list_search_log_results
 from app.core.search_strategies import (
     InvalidSearchStrategyError,
     validate_search_strategy_selection,
@@ -169,6 +180,44 @@ class GoldenSearchExperimentBatchQuestionSummary:
 class GoldenSearchExperimentBatchDetail:
     summary: GoldenSearchExperimentBatchSummary
     questions: tuple[GoldenSearchExperimentBatchQuestionSummary, ...]
+
+
+@dataclass(frozen=True)
+class GoldenSearchExperimentBatchProfileMetricSummary:
+    profile_name: str
+    question_count: int
+    recall_question_count: int
+    ndcg_question_count: int
+    no_answer_question_count: int
+    hidden_violation_count: int
+    mean_recall_at_k: float | None
+    mean_reciprocal_rank: float | None
+    mean_ndcg: float | None
+    no_answer_success_rate: float | None
+    total_result_count: int
+    average_result_count: float | None
+    average_elapsed_ms: float | None
+
+
+@dataclass(frozen=True)
+class GoldenSearchExperimentBatchQuestionMetricSummary:
+    question_id: int
+    question_text: str
+    profile_name: str
+    experiment_run_id: int
+    search_log_id: int
+    top_k: int
+    result_count: int
+    elapsed_ms: int | None
+    metric: QuestionMetricRecord
+
+
+@dataclass(frozen=True)
+class GoldenSearchExperimentBatchMetricSummary:
+    summary: GoldenSearchExperimentBatchSummary
+    overall: EvaluationSummaryRecord
+    profiles: tuple[GoldenSearchExperimentBatchProfileMetricSummary, ...]
+    questions: tuple[GoldenSearchExperimentBatchQuestionMetricSummary, ...]
 
 
 class InvalidSearchExperimentError(ValueError):
@@ -484,9 +533,7 @@ def decode_golden_search_experiment_batch_key(
         raise InvalidSearchExperimentError("batch_key must not be blank")
     padding = "=" * (-len(normalized_key) % 4)
     try:
-        payload = json.loads(
-            base64.urlsafe_b64decode(f"{normalized_key}{padding}").decode("utf-8")
-        )
+        payload = json.loads(base64.urlsafe_b64decode(f"{normalized_key}{padding}").decode("utf-8"))
     except (binascii.Error, ValueError, UnicodeDecodeError) as exc:
         raise InvalidSearchExperimentError("Invalid golden search experiment batch key") from exc
     if not isinstance(payload, dict):
@@ -578,9 +625,7 @@ def _batch_summary_from_runs(
         total_result_count=sum(run.result_count for run in ordered_runs),
         average_result_count=sum(run.result_count for run in ordered_runs) / len(ordered_runs),
         total_elapsed_ms=total_elapsed_ms,
-        average_elapsed_ms=(
-            total_elapsed_ms / len(elapsed_values) if elapsed_values else None
-        ),
+        average_elapsed_ms=(total_elapsed_ms / len(elapsed_values) if elapsed_values else None),
         first_experiment_run_id=ordered_runs[0].experiment_run_id,
         last_experiment_run_id=ordered_runs[-1].experiment_run_id,
         first_created_at=min(run.created_at for run in ordered_runs),
@@ -749,9 +794,7 @@ def list_golden_search_experiment_batch_summaries(
         groups.setdefault(identity, []).append(run)
 
     summaries = [
-        _batch_summary_from_runs(identity, runs)
-        for identity, runs in groups.items()
-        if runs
+        _batch_summary_from_runs(identity, runs) for identity, runs in groups.items() if runs
     ]
     summaries.sort(
         key=lambda summary: (summary.last_updated_at, summary.last_experiment_run_id),
@@ -817,6 +860,154 @@ def get_golden_search_experiment_batch_detail(
         )
     )
     return GoldenSearchExperimentBatchDetail(summary=summary, questions=questions)
+
+
+def _expected_targets_for_question(
+    database_url: str,
+    question_id: int,
+) -> tuple[ExpectedTarget, ...]:
+    return tuple(
+        ExpectedTarget(
+            chunk_id=target.chunk_id,
+            expected_heading_path=target.expected_heading_path,
+            expectation_type=target.expectation_type,
+            relevance_grade=target.relevance_grade,
+        )
+        for target in list_expected_targets(database_url, question_id)
+    )
+
+
+def _ranked_results_for_profile(
+    database_url: str,
+    search_log_id: int,
+    profile_name: str,
+    top_k: int,
+    score_threshold: float | None,
+    result_cache: dict[int, tuple[Any, ...]],
+) -> tuple[RankedSearchResult, ...]:
+    if search_log_id not in result_cache:
+        result_cache[search_log_id] = tuple(list_search_log_results(database_url, search_log_id))
+    filtered_results = (
+        result
+        for result in result_cache[search_log_id]
+        if result.profile_name == profile_name
+        and result.rank <= top_k
+        and (
+            score_threshold is None
+            or (result.score is not None and result.score >= score_threshold)
+        )
+    )
+    return tuple(
+        RankedSearchResult(
+            rank=result.rank,
+            chunk_id=result.chunk_id,
+            score=result.score,
+        )
+        for result in filtered_results
+    )
+
+
+def _profile_metric_summary(
+    profile_name: str,
+    metrics: tuple[GoldenSearchExperimentBatchQuestionMetricSummary, ...],
+) -> GoldenSearchExperimentBatchProfileMetricSummary:
+    summary = summarize_question_metrics(tuple(item.metric for item in metrics))
+    elapsed_values = [item.elapsed_ms for item in metrics if item.elapsed_ms is not None]
+    result_counts = [item.result_count for item in metrics]
+    return GoldenSearchExperimentBatchProfileMetricSummary(
+        profile_name=profile_name,
+        question_count=summary.question_count,
+        recall_question_count=summary.recall_question_count,
+        ndcg_question_count=summary.ndcg_question_count,
+        no_answer_question_count=summary.no_answer_question_count,
+        hidden_violation_count=summary.hidden_violation_count,
+        mean_recall_at_k=summary.mean_recall_at_k,
+        mean_reciprocal_rank=summary.mean_reciprocal_rank,
+        mean_ndcg=summary.mean_ndcg,
+        no_answer_success_rate=summary.no_answer_success_rate,
+        total_result_count=sum(result_counts),
+        average_result_count=(sum(result_counts) / len(result_counts) if result_counts else None),
+        average_elapsed_ms=(sum(elapsed_values) / len(elapsed_values) if elapsed_values else None),
+    )
+
+
+def get_golden_search_experiment_batch_metric_summary(
+    database_url: str,
+    batch_key: str,
+) -> GoldenSearchExperimentBatchMetricSummary | None:
+    detail = get_golden_search_experiment_batch_detail(database_url, batch_key)
+    if detail is None:
+        return None
+
+    expected_cache: dict[int, tuple[ExpectedTarget, ...]] = {}
+    result_cache: dict[int, tuple[Any, ...]] = {}
+    question_metrics: list[GoldenSearchExperimentBatchQuestionMetricSummary] = []
+    for question in detail.questions:
+        if question.question_id is None:
+            continue
+        expected_targets = expected_cache.setdefault(
+            question.question_id,
+            _expected_targets_for_question(database_url, question.question_id),
+        )
+        run_detail = get_search_experiment_run_detail(
+            database_url,
+            question.experiment_run.experiment_run_id,
+        )
+        if run_detail is None:
+            continue
+        for profile_run in run_detail.profiles:
+            if profile_run.search_log_id is None:
+                continue
+            try:
+                metric = evaluate_question(
+                    QuestionEvaluationInput(
+                        question_id=question.question_id,
+                        top_k=question.experiment_run.top_k,
+                        expected_targets=expected_targets,
+                        ranked_results=_ranked_results_for_profile(
+                            database_url,
+                            profile_run.search_log_id,
+                            profile_run.profile_name,
+                            question.experiment_run.top_k,
+                            question.experiment_run.score_threshold,
+                            result_cache,
+                        ),
+                    )
+                )
+            except InvalidEvaluationMetricError as exc:
+                raise InvalidSearchExperimentError(str(exc)) from exc
+            question_metrics.append(
+                GoldenSearchExperimentBatchQuestionMetricSummary(
+                    question_id=question.question_id,
+                    question_text=question.question_text,
+                    profile_name=profile_run.profile_name,
+                    experiment_run_id=question.experiment_run.experiment_run_id,
+                    search_log_id=profile_run.search_log_id,
+                    top_k=question.experiment_run.top_k,
+                    result_count=profile_run.result_count,
+                    elapsed_ms=profile_run.elapsed_ms,
+                    metric=metric,
+                )
+            )
+
+    grouped: dict[str, list[GoldenSearchExperimentBatchQuestionMetricSummary]] = {}
+    for question_metric in question_metrics:
+        grouped.setdefault(question_metric.profile_name, []).append(question_metric)
+
+    return GoldenSearchExperimentBatchMetricSummary(
+        summary=detail.summary,
+        overall=summarize_question_metrics(tuple(item.metric for item in question_metrics)),
+        profiles=tuple(
+            _profile_metric_summary(profile_name, tuple(items))
+            for profile_name, items in sorted(grouped.items())
+        ),
+        questions=tuple(
+            sorted(
+                question_metrics,
+                key=lambda item: (item.question_id, item.profile_name, item.experiment_run_id),
+            )
+        ),
+    )
 
 
 def upsert_search_experiment_profile_run(

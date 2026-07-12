@@ -101,13 +101,127 @@
         <h3 class="h6 mb-1">{{ t("search_experiments.golden_batch_detail") }}</h3>
         <div class="text-secondary small">{{ selected_golden_batch_detail.summary.batch_prefix }}</div>
       </div>
-      <a
-        class="btn btn-outline-secondary btn-sm"
-        href="/api/search/experiments/golden-question-batches/{{ selected_golden_batch_detail.summary.batch_key }}"
-      >
-        {{ t("common.api") }}
-      </a>
+      <div class="btn-group btn-group-sm" role="group">
+        <a
+          class="btn btn-outline-secondary"
+          href="/api/search/experiments/golden-question-batches/{{ selected_golden_batch_detail.summary.batch_key }}"
+        >
+          {{ t("search_experiments.detail_api") }}
+        </a>
+        <a
+          class="btn btn-outline-secondary"
+          href="/api/search/experiments/golden-question-batches/{{ selected_golden_batch_detail.summary.batch_key }}/metrics"
+        >
+          {{ t("search_experiments.metrics_api") }}
+        </a>
+      </div>
     </div>
+    {% if selected_golden_batch_metric_summary %}
+    {% set batch_metrics = selected_golden_batch_metric_summary %}
+    <div class="search-experiment-batch-metric-strip mb-3">
+      <div>
+        <span>{{ t("search_experiments.evaluated_rows") }}</span>
+        <strong>{{ batch_metrics.overall.question_count }}</strong>
+      </div>
+      <div>
+        <span>{{ t("search_experiments.recall_at_k") }}</span>
+        <strong>
+          {% if batch_metrics.overall.mean_recall_at_k is not none %}{{ "%.2f"|format(batch_metrics.overall.mean_recall_at_k * 100) }}%{% else %}-{% endif %}
+        </strong>
+      </div>
+      <div>
+        <span>{{ t("search_experiments.mrr") }}</span>
+        <strong>
+          {% if batch_metrics.overall.mean_reciprocal_rank is not none %}{{ "%.2f"|format(batch_metrics.overall.mean_reciprocal_rank * 100) }}%{% else %}-{% endif %}
+        </strong>
+      </div>
+      <div>
+        <span>{{ t("search_experiments.ndcg") }}</span>
+        <strong>
+          {% if batch_metrics.overall.mean_ndcg is not none %}{{ "%.2f"|format(batch_metrics.overall.mean_ndcg * 100) }}%{% else %}-{% endif %}
+        </strong>
+      </div>
+      <div>
+        <span>{{ t("search_experiments.hidden_violations") }}</span>
+        <strong>{{ batch_metrics.overall.hidden_violation_count }}</strong>
+      </div>
+    </div>
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0 search-experiment-batch-profile-metric-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("search_experiments.profile") }}</th>
+            <th scope="col">{{ t("search_experiments.questions") }}</th>
+            <th scope="col">{{ t("search_experiments.recall_at_k") }}</th>
+            <th scope="col">{{ t("search_experiments.mrr") }}</th>
+            <th scope="col">{{ t("search_experiments.ndcg") }}</th>
+            <th scope="col">{{ t("search_experiments.no_answer") }}</th>
+            <th scope="col">{{ t("search_experiments.hidden") }}</th>
+            <th scope="col">{{ t("search_experiments.avg_results") }}</th>
+            <th scope="col">{{ t("search_experiments.avg_elapsed") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for profile_metric in batch_metrics.profiles %}
+          <tr>
+            <td class="text-break fw-semibold">{{ profile_metric.profile_name }}</td>
+            <td>{{ profile_metric.question_count }}</td>
+            <td>{% if profile_metric.mean_recall_at_k is not none %}{{ "%.2f"|format(profile_metric.mean_recall_at_k * 100) }}%{% else %}-{% endif %}</td>
+            <td>{% if profile_metric.mean_reciprocal_rank is not none %}{{ "%.2f"|format(profile_metric.mean_reciprocal_rank * 100) }}%{% else %}-{% endif %}</td>
+            <td>{% if profile_metric.mean_ndcg is not none %}{{ "%.2f"|format(profile_metric.mean_ndcg * 100) }}%{% else %}-{% endif %}</td>
+            <td>{% if profile_metric.no_answer_success_rate is not none %}{{ "%.2f"|format(profile_metric.no_answer_success_rate * 100) }}%{% else %}-{% endif %}</td>
+            <td>{{ profile_metric.hidden_violation_count }}</td>
+            <td>{% if profile_metric.average_result_count is not none %}{{ "%.2f"|format(profile_metric.average_result_count) }}{% else %}-{% endif %}</td>
+            <td>{% if profile_metric.average_elapsed_ms is not none %}{{ "%.1f"|format(profile_metric.average_elapsed_ms) }} ms{% else %}-{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td class="text-secondary text-center py-4" colspan="9">{{ t("search_experiments.no_metric_profiles") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="table-responsive mb-3 search-experiment-batch-question-metric-wrap">
+      <table class="table table-sm align-middle mb-0 search-experiment-batch-question-metric-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("search_experiments.question") }}</th>
+            <th scope="col">{{ t("search_experiments.profile") }}</th>
+            <th scope="col">{{ t("search_experiments.run") }}</th>
+            <th scope="col">{{ t("search_experiments.search_log") }}</th>
+            <th scope="col">{{ t("search_experiments.matched") }}</th>
+            <th scope="col">{{ t("search_experiments.recall_at_k") }}</th>
+            <th scope="col">{{ t("search_experiments.mrr") }}</th>
+            <th scope="col">{{ t("search_experiments.ndcg") }}</th>
+            <th scope="col">{{ t("search_experiments.hidden") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for question_metric in batch_metrics.questions %}
+          <tr>
+            <td>
+              <div class="fw-semibold">#{{ question_metric.question_id }}</div>
+              <div class="text-secondary small search-experiment-batch-question-text">{{ question_metric.question_text }}</div>
+            </td>
+            <td class="text-break">{{ question_metric.profile_name }}</td>
+            <td><a href="/search/experiments?experiment_run_id={{ question_metric.experiment_run_id }}">#{{ question_metric.experiment_run_id }}</a></td>
+            <td><a href="/search/logs?search_log_id={{ question_metric.search_log_id }}">#{{ question_metric.search_log_id }}</a></td>
+            <td>{{ question_metric.metric.matched_visible_count }} / {{ question_metric.metric.visible_expected_count }}</td>
+            <td>{% if question_metric.metric.recall_at_k is not none %}{{ "%.2f"|format(question_metric.metric.recall_at_k * 100) }}%{% else %}-{% endif %}</td>
+            <td>{% if question_metric.metric.reciprocal_rank is not none %}{{ "%.2f"|format(question_metric.metric.reciprocal_rank * 100) }}%{% else %}-{% endif %}</td>
+            <td>{% if question_metric.metric.ndcg is not none %}{{ "%.2f"|format(question_metric.metric.ndcg * 100) }}%{% else %}-{% endif %}</td>
+            <td>{{ question_metric.metric.hidden_violation_count }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td class="text-secondary text-center py-4" colspan="9">{{ t("search_experiments.no_metric_questions") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0 search-experiment-batch-question-table">
         <thead>

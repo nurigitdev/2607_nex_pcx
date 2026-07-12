@@ -357,6 +357,8 @@ from app.core.search_experiment_runner import (
 from app.core.search_experiments import (
     SEARCH_EXPERIMENT_RUN_STATUSES,
     GoldenSearchExperimentBatchDetail,
+    GoldenSearchExperimentBatchMetricSummary,
+    GoldenSearchExperimentBatchQuestionMetricSummary,
     GoldenSearchExperimentBatchQuestionSummary,
     GoldenSearchExperimentBatchSummary,
     InvalidSearchExperimentError,
@@ -364,6 +366,7 @@ from app.core.search_experiments import (
     SearchExperimentRunDetail,
     SearchExperimentRunRecord,
     get_golden_search_experiment_batch_detail,
+    get_golden_search_experiment_batch_metric_summary,
     get_search_experiment_run_detail,
     list_golden_search_experiment_batch_summaries,
     list_search_experiment_runs,
@@ -687,9 +690,7 @@ def dashboard_query_url(
     updates: dict[str, object | None],
 ) -> str:
     query_items = [
-        (key, value)
-        for key, value in request.query_params.multi_items()
-        if key not in updates
+        (key, value) for key, value in request.query_params.multi_items() if key not in updates
     ]
     for key, value in updates.items():
         if value is not None:
@@ -744,9 +745,7 @@ def dashboard_refresh_interval_options(
 
 
 def validate_dashboard_refresh_seconds(refresh_seconds: int) -> int:
-    valid_intervals = {
-        int(option["seconds"]) for option in DASHBOARD_REFRESH_INTERVAL_OPTIONS
-    }
+    valid_intervals = {int(option["seconds"]) for option in DASHBOARD_REFRESH_INTERVAL_OPTIONS}
     if refresh_seconds not in valid_intervals:
         raise ValueError("refresh_seconds must be one of 0, 30, or 60")
     return refresh_seconds
@@ -853,9 +852,7 @@ def _json_safe_dashboard_display_value(value: object) -> object:
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, dict):
-        return {
-            str(key): _json_safe_dashboard_display_value(item) for key, item in value.items()
-        }
+        return {str(key): _json_safe_dashboard_display_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_json_safe_dashboard_display_value(item) for item in value]
     return value
@@ -1027,12 +1024,8 @@ def pipeline_queue_summary_payload(summary: PipelineQueueSummary) -> dict[str, o
         "attention_count": summary.attention_count,
         "oldest_queued_at": _datetime_response(summary.oldest_queued_at),
         "oldest_queued_label": _datetime_label(summary.oldest_queued_at),
-        "oldest_stale_lease_expires_at": _datetime_response(
-            summary.oldest_stale_lease_expires_at
-        ),
-        "oldest_stale_lease_expires_label": _datetime_label(
-            summary.oldest_stale_lease_expires_at
-        ),
+        "oldest_stale_lease_expires_at": _datetime_response(summary.oldest_stale_lease_expires_at),
+        "oldest_stale_lease_expires_label": _datetime_label(summary.oldest_stale_lease_expires_at),
         "stages": [
             pipeline_queue_stage_summary_payload(stage_summary)
             for stage_summary in summary.stage_summaries
@@ -1068,10 +1061,7 @@ def embedding_job_readiness_gate_payload(
 ) -> dict[str, object] | None:
     metadata = job.runtime_metadata or {}
     blocked_routes = metadata.get("provider_route_readiness_blocked_routes")
-    if (
-        job.error_code != ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY
-        and not blocked_routes
-    ):
+    if job.error_code != ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY and not blocked_routes:
         return None
     return {
         "gate": metadata.get("provider_route_readiness_gate", "blocked_all_routes"),
@@ -1224,9 +1214,7 @@ def embedding_worker_batch_run_throughput_summary(
         run_count = len(runs)
         elapsed_seconds = elapsed_ms / 1000
         success_rate_pct = (
-            round((succeeded_count / processed_count) * 100, 2)
-            if processed_count > 0
-            else 0.0
+            round((succeeded_count / processed_count) * 100, 2) if processed_count > 0 else 0.0
         )
         return {
             "run_count": run_count,
@@ -1480,9 +1468,7 @@ def embedding_coverage_document_payload(
         "complete_profile_count": document.complete_profile_count,
         "attention_profile_count": document.attention_profile_count,
         "missing_profile_count": document.missing_profile_count,
-        "profiles": [
-            embedding_coverage_profile_cell_payload(cell) for cell in document.profiles
-        ],
+        "profiles": [embedding_coverage_profile_cell_payload(cell) for cell in document.profiles],
     }
 
 
@@ -2182,9 +2168,7 @@ def search_experiment_detail_payload(
 ) -> dict[str, object]:
     return {
         "experiment_run": search_experiment_run_record_payload(detail.run),
-        "profiles": [
-            search_experiment_profile_run_payload(profile) for profile in detail.profiles
-        ],
+        "profiles": [search_experiment_profile_run_payload(profile) for profile in detail.profiles],
     }
 
 
@@ -2238,6 +2222,75 @@ def golden_search_experiment_batch_detail_payload(
             golden_search_experiment_batch_question_payload(question)
             for question in detail.questions
         ],
+    }
+
+
+def golden_search_experiment_batch_metric_summary_payload(
+    metric_summary: GoldenSearchExperimentBatchMetricSummary,
+) -> dict[str, object]:
+    return {
+        "batch": golden_search_experiment_batch_summary_payload(metric_summary.summary),
+        "overall": {
+            "question_count": metric_summary.overall.question_count,
+            "recall_question_count": metric_summary.overall.recall_question_count,
+            "ndcg_question_count": metric_summary.overall.ndcg_question_count,
+            "no_answer_question_count": metric_summary.overall.no_answer_question_count,
+            "hidden_violation_count": metric_summary.overall.hidden_violation_count,
+            "mean_recall_at_k": metric_summary.overall.mean_recall_at_k,
+            "mean_reciprocal_rank": metric_summary.overall.mean_reciprocal_rank,
+            "mean_ndcg": metric_summary.overall.mean_ndcg,
+            "no_answer_success_rate": metric_summary.overall.no_answer_success_rate,
+        },
+        "profiles": [
+            {
+                "profile_name": profile.profile_name,
+                "question_count": profile.question_count,
+                "recall_question_count": profile.recall_question_count,
+                "ndcg_question_count": profile.ndcg_question_count,
+                "no_answer_question_count": profile.no_answer_question_count,
+                "hidden_violation_count": profile.hidden_violation_count,
+                "mean_recall_at_k": profile.mean_recall_at_k,
+                "mean_reciprocal_rank": profile.mean_reciprocal_rank,
+                "mean_ndcg": profile.mean_ndcg,
+                "no_answer_success_rate": profile.no_answer_success_rate,
+                "total_result_count": profile.total_result_count,
+                "average_result_count": profile.average_result_count,
+                "average_elapsed_ms": profile.average_elapsed_ms,
+            }
+            for profile in metric_summary.profiles
+        ],
+        "questions": [
+            golden_search_experiment_batch_question_metric_payload(question_metric)
+            for question_metric in metric_summary.questions
+        ],
+    }
+
+
+def golden_search_experiment_batch_question_metric_payload(
+    question_metric: GoldenSearchExperimentBatchQuestionMetricSummary,
+) -> dict[str, object]:
+    metric = question_metric.metric
+    return {
+        "question_id": question_metric.question_id,
+        "question_text": question_metric.question_text,
+        "profile_name": question_metric.profile_name,
+        "experiment_run_id": question_metric.experiment_run_id,
+        "search_log_id": question_metric.search_log_id,
+        "top_k": question_metric.top_k,
+        "result_count": question_metric.result_count,
+        "elapsed_ms": question_metric.elapsed_ms,
+        "visible_expected_count": metric.visible_expected_count,
+        "retrieved_count": metric.retrieved_count,
+        "matched_visible_count": metric.matched_visible_count,
+        "hidden_violation_count": metric.hidden_violation_count,
+        "matched_chunk_ids": list(metric.matched_chunk_ids),
+        "hidden_violation_chunk_ids": list(metric.hidden_violation_chunk_ids),
+        "recall_at_k": metric.recall_at_k,
+        "reciprocal_rank": metric.reciprocal_rank,
+        "dcg": metric.dcg,
+        "ideal_dcg": metric.ideal_dcg,
+        "ndcg": metric.ndcg,
+        "no_answer_success": metric.no_answer_success,
     }
 
 
@@ -3614,8 +3667,7 @@ def dashboard_core_metrics_payload(
             dashboard_file_type_summary_payload(summary) for summary in metrics.file_types
         ],
         "document_groups": [
-            dashboard_document_group_summary_payload(summary)
-            for summary in metrics.document_groups
+            dashboard_document_group_summary_payload(summary) for summary in metrics.document_groups
         ],
         "chunk_policies": [
             dashboard_chunk_policy_summary_payload(summary) for summary in metrics.chunk_policies
@@ -3661,9 +3713,7 @@ def dashboard_operational_health_payload(
         "signal_count": health.signal_count,
         "critical_count": health.critical_count,
         "warning_count": health.warning_count,
-        "signals": [
-            dashboard_health_signal_payload(signal) for signal in health.signals
-        ],
+        "signals": [dashboard_health_signal_payload(signal) for signal in health.signals],
     }
     if threshold_settings is not None:
         payload["thresholds"] = dict(threshold_settings.thresholds)
@@ -3701,9 +3751,7 @@ def dashboard_snapshot_export_payload(
         ),
         "core_metrics": dashboard_core_metrics_payload(core_metrics),
         "pipeline_queue": pipeline_queue_summary_payload(pipeline_queue),
-        "throughput_latency": dashboard_throughput_latency_snapshot_payload(
-            throughput_latency
-        ),
+        "throughput_latency": dashboard_throughput_latency_snapshot_payload(throughput_latency),
         "recent_failures": dashboard_failure_summary_payload(recent_failures),
         "embedding_backlog": embedding_job_backlog_summary_payload(embedding_backlog),
         "evaluations": evaluation_dashboard_summary_payload(evaluations),
@@ -3757,12 +3805,8 @@ def dashboard_snapshot_summary_csv(snapshot: dict[str, object]) -> str:
             "pipeline_attention": pipeline_queue["attention_count"],
             "embedding_claimable": embedding_backlog["claimable_count"],
             "embedding_attention": embedding_backlog["attention_count"],
-            "embedding_jobs_per_second": throughput_embedding[
-                "throughput_per_second"
-            ],
-            "search_average_latency_ms": throughput_search[
-                "average_total_elapsed_ms"
-            ],
+            "embedding_jobs_per_second": throughput_embedding["throughput_per_second"],
+            "search_average_latency_ms": throughput_search["average_total_elapsed_ms"],
             "recent_failure_count": recent_failures["total_count"],
             "evaluation_run_count": evaluations["evaluation_run_count"],
         }
@@ -3797,9 +3841,7 @@ def dashboard_pipeline_throughput_payload(
         "average_duration_label": _duration_ms_label(pipeline.average_duration_ms),
         "latest_finished_at": _datetime_response(pipeline.latest_finished_at),
         "latest_finished_label": _datetime_label(pipeline.latest_finished_at),
-        "stages": [
-            dashboard_pipeline_stage_latency_payload(stage) for stage in pipeline.stages
-        ],
+        "stages": [dashboard_pipeline_stage_latency_payload(stage) for stage in pipeline.stages],
     }
 
 
@@ -3820,9 +3862,7 @@ def dashboard_embedding_profile_throughput_payload(
         "failed_count": profile.failed_count,
         "deferred_count": profile.deferred_count,
         "average_batch_elapsed_ms": profile.average_batch_elapsed_ms,
-        "average_batch_elapsed_label": _duration_ms_label(
-            profile.average_batch_elapsed_ms
-        ),
+        "average_batch_elapsed_label": _duration_ms_label(profile.average_batch_elapsed_ms),
         "throughput_per_second": profile.throughput_per_second,
         "success_rate_percent": profile.success_rate_percent,
         "success_rate_label": _percent_label(profile.success_rate_percent),
@@ -3838,18 +3878,14 @@ def dashboard_embedding_throughput_payload(
         "failed_job_count": embedding.failed_job_count,
         "skipped_job_count": embedding.skipped_job_count,
         "average_job_duration_ms": embedding.average_job_duration_ms,
-        "average_job_duration_label": _duration_ms_label(
-            embedding.average_job_duration_ms
-        ),
+        "average_job_duration_label": _duration_ms_label(embedding.average_job_duration_ms),
         "batch_run_count": embedding.batch_run_count,
         "processed_count": embedding.processed_count,
         "succeeded_count": embedding.succeeded_count,
         "failed_count": embedding.failed_count,
         "deferred_count": embedding.deferred_count,
         "average_batch_elapsed_ms": embedding.average_batch_elapsed_ms,
-        "average_batch_elapsed_label": _duration_ms_label(
-            embedding.average_batch_elapsed_ms
-        ),
+        "average_batch_elapsed_label": _duration_ms_label(embedding.average_batch_elapsed_ms),
         "throughput_per_second": embedding.throughput_per_second,
         "latest_completed_at": _datetime_response(embedding.latest_completed_at),
         "latest_completed_label": _datetime_label(embedding.latest_completed_at),
@@ -3868,9 +3904,7 @@ def dashboard_search_profile_latency_payload(
         "search_log_count": profile.search_log_count,
         "result_count": profile.result_count,
         "average_profile_elapsed_ms": profile.average_profile_elapsed_ms,
-        "average_profile_elapsed_label": _duration_ms_label(
-            profile.average_profile_elapsed_ms
-        ),
+        "average_profile_elapsed_label": _duration_ms_label(profile.average_profile_elapsed_ms),
     }
 
 
@@ -3881,18 +3915,13 @@ def dashboard_search_latency_payload(
         "search_log_count": search.search_log_count,
         "result_count": search.result_count,
         "average_total_elapsed_ms": search.average_total_elapsed_ms,
-        "average_total_elapsed_label": _duration_ms_label(
-            search.average_total_elapsed_ms
-        ),
+        "average_total_elapsed_label": _duration_ms_label(search.average_total_elapsed_ms),
         "average_profile_elapsed_ms": search.average_profile_elapsed_ms,
-        "average_profile_elapsed_label": _duration_ms_label(
-            search.average_profile_elapsed_ms
-        ),
+        "average_profile_elapsed_label": _duration_ms_label(search.average_profile_elapsed_ms),
         "latest_search_at": _datetime_response(search.latest_search_at),
         "latest_search_label": _datetime_label(search.latest_search_at),
         "profiles": [
-            dashboard_search_profile_latency_payload(profile)
-            for profile in search.profiles
+            dashboard_search_profile_latency_payload(profile) for profile in search.profiles
         ],
     }
 
@@ -3983,12 +4012,8 @@ def document_inventory_item_payload(item: DocumentInventoryItem) -> dict[str, ob
         "latest_pipeline_job_id": item.latest_pipeline_job_id,
         "latest_pipeline_status": item.latest_pipeline_status,
         "latest_pipeline_stage": item.latest_pipeline_stage,
-        "latest_pipeline_progress_percent": _percent_value(
-            item.latest_pipeline_progress_percent
-        ),
-        "latest_pipeline_progress_label": _percent_label(
-            item.latest_pipeline_progress_percent
-        ),
+        "latest_pipeline_progress_percent": _percent_value(item.latest_pipeline_progress_percent),
+        "latest_pipeline_progress_label": _percent_label(item.latest_pipeline_progress_percent),
         "uploaded_at": _datetime_response(item.uploaded_at),
         "updated_at": _datetime_response(item.updated_at),
     }
@@ -4086,9 +4111,7 @@ def permission_readiness_summary_payload(
         "scoped_missing_org_count": summary.scoped_missing_org_count,
         "readiness_percent": summary.readiness_percent,
         "readiness_percent_label": _percent_label(
-            summary.readiness_percent * 100
-            if summary.readiness_percent is not None
-            else None
+            summary.readiness_percent * 100 if summary.readiness_percent is not None else None
         ),
         "issues": [permission_readiness_issue_payload(issue) for issue in summary.issues],
     }
@@ -4303,9 +4326,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pipeline_queue = get_pipeline_queue_summary(settings.database_url)
         embedding_backlog = get_embedding_job_backlog_summary(settings.database_url)
         recent_failures = get_dashboard_recent_failures(settings.database_url, limit=10)
-        threshold_settings = load_dashboard_health_threshold_settings(
-            settings.database_url
-        )
+        threshold_settings = load_dashboard_health_threshold_settings(settings.database_url)
         health = summarize_dashboard_operational_health(
             pipeline_queue=pipeline_queue,
             embedding_backlog=embedding_backlog,
@@ -4329,15 +4350,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
 
-        threshold_settings = load_dashboard_health_threshold_settings(
-            settings.database_url
-        )
+        threshold_settings = load_dashboard_health_threshold_settings(settings.database_url)
         return JSONResponse(
-            content={
-                "settings": dashboard_health_threshold_settings_payload(
-                    threshold_settings
-                )
-            }
+            content={"settings": dashboard_health_threshold_settings_payload(threshold_settings)}
         )
 
     @app.put("/api/dashboard/health-thresholds")
@@ -4353,19 +4368,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             threshold_settings = update_dashboard_health_threshold_settings(
                 settings.database_url,
-                DashboardHealthThresholdSettingsInput(
-                    thresholds=dict(payload.thresholds)
-                ),
+                DashboardHealthThresholdSettingsInput(thresholds=dict(payload.thresholds)),
             )
         except InvalidDashboardHealthThresholdSettingsError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(
-            content={
-                "settings": dashboard_health_threshold_settings_payload(
-                    threshold_settings
-                )
-            }
+            content={"settings": dashboard_health_threshold_settings_payload(threshold_settings)}
         )
 
     @app.post("/api/dashboard/health-thresholds/reset")
@@ -4376,15 +4385,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
 
-        threshold_settings = reset_dashboard_health_threshold_settings(
-            settings.database_url
-        )
+        threshold_settings = reset_dashboard_health_threshold_settings(settings.database_url)
         return JSONResponse(
-            content={
-                "settings": dashboard_health_threshold_settings_payload(
-                    threshold_settings
-                )
-            }
+            content={"settings": dashboard_health_threshold_settings_payload(threshold_settings)}
         )
 
     @app.get("/admin/dashboard-settings", response_class=HTMLResponse)
@@ -4397,9 +4400,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
-                threshold_settings = load_dashboard_health_threshold_settings(
-                    settings.database_url
-                )
+                threshold_settings = load_dashboard_health_threshold_settings(settings.database_url)
             except Exception as exc:
                 error_message = str(exc)
 
@@ -4410,12 +4411,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 database_configured=bool(settings.database_url),
                 error_message=error_message,
-                threshold_settings=dashboard_health_threshold_settings_payload(
-                    threshold_settings
-                ),
-                threshold_rows=dashboard_health_threshold_ui_rows(
-                    threshold_settings
-                ),
+                threshold_settings=dashboard_health_threshold_settings_payload(threshold_settings),
+                threshold_rows=dashboard_health_threshold_ui_rows(threshold_settings),
             ),
         )
 
@@ -4450,18 +4447,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return Response(
                 content=dashboard_snapshot_summary_csv(snapshot),
                 media_type="text/csv; charset=utf-8",
-                headers={
-                    "Content-Disposition": (
-                        f'attachment; filename="{filename_base}.csv"'
-                    )
-                },
+                headers={"Content-Disposition": (f'attachment; filename="{filename_base}.csv"')},
             )
 
         return JSONResponse(
             content=snapshot,
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename_base}.json"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{filename_base}.json"'},
         )
 
     @app.get("/api/dashboard/pipeline-queue")
@@ -4492,11 +4483,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(
-            content={
-                "throughput_latency": dashboard_throughput_latency_snapshot_payload(
-                    snapshot
-                )
-            }
+            content={"throughput_latency": dashboard_throughput_latency_snapshot_payload(snapshot)}
         )
 
     @app.get("/api/dashboard/embedding-backlog")
@@ -6058,14 +6045,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
 
-        retention_settings = load_embedding_batch_run_retention_settings(
-            settings.database_url
-        )
+        retention_settings = load_embedding_batch_run_retention_settings(settings.database_url)
         return JSONResponse(
             content={
-                "settings": embedding_batch_run_retention_settings_payload(
-                    retention_settings
-                ),
+                "settings": embedding_batch_run_retention_settings_payload(retention_settings),
             }
         )
 
@@ -6089,9 +6072,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(
             content={
-                "settings": embedding_batch_run_retention_settings_payload(
-                    retention_settings
-                ),
+                "settings": embedding_batch_run_retention_settings_payload(retention_settings),
             }
         )
 
@@ -6133,9 +6114,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Embedding batch run not found.",
             )
 
-        return JSONResponse(
-            content={"batch_run": embedding_worker_batch_run_payload(batch_run)}
-        )
+        return JSONResponse(content={"batch_run": embedding_worker_batch_run_payload(batch_run)})
 
     @app.post("/api/admin/embedding-batch-runs/{batch_run_id}/retry-failed")
     def api_retry_failed_embedding_batch_run_jobs(batch_run_id: int) -> JSONResponse:
@@ -6258,9 +6237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(
             content={
-                "experiments": [
-                    search_experiment_run_record_payload(run) for run in runs
-                ],
+                "experiments": [search_experiment_run_record_payload(run) for run in runs],
             }
         )
 
@@ -6287,10 +6264,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             content={
                 "batches": [
-                    golden_search_experiment_batch_summary_payload(summary)
-                    for summary in summaries
+                    golden_search_experiment_batch_summary_payload(summary) for summary in summaries
                 ],
             }
+        )
+
+    @app.get("/api/search/experiments/golden-question-batches/{batch_key}/metrics")
+    def api_get_golden_search_experiment_batch_metrics(batch_key: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            metric_summary = get_golden_search_experiment_batch_metric_summary(
+                settings.database_url,
+                batch_key,
+            )
+        except InvalidSearchExperimentError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if metric_summary is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden search experiment batch not found.",
+            )
+
+        return JSONResponse(
+            content=golden_search_experiment_batch_metric_summary_payload(metric_summary)
         )
 
     @app.get("/api/search/experiments/golden-question-batches/{batch_key}")
@@ -7626,9 +7627,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if error_message is None:
                     error_message = str(exc)
             try:
-                threshold_settings = load_dashboard_health_threshold_settings(
-                    settings.database_url
-                )
+                threshold_settings = load_dashboard_health_threshold_settings(settings.database_url)
             except Exception as exc:
                 if error_message is None:
                     error_message = str(exc)
@@ -7917,6 +7916,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected_detail: SearchExperimentRunDetail | None = None
         golden_batches: list[GoldenSearchExperimentBatchSummary] = []
         selected_golden_batch_detail: GoldenSearchExperimentBatchDetail | None = None
+        selected_golden_batch_metric_summary: GoldenSearchExperimentBatchMetricSummary | None = None
         error_message = None
 
         if not settings.database_url:
@@ -7937,6 +7937,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     if selected_golden_batch_detail is None:
                         error_message = "Golden search experiment batch not found."
+                    else:
+                        selected_golden_batch_metric_summary = (
+                            get_golden_search_experiment_batch_metric_summary(
+                                settings.database_url,
+                                selected_golden_batch_key,
+                            )
+                        )
                 runs = list_search_experiment_runs(
                     settings.database_url,
                     status=status_filter.strip() if status_filter else None,
@@ -7967,6 +7974,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_detail=selected_detail,
                 golden_batches=golden_batches,
                 selected_golden_batch_detail=selected_golden_batch_detail,
+                selected_golden_batch_metric_summary=selected_golden_batch_metric_summary,
                 selected_golden_batch_key=(
                     selected_golden_batch_detail.summary.batch_key
                     if selected_golden_batch_detail
@@ -8474,9 +8482,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     else ""
                 ),
                 batch_run_summary=embedding_worker_batch_run_summary(batch_runs),
-                throughput_summary=embedding_worker_batch_run_throughput_summary(
-                    batch_runs
-                ),
+                throughput_summary=embedding_worker_batch_run_throughput_summary(batch_runs),
                 retention_settings=retention_settings,
                 profiles=profiles,
                 selected_worker_name=worker_name or "",

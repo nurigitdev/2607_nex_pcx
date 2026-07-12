@@ -278,7 +278,20 @@
     "avg_score": "Avg score",
     "search_log": "검색 로그",
     "runtime_metadata": "Runtime metadata",
-    "no_profiles": "profile 실행 결과가 없습니다."
+    "no_profiles": "profile 실행 결과가 없습니다.",
+    "detail_api": "상세 API",
+    "metrics_api": "Metric API",
+    "evaluated_rows": "평가 행",
+    "recall_at_k": "Recall@K",
+    "mrr": "MRR",
+    "ndcg": "nDCG",
+    "hidden_violations": "Hidden 위반",
+    "no_answer": "No-answer",
+    "hidden": "Hidden",
+    "avg_results": "평균 결과",
+    "matched": "Matched",
+    "no_metric_profiles": "profile별 metric 결과가 없습니다.",
+    "no_metric_questions": "질문별 metric 결과가 없습니다."
   },
   "pipeline_queue": {
     "claimable": "Claimable",
