@@ -1085,6 +1085,18 @@ main.container-fluid {
   justify-content: space-between;
 }
 
+.dashboard-panel-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.dashboard-time-window-controls .btn {
+  min-width: 3rem;
+}
+
 .dashboard-evaluation-body {
   display: grid;
   gap: 1rem;

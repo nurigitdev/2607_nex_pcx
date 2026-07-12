@@ -66,6 +66,7 @@
     "no_core_metrics": "집계할 core metric이 없습니다.",
     "throughput_latency_snapshot": "처리량 / Latency 스냅샷",
     "throughput_latency_subtitle": "Pipeline, 임베딩, 검색의 최근 처리 속도와 평균 지연 시간을 확인합니다.",
+    "time_window": "조회 기간",
     "lookback_hours": "최근 {hours}시간",
     "pipeline_completed": "Pipeline 완료",
     "avg_pipeline_duration": "평균 Pipeline 시간",

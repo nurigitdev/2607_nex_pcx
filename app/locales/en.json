@@ -66,6 +66,7 @@
     "no_core_metrics": "No core metrics to summarize.",
     "throughput_latency_snapshot": "Throughput / Latency Snapshot",
     "throughput_latency_subtitle": "Review recent pipeline, embedding, and search speed.",
+    "time_window": "Time Window",
     "lookback_hours": "Last {hours} hours",
     "pipeline_completed": "Pipeline Completed",
     "avg_pipeline_duration": "Avg Pipeline Time",

@@ -8,6 +8,10 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "문서" in response.text
     assert "Core Metrics" in response.text
     assert "처리량 / Latency 스냅샷" in response.text
+    assert 'aria-label="조회 기간"' in response.text
+    assert "/?lookback_hours=1" in response.text
+    assert "/?lookback_hours=720" in response.text
+    assert "최근 24시간" in response.text
     assert "Pipeline Queue 스냅샷" in response.text
     assert "최근 운영 실패" in response.text
     assert "임베딩 Queue 스냅샷" in response.text
@@ -34,6 +38,8 @@ def test_dashboard_supports_english_language_switch(client) -> None:
     assert "RAG experiment bench operations" in response.text
     assert "Core Metrics" in response.text
     assert "Throughput / Latency Snapshot" in response.text
+    assert 'aria-label="Time Window"' in response.text
+    assert "/?lang=en&amp;lookback_hours=6" in response.text
     assert "Pipeline Queue Snapshot" in response.text
     assert "Recent Operational Failures" in response.text
     assert "Embedding Queue Snapshot" in response.text
@@ -49,6 +55,14 @@ def test_dashboard_uses_language_cookie(client) -> None:
     assert response.status_code == 200
     assert 'lang="en"' in response.text
     assert "Dashboard" in response.text
+
+
+def test_dashboard_invalid_time_window_falls_back_to_default(client) -> None:
+    response = client.get("/?lookback_hours=0")
+
+    assert response.status_code == 200
+    assert "lookback_hours must be greater than 0" in response.text
+    assert "최근 24시간" in response.text
 
 
 def test_dashboard_evaluation_api_requires_database(client) -> None:

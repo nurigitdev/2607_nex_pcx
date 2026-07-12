@@ -204,12 +204,23 @@
       <h2 class="h5 mb-1">{{ t("dashboard.throughput_latency_snapshot") }}</h2>
       <div class="text-secondary">
         {{ t("dashboard.throughput_latency_subtitle") }}
-        {% if throughput_latency %}
-        <span class="text-nowrap">{{ t("dashboard.lookback_hours", hours=throughput_latency.lookback_hours) }}</span>
-        {% endif %}
+        <span class="text-nowrap">{{ t("dashboard.lookback_hours", hours=selected_lookback_hours) }}</span>
       </div>
     </div>
-    <a class="btn btn-outline-secondary btn-sm" href="/api/dashboard/throughput-latency">{{ t("common.api") }}</a>
+    <div class="dashboard-panel-actions">
+      <div class="btn-group btn-group-sm dashboard-time-window-controls" role="group" aria-label="{{ t('dashboard.time_window') }}">
+        {% for option in dashboard_time_window_options %}
+        <a
+          class="btn btn-outline-secondary {% if option.active %}active{% endif %}"
+          href="{{ option.url }}"
+          {% if option.active %}aria-current="page"{% endif %}
+        >
+          {{ option.label }}
+        </a>
+        {% endfor %}
+      </div>
+      <a class="btn btn-outline-secondary btn-sm" href="/api/dashboard/throughput-latency?lookback_hours={{ selected_lookback_hours }}">{{ t("common.api") }}</a>
+    </div>
   </div>
 
   <div class="dashboard-evaluation-body p-3">

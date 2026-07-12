@@ -483,12 +483,14 @@ def test_evaluation_dashboard_summary_api_and_page(
 ) -> None:
     fixture = _create_dashboard_fixture(migrated_database_url)
     app = create_app(Settings(database_url=migrated_database_url))
+    selected_lookback_hours = 6
     try:
         summary = get_evaluation_dashboard_summary(migrated_database_url, recent_limit=10)
         core_metrics = get_dashboard_core_metrics(migrated_database_url)
         pipeline_queue = get_pipeline_queue_summary(migrated_database_url)
         throughput_latency = get_dashboard_throughput_latency_snapshot(
             migrated_database_url,
+            lookback_hours=selected_lookback_hours,
         )
         backlog_summary = get_embedding_job_backlog_summary(migrated_database_url)
         recent_failures = get_dashboard_recent_failures(migrated_database_url, limit=20)
@@ -497,7 +499,10 @@ def test_evaluation_dashboard_summary_api_and_page(
         with TestClient(app) as client:
             core_metrics_response = client.get("/api/dashboard/core-metrics")
             pipeline_queue_response = client.get("/api/dashboard/pipeline-queue")
-            throughput_latency_response = client.get("/api/dashboard/throughput-latency")
+            throughput_latency_response = client.get(
+                "/api/dashboard/throughput-latency",
+                params={"lookback_hours": selected_lookback_hours},
+            )
             api_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 10})
             backlog_api_response = client.get("/api/dashboard/embedding-backlog")
             failures_api_response = client.get(
@@ -532,7 +537,10 @@ def test_evaluation_dashboard_summary_api_and_page(
             missing_failure_detail_response = client.get(
                 "/api/dashboard/recent-failures/pipeline/999999999"
             )
-            page_response = client.get("/")
+            page_response = client.get(
+                "/",
+                params={"lookback_hours": selected_lookback_hours},
+            )
 
         api_payload = api_response.json()["evaluations"]
         core_metrics_payload = core_metrics_response.json()["core_metrics"]
@@ -591,7 +599,7 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert throughput_latency.embedding.processed_count >= 2
         assert throughput_latency.search.search_log_count >= 1
         assert throughput_latency_response.status_code == 200
-        assert throughput_latency_payload["lookback_hours"] == 24
+        assert throughput_latency_payload["lookback_hours"] == selected_lookback_hours
         assert throughput_latency_payload["pipeline"]["completed_count"] == (
             throughput_latency.pipeline.completed_count
         )
@@ -675,7 +683,9 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "Pipeline Queue 스냅샷" in page_response.text
         assert "/api/dashboard/pipeline-queue" in page_response.text
         assert "처리량 / Latency 스냅샷" in page_response.text
-        assert "/api/dashboard/throughput-latency" in page_response.text
+        assert "최근 6시간" in page_response.text
+        assert "/?lookback_hours=1" in page_response.text
+        assert "/api/dashboard/throughput-latency?lookback_hours=6" in page_response.text
         assert "jobs/sec" in page_response.text
         assert "33.33%" in page_response.text
         assert "0E-20" not in page_response.text

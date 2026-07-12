@@ -55,6 +55,7 @@ from app.core.dashboard_metrics import (
     get_dashboard_core_metrics,
 )
 from app.core.dashboard_throughput import (
+    DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS,
     DashboardEmbeddingProfileThroughput,
     DashboardEmbeddingThroughput,
     DashboardPipelineStageLatency,
@@ -64,6 +65,7 @@ from app.core.dashboard_throughput import (
     DashboardThroughputLatencySnapshot,
     InvalidDashboardThroughputError,
     get_dashboard_throughput_latency_snapshot,
+    validate_lookback_hours,
 )
 from app.core.database import connect
 from app.core.document_inventory import (
@@ -568,6 +570,40 @@ class GoldenQuestionSetImportRequest(BaseModel):
     version: int = 1
     question_set: GoldenQuestionSetRequest
     questions: list[GoldenQuestionImportQuestionRequest] = Field(default_factory=list)
+
+
+DASHBOARD_TIME_WINDOW_OPTIONS = (
+    {"hours": 1, "label": "1h"},
+    {"hours": 6, "label": "6h"},
+    {"hours": 24, "label": "24h"},
+    {"hours": 168, "label": "7d"},
+    {"hours": 720, "label": "30d"},
+)
+
+
+def dashboard_time_window_options(
+    request: Request,
+    *,
+    selected_lookback_hours: int,
+) -> list[dict[str, object]]:
+    options: list[dict[str, object]] = []
+    for option in DASHBOARD_TIME_WINDOW_OPTIONS:
+        hours = int(option["hours"])
+        query_items = [
+            (key, value)
+            for key, value in request.query_params.multi_items()
+            if key != "lookback_hours"
+        ]
+        query_items.append(("lookback_hours", str(hours)))
+        options.append(
+            {
+                "hours": hours,
+                "label": option["label"],
+                "active": hours == selected_lookback_hours,
+                "url": f"{request.url.path}?{urlencode(query_items)}",
+            }
+        )
+    return options
 
 
 def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
@@ -6528,16 +6564,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/", response_class=HTMLResponse)
-    def dashboard(request: Request) -> HTMLResponse:
+    def dashboard(
+        request: Request,
+        lookback_hours: int = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS,
+    ) -> HTMLResponse:
         core_metrics: DashboardCoreMetrics | None = None
         pipeline_queue: PipelineQueueSummary | None = None
         recent_failures: DashboardFailureSummary | None = None
         evaluation_dashboard: EvaluationDashboardSummary | None = None
         embedding_backlog: EmbeddingJobBacklogSummary | None = None
         throughput_latency: DashboardThroughputLatencySnapshot | None = None
+        selected_lookback_hours = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS
         error_message = None
+        try:
+            selected_lookback_hours = validate_lookback_hours(lookback_hours)
+        except InvalidDashboardThroughputError as exc:
+            error_message = str(exc)
+
         if not settings.database_url:
-            error_message = "NEX_PCX_DATABASE_URL is not configured."
+            error_message = error_message or "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
                 core_metrics = get_dashboard_core_metrics(settings.database_url)
@@ -6554,6 +6599,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 throughput_latency = get_dashboard_throughput_latency_snapshot(
                     settings.database_url,
+                    lookback_hours=selected_lookback_hours,
                 )
             except InvalidDashboardThroughputError as exc:
                 if error_message is None:
@@ -6617,6 +6663,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     dashboard_throughput_latency_snapshot_payload(throughput_latency)
                     if throughput_latency is not None
                     else None
+                ),
+                selected_lookback_hours=selected_lookback_hours,
+                dashboard_time_window_options=dashboard_time_window_options(
+                    request,
+                    selected_lookback_hours=selected_lookback_hours,
                 ),
                 evaluation_dashboard=evaluation_dashboard,
                 embedding_backlog=embedding_backlog,
