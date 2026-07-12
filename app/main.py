@@ -341,6 +341,14 @@ from app.core.search_compare import (
     run_permission_search_matrix,
     run_search_compare,
 )
+from app.core.search_experiment_runner import (
+    InvalidSearchExperimentExecutionError,
+    SearchExperimentExecutionInput,
+    SearchExperimentExecutionReport,
+    SearchExperimentProfileExecutionSummary,
+    execute_search_experiment,
+)
+from app.core.search_experiments import InvalidSearchExperimentError
 from app.core.search_logs import (
     InvalidSearchLogError,
     SearchFeedbackCommentRecord,
@@ -412,6 +420,23 @@ class SearchPermissionMatrixRequest(BaseModel):
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+
+
+class SearchExperimentRunRequest(BaseModel):
+    run_name: str
+    query_text: str
+    actor_user_id: int = Field(ge=1)
+    requested_search_scope: str = "company"
+    profiles: list[str] | None = None
+    strategy_name: str = "vector_cosine"
+    top_k: int = Field(default=5, ge=1)
+    score_threshold: float | None = None
+    chunk_policy_name: str | None = None
+    document_group: str | None = None
+    file_type: str | None = None
+    runtime_metadata: dict[str, object] = Field(default_factory=dict)
+    created_by: str | None = "search-experiment-api"
+    created_by_user_id: int | None = Field(default=None, ge=1)
 
 
 class SearchFeedbackRequest(BaseModel):
@@ -2039,6 +2064,72 @@ def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
         "top_k": result.top_k,
         "total_elapsed_ms": result.total_elapsed_ms,
         "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
+    }
+
+
+def search_experiment_profile_execution_payload(
+    summary: SearchExperimentProfileExecutionSummary,
+) -> dict[str, object]:
+    return {
+        "profile_name": summary.profile_name,
+        "raw_result_count": summary.raw_result_count,
+        "retained_result_count": summary.retained_result_count,
+        "excluded_by_threshold_count": summary.excluded_by_threshold_count,
+        "top_score": summary.top_score,
+        "average_score": summary.average_score,
+        "elapsed_ms": summary.elapsed_ms,
+    }
+
+
+def search_experiment_execution_payload(
+    report: SearchExperimentExecutionReport,
+) -> dict[str, object]:
+    run = report.run
+    return {
+        "experiment_run": {
+            "experiment_run_id": run.experiment_run_id,
+            "run_name": run.run_name,
+            "query_text": run.query_text,
+            "actor_user_id": run.actor_user_id,
+            "requested_search_scope": run.requested_search_scope,
+            "effective_search_scope": run.effective_search_scope,
+            "document_group": run.document_group,
+            "file_type": run.file_type,
+            "chunk_policy_name": run.chunk_policy_name,
+            "strategy_name": run.strategy_name,
+            "similarity_metric": run.similarity_metric,
+            "top_k": run.top_k,
+            "score_threshold": run.score_threshold,
+            "profile_names": list(run.profile_names),
+            "status": run.status,
+            "total_profile_count": run.total_profile_count,
+            "completed_profile_count": run.completed_profile_count,
+            "result_count": run.result_count,
+            "failure_count": run.failure_count,
+            "total_elapsed_ms": run.total_elapsed_ms,
+            "runtime_metadata": run.runtime_metadata,
+            "error_message": run.error_message,
+            "created_by": run.created_by,
+            "created_by_user_id": run.created_by_user_id,
+            "started_at": _datetime_response(run.started_at),
+            "finished_at": _datetime_response(run.finished_at),
+            "created_at": _datetime_response(run.created_at),
+            "updated_at": _datetime_response(run.updated_at),
+        },
+        "strategy": {
+            "strategy_name": report.strategy_selection.strategy.strategy_name,
+            "display_name": report.strategy_selection.strategy.display_name,
+            "mode": report.strategy_selection.strategy.mode,
+            "similarity_metric": report.strategy_selection.strategy.similarity_metric,
+            "top_k": report.strategy_selection.top_k,
+            "score_threshold": report.strategy_selection.score_threshold,
+            "runtime_parameters": report.strategy_selection.runtime_parameters,
+        },
+        "profile_summaries": [
+            search_experiment_profile_execution_payload(summary)
+            for summary in report.profile_summaries
+        ],
+        "search_result": search_compare_payload(report.search_result),
     }
 
 
@@ -5935,6 +6026,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content=search_compare_payload(result))
+
+    @app.post("/api/search/experiments/run")
+    def api_run_search_experiment(payload: SearchExperimentRunRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            report = execute_search_experiment(
+                settings.database_url,
+                SearchExperimentExecutionInput(
+                    run_name=payload.run_name,
+                    query_text=payload.query_text,
+                    actor_user_id=payload.actor_user_id,
+                    requested_search_scope=payload.requested_search_scope,
+                    profiles=tuple(payload.profiles) if payload.profiles is not None else None,
+                    strategy_name=payload.strategy_name,
+                    top_k=payload.top_k,
+                    score_threshold=payload.score_threshold,
+                    chunk_policy_name=payload.chunk_policy_name,
+                    document_group=payload.document_group,
+                    file_type=payload.file_type,
+                    runtime_metadata=payload.runtime_metadata,
+                    created_by=payload.created_by,
+                    created_by_user_id=payload.created_by_user_id,
+                ),
+            )
+        except (
+            InvalidSearchExperimentExecutionError,
+            InvalidSearchExperimentError,
+            InvalidSearchCompareError,
+            InvalidPermissionError,
+            InvalidVectorSearchError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=search_experiment_execution_payload(report))
 
     @app.post("/api/search/permission-matrix")
     def api_search_permission_matrix(payload: SearchPermissionMatrixRequest) -> JSONResponse:
