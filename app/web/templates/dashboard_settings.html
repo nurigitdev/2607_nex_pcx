@@ -17,6 +17,7 @@
   class="metric-card bg-white p-0 overflow-hidden"
   data-dashboard-threshold-settings
   data-settings-url="/api/dashboard/health-thresholds"
+  data-reset-url="/api/dashboard/health-thresholds/reset"
 >
   <div class="dashboard-panel-header p-3">
     <div>
@@ -49,9 +50,14 @@
     </div>
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
       <div class="text-secondary small">{{ t("dashboard_settings.save_help") }}</div>
-      <button class="btn btn-primary btn-sm" type="button" data-dashboard-threshold-save>
-        {{ t("dashboard_settings.save") }}
-      </button>
+      <div class="d-flex flex-wrap gap-2">
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-dashboard-threshold-reset>
+          {{ t("dashboard_settings.reset") }}
+        </button>
+        <button class="btn btn-primary btn-sm" type="button" data-dashboard-threshold-save>
+          {{ t("dashboard_settings.save") }}
+        </button>
+      </div>
     </div>
     <div class="alert alert-info mt-3 mb-0" data-dashboard-threshold-status hidden></div>
   </div>
@@ -67,11 +73,14 @@
   }
 
   const saveButton = panel.querySelector("[data-dashboard-threshold-save]");
+  const resetButton = panel.querySelector("[data-dashboard-threshold-reset]");
   const statusBox = panel.querySelector("[data-dashboard-threshold-status]");
   const inputs = Array.from(panel.querySelectorAll("[data-threshold-code]"));
   const messages = {
     saving: "{{ t('dashboard_settings.saving') }}",
     saved: "{{ t('dashboard_settings.saved') }}",
+    resetting: "{{ t('dashboard_settings.resetting') }}",
+    reset: "{{ t('dashboard_settings.reset_done') }}",
     failed: "{{ t('dashboard_settings.failed') }}",
   };
 
@@ -89,6 +98,15 @@
     return thresholds;
   };
 
+  const applyThresholds = (thresholds) => {
+    Object.entries(thresholds || {}).forEach(([code, value]) => {
+      const input = panel.querySelector(`[data-threshold-code="${code}"]`);
+      if (input) {
+        input.value = value;
+      }
+    });
+  };
+
   saveButton.addEventListener("click", async () => {
     saveButton.disabled = true;
     setStatus(messages.saving);
@@ -102,17 +120,30 @@
       if (!response.ok) {
         throw new Error(payload.detail || messages.failed);
       }
-      Object.entries(payload.settings.thresholds || {}).forEach(([code, value]) => {
-        const input = panel.querySelector(`[data-threshold-code="${code}"]`);
-        if (input) {
-          input.value = value;
-        }
-      });
+      applyThresholds(payload.settings.thresholds);
       setStatus(messages.saved, "success");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : messages.failed, "warning");
     } finally {
       saveButton.disabled = false;
+    }
+  });
+
+  resetButton.addEventListener("click", async () => {
+    resetButton.disabled = true;
+    setStatus(messages.resetting);
+    try {
+      const response = await fetch(panel.dataset.resetUrl, {method: "POST"});
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || messages.failed);
+      }
+      applyThresholds(payload.settings.thresholds);
+      setStatus(messages.reset, "success");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : messages.failed, "warning");
+    } finally {
+      resetButton.disabled = false;
     }
   });
 })();

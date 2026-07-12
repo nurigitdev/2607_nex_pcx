@@ -1,9 +1,11 @@
 import pytest
 
 from app.core.dashboard_health_settings import (
+    DEFAULT_DASHBOARD_HEALTH_THRESHOLDS,
     DashboardHealthThresholdSettingsInput,
     InvalidDashboardHealthThresholdSettingsError,
     dashboard_health_threshold_settings_from_rows,
+    reset_dashboard_health_threshold_settings,
     validate_dashboard_health_threshold_settings_input,
 )
 
@@ -45,3 +47,25 @@ def test_validate_dashboard_health_threshold_settings_rejects_invalid_values(
                 thresholds={"pipeline_retryable": value}
             )
         )
+
+
+def test_reset_dashboard_health_threshold_settings_uses_default_update(monkeypatch) -> None:
+    captured = {}
+
+    def fake_update(database_url, settings_input):
+        captured["database_url"] = database_url
+        captured["thresholds"] = settings_input.thresholds
+        return "updated"
+
+    monkeypatch.setattr(
+        "app.core.dashboard_health_settings.update_dashboard_health_threshold_settings",
+        fake_update,
+    )
+
+    result = reset_dashboard_health_threshold_settings("postgresql://example/db")
+
+    assert result == "updated"
+    assert captured == {
+        "database_url": "postgresql://example/db",
+        "thresholds": DEFAULT_DASHBOARD_HEALTH_THRESHOLDS,
+    }

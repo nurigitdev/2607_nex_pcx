@@ -58,6 +58,7 @@ from app.core.dashboard_health_settings import (
     DashboardHealthThresholdSettingsInput,
     InvalidDashboardHealthThresholdSettingsError,
     load_dashboard_health_threshold_settings,
+    reset_dashboard_health_threshold_settings,
     update_dashboard_health_threshold_settings,
 )
 from app.core.dashboard_metrics import (
@@ -3988,6 +3989,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except InvalidDashboardHealthThresholdSettingsError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+        return JSONResponse(
+            content={
+                "settings": dashboard_health_threshold_settings_payload(
+                    threshold_settings
+                )
+            }
+        )
+
+    @app.post("/api/dashboard/health-thresholds/reset")
+    def api_reset_dashboard_health_thresholds() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        threshold_settings = reset_dashboard_health_threshold_settings(
+            settings.database_url
+        )
         return JSONResponse(
             content={
                 "settings": dashboard_health_threshold_settings_payload(

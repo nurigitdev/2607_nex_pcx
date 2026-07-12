@@ -172,6 +172,17 @@ def update_dashboard_health_threshold_settings(
     return DashboardHealthThresholdSettings(thresholds=validated.thresholds)
 
 
+def reset_dashboard_health_threshold_settings(
+    database_url: str,
+) -> DashboardHealthThresholdSettings:
+    return update_dashboard_health_threshold_settings(
+        database_url,
+        DashboardHealthThresholdSettingsInput(
+            thresholds=dict(DEFAULT_DASHBOARD_HEALTH_THRESHOLDS)
+        ),
+    )
+
+
 def _parse_positive_int(raw_value: object, default: int) -> int:
     try:
         value = int(str(raw_value))

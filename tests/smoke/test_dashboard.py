@@ -83,7 +83,9 @@ def test_dashboard_settings_page_shows_configuration_message(client) -> None:
     assert "운영 상태 Threshold" in response.text
     assert 'data-dashboard-threshold-settings' in response.text
     assert 'data-settings-url="/api/dashboard/health-thresholds"' in response.text
+    assert 'data-reset-url="/api/dashboard/health-thresholds/reset"' in response.text
     assert 'data-threshold-code="pipeline_retryable"' in response.text
+    assert "기본값" in response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
 
 
@@ -143,9 +145,11 @@ def test_dashboard_operational_health_api_requires_database(client) -> None:
 def test_dashboard_health_thresholds_api_requires_database(client) -> None:
     get_response = client.get("/api/dashboard/health-thresholds")
     put_response = client.put("/api/dashboard/health-thresholds", json={})
+    reset_response = client.post("/api/dashboard/health-thresholds/reset")
 
     assert get_response.status_code == 503
     assert put_response.status_code == 503
+    assert reset_response.status_code == 503
 
 
 def test_dashboard_export_api_requires_database(client) -> None:

@@ -576,9 +576,8 @@ def test_evaluation_dashboard_summary_api_and_page(
                 "/api/dashboard/health-thresholds",
                 json={"thresholds": {"pipeline_retryable": 5}},
             )
-            threshold_restore_response = client.put(
-                "/api/dashboard/health-thresholds",
-                json={"thresholds": {"pipeline_retryable": 1}},
+            threshold_restore_response = client.post(
+                "/api/dashboard/health-thresholds/reset"
             )
             dashboard_settings_page_response = client.get(
                 "/admin/dashboard-settings"
