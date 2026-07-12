@@ -501,6 +501,20 @@ def test_evaluation_dashboard_summary_api_and_page(
             operational_health_response = client.get(
                 "/api/dashboard/operational-health"
             )
+            dashboard_export_json_response = client.get(
+                "/api/dashboard/export",
+                params={
+                    "lookback_hours": selected_lookback_hours,
+                    "format": "json",
+                },
+            )
+            dashboard_export_csv_response = client.get(
+                "/api/dashboard/export",
+                params={
+                    "lookback_hours": selected_lookback_hours,
+                    "format": "csv",
+                },
+            )
             pipeline_queue_response = client.get("/api/dashboard/pipeline-queue")
             throughput_latency_response = client.get(
                 "/api/dashboard/throughput-latency",
@@ -536,6 +550,14 @@ def test_evaluation_dashboard_summary_api_and_page(
                 "/api/dashboard/throughput-latency",
                 params={"lookback_hours": 0},
             )
+            bad_dashboard_export_format_response = client.get(
+                "/api/dashboard/export",
+                params={"format": "xml"},
+            )
+            bad_dashboard_export_lookback_response = client.get(
+                "/api/dashboard/export",
+                params={"lookback_hours": 0},
+            )
             bad_failure_detail_response = client.get("/api/dashboard/recent-failures/unknown/1")
             missing_failure_detail_response = client.get(
                 "/api/dashboard/recent-failures/pipeline/999999999"
@@ -553,6 +575,7 @@ def test_evaluation_dashboard_summary_api_and_page(
         operational_health_payload = operational_health_response.json()[
             "operational_health"
         ]
+        dashboard_export_json = dashboard_export_json_response.json()
         pipeline_queue_payload = pipeline_queue_response.json()["pipeline_queue"]
         throughput_latency_payload = throughput_latency_response.json()[
             "throughput_latency"
@@ -593,6 +616,39 @@ def test_evaluation_dashboard_summary_api_and_page(
             signal["code"] == "pipeline_stale"
             for signal in operational_health_payload["signals"]
         )
+        assert dashboard_export_json_response.status_code == 200
+        assert dashboard_export_json_response.headers["content-disposition"].endswith(
+            '.json"'
+        )
+        assert dashboard_export_json["version"] == 1
+        assert dashboard_export_json["lookback_hours"] == selected_lookback_hours
+        assert dashboard_export_json["operational_health"]["status"] == "critical"
+        assert dashboard_export_json["core_metrics"]["document_count"] == (
+            core_metrics.document_count
+        )
+        assert dashboard_export_json["pipeline_queue"]["total_count"] == (
+            pipeline_queue.total_count
+        )
+        assert dashboard_export_json["throughput_latency"]["lookback_hours"] == (
+            selected_lookback_hours
+        )
+        assert dashboard_export_json["embedding_backlog"]["total_count"] == (
+            backlog_summary.total_count
+        )
+        assert dashboard_export_json["evaluations"]["active_question_set_count"] == (
+            summary.active_question_set_count
+        )
+        assert dashboard_export_csv_response.status_code == 200
+        assert dashboard_export_csv_response.headers["content-type"].startswith(
+            "text/csv"
+        )
+        assert dashboard_export_csv_response.headers["content-disposition"].endswith(
+            '.csv"'
+        )
+        assert "exported_at,lookback_hours,health_status" in (
+            dashboard_export_csv_response.text
+        )
+        assert ",6,critical," in dashboard_export_csv_response.text
         assert pipeline_queue.queued_count >= 1
         assert pipeline_queue.stale_running_count >= 1
         assert pipeline_queue.failed_count >= 1
@@ -691,6 +747,8 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert bad_response.status_code == 400
         assert bad_failures_response.status_code == 400
         assert bad_throughput_response.status_code == 400
+        assert bad_dashboard_export_format_response.status_code == 400
+        assert bad_dashboard_export_lookback_response.status_code == 400
         assert bad_failure_detail_response.status_code == 400
         assert missing_failure_detail_response.status_code == 404
         assert page_response.status_code == 200
@@ -712,6 +770,13 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "마지막 갱신" in page_response.text
         assert "자동 갱신" in page_response.text
         assert 'data-refresh-seconds="30"' in page_response.text
+        assert "스냅샷 내보내기" in page_response.text
+        assert "/api/dashboard/export?lookback_hours=6&amp;format=json" in (
+            page_response.text
+        )
+        assert "/api/dashboard/export?lookback_hours=6&amp;format=csv" in (
+            page_response.text
+        )
         assert "최근 6시간" in page_response.text
         assert "/?refresh_seconds=30&amp;lookback_hours=1" in page_response.text
         assert "/?lookback_hours=6&amp;refresh_seconds=60" in page_response.text

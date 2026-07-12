@@ -28,6 +28,10 @@
       </a>
       {% endfor %}
     </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="{{ t('dashboard.snapshot_export') }}">
+      <a class="btn btn-outline-secondary" href="/api/dashboard/export?lookback_hours={{ selected_lookback_hours }}&amp;format=json">{{ t("dashboard.export_json") }}</a>
+      <a class="btn btn-outline-secondary" href="/api/dashboard/export?lookback_hours={{ selected_lookback_hours }}&amp;format=csv">{{ t("dashboard.export_csv") }}</a>
+    </div>
     <div class="d-flex align-items-center gap-2 text-secondary">
       <span class="status-dot" aria-hidden="true"></span>
       <span>{{ t("app.ready") }}</span>

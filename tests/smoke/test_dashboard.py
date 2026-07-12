@@ -19,6 +19,9 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert 'data-dashboard-refresh' in response.text
     assert 'data-refresh-seconds="0"' in response.text
     assert "/?refresh_seconds=30" in response.text
+    assert "스냅샷 내보내기" in response.text
+    assert "/api/dashboard/export?lookback_hours=24&amp;format=json" in response.text
+    assert "/api/dashboard/export?lookback_hours=24&amp;format=csv" in response.text
     assert "처리량 / Latency 스냅샷" in response.text
     assert 'aria-label="조회 기간"' in response.text
     assert "/?lookback_hours=1" in response.text
@@ -57,6 +60,9 @@ def test_dashboard_supports_english_language_switch(client) -> None:
     assert "Healthy" in response.text
     assert "Last Updated" in response.text
     assert 'aria-label="Auto Refresh"' in response.text
+    assert 'aria-label="Snapshot Export"' in response.text
+    assert "Export JSON" in response.text
+    assert "Export CSV" in response.text
     assert "Core Metrics" in response.text
     assert "Throughput / Latency Snapshot" in response.text
     assert 'aria-label="Time Window"' in response.text
@@ -108,6 +114,12 @@ def test_dashboard_core_metrics_api_requires_database(client) -> None:
 
 def test_dashboard_operational_health_api_requires_database(client) -> None:
     response = client.get("/api/dashboard/operational-health")
+
+    assert response.status_code == 503
+
+
+def test_dashboard_export_api_requires_database(client) -> None:
+    response = client.get("/api/dashboard/export")
 
     assert response.status_code == 503
 

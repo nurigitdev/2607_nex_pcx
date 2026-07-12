@@ -3250,6 +3250,103 @@ def dashboard_operational_health_payload(
     }
 
 
+def dashboard_snapshot_export_payload(
+    database_url: str,
+    *,
+    lookback_hours: int = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS,
+) -> dict[str, object]:
+    core_metrics = get_dashboard_core_metrics(database_url)
+    pipeline_queue = get_pipeline_queue_summary(database_url)
+    throughput_latency = get_dashboard_throughput_latency_snapshot(
+        database_url,
+        lookback_hours=lookback_hours,
+    )
+    recent_failures = get_dashboard_recent_failures(database_url, limit=10)
+    embedding_backlog = get_embedding_job_backlog_summary(database_url)
+    evaluations = get_evaluation_dashboard_summary(database_url, recent_limit=10)
+    operational_health = summarize_dashboard_operational_health(
+        pipeline_queue=pipeline_queue,
+        embedding_backlog=embedding_backlog,
+        recent_failures=recent_failures,
+    )
+    return {
+        "version": 1,
+        "exported_at": _datetime_response(datetime.now(UTC)),
+        "lookback_hours": throughput_latency.lookback_hours,
+        "operational_health": dashboard_operational_health_payload(
+            operational_health
+        ),
+        "core_metrics": dashboard_core_metrics_payload(core_metrics),
+        "pipeline_queue": pipeline_queue_summary_payload(pipeline_queue),
+        "throughput_latency": dashboard_throughput_latency_snapshot_payload(
+            throughput_latency
+        ),
+        "recent_failures": dashboard_failure_summary_payload(recent_failures),
+        "embedding_backlog": embedding_job_backlog_summary_payload(embedding_backlog),
+        "evaluations": evaluation_dashboard_summary_payload(evaluations),
+    }
+
+
+def dashboard_snapshot_summary_csv(snapshot: dict[str, object]) -> str:
+    core_metrics = dict(snapshot["core_metrics"])
+    health = dict(snapshot["operational_health"])
+    pipeline_queue = dict(snapshot["pipeline_queue"])
+    embedding_backlog = dict(snapshot["embedding_backlog"])
+    throughput_latency = dict(snapshot["throughput_latency"])
+    throughput_embedding = dict(throughput_latency["embedding"])
+    throughput_search = dict(throughput_latency["search"])
+    recent_failures = dict(snapshot["recent_failures"])
+    evaluations = dict(snapshot["evaluations"])
+    fieldnames = [
+        "exported_at",
+        "lookback_hours",
+        "health_status",
+        "health_critical_count",
+        "health_warning_count",
+        "documents",
+        "chunks",
+        "embedding_jobs",
+        "search_logs",
+        "pipeline_claimable",
+        "pipeline_attention",
+        "embedding_claimable",
+        "embedding_attention",
+        "embedding_jobs_per_second",
+        "search_average_latency_ms",
+        "recent_failure_count",
+        "evaluation_run_count",
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerow(
+        {
+            "exported_at": snapshot["exported_at"],
+            "lookback_hours": snapshot["lookback_hours"],
+            "health_status": health["status"],
+            "health_critical_count": health["critical_count"],
+            "health_warning_count": health["warning_count"],
+            "documents": core_metrics["document_count"],
+            "chunks": core_metrics["chunk_count"],
+            "embedding_jobs": core_metrics["embedding_job_count"],
+            "search_logs": core_metrics["search_log_count"],
+            "pipeline_claimable": pipeline_queue["claimable_count"],
+            "pipeline_attention": pipeline_queue["attention_count"],
+            "embedding_claimable": embedding_backlog["claimable_count"],
+            "embedding_attention": embedding_backlog["attention_count"],
+            "embedding_jobs_per_second": throughput_embedding[
+                "throughput_per_second"
+            ],
+            "search_average_latency_ms": throughput_search[
+                "average_total_elapsed_ms"
+            ],
+            "recent_failure_count": recent_failures["total_count"],
+            "evaluation_run_count": evaluations["evaluation_run_count"],
+        }
+    )
+    return output.getvalue()
+
+
 def dashboard_pipeline_stage_latency_payload(
     stage: DashboardPipelineStageLatency,
 ) -> dict[str, object]:
@@ -3792,6 +3889,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={
                 "operational_health": dashboard_operational_health_payload(health)
             }
+        )
+
+    @app.get("/api/dashboard/export")
+    def api_export_dashboard_snapshot(
+        format: str = "json",
+        lookback_hours: int = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS,
+    ) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        normalized_format = format.strip().lower()
+        if normalized_format not in {"csv", "json"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="format must be json or csv.",
+            )
+
+        try:
+            snapshot = dashboard_snapshot_export_payload(
+                settings.database_url,
+                lookback_hours=lookback_hours,
+            )
+        except InvalidDashboardThroughputError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        filename_base = f"dashboard-snapshot-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
+        if normalized_format == "csv":
+            return Response(
+                content=dashboard_snapshot_summary_csv(snapshot),
+                media_type="text/csv; charset=utf-8",
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="{filename_base}.csv"'
+                    )
+                },
+            )
+
+        return JSONResponse(
+            content=snapshot,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename_base}.json"'
+            },
         )
 
     @app.get("/api/dashboard/pipeline-queue")
