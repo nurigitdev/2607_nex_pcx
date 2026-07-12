@@ -5,6 +5,9 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert 'lang="ko"' in response.text
     assert "대시보드" in response.text
     assert "RAG 실험 벤치 운영 현황" in response.text
+    assert "운영 상태" in response.text
+    assert "정상" in response.text
+    assert "/api/dashboard/operational-health" in response.text
     assert "문서" in response.text
     assert "Core Metrics" in response.text
     assert "마지막 갱신" in response.text
@@ -41,6 +44,8 @@ def test_dashboard_supports_english_language_switch(client) -> None:
     assert 'lang="en"' in response.text
     assert "Dashboard" in response.text
     assert "RAG experiment bench operations" in response.text
+    assert "Operational Health" in response.text
+    assert "Healthy" in response.text
     assert "Last Updated" in response.text
     assert 'aria-label="Auto Refresh"' in response.text
     assert "Core Metrics" in response.text
@@ -88,6 +93,12 @@ def test_dashboard_evaluation_api_requires_database(client) -> None:
 
 def test_dashboard_core_metrics_api_requires_database(client) -> None:
     response = client.get("/api/dashboard/core-metrics")
+
+    assert response.status_code == 503
+
+
+def test_dashboard_operational_health_api_requires_database(client) -> None:
+    response = client.get("/api/dashboard/operational-health")
 
     assert response.status_code == 503
 

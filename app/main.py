@@ -47,6 +47,11 @@ from app.core.dashboard_failures import (
     get_dashboard_failure_detail,
     get_dashboard_recent_failures,
 )
+from app.core.dashboard_health import (
+    DashboardHealthSignal,
+    DashboardOperationalHealth,
+    summarize_dashboard_operational_health,
+)
 from app.core.dashboard_metrics import (
     DashboardChunkPolicySummary,
     DashboardCoreMetrics,
@@ -3222,6 +3227,29 @@ def dashboard_core_metrics_payload(
     }
 
 
+def dashboard_health_signal_payload(signal: DashboardHealthSignal) -> dict[str, object]:
+    return {
+        "code": signal.code,
+        "severity": signal.severity,
+        "count": signal.count,
+        "action_url": signal.action_url,
+    }
+
+
+def dashboard_operational_health_payload(
+    health: DashboardOperationalHealth,
+) -> dict[str, object]:
+    return {
+        "status": health.status,
+        "signal_count": health.signal_count,
+        "critical_count": health.critical_count,
+        "warning_count": health.warning_count,
+        "signals": [
+            dashboard_health_signal_payload(signal) for signal in health.signals
+        ],
+    }
+
+
 def dashboard_pipeline_stage_latency_payload(
     stage: DashboardPipelineStageLatency,
 ) -> dict[str, object]:
@@ -3743,6 +3771,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         metrics = get_dashboard_core_metrics(settings.database_url)
         return JSONResponse(content={"core_metrics": dashboard_core_metrics_payload(metrics)})
+
+    @app.get("/api/dashboard/operational-health")
+    def api_get_dashboard_operational_health() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        pipeline_queue = get_pipeline_queue_summary(settings.database_url)
+        embedding_backlog = get_embedding_job_backlog_summary(settings.database_url)
+        recent_failures = get_dashboard_recent_failures(settings.database_url, limit=10)
+        health = summarize_dashboard_operational_health(
+            pipeline_queue=pipeline_queue,
+            embedding_backlog=embedding_backlog,
+            recent_failures=recent_failures,
+        )
+        return JSONResponse(
+            content={
+                "operational_health": dashboard_operational_health_payload(health)
+            }
+        )
 
     @app.get("/api/dashboard/pipeline-queue")
     def api_get_dashboard_pipeline_queue() -> JSONResponse:
@@ -6626,6 +6676,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         evaluation_dashboard: EvaluationDashboardSummary | None = None
         embedding_backlog: EmbeddingJobBacklogSummary | None = None
         throughput_latency: DashboardThroughputLatencySnapshot | None = None
+        operational_health: DashboardOperationalHealth | None = None
         rendered_at = datetime.now(UTC)
         selected_lookback_hours = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS
         selected_refresh_seconds = 0
@@ -6699,6 +6750,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if error_message is None:
                     error_message = str(exc)
 
+        operational_health = summarize_dashboard_operational_health(
+            pipeline_queue=pipeline_queue,
+            embedding_backlog=embedding_backlog,
+            recent_failures=recent_failures,
+        )
+
         return TEMPLATES.TemplateResponse(
             request,
             "dashboard.html",
@@ -6709,6 +6766,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     dashboard_core_metrics_payload(core_metrics)
                     if core_metrics is not None
                     else None
+                ),
+                operational_health=dashboard_operational_health_payload(
+                    operational_health
                 ),
                 pipeline_queue=(
                     pipeline_queue_summary_payload(pipeline_queue)

@@ -498,6 +498,9 @@ def test_evaluation_dashboard_summary_api_and_page(
 
         with TestClient(app) as client:
             core_metrics_response = client.get("/api/dashboard/core-metrics")
+            operational_health_response = client.get(
+                "/api/dashboard/operational-health"
+            )
             pipeline_queue_response = client.get("/api/dashboard/pipeline-queue")
             throughput_latency_response = client.get(
                 "/api/dashboard/throughput-latency",
@@ -547,6 +550,9 @@ def test_evaluation_dashboard_summary_api_and_page(
 
         api_payload = api_response.json()["evaluations"]
         core_metrics_payload = core_metrics_response.json()["core_metrics"]
+        operational_health_payload = operational_health_response.json()[
+            "operational_health"
+        ]
         pipeline_queue_payload = pipeline_queue_response.json()["pipeline_queue"]
         throughput_latency_payload = throughput_latency_response.json()[
             "throughput_latency"
@@ -578,6 +584,14 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert any(
             item["chunk_policy_name"] == "heading_512_64"
             for item in core_metrics_payload["chunk_policies"]
+        )
+        assert operational_health_response.status_code == 200
+        assert operational_health_payload["status"] == "critical"
+        assert operational_health_payload["critical_count"] >= 1
+        assert operational_health_payload["warning_count"] >= 1
+        assert any(
+            signal["code"] == "pipeline_stale"
+            for signal in operational_health_payload["signals"]
         )
         assert pipeline_queue.queued_count >= 1
         assert pipeline_queue.stale_running_count >= 1
@@ -683,6 +697,10 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "Core Metrics" in page_response.text
         assert "slice-151" in page_response.text
         assert "/api/dashboard/core-metrics" in page_response.text
+        assert "운영 상태" in page_response.text
+        assert "위험" in page_response.text
+        assert "Pipeline stale lease" in page_response.text
+        assert "/api/dashboard/operational-health" in page_response.text
         assert "Pipeline Queue 스냅샷" in page_response.text
         assert "/api/dashboard/pipeline-queue" in page_response.text
         assert "처리량 / Latency 스냅샷" in page_response.text

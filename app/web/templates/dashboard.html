@@ -39,6 +39,49 @@
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
 
+<section class="dashboard-health-panel dashboard-health-{{ operational_health.status }} metric-card bg-white p-3 mb-4" data-dashboard-operational-health-panel>
+  <div class="dashboard-health-heading">
+    <div>
+      <div class="metric-label">{{ t("dashboard.operational_health") }}</div>
+      <div class="dashboard-health-title">
+        <span class="badge dashboard-health-badge dashboard-health-badge-{{ operational_health.status }}">
+          {{ t("dashboard.health_status_" ~ operational_health.status) }}
+        </span>
+        <strong>{{ t("dashboard.health_summary_" ~ operational_health.status) }}</strong>
+      </div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/api/dashboard/operational-health">{{ t("common.api") }}</a>
+  </div>
+
+  <div class="dashboard-health-meta">
+    <div>
+      <span class="metric-label">{{ t("dashboard.health_critical") }}</span>
+      <strong>{{ operational_health.critical_count }}</strong>
+    </div>
+    <div>
+      <span class="metric-label">{{ t("dashboard.health_warning") }}</span>
+      <strong>{{ operational_health.warning_count }}</strong>
+    </div>
+    <div>
+      <span class="metric-label">{{ t("dashboard.health_signals") }}</span>
+      <strong>{{ operational_health.signal_count }}</strong>
+    </div>
+  </div>
+
+  <div class="dashboard-health-signals">
+    {% if operational_health.signals %}
+      {% for signal in operational_health.signals[:5] %}
+      <a class="dashboard-health-signal dashboard-health-signal-{{ signal.severity }}" href="{{ signal.action_url }}">
+        <span>{{ t("dashboard.health_signal_" ~ signal.code) }}</span>
+        <strong>{{ signal.count }}</strong>
+      </a>
+      {% endfor %}
+    {% else %}
+      <span class="text-secondary small">{{ t("dashboard.health_no_signals") }}</span>
+    {% endif %}
+  </div>
+</section>
+
 <div class="row g-3">
   <div class="col-12 col-md-6 col-xl-3">
     <section class="metric-card bg-white p-3">
