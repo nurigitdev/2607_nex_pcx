@@ -291,7 +291,15 @@
     "avg_results": "Avg Results",
     "matched": "Matched",
     "no_metric_profiles": "No profile metric results found.",
-    "no_metric_questions": "No question metric results found."
+    "no_metric_questions": "No question metric results found.",
+    "metric_snapshots": "Metric Snapshots",
+    "latest_snapshot": "Latest snapshot",
+    "no_metric_snapshots": "No metric snapshots saved.",
+    "snapshot_api": "Snapshot API",
+    "save_snapshot": "Save Snapshot",
+    "snapshot_id": "Snapshot",
+    "created_at": "Created",
+    "source_updated": "Source updated"
   },
   "pipeline_queue": {
     "claimable": "Claimable",

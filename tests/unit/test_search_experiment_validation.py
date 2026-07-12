@@ -5,6 +5,12 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.core.golden_batch_metric_snapshots import (
+    InvalidGoldenBatchMetricSnapshotError,
+    get_golden_batch_metric_snapshot_detail,
+    list_golden_batch_metric_snapshots,
+    record_golden_batch_metric_snapshot,
+)
 from app.core.search_experiments import (
     GoldenSearchExperimentBatchIdentity,
     InvalidSearchExperimentError,
@@ -58,14 +64,16 @@ def _run_record(
         result_count=2,
         failure_count=0,
         total_elapsed_ms=20,
-        runtime_metadata=runtime_metadata
-        if runtime_metadata is not None
-        else {
-            "golden_question_batch": True,
-            "question_set_id": 3,
-            "question_set_name": "Golden Set",
-            "question_id": 10,
-        },
+        runtime_metadata=(
+            runtime_metadata
+            if runtime_metadata is not None
+            else {
+                "golden_question_batch": True,
+                "question_set_id": 3,
+                "question_set_name": "Golden Set",
+                "question_id": 10,
+            }
+        ),
         error_message=None,
         created_by="unit-test",
         created_by_user_id=None,
@@ -274,14 +282,51 @@ def test_golden_search_experiment_batch_helpers_validate_before_connecting() -> 
         get_golden_search_experiment_batch_detail("postgresql://unused", "not-a-valid-key")
 
 
+def test_golden_batch_metric_snapshot_helpers_validate_before_connecting() -> None:
+    batch_key = encode_golden_search_experiment_batch_key(
+        GoldenSearchExperimentBatchIdentity(
+            question_set_id=1,
+            batch_prefix="snapshot batch",
+            strategy_name="vector_cosine_threshold",
+            top_k=5,
+            score_threshold=0.1,
+            chunk_policy_name="heading_512_64",
+            profile_names=("bge_m3_1024",),
+        )
+    )
+
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="greater than 0"):
+        list_golden_batch_metric_snapshots("postgresql://unused", batch_key, limit=0)
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="less than or equal"):
+        list_golden_batch_metric_snapshots("postgresql://unused", batch_key, limit=101)
+    with pytest.raises(InvalidSearchExperimentError, match="Invalid golden"):
+        list_golden_batch_metric_snapshots("postgresql://unused", "not-a-valid-key")
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="snapshot_id"):
+        get_golden_batch_metric_snapshot_detail("postgresql://unused", 0)
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="created_by_user_id"):
+        record_golden_batch_metric_snapshot(
+            "postgresql://unused",
+            batch_key,
+            created_by_user_id=0,
+        )
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="created_by"):
+        record_golden_batch_metric_snapshot("postgresql://unused", batch_key, created_by=" ")
+
+
 def test_golden_search_experiment_batch_prefix_and_identity_helpers() -> None:
     assert _golden_batch_prefix(_run_record(run_name="prefix / Q10")) == "prefix"
-    assert _golden_batch_prefix(
-        _run_record(run_name="prefix / Q99", runtime_metadata={"question_id": 10})
-    ) == "prefix"
-    assert _golden_batch_prefix(
-        _run_record(run_name="plain run", runtime_metadata={"question_id": False})
-    ) == "plain run"
+    assert (
+        _golden_batch_prefix(
+            _run_record(run_name="prefix / Q99", runtime_metadata={"question_id": 10})
+        )
+        == "prefix"
+    )
+    assert (
+        _golden_batch_prefix(
+            _run_record(run_name="plain run", runtime_metadata={"question_id": False})
+        )
+        == "plain run"
+    )
     assert _golden_batch_identity_from_run(_run_record(runtime_metadata={})) is None
 
 

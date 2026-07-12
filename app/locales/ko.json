@@ -291,7 +291,15 @@
     "avg_results": "평균 결과",
     "matched": "Matched",
     "no_metric_profiles": "profile별 metric 결과가 없습니다.",
-    "no_metric_questions": "질문별 metric 결과가 없습니다."
+    "no_metric_questions": "질문별 metric 결과가 없습니다.",
+    "metric_snapshots": "Metric Snapshot",
+    "latest_snapshot": "최신 snapshot",
+    "no_metric_snapshots": "저장된 metric snapshot이 없습니다.",
+    "snapshot_api": "Snapshot API",
+    "save_snapshot": "Snapshot 저장",
+    "snapshot_id": "Snapshot",
+    "created_at": "Created",
+    "source_updated": "Source updated"
   },
   "pipeline_queue": {
     "claimable": "Claimable",

@@ -525,6 +525,15 @@ def encode_golden_search_experiment_batch_key(
     return base64.urlsafe_b64encode(raw_payload).decode("ascii").rstrip("=")
 
 
+def golden_search_experiment_batch_key_from_run(
+    run: SearchExperimentRunRecord,
+) -> str | None:
+    identity = _golden_batch_identity_from_run(run)
+    if identity is None:
+        return None
+    return encode_golden_search_experiment_batch_key(identity)
+
+
 def decode_golden_search_experiment_batch_key(
     batch_key: str,
 ) -> GoldenSearchExperimentBatchIdentity:

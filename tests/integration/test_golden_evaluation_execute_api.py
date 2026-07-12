@@ -228,6 +228,15 @@ def _cleanup_question_set(database_url: str, question_set_id: int) -> None:
 def _cleanup_search_experiment_batch(database_url: str, body: dict[str, object]) -> None:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
+            batch_key = body.get("batch_key")
+            if isinstance(batch_key, str) and batch_key:
+                cursor.execute(
+                    """
+                    DELETE FROM golden_search_experiment_batch_metric_snapshots
+                    WHERE batch_key = %s
+                    """,
+                    (batch_key,),
+                )
             for item in body.get("questions", []):
                 experiment = item["experiment"]
                 cursor.execute(
@@ -343,9 +352,25 @@ def test_golden_search_experiment_batch_api_runs_question_set(
             batch_detail_response = client.get(
                 f"/api/search/experiments/golden-question-batches/{batch_summary['batch_key']}"
             )
+            snapshot_list_response = client.get(
+                "/api/search/experiments/golden-question-batches/"
+                f"{batch_summary['batch_key']}/metric-snapshots"
+            )
             batch_metric_response = client.get(
                 "/api/search/experiments/golden-question-batches/"
                 f"{batch_summary['batch_key']}/metrics"
+            )
+            auto_snapshot_id = batch["metric_snapshot"]["snapshot_id"]
+            snapshot_detail_response = client.get(
+                "/api/search/experiments/golden-question-batch-metric-snapshots/"
+                f"{auto_snapshot_id}"
+            )
+            missing_snapshot_detail_response = client.get(
+                "/api/search/experiments/golden-question-batch-metric-snapshots/999999999"
+            )
+            manual_snapshot_response = client.post(
+                "/api/search/experiments/golden-question-batches/"
+                f"{batch_summary['batch_key']}/metric-snapshots"
             )
             batch_page_response = client.get(
                 f"/search/experiments?golden_batch_key={batch_summary['batch_key']}"
@@ -357,8 +382,13 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         runtime_metadata = experiment_run["runtime_metadata"]
         batch_detail = batch_detail_response.json()
         batch_metrics = batch_metric_response.json()
+        auto_snapshot = batch["metric_snapshot"]
+        snapshot_list = snapshot_list_response.json()["snapshots"]
+        snapshot_detail = snapshot_detail_response.json()
+        manual_snapshot = manual_snapshot_response.json()
 
         assert response.status_code == 201
+        assert batch["batch_key"] == batch_summary["batch_key"]
         assert batch["question_count"] == 1
         assert batch["question_set"]["question_set_id"] == fixture["question_set_id"]
         assert str(fixture["question_id"]) in batch["experiment_run_ids_by_question"]
@@ -393,6 +423,7 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         )
         assert batch_metric_response.status_code == 200
         assert batch_metrics["batch"]["batch_key"] == batch_summary["batch_key"]
+        assert batch_metrics["latest_snapshot"]["snapshot_id"] == auto_snapshot["snapshot_id"]
         assert batch_metrics["overall"]["question_count"] == 2
         assert batch_metrics["overall"]["mean_recall_at_k"] == pytest.approx(1)
         assert batch_metrics["overall"]["mean_reciprocal_rank"] == pytest.approx(1)
@@ -418,10 +449,34 @@ def test_golden_search_experiment_batch_api_runs_question_set(
             assert question_metric["reciprocal_rank"] == pytest.approx(1)
             assert question_metric["ndcg"] == pytest.approx(1)
             assert question_metric["hidden_violation_count"] == 0
+        assert auto_snapshot["batch_key"] == batch_summary["batch_key"]
+        assert auto_snapshot["evaluated_row_count"] == 2
+        assert auto_snapshot["mean_recall_at_k"] == pytest.approx(1)
+        assert auto_snapshot["mean_reciprocal_rank"] == pytest.approx(1)
+        assert auto_snapshot["mean_ndcg"] == pytest.approx(1)
+        assert snapshot_list_response.status_code == 200
+        assert snapshot_list[0]["snapshot_id"] == auto_snapshot["snapshot_id"]
+        assert snapshot_detail_response.status_code == 200
+        assert snapshot_detail["snapshot"]["snapshot_id"] == auto_snapshot["snapshot_id"]
+        assert missing_snapshot_detail_response.status_code == 404
+        assert missing_snapshot_detail_response.json() == {
+            "detail": "Golden batch metric snapshot not found."
+        }
+        assert {item["profile_name"] for item in snapshot_detail["profiles"]} == {
+            "kure_v1_1024",
+            "bge_m3_1024",
+        }
+        assert len(snapshot_detail["questions"]) == 2
+        assert manual_snapshot_response.status_code == 201
+        assert manual_snapshot["snapshot"]["batch_key"] == batch_summary["batch_key"]
+        assert manual_snapshot["snapshot"]["snapshot_id"] != auto_snapshot["snapshot_id"]
+        assert manual_snapshot["snapshot"]["mean_ndcg"] == pytest.approx(1)
         assert batch_page_response.status_code == 200
         assert "골든 질문 Batch 결과" in batch_page_response.text
         assert "Recall@K" in batch_page_response.text
         assert "Metric API" in batch_page_response.text
+        assert "Metric Snapshot" in batch_page_response.text
+        assert f"#{manual_snapshot['snapshot']['snapshot_id']}" in batch_page_response.text
         assert run_name_prefix in batch_page_response.text
         assert f"/api/search/experiments/golden-question-batches/{batch_summary['batch_key']}" in (
             batch_page_response.text
@@ -429,6 +484,10 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         assert (
             "/api/search/experiments/golden-question-batches/"
             f"{batch_summary['batch_key']}/metrics"
+        ) in batch_page_response.text
+        assert (
+            "/api/search/experiments/golden-question-batches/"
+            f"{batch_summary['batch_key']}/metric-snapshots"
         ) in batch_page_response.text
     finally:
         if batch is not None:

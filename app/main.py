@@ -246,6 +246,17 @@ from app.core.file_metadata import (
     UnsupportedFileExtensionError,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
+from app.core.golden_batch_metric_snapshots import (
+    GoldenBatchMetricSnapshotDetail,
+    GoldenBatchMetricSnapshotRecord,
+    GoldenBatchProfileMetricSnapshotRecord,
+    GoldenBatchQuestionMetricSnapshotRecord,
+    InvalidGoldenBatchMetricSnapshotError,
+    get_golden_batch_metric_snapshot_detail,
+    get_latest_golden_batch_metric_snapshot,
+    list_golden_batch_metric_snapshots,
+    record_golden_batch_metric_snapshot,
+)
 from app.core.golden_question_exchange import (
     GoldenQuestionImportInput,
     GoldenQuestionImportQuestionInput,
@@ -368,6 +379,7 @@ from app.core.search_experiments import (
     get_golden_search_experiment_batch_detail,
     get_golden_search_experiment_batch_metric_summary,
     get_search_experiment_run_detail,
+    golden_search_experiment_batch_key_from_run,
     list_golden_search_experiment_batch_summaries,
     list_search_experiment_runs,
 )
@@ -2294,6 +2306,117 @@ def golden_search_experiment_batch_question_metric_payload(
     }
 
 
+def golden_batch_metric_snapshot_record_payload(
+    snapshot: GoldenBatchMetricSnapshotRecord,
+) -> dict[str, object]:
+    return {
+        "snapshot_id": snapshot.snapshot_id,
+        "batch_key": snapshot.batch_key,
+        "question_set_id": snapshot.question_set_id,
+        "question_set_name": snapshot.question_set_name,
+        "batch_prefix": snapshot.batch_prefix,
+        "strategy_name": snapshot.strategy_name,
+        "top_k": snapshot.top_k,
+        "score_threshold": snapshot.score_threshold,
+        "chunk_policy_name": snapshot.chunk_policy_name,
+        "profile_names": list(snapshot.profile_names),
+        "batch_status": snapshot.batch_status,
+        "batch_question_count": snapshot.batch_question_count,
+        "batch_succeeded_count": snapshot.batch_succeeded_count,
+        "batch_failed_count": snapshot.batch_failed_count,
+        "batch_running_count": snapshot.batch_running_count,
+        "total_result_count": snapshot.total_result_count,
+        "average_result_count": snapshot.average_result_count,
+        "total_elapsed_ms": snapshot.total_elapsed_ms,
+        "average_elapsed_ms": snapshot.average_elapsed_ms,
+        "evaluated_row_count": snapshot.evaluated_row_count,
+        "recall_question_count": snapshot.recall_question_count,
+        "ndcg_question_count": snapshot.ndcg_question_count,
+        "no_answer_question_count": snapshot.no_answer_question_count,
+        "hidden_violation_count": snapshot.hidden_violation_count,
+        "mean_recall_at_k": snapshot.mean_recall_at_k,
+        "mean_reciprocal_rank": snapshot.mean_reciprocal_rank,
+        "mean_ndcg": snapshot.mean_ndcg,
+        "no_answer_success_rate": snapshot.no_answer_success_rate,
+        "source_first_experiment_run_id": snapshot.source_first_experiment_run_id,
+        "source_last_experiment_run_id": snapshot.source_last_experiment_run_id,
+        "source_first_created_at": _datetime_response(snapshot.source_first_created_at),
+        "source_first_created_at_label": _datetime_label(snapshot.source_first_created_at),
+        "source_last_updated_at": _datetime_response(snapshot.source_last_updated_at),
+        "source_last_updated_at_label": _datetime_label(snapshot.source_last_updated_at),
+        "metric_payload": snapshot.metric_payload,
+        "created_by": snapshot.created_by,
+        "created_by_user_id": snapshot.created_by_user_id,
+        "created_at": _datetime_response(snapshot.created_at),
+        "created_at_label": _datetime_label(snapshot.created_at),
+    }
+
+
+def golden_batch_profile_metric_snapshot_payload(
+    profile: GoldenBatchProfileMetricSnapshotRecord,
+) -> dict[str, object]:
+    return {
+        "snapshot_profile_metric_id": profile.snapshot_profile_metric_id,
+        "snapshot_id": profile.snapshot_id,
+        "profile_name": profile.profile_name,
+        "question_count": profile.question_count,
+        "recall_question_count": profile.recall_question_count,
+        "ndcg_question_count": profile.ndcg_question_count,
+        "no_answer_question_count": profile.no_answer_question_count,
+        "hidden_violation_count": profile.hidden_violation_count,
+        "mean_recall_at_k": profile.mean_recall_at_k,
+        "mean_reciprocal_rank": profile.mean_reciprocal_rank,
+        "mean_ndcg": profile.mean_ndcg,
+        "no_answer_success_rate": profile.no_answer_success_rate,
+        "total_result_count": profile.total_result_count,
+        "average_result_count": profile.average_result_count,
+        "average_elapsed_ms": profile.average_elapsed_ms,
+    }
+
+
+def golden_batch_question_metric_snapshot_payload(
+    question: GoldenBatchQuestionMetricSnapshotRecord,
+) -> dict[str, object]:
+    return {
+        "snapshot_question_metric_id": question.snapshot_question_metric_id,
+        "snapshot_id": question.snapshot_id,
+        "question_id": question.question_id,
+        "question_text": question.question_text,
+        "profile_name": question.profile_name,
+        "experiment_run_id": question.experiment_run_id,
+        "search_log_id": question.search_log_id,
+        "top_k": question.top_k,
+        "result_count": question.result_count,
+        "elapsed_ms": question.elapsed_ms,
+        "visible_expected_count": question.visible_expected_count,
+        "retrieved_count": question.retrieved_count,
+        "matched_visible_count": question.matched_visible_count,
+        "hidden_violation_count": question.hidden_violation_count,
+        "matched_chunk_ids": list(question.matched_chunk_ids),
+        "hidden_violation_chunk_ids": list(question.hidden_violation_chunk_ids),
+        "recall_at_k": question.recall_at_k,
+        "reciprocal_rank": question.reciprocal_rank,
+        "dcg": question.dcg,
+        "ideal_dcg": question.ideal_dcg,
+        "ndcg": question.ndcg,
+        "no_answer_success": question.no_answer_success,
+    }
+
+
+def golden_batch_metric_snapshot_detail_payload(
+    detail: GoldenBatchMetricSnapshotDetail,
+) -> dict[str, object]:
+    return {
+        "snapshot": golden_batch_metric_snapshot_record_payload(detail.snapshot),
+        "profiles": [
+            golden_batch_profile_metric_snapshot_payload(profile) for profile in detail.profiles
+        ],
+        "questions": [
+            golden_batch_question_metric_snapshot_payload(question) for question in detail.questions
+        ],
+    }
+
+
 def search_experiment_execution_payload(
     report: SearchExperimentExecutionReport,
 ) -> dict[str, object]:
@@ -3499,7 +3622,13 @@ def golden_search_experiment_batch_input_from_request(
 def golden_search_experiment_batch_payload(
     report: GoldenSearchExperimentBatchReport,
 ) -> dict[str, object]:
+    batch_key = (
+        golden_search_experiment_batch_key_from_run(report.question_reports[0].experiment.run)
+        if report.question_reports
+        else None
+    )
     return {
+        "batch_key": batch_key,
         "question_set": golden_question_set_payload(report.question_set),
         "question_count": len(report.question_reports),
         "total_elapsed_ms": report.total_elapsed_ms,
@@ -6269,6 +6398,63 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/search/experiments/golden-question-batches/{batch_key}/metric-snapshots")
+    def api_list_golden_search_experiment_batch_metric_snapshots(
+        batch_key: str,
+        limit: int = Query(default=10, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            snapshots = list_golden_batch_metric_snapshots(
+                settings.database_url,
+                batch_key,
+                limit=limit,
+            )
+        except (InvalidGoldenBatchMetricSnapshotError, InvalidSearchExperimentError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "snapshots": [
+                    golden_batch_metric_snapshot_record_payload(snapshot) for snapshot in snapshots
+                ],
+            }
+        )
+
+    @app.post("/api/search/experiments/golden-question-batches/{batch_key}/metric-snapshots")
+    def api_record_golden_search_experiment_batch_metric_snapshot(
+        batch_key: str,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            snapshot = record_golden_batch_metric_snapshot(
+                settings.database_url,
+                batch_key,
+                created_by="api",
+            )
+        except (InvalidGoldenBatchMetricSnapshotError, InvalidSearchExperimentError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if snapshot is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden search experiment batch not found.",
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content=golden_batch_metric_snapshot_detail_payload(snapshot),
+        )
+
     @app.get("/api/search/experiments/golden-question-batches/{batch_key}/metrics")
     def api_get_golden_search_experiment_batch_metrics(batch_key: str) -> JSONResponse:
         if not settings.database_url:
@@ -6290,9 +6476,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Golden search experiment batch not found.",
             )
 
-        return JSONResponse(
-            content=golden_search_experiment_batch_metric_summary_payload(metric_summary)
+        content = golden_search_experiment_batch_metric_summary_payload(metric_summary)
+        try:
+            latest_snapshot = get_latest_golden_batch_metric_snapshot(
+                settings.database_url,
+                batch_key,
+            )
+        except InvalidGoldenBatchMetricSnapshotError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        content["latest_snapshot"] = (
+            golden_batch_metric_snapshot_record_payload(latest_snapshot)
+            if latest_snapshot is not None
+            else None
         )
+        return JSONResponse(content=content)
 
     @app.get("/api/search/experiments/golden-question-batches/{batch_key}")
     def api_get_golden_search_experiment_batch_detail(batch_key: str) -> JSONResponse:
@@ -6313,6 +6510,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return JSONResponse(content=golden_search_experiment_batch_detail_payload(detail))
+
+    @app.get("/api/search/experiments/golden-question-batch-metric-snapshots/{snapshot_id}")
+    def api_get_golden_search_experiment_batch_metric_snapshot(
+        snapshot_id: int,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            snapshot = get_golden_batch_metric_snapshot_detail(
+                settings.database_url,
+                snapshot_id,
+            )
+        except InvalidGoldenBatchMetricSnapshotError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if snapshot is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden batch metric snapshot not found.",
+            )
+
+        return JSONResponse(content=golden_batch_metric_snapshot_detail_payload(snapshot))
 
     @app.get("/api/search/experiments/{experiment_run_id}")
     def api_get_search_experiment_detail(experiment_run_id: int) -> JSONResponse:
@@ -7272,9 +7494,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Golden question set not found.",
             )
 
+        batch_content = golden_search_experiment_batch_payload(report)
+        snapshot = None
+        batch_key = batch_content.get("batch_key")
+        if isinstance(batch_key, str) and batch_key:
+            try:
+                snapshot = record_golden_batch_metric_snapshot(
+                    settings.database_url,
+                    batch_key,
+                    created_by=payload.created_by or "golden-search-experiment-batch",
+                    created_by_user_id=payload.created_by_user_id,
+                )
+            except (InvalidGoldenBatchMetricSnapshotError, InvalidSearchExperimentError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(exc),
+                ) from exc
+        batch_content["metric_snapshot"] = (
+            golden_batch_metric_snapshot_record_payload(snapshot.snapshot)
+            if snapshot is not None
+            else None
+        )
+
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
-            content={"batch": golden_search_experiment_batch_payload(report)},
+            content={"batch": batch_content},
         )
 
     @app.get("/api/evaluations/profile-comparison")
@@ -7917,6 +8161,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         golden_batches: list[GoldenSearchExperimentBatchSummary] = []
         selected_golden_batch_detail: GoldenSearchExperimentBatchDetail | None = None
         selected_golden_batch_metric_summary: GoldenSearchExperimentBatchMetricSummary | None = None
+        selected_golden_batch_metric_snapshots: list[GoldenBatchMetricSnapshotRecord] = []
         error_message = None
 
         if not settings.database_url:
@@ -7943,6 +8188,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                 settings.database_url,
                                 selected_golden_batch_key,
                             )
+                        )
+                        selected_golden_batch_metric_snapshots = list_golden_batch_metric_snapshots(
+                            settings.database_url,
+                            selected_golden_batch_key,
+                            limit=5,
                         )
                 runs = list_search_experiment_runs(
                     settings.database_url,
@@ -7975,6 +8225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 golden_batches=golden_batches,
                 selected_golden_batch_detail=selected_golden_batch_detail,
                 selected_golden_batch_metric_summary=selected_golden_batch_metric_summary,
+                selected_golden_batch_metric_snapshots=selected_golden_batch_metric_snapshots,
                 selected_golden_batch_key=(
                     selected_golden_batch_detail.summary.batch_key
                     if selected_golden_batch_detail

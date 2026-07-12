@@ -222,6 +222,69 @@
       </table>
     </div>
     {% endif %}
+    <div class="search-experiment-snapshot-panel mb-3">
+      <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+        <div>
+          <h4 class="h6 mb-1">{{ t("search_experiments.metric_snapshots") }}</h4>
+          <div class="text-secondary small">
+            {% if selected_golden_batch_metric_snapshots %}
+            {{ t("search_experiments.latest_snapshot") }}
+            #{{ selected_golden_batch_metric_snapshots[0].snapshot_id }}
+            · {{ selected_golden_batch_metric_snapshots[0].created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+            {% else %}
+            {{ t("search_experiments.no_metric_snapshots") }}
+            {% endif %}
+          </div>
+        </div>
+        <div class="btn-group btn-group-sm" role="group">
+          <a
+            class="btn btn-outline-secondary"
+            href="/api/search/experiments/golden-question-batches/{{ selected_golden_batch_detail.summary.batch_key }}/metric-snapshots"
+          >
+            {{ t("search_experiments.snapshot_api") }}
+          </a>
+          <form
+            class="d-inline"
+            method="post"
+            action="/api/search/experiments/golden-question-batches/{{ selected_golden_batch_detail.summary.batch_key }}/metric-snapshots"
+          >
+            <button class="btn btn-outline-secondary" type="submit">{{ t("search_experiments.save_snapshot") }}</button>
+          </form>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 search-experiment-batch-snapshot-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("search_experiments.snapshot_id") }}</th>
+              <th scope="col">{{ t("search_experiments.created_at") }}</th>
+              <th scope="col">{{ t("search_experiments.recall_at_k") }}</th>
+              <th scope="col">{{ t("search_experiments.mrr") }}</th>
+              <th scope="col">{{ t("search_experiments.ndcg") }}</th>
+              <th scope="col">{{ t("search_experiments.source_updated") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for snapshot in selected_golden_batch_metric_snapshots %}
+            <tr>
+              <td>
+                <a href="/api/search/experiments/golden-question-batch-metric-snapshots/{{ snapshot.snapshot_id }}">#{{ snapshot.snapshot_id }}</a>
+              </td>
+              <td>{{ snapshot.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+              <td>{% if snapshot.mean_recall_at_k is not none %}{{ "%.2f"|format(snapshot.mean_recall_at_k * 100) }}%{% else %}-{% endif %}</td>
+              <td>{% if snapshot.mean_reciprocal_rank is not none %}{{ "%.2f"|format(snapshot.mean_reciprocal_rank * 100) }}%{% else %}-{% endif %}</td>
+              <td>{% if snapshot.mean_ndcg is not none %}{{ "%.2f"|format(snapshot.mean_ndcg * 100) }}%{% else %}-{% endif %}</td>
+              <td>{{ snapshot.source_last_updated_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="6">{{ t("search_experiments.no_metric_snapshots") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0 search-experiment-batch-question-table">
         <thead>
