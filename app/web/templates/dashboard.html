@@ -6,9 +6,32 @@
     <h1 class="h3 mb-1">{{ t("dashboard.title") }}</h1>
     <p class="text-secondary mb-0">{{ t("dashboard.subtitle") }}</p>
   </div>
-  <div class="d-flex align-items-center gap-2 text-secondary">
-    <span class="status-dot" aria-hidden="true"></span>
-    <span>{{ t("app.ready") }}</span>
+  <div
+    class="dashboard-refresh-toolbar"
+    data-dashboard-refresh
+    data-refresh-seconds="{{ selected_refresh_seconds }}"
+    data-refresh-url="{{ dashboard_refresh_now_url }}"
+  >
+    <div class="dashboard-last-updated">
+      <span class="metric-label">{{ t("dashboard.last_updated") }}</span>
+      <strong>{{ dashboard_rendered_at_label }}</strong>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ dashboard_refresh_now_url }}">{{ t("dashboard.refresh_now") }}</a>
+    <div class="btn-group btn-group-sm dashboard-refresh-controls" role="group" aria-label="{{ t('dashboard.auto_refresh') }}">
+      {% for option in dashboard_refresh_interval_options %}
+      <a
+        class="btn btn-outline-secondary {% if option.active %}active{% endif %}"
+        href="{{ option.url }}"
+        {% if option.active %}aria-current="page"{% endif %}
+      >
+        {{ option.label }}
+      </a>
+      {% endfor %}
+    </div>
+    <div class="d-flex align-items-center gap-2 text-secondary">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span>{{ t("app.ready") }}</span>
+    </div>
   </div>
 </div>
 
@@ -750,6 +773,19 @@
 
 {% block scripts %}
 <script>
+(() => {
+  const refreshRoot = document.querySelector("[data-dashboard-refresh]");
+  if (!refreshRoot) return;
+
+  const refreshSeconds = Number(refreshRoot.dataset.refreshSeconds || "0");
+  if (!Number.isFinite(refreshSeconds) || refreshSeconds <= 0) return;
+
+  const refreshUrl = refreshRoot.dataset.refreshUrl || window.location.href;
+  window.setTimeout(() => {
+    window.location.href = refreshUrl;
+  }, refreshSeconds * 1000);
+})();
+
 (() => {
   const panel = document.querySelector("[data-failure-detail-panel]");
   if (!panel) return;

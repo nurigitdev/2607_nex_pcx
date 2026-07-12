@@ -580,6 +580,29 @@ DASHBOARD_TIME_WINDOW_OPTIONS = (
     {"hours": 720, "label": "30d"},
 )
 
+DASHBOARD_REFRESH_INTERVAL_OPTIONS = (
+    {"seconds": 0, "label": "Off"},
+    {"seconds": 30, "label": "30s"},
+    {"seconds": 60, "label": "60s"},
+)
+
+
+def dashboard_query_url(
+    request: Request,
+    updates: dict[str, object | None],
+) -> str:
+    query_items = [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key not in updates
+    ]
+    for key, value in updates.items():
+        if value is not None:
+            query_items.append((key, str(value)))
+    if not query_items:
+        return request.url.path
+    return f"{request.url.path}?{urlencode(query_items)}"
+
 
 def dashboard_time_window_options(
     request: Request,
@@ -589,21 +612,49 @@ def dashboard_time_window_options(
     options: list[dict[str, object]] = []
     for option in DASHBOARD_TIME_WINDOW_OPTIONS:
         hours = int(option["hours"])
-        query_items = [
-            (key, value)
-            for key, value in request.query_params.multi_items()
-            if key != "lookback_hours"
-        ]
-        query_items.append(("lookback_hours", str(hours)))
         options.append(
             {
                 "hours": hours,
                 "label": option["label"],
                 "active": hours == selected_lookback_hours,
-                "url": f"{request.url.path}?{urlencode(query_items)}",
+                "url": dashboard_query_url(
+                    request,
+                    {"lookback_hours": hours},
+                ),
             }
         )
     return options
+
+
+def dashboard_refresh_interval_options(
+    request: Request,
+    *,
+    selected_refresh_seconds: int,
+) -> list[dict[str, object]]:
+    options: list[dict[str, object]] = []
+    for option in DASHBOARD_REFRESH_INTERVAL_OPTIONS:
+        seconds = int(option["seconds"])
+        options.append(
+            {
+                "seconds": seconds,
+                "label": option["label"],
+                "active": seconds == selected_refresh_seconds,
+                "url": dashboard_query_url(
+                    request,
+                    {"refresh_seconds": seconds},
+                ),
+            }
+        )
+    return options
+
+
+def validate_dashboard_refresh_seconds(refresh_seconds: int) -> int:
+    valid_intervals = {
+        int(option["seconds"]) for option in DASHBOARD_REFRESH_INTERVAL_OPTIONS
+    }
+    if refresh_seconds not in valid_intervals:
+        raise ValueError("refresh_seconds must be one of 0, 30, or 60")
+    return refresh_seconds
 
 
 def list_search_actor_options(database_url: str) -> list[dict[str, object]]:
@@ -6567,6 +6618,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def dashboard(
         request: Request,
         lookback_hours: int = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS,
+        refresh_seconds: int = 0,
     ) -> HTMLResponse:
         core_metrics: DashboardCoreMetrics | None = None
         pipeline_queue: PipelineQueueSummary | None = None
@@ -6574,12 +6626,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         evaluation_dashboard: EvaluationDashboardSummary | None = None
         embedding_backlog: EmbeddingJobBacklogSummary | None = None
         throughput_latency: DashboardThroughputLatencySnapshot | None = None
+        rendered_at = datetime.now(UTC)
         selected_lookback_hours = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS
+        selected_refresh_seconds = 0
         error_message = None
         try:
             selected_lookback_hours = validate_lookback_hours(lookback_hours)
         except InvalidDashboardThroughputError as exc:
             error_message = str(exc)
+        try:
+            selected_refresh_seconds = validate_dashboard_refresh_seconds(
+                refresh_seconds,
+            )
+        except ValueError as exc:
+            if error_message is None:
+                error_message = str(exc)
 
         if not settings.database_url:
             error_message = error_message or "NEX_PCX_DATABASE_URL is not configured."
@@ -6669,6 +6730,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     request,
                     selected_lookback_hours=selected_lookback_hours,
                 ),
+                dashboard_rendered_at=_datetime_response(rendered_at),
+                dashboard_rendered_at_label=_datetime_label(rendered_at),
+                selected_refresh_seconds=selected_refresh_seconds,
+                dashboard_refresh_interval_options=dashboard_refresh_interval_options(
+                    request,
+                    selected_refresh_seconds=selected_refresh_seconds,
+                ),
+                dashboard_refresh_now_url=dashboard_query_url(request, {}),
                 evaluation_dashboard=evaluation_dashboard,
                 embedding_backlog=embedding_backlog,
                 error_message=error_message,

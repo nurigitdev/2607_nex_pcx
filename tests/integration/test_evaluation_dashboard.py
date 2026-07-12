@@ -539,7 +539,10 @@ def test_evaluation_dashboard_summary_api_and_page(
             )
             page_response = client.get(
                 "/",
-                params={"lookback_hours": selected_lookback_hours},
+                params={
+                    "lookback_hours": selected_lookback_hours,
+                    "refresh_seconds": 30,
+                },
             )
 
         api_payload = api_response.json()["evaluations"]
@@ -683,8 +686,12 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "Pipeline Queue 스냅샷" in page_response.text
         assert "/api/dashboard/pipeline-queue" in page_response.text
         assert "처리량 / Latency 스냅샷" in page_response.text
+        assert "마지막 갱신" in page_response.text
+        assert "자동 갱신" in page_response.text
+        assert 'data-refresh-seconds="30"' in page_response.text
         assert "최근 6시간" in page_response.text
-        assert "/?lookback_hours=1" in page_response.text
+        assert "/?refresh_seconds=30&amp;lookback_hours=1" in page_response.text
+        assert "/?lookback_hours=6&amp;refresh_seconds=60" in page_response.text
         assert "/api/dashboard/throughput-latency?lookback_hours=6" in page_response.text
         assert "jobs/sec" in page_response.text
         assert "33.33%" in page_response.text

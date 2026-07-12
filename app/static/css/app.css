@@ -1097,6 +1097,32 @@ main.container-fluid {
   min-width: 3rem;
 }
 
+.dashboard-refresh-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.dashboard-last-updated {
+  align-items: baseline;
+  color: var(--pcx-muted);
+  display: flex;
+  gap: 0.5rem;
+}
+
+.dashboard-last-updated strong {
+  color: var(--pcx-ink);
+  font-size: 0.875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dashboard-refresh-controls .btn {
+  min-width: 3.25rem;
+}
+
 .dashboard-evaluation-body {
   display: grid;
   gap: 1rem;

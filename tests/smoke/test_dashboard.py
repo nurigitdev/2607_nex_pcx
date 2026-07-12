@@ -7,6 +7,11 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "RAG 실험 벤치 운영 현황" in response.text
     assert "문서" in response.text
     assert "Core Metrics" in response.text
+    assert "마지막 갱신" in response.text
+    assert "자동 갱신" in response.text
+    assert 'data-dashboard-refresh' in response.text
+    assert 'data-refresh-seconds="0"' in response.text
+    assert "/?refresh_seconds=30" in response.text
     assert "처리량 / Latency 스냅샷" in response.text
     assert 'aria-label="조회 기간"' in response.text
     assert "/?lookback_hours=1" in response.text
@@ -36,6 +41,8 @@ def test_dashboard_supports_english_language_switch(client) -> None:
     assert 'lang="en"' in response.text
     assert "Dashboard" in response.text
     assert "RAG experiment bench operations" in response.text
+    assert "Last Updated" in response.text
+    assert 'aria-label="Auto Refresh"' in response.text
     assert "Core Metrics" in response.text
     assert "Throughput / Latency Snapshot" in response.text
     assert 'aria-label="Time Window"' in response.text
@@ -63,6 +70,14 @@ def test_dashboard_invalid_time_window_falls_back_to_default(client) -> None:
     assert response.status_code == 200
     assert "lookback_hours must be greater than 0" in response.text
     assert "최근 24시간" in response.text
+
+
+def test_dashboard_invalid_refresh_interval_falls_back_to_off(client) -> None:
+    response = client.get("/?refresh_seconds=15")
+
+    assert response.status_code == 200
+    assert "refresh_seconds must be one of 0, 30, or 60" in response.text
+    assert 'data-refresh-seconds="0"' in response.text
 
 
 def test_dashboard_evaluation_api_requires_database(client) -> None:
