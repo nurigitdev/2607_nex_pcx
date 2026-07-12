@@ -356,11 +356,16 @@ from app.core.search_experiment_runner import (
 )
 from app.core.search_experiments import (
     SEARCH_EXPERIMENT_RUN_STATUSES,
+    GoldenSearchExperimentBatchDetail,
+    GoldenSearchExperimentBatchQuestionSummary,
+    GoldenSearchExperimentBatchSummary,
     InvalidSearchExperimentError,
     SearchExperimentProfileRunRecord,
     SearchExperimentRunDetail,
     SearchExperimentRunRecord,
+    get_golden_search_experiment_batch_detail,
     get_search_experiment_run_detail,
+    list_golden_search_experiment_batch_summaries,
     list_search_experiment_runs,
 )
 from app.core.search_logs import (
@@ -2179,6 +2184,59 @@ def search_experiment_detail_payload(
         "experiment_run": search_experiment_run_record_payload(detail.run),
         "profiles": [
             search_experiment_profile_run_payload(profile) for profile in detail.profiles
+        ],
+    }
+
+
+def golden_search_experiment_batch_summary_payload(
+    summary: GoldenSearchExperimentBatchSummary,
+) -> dict[str, object]:
+    return {
+        "batch_key": summary.batch_key,
+        "question_set_id": summary.question_set_id,
+        "question_set_name": summary.question_set_name,
+        "batch_prefix": summary.batch_prefix,
+        "strategy_name": summary.strategy_name,
+        "top_k": summary.top_k,
+        "score_threshold": summary.score_threshold,
+        "chunk_policy_name": summary.chunk_policy_name,
+        "profile_names": list(summary.profile_names),
+        "status": summary.status,
+        "question_count": summary.question_count,
+        "succeeded_count": summary.succeeded_count,
+        "failed_count": summary.failed_count,
+        "running_count": summary.running_count,
+        "total_result_count": summary.total_result_count,
+        "average_result_count": summary.average_result_count,
+        "total_elapsed_ms": summary.total_elapsed_ms,
+        "average_elapsed_ms": summary.average_elapsed_ms,
+        "first_experiment_run_id": summary.first_experiment_run_id,
+        "last_experiment_run_id": summary.last_experiment_run_id,
+        "first_created_at": _datetime_response(summary.first_created_at),
+        "first_created_at_label": _datetime_label(summary.first_created_at),
+        "last_updated_at": _datetime_response(summary.last_updated_at),
+        "last_updated_at_label": _datetime_label(summary.last_updated_at),
+    }
+
+
+def golden_search_experiment_batch_question_payload(
+    question: GoldenSearchExperimentBatchQuestionSummary,
+) -> dict[str, object]:
+    return {
+        "question_id": question.question_id,
+        "question_text": question.question_text,
+        "experiment_run": search_experiment_run_record_payload(question.experiment_run),
+    }
+
+
+def golden_search_experiment_batch_detail_payload(
+    detail: GoldenSearchExperimentBatchDetail,
+) -> dict[str, object]:
+    return {
+        "summary": golden_search_experiment_batch_summary_payload(detail.summary),
+        "questions": [
+            golden_search_experiment_batch_question_payload(question)
+            for question in detail.questions
         ],
     }
 
@@ -6206,6 +6264,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/search/experiments/golden-question-batches")
+    def api_list_golden_search_experiment_batches(
+        limit: int = Query(default=20, ge=1, le=100),
+        question_set_id: int | None = Query(default=None, ge=1),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            summaries = list_golden_search_experiment_batch_summaries(
+                settings.database_url,
+                question_set_id=question_set_id,
+                limit=limit,
+            )
+        except InvalidSearchExperimentError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "batches": [
+                    golden_search_experiment_batch_summary_payload(summary)
+                    for summary in summaries
+                ],
+            }
+        )
+
+    @app.get("/api/search/experiments/golden-question-batches/{batch_key}")
+    def api_get_golden_search_experiment_batch_detail(batch_key: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_golden_search_experiment_batch_detail(settings.database_url, batch_key)
+        except InvalidSearchExperimentError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden search experiment batch not found.",
+            )
+
+        return JSONResponse(content=golden_search_experiment_batch_detail_payload(detail))
+
     @app.get("/api/search/experiments/{experiment_run_id}")
     def api_get_search_experiment_detail(experiment_run_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -7802,17 +7909,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def search_experiments_page(
         request: Request,
         experiment_run_id: int | None = None,
+        golden_batch_key: str | None = None,
         status_filter: str | None = None,
         limit: int = 50,
     ) -> HTMLResponse:
         runs: list[SearchExperimentRunRecord] = []
         selected_detail: SearchExperimentRunDetail | None = None
+        golden_batches: list[GoldenSearchExperimentBatchSummary] = []
+        selected_golden_batch_detail: GoldenSearchExperimentBatchDetail | None = None
         error_message = None
 
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
+                golden_batches = list_golden_search_experiment_batch_summaries(
+                    settings.database_url,
+                    limit=10,
+                )
+                selected_golden_batch_key = golden_batch_key
+                if selected_golden_batch_key is None and golden_batches:
+                    selected_golden_batch_key = golden_batches[0].batch_key
+                if selected_golden_batch_key:
+                    selected_golden_batch_detail = get_golden_search_experiment_batch_detail(
+                        settings.database_url,
+                        selected_golden_batch_key,
+                    )
+                    if selected_golden_batch_detail is None:
+                        error_message = "Golden search experiment batch not found."
                 runs = list_search_experiment_runs(
                     settings.database_url,
                     status=status_filter.strip() if status_filter else None,
@@ -7841,6 +7965,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 database_configured=bool(settings.database_url),
                 experiments=runs,
                 selected_detail=selected_detail,
+                golden_batches=golden_batches,
+                selected_golden_batch_detail=selected_golden_batch_detail,
+                selected_golden_batch_key=(
+                    selected_golden_batch_detail.summary.batch_key
+                    if selected_golden_batch_detail
+                    else golden_batch_key
+                ),
                 selected_experiment_run_id=(
                     selected_detail.run.experiment_run_id if selected_detail else experiment_run_id
                 ),

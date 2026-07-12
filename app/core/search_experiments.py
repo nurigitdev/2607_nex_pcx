@@ -1,5 +1,8 @@
 """Search experiment run repository helpers."""
 
+import base64
+import binascii
+import json
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -116,6 +119,56 @@ class SearchExperimentProfileRunRecord:
 class SearchExperimentRunDetail:
     run: SearchExperimentRunRecord
     profiles: tuple[SearchExperimentProfileRunRecord, ...]
+
+
+@dataclass(frozen=True)
+class GoldenSearchExperimentBatchIdentity:
+    question_set_id: int
+    batch_prefix: str
+    strategy_name: str
+    top_k: int
+    score_threshold: float | None
+    chunk_policy_name: str | None
+    profile_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GoldenSearchExperimentBatchSummary:
+    batch_key: str
+    question_set_id: int
+    question_set_name: str
+    batch_prefix: str
+    strategy_name: str
+    top_k: int
+    score_threshold: float | None
+    chunk_policy_name: str | None
+    profile_names: tuple[str, ...]
+    status: str
+    question_count: int
+    succeeded_count: int
+    failed_count: int
+    running_count: int
+    total_result_count: int
+    average_result_count: float
+    total_elapsed_ms: int
+    average_elapsed_ms: float | None
+    first_experiment_run_id: int
+    last_experiment_run_id: int
+    first_created_at: datetime
+    last_updated_at: datetime
+
+
+@dataclass(frozen=True)
+class GoldenSearchExperimentBatchQuestionSummary:
+    question_id: int | None
+    question_text: str
+    experiment_run: SearchExperimentRunRecord
+
+
+@dataclass(frozen=True)
+class GoldenSearchExperimentBatchDetail:
+    summary: GoldenSearchExperimentBatchSummary
+    questions: tuple[GoldenSearchExperimentBatchQuestionSummary, ...]
 
 
 class InvalidSearchExperimentError(ValueError):
@@ -350,6 +403,191 @@ def _row_to_profile_run_record(row: dict[str, Any]) -> SearchExperimentProfileRu
     )
 
 
+def _metadata_int(metadata: dict[str, Any], field_name: str) -> int | None:
+    raw_value = metadata.get(field_name)
+    if raw_value is None or isinstance(raw_value, bool):
+        return None
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _golden_question_set_id(run: SearchExperimentRunRecord) -> int | None:
+    return _metadata_int(run.runtime_metadata, "question_set_id")
+
+
+def _golden_question_id(run: SearchExperimentRunRecord) -> int | None:
+    return _metadata_int(run.runtime_metadata, "question_id")
+
+
+def _golden_batch_prefix(run: SearchExperimentRunRecord) -> str:
+    question_id = _golden_question_id(run)
+    if question_id is not None:
+        suffix = f" / Q{question_id}"
+        if run.run_name.endswith(suffix):
+            return run.run_name[: -len(suffix)]
+    if " / Q" in run.run_name:
+        return run.run_name.rsplit(" / Q", 1)[0]
+    return run.run_name
+
+
+def _golden_batch_identity_from_run(
+    run: SearchExperimentRunRecord,
+) -> GoldenSearchExperimentBatchIdentity | None:
+    question_set_id = _golden_question_set_id(run)
+    if question_set_id is None:
+        return None
+    return GoldenSearchExperimentBatchIdentity(
+        question_set_id=question_set_id,
+        batch_prefix=_golden_batch_prefix(run),
+        strategy_name=run.strategy_name,
+        top_k=run.top_k,
+        score_threshold=run.score_threshold,
+        chunk_policy_name=run.chunk_policy_name,
+        profile_names=run.profile_names,
+    )
+
+
+def _golden_batch_identity_payload(
+    identity: GoldenSearchExperimentBatchIdentity,
+) -> dict[str, object]:
+    return {
+        "question_set_id": identity.question_set_id,
+        "batch_prefix": identity.batch_prefix,
+        "strategy_name": identity.strategy_name,
+        "top_k": identity.top_k,
+        "score_threshold": identity.score_threshold,
+        "chunk_policy_name": identity.chunk_policy_name,
+        "profile_names": list(identity.profile_names),
+    }
+
+
+def encode_golden_search_experiment_batch_key(
+    identity: GoldenSearchExperimentBatchIdentity,
+) -> str:
+    raw_payload = json.dumps(
+        _golden_batch_identity_payload(identity),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(raw_payload).decode("ascii").rstrip("=")
+
+
+def decode_golden_search_experiment_batch_key(
+    batch_key: str,
+) -> GoldenSearchExperimentBatchIdentity:
+    normalized_key = _validate_nonblank(batch_key, "batch_key")
+    if normalized_key is None:
+        raise InvalidSearchExperimentError("batch_key must not be blank")
+    padding = "=" * (-len(normalized_key) % 4)
+    try:
+        payload = json.loads(
+            base64.urlsafe_b64decode(f"{normalized_key}{padding}").decode("utf-8")
+        )
+    except (binascii.Error, ValueError, UnicodeDecodeError) as exc:
+        raise InvalidSearchExperimentError("Invalid golden search experiment batch key") from exc
+    if not isinstance(payload, dict):
+        raise InvalidSearchExperimentError("Invalid golden search experiment batch key")
+
+    raw_profiles = payload.get("profile_names")
+    if not isinstance(raw_profiles, list):
+        raise InvalidSearchExperimentError("Invalid golden search experiment batch key")
+    try:
+        question_set_id = int(payload["question_set_id"])
+        top_k = int(payload["top_k"])
+        score_threshold = payload.get("score_threshold")
+        parsed_threshold = (
+            _validate_optional_finite_float(score_threshold, "score_threshold")
+            if score_threshold is not None
+            else None
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise InvalidSearchExperimentError("Invalid golden search experiment batch key") from exc
+
+    _require_positive_id(question_set_id, "question_set_id")
+    if top_k <= 0:
+        raise InvalidSearchExperimentError("Invalid golden search experiment batch key")
+    return GoldenSearchExperimentBatchIdentity(
+        question_set_id=question_set_id,
+        batch_prefix=_validate_nonblank(
+            str(payload.get("batch_prefix", "")),
+            "batch_prefix",
+        )
+        or "",
+        strategy_name=_validate_nonblank(
+            str(payload.get("strategy_name", "")),
+            "strategy_name",
+        )
+        or "",
+        top_k=top_k,
+        score_threshold=parsed_threshold,
+        chunk_policy_name=_validate_nonblank(
+            payload.get("chunk_policy_name"),
+            "chunk_policy_name",
+        ),
+        profile_names=_validate_profile_names(tuple(str(profile) for profile in raw_profiles)),
+    )
+
+
+def _summary_status(runs: list[SearchExperimentRunRecord]) -> str:
+    statuses = {run.status for run in runs}
+    if statuses == {"succeeded"}:
+        return "succeeded"
+    if "failed" in statuses:
+        return "failed"
+    if statuses & {"running", "pending"}:
+        return "running"
+    if "canceled" in statuses:
+        return "canceled"
+    return "failed"
+
+
+def _batch_summary_from_runs(
+    identity: GoldenSearchExperimentBatchIdentity,
+    runs: list[SearchExperimentRunRecord],
+) -> GoldenSearchExperimentBatchSummary:
+    ordered_runs = sorted(runs, key=lambda run: run.experiment_run_id)
+    elapsed_values = [
+        run.total_elapsed_ms for run in ordered_runs if run.total_elapsed_ms is not None
+    ]
+    total_elapsed_ms = sum(elapsed_values)
+    question_set_name = ""
+    for run in ordered_runs:
+        raw_name = run.runtime_metadata.get("question_set_name")
+        if isinstance(raw_name, str) and raw_name:
+            question_set_name = raw_name
+            break
+    return GoldenSearchExperimentBatchSummary(
+        batch_key=encode_golden_search_experiment_batch_key(identity),
+        question_set_id=identity.question_set_id,
+        question_set_name=question_set_name,
+        batch_prefix=identity.batch_prefix,
+        strategy_name=identity.strategy_name,
+        top_k=identity.top_k,
+        score_threshold=identity.score_threshold,
+        chunk_policy_name=identity.chunk_policy_name,
+        profile_names=identity.profile_names,
+        status=_summary_status(ordered_runs),
+        question_count=len(ordered_runs),
+        succeeded_count=sum(1 for run in ordered_runs if run.status == "succeeded"),
+        failed_count=sum(1 for run in ordered_runs if run.status == "failed"),
+        running_count=sum(1 for run in ordered_runs if run.status in {"pending", "running"}),
+        total_result_count=sum(run.result_count for run in ordered_runs),
+        average_result_count=sum(run.result_count for run in ordered_runs) / len(ordered_runs),
+        total_elapsed_ms=total_elapsed_ms,
+        average_elapsed_ms=(
+            total_elapsed_ms / len(elapsed_values) if elapsed_values else None
+        ),
+        first_experiment_run_id=ordered_runs[0].experiment_run_id,
+        last_experiment_run_id=ordered_runs[-1].experiment_run_id,
+        first_created_at=min(run.created_at for run in ordered_runs),
+        last_updated_at=max(run.updated_at for run in ordered_runs),
+    )
+
+
 def create_search_experiment_run(
     database_url: str,
     run_input: SearchExperimentRunInput,
@@ -469,6 +707,116 @@ def list_search_experiment_runs(
             )
             rows = cursor.fetchall()
     return [_row_to_run_record(dict(row)) for row in rows]
+
+
+def list_golden_search_experiment_batch_summaries(
+    database_url: str,
+    *,
+    question_set_id: int | None = None,
+    limit: int = 20,
+) -> list[GoldenSearchExperimentBatchSummary]:
+    validated_limit = _validate_limit(limit, max_limit=100)
+    _require_positive_id(question_set_id, "question_set_id")
+    scan_limit = max(validated_limit * 100, 500)
+
+    filters = ["runtime_metadata->>'golden_question_batch' = 'true'"]
+    params: list[object] = []
+    if question_set_id is not None:
+        filters.append("runtime_metadata->>'question_set_id' = %s")
+        params.append(str(question_set_id))
+    params.append(scan_limit)
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT *
+                FROM search_experiment_runs
+                WHERE {" AND ".join(filters)}
+                ORDER BY created_at DESC, experiment_run_id DESC
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+            rows = cursor.fetchall()
+
+    groups: dict[GoldenSearchExperimentBatchIdentity, list[SearchExperimentRunRecord]] = {}
+    for row in rows:
+        run = _row_to_run_record(dict(row))
+        identity = _golden_batch_identity_from_run(run)
+        if identity is None:
+            continue
+        groups.setdefault(identity, []).append(run)
+
+    summaries = [
+        _batch_summary_from_runs(identity, runs)
+        for identity, runs in groups.items()
+        if runs
+    ]
+    summaries.sort(
+        key=lambda summary: (summary.last_updated_at, summary.last_experiment_run_id),
+        reverse=True,
+    )
+    return summaries[:validated_limit]
+
+
+def get_golden_search_experiment_batch_detail(
+    database_url: str,
+    batch_key: str,
+) -> GoldenSearchExperimentBatchDetail | None:
+    identity = decode_golden_search_experiment_batch_key(batch_key)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM search_experiment_runs
+                WHERE runtime_metadata->>'golden_question_batch' = 'true'
+                  AND runtime_metadata->>'question_set_id' = %s
+                  AND regexp_replace(run_name, '\\s*/\\s*Q[0-9]+$', '') = %s
+                  AND strategy_name = %s
+                  AND top_k = %s
+                  AND (
+                    (%s::double precision IS NULL AND score_threshold IS NULL)
+                    OR score_threshold = %s::double precision
+                  )
+                  AND (
+                    (%s::text IS NULL AND chunk_policy_name IS NULL)
+                    OR chunk_policy_name = %s::text
+                  )
+                  AND profile_names = %s::jsonb
+                ORDER BY runtime_metadata->>'question_id' ASC, experiment_run_id ASC
+                """,
+                (
+                    str(identity.question_set_id),
+                    identity.batch_prefix,
+                    identity.strategy_name,
+                    identity.top_k,
+                    identity.score_threshold,
+                    identity.score_threshold,
+                    identity.chunk_policy_name,
+                    identity.chunk_policy_name,
+                    Json(list(identity.profile_names)),
+                ),
+            )
+            rows = cursor.fetchall()
+
+    runs = [_row_to_run_record(dict(row)) for row in rows]
+    if not runs:
+        return None
+    summary = _batch_summary_from_runs(identity, runs)
+    questions = tuple(
+        GoldenSearchExperimentBatchQuestionSummary(
+            question_id=_golden_question_id(run),
+            question_text=run.query_text,
+            experiment_run=run,
+        )
+        for run in sorted(
+            runs,
+            key=lambda item: (_golden_question_id(item) or 0, item.experiment_run_id),
+        )
+    )
+    return GoldenSearchExperimentBatchDetail(summary=summary, questions=questions)
 
 
 def upsert_search_experiment_profile_run(

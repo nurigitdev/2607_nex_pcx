@@ -34,6 +34,119 @@
   <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t("search_experiments.filter") }}</button>
 </form>
 
+<section class="metric-card bg-white p-0 overflow-hidden mb-4 search-experiment-batch-panel">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_experiments.golden_batches_title") }}</h2>
+      <div class="text-secondary">{{ t("search_experiments.golden_batches_help") }}</div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/api/search/experiments/golden-question-batches">{{ t("common.api") }}</a>
+  </div>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0 search-experiment-batch-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("search_experiments.batch") }}</th>
+          <th scope="col">{{ t("search_experiments.question_set") }}</th>
+          <th scope="col">{{ t("search_experiments.strategy") }}</th>
+          <th scope="col">{{ t("search_experiments.questions") }}</th>
+          <th scope="col">{{ t("search_experiments.results") }}</th>
+          <th scope="col">{{ t("search_experiments.avg_elapsed") }}</th>
+          <th scope="col">{{ t("search_experiments.updated") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for batch in golden_batches %}
+        <tr class="{% if selected_golden_batch_key == batch.batch_key %}table-active{% endif %}">
+          <td>
+            <a class="fw-semibold" href="/search/experiments?golden_batch_key={{ batch.batch_key }}">
+              {{ batch.batch_prefix }}
+            </a>
+            <div class="text-secondary small text-truncate">{{ batch.profile_names | join(", ") }}</div>
+          </td>
+          <td class="text-break">{{ batch.question_set_name or batch.question_set_id }}</td>
+          <td>
+            <span>{{ batch.strategy_name }}</span>
+            <div class="text-secondary small">top_k {{ batch.top_k }}</div>
+          </td>
+          <td>
+            <span class="badge search-experiment-status search-experiment-status-{{ batch.status }}">{{ t("status." ~ batch.status) }}</span>
+            <div class="text-secondary small">
+              {{ batch.succeeded_count }} / {{ batch.question_count }}
+              {% if batch.failed_count %} · {{ t("search_experiments.failed") }} {{ batch.failed_count }}{% endif %}
+            </div>
+          </td>
+          <td>
+            {{ batch.total_result_count }}
+            <div class="text-secondary small">{{ t("search_experiments.avg") }} {{ "%.2f"|format(batch.average_result_count) }}</div>
+          </td>
+          <td>{{ "%.1f"|format(batch.average_elapsed_ms) if batch.average_elapsed_ms is not none else "-" }} ms</td>
+          <td>{{ batch.last_updated_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="7">
+            {% if database_configured %}{{ t("search_experiments.no_golden_batches") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if selected_golden_batch_detail %}
+  <div class="p-3 border-top search-experiment-batch-detail">
+    <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+      <div>
+        <h3 class="h6 mb-1">{{ t("search_experiments.golden_batch_detail") }}</h3>
+        <div class="text-secondary small">{{ selected_golden_batch_detail.summary.batch_prefix }}</div>
+      </div>
+      <a
+        class="btn btn-outline-secondary btn-sm"
+        href="/api/search/experiments/golden-question-batches/{{ selected_golden_batch_detail.summary.batch_key }}"
+      >
+        {{ t("common.api") }}
+      </a>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 search-experiment-batch-question-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("search_experiments.question") }}</th>
+            <th scope="col">{{ t("search_experiments.run") }}</th>
+            <th scope="col">{{ t("search_experiments.status") }}</th>
+            <th scope="col">{{ t("search_experiments.results") }}</th>
+            <th scope="col">{{ t("search_experiments.elapsed") }}</th>
+            <th scope="col">{{ t("search_experiments.updated") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for question in selected_golden_batch_detail.questions %}
+          <tr>
+            <td>
+              <div class="fw-semibold">#{{ question.question_id if question.question_id else "-" }}</div>
+              <div class="text-secondary small search-experiment-batch-question-text">{{ question.question_text }}</div>
+            </td>
+            <td>
+              <a href="/search/experiments?experiment_run_id={{ question.experiment_run.experiment_run_id }}">#{{ question.experiment_run.experiment_run_id }}</a>
+            </td>
+            <td><span class="badge search-experiment-status search-experiment-status-{{ question.experiment_run.status }}">{{ t("status." ~ question.experiment_run.status) }}</span></td>
+            <td>{{ question.experiment_run.result_count }}</td>
+            <td>{{ question.experiment_run.total_elapsed_ms or 0 }} ms</td>
+            <td>{{ question.experiment_run.updated_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td class="text-secondary text-center py-4" colspan="6">{{ t("search_experiments.no_golden_batch_questions") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</section>
+
 {% if selected_detail %}
 <section class="search-experiment-summary-grid mb-4">
   <div class="metric-card bg-white p-3">

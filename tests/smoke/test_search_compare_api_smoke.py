@@ -79,6 +79,19 @@ def test_search_experiment_detail_api_requires_database_url() -> None:
     assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
 
 
+def test_golden_search_experiment_batch_summary_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        list_response = client.get("/api/search/experiments/golden-question-batches")
+        detail_response = client.get("/api/search/experiments/golden-question-batches/dummy")
+
+    assert list_response.status_code == 503
+    assert list_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+    assert detail_response.status_code == 503
+    assert detail_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
 def test_search_feedback_api_requires_database_url() -> None:
     app = create_app(Settings(database_url=None))
 

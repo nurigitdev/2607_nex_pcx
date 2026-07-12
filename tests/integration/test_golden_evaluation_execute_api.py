@@ -309,13 +309,14 @@ def test_golden_search_experiment_batch_api_runs_question_set(
     fixture = _create_execute_fixture(migrated_database_url)
     app = create_app(Settings(database_url=migrated_database_url))
     batch: dict[str, object] | None = None
+    run_name_prefix = f"slice-170-batch-{uuid4()}"
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/api/search/experiments/golden-question-set/run",
                 json={
                     "question_set_id": fixture["question_set_id"],
-                    "run_name_prefix": f"slice-170-batch-{uuid4()}",
+                    "run_name_prefix": run_name_prefix,
                     "profiles": ["kure_v1_1024", "bge_m3_1024"],
                     "strategy_name": "vector_cosine_threshold",
                     "top_k": 2,
@@ -329,11 +330,28 @@ def test_golden_search_experiment_batch_api_runs_question_set(
                 "experiment_run_id"
             ]
             detail_response = client.get(f"/api/search/experiments/{experiment_run_id}")
+            batch_list_response = client.get("/api/search/experiments/golden-question-batches")
+            filtered_batch_list_response = client.get(
+                "/api/search/experiments/golden-question-batches",
+                params={"question_set_id": fixture["question_set_id"]},
+            )
+            batch_summary = next(
+                item
+                for item in batch_list_response.json()["batches"]
+                if item["batch_prefix"] == run_name_prefix
+            )
+            batch_detail_response = client.get(
+                f"/api/search/experiments/golden-question-batches/{batch_summary['batch_key']}"
+            )
+            batch_page_response = client.get(
+                f"/search/experiments?golden_batch_key={batch_summary['batch_key']}"
+            )
 
         question_report = batch["questions"][0]
         experiment = question_report["experiment"]
         experiment_run = experiment["experiment_run"]
         runtime_metadata = experiment_run["runtime_metadata"]
+        batch_detail = batch_detail_response.json()
 
         assert response.status_code == 201
         assert batch["question_count"] == 1
@@ -348,6 +366,32 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         assert runtime_metadata["golden_question_batch"] is True
         assert detail_response.status_code == 200
         assert detail_response.json()["experiment_run"]["experiment_run_id"] == experiment_run_id
+        assert batch_list_response.status_code == 200
+        assert filtered_batch_list_response.status_code == 200
+        assert batch_summary["question_set_id"] == fixture["question_set_id"]
+        assert batch_summary["question_set_name"] == batch["question_set"]["set_name"]
+        assert batch_summary["strategy_name"] == "vector_cosine_threshold"
+        assert batch_summary["profile_names"] == ["kure_v1_1024", "bge_m3_1024"]
+        assert batch_summary["question_count"] == 1
+        assert batch_summary["succeeded_count"] == 1
+        assert batch_summary["total_result_count"] == 2
+        assert batch_summary["average_result_count"] == pytest.approx(2)
+        assert any(
+            item["batch_key"] == batch_summary["batch_key"]
+            for item in filtered_batch_list_response.json()["batches"]
+        )
+        assert batch_detail_response.status_code == 200
+        assert batch_detail["summary"]["batch_key"] == batch_summary["batch_key"]
+        assert batch_detail["questions"][0]["question_id"] == fixture["question_id"]
+        assert batch_detail["questions"][0]["experiment_run"]["experiment_run_id"] == (
+            experiment_run_id
+        )
+        assert batch_page_response.status_code == 200
+        assert "골든 질문 Batch 결과" in batch_page_response.text
+        assert run_name_prefix in batch_page_response.text
+        assert f"/api/search/experiments/golden-question-batches/{batch_summary['batch_key']}" in (
+            batch_page_response.text
+        )
     finally:
         if batch is not None:
             _cleanup_search_experiment_batch(migrated_database_url, batch)

@@ -1,15 +1,79 @@
+import base64
+import json
 import math
+from datetime import UTC, datetime
 
 import pytest
 
 from app.core.search_experiments import (
+    GoldenSearchExperimentBatchIdentity,
     InvalidSearchExperimentError,
     SearchExperimentProfileRunInput,
     SearchExperimentRunInput,
+    SearchExperimentRunRecord,
+    _golden_batch_identity_from_run,
+    _golden_batch_prefix,
+    _summary_status,
     _validate_limit,
+    decode_golden_search_experiment_batch_key,
+    encode_golden_search_experiment_batch_key,
+    get_golden_search_experiment_batch_detail,
+    list_golden_search_experiment_batch_summaries,
     validate_search_experiment_profile_run_input,
     validate_search_experiment_run_input,
 )
+
+
+def _encoded_payload(payload: object) -> str:
+    raw_payload = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    return base64.urlsafe_b64encode(raw_payload).decode("ascii").rstrip("=")
+
+
+def _run_record(
+    *,
+    run_name: str = "batch / Q10",
+    status: str = "succeeded",
+    runtime_metadata: dict[str, object] | None = None,
+) -> SearchExperimentRunRecord:
+    now = datetime(2026, 7, 12, 10, 0, tzinfo=UTC)
+    return SearchExperimentRunRecord(
+        experiment_run_id=10,
+        run_name=run_name,
+        query_text="golden query",
+        normalized_query_text=None,
+        actor_user_id=1,
+        requested_search_scope="company",
+        effective_search_scope="company",
+        document_group=None,
+        file_type=None,
+        chunk_policy_name="heading_512_64",
+        strategy_name="vector_cosine",
+        similarity_metric="cosine",
+        top_k=5,
+        score_threshold=None,
+        profile_names=("bge_m3_1024",),
+        status=status,
+        total_profile_count=1,
+        completed_profile_count=1 if status == "succeeded" else 0,
+        result_count=2,
+        failure_count=0,
+        total_elapsed_ms=20,
+        runtime_metadata=runtime_metadata
+        if runtime_metadata is not None
+        else {
+            "golden_question_batch": True,
+            "question_set_id": 3,
+            "question_set_name": "Golden Set",
+            "question_id": 10,
+        },
+        error_message=None,
+        created_by="unit-test",
+        created_by_user_id=None,
+        started_at=now,
+        finished_at=now if status == "succeeded" else None,
+        created_at=now,
+        updated_at=now,
+    )
 
 
 def test_search_experiment_run_validation_deduplicates_profiles() -> None:
@@ -161,3 +225,71 @@ def test_search_experiment_limit_validation_rejects_out_of_range_values() -> Non
         _validate_limit(0)
     with pytest.raises(InvalidSearchExperimentError, match="less than or equal to 5"):
         _validate_limit(6, max_limit=5)
+
+
+def test_golden_search_experiment_batch_key_roundtrip() -> None:
+    identity = GoldenSearchExperimentBatchIdentity(
+        question_set_id=10,
+        batch_prefix="Golden Set / search experiment / 20260712-101010",
+        strategy_name="vector_cosine_threshold",
+        top_k=5,
+        score_threshold=0.25,
+        chunk_policy_name="heading_512_64",
+        profile_names=("bge_m3_1024", "kure_v1_1024"),
+    )
+
+    batch_key = encode_golden_search_experiment_batch_key(identity)
+    decoded = decode_golden_search_experiment_batch_key(batch_key)
+
+    assert decoded == identity
+
+
+def test_golden_search_experiment_batch_key_rejects_invalid_values() -> None:
+    with pytest.raises(InvalidSearchExperimentError, match="Invalid golden"):
+        decode_golden_search_experiment_batch_key("not-a-valid-key")
+    with pytest.raises(InvalidSearchExperimentError, match="batch_key must not be blank"):
+        decode_golden_search_experiment_batch_key(" ")
+    with pytest.raises(InvalidSearchExperimentError, match="Invalid golden"):
+        decode_golden_search_experiment_batch_key(_encoded_payload(["not", "a", "dict"]))
+    with pytest.raises(InvalidSearchExperimentError, match="Invalid golden"):
+        decode_golden_search_experiment_batch_key(
+            _encoded_payload({"question_set_id": 1, "top_k": 5})
+        )
+    with pytest.raises(InvalidSearchExperimentError, match="Invalid golden"):
+        decode_golden_search_experiment_batch_key(
+            _encoded_payload(
+                {
+                    "question_set_id": 1,
+                    "top_k": 0,
+                    "profile_names": ["bge_m3_1024"],
+                }
+            )
+        )
+
+
+def test_golden_search_experiment_batch_helpers_validate_before_connecting() -> None:
+    with pytest.raises(InvalidSearchExperimentError, match="greater than 0"):
+        list_golden_search_experiment_batch_summaries("postgresql://unused", limit=0)
+    with pytest.raises(InvalidSearchExperimentError, match="Invalid golden"):
+        get_golden_search_experiment_batch_detail("postgresql://unused", "not-a-valid-key")
+
+
+def test_golden_search_experiment_batch_prefix_and_identity_helpers() -> None:
+    assert _golden_batch_prefix(_run_record(run_name="prefix / Q10")) == "prefix"
+    assert _golden_batch_prefix(
+        _run_record(run_name="prefix / Q99", runtime_metadata={"question_id": 10})
+    ) == "prefix"
+    assert _golden_batch_prefix(
+        _run_record(run_name="plain run", runtime_metadata={"question_id": False})
+    ) == "plain run"
+    assert _golden_batch_identity_from_run(_run_record(runtime_metadata={})) is None
+
+
+def test_golden_search_experiment_batch_summary_status_priority() -> None:
+    assert _summary_status([_run_record(status="succeeded")]) == "succeeded"
+    assert _summary_status([_run_record(status="succeeded"), _run_record(status="failed")]) == (
+        "failed"
+    )
+    assert _summary_status([_run_record(status="pending")]) == "running"
+    assert _summary_status([_run_record(status="canceled")]) == "canceled"
+    assert _summary_status([_run_record(status="skipped")]) == "failed"

@@ -1703,6 +1703,44 @@ main.container-fluid {
   min-width: 10rem;
 }
 
+.search-experiment-batch-table td:nth-child(1) {
+  min-width: 18rem;
+}
+
+.search-experiment-batch-table td:nth-child(2) {
+  min-width: 12rem;
+}
+
+.search-experiment-batch-table th:nth-child(3),
+.search-experiment-batch-table td:nth-child(3),
+.search-experiment-batch-table th:nth-child(4),
+.search-experiment-batch-table td:nth-child(4),
+.search-experiment-batch-table th:nth-child(5),
+.search-experiment-batch-table td:nth-child(5),
+.search-experiment-batch-table th:nth-child(6),
+.search-experiment-batch-table td:nth-child(6),
+.search-experiment-batch-table th:nth-child(7),
+.search-experiment-batch-table td:nth-child(7) {
+  white-space: nowrap;
+}
+
+.search-experiment-batch-question-table td:first-child {
+  min-width: 18rem;
+  overflow-wrap: anywhere;
+}
+
+.search-experiment-batch-question-table td:nth-child(2),
+.search-experiment-batch-question-table td:nth-child(3),
+.search-experiment-batch-question-table td:nth-child(4),
+.search-experiment-batch-question-table td:nth-child(5),
+.search-experiment-batch-question-table td:nth-child(6) {
+  white-space: nowrap;
+}
+
+.search-experiment-batch-question-text {
+  overflow-wrap: anywhere;
+}
+
 .search-experiment-profile-table th:first-child,
 .search-experiment-profile-table td:first-child {
   min-width: 9rem;
