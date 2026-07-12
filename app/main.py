@@ -7,6 +7,7 @@ import json
 import traceback as traceback_module
 from dataclasses import asdict
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
 from urllib.parse import urlencode
@@ -39,9 +40,11 @@ from app.core.chunks import (
 )
 from app.core.config import Settings, get_settings
 from app.core.dashboard_failures import (
+    DashboardFailureDetail,
     DashboardFailureRecord,
     DashboardFailureSummary,
     InvalidDashboardFailureError,
+    get_dashboard_failure_detail,
     get_dashboard_recent_failures,
 )
 from app.core.dashboard_metrics import (
@@ -636,6 +639,18 @@ def _datetime_response(value: object | None) -> str | None:
 
 def _datetime_label(value: object | None) -> str:
     return value.strftime("%Y-%m-%d %H:%M:%S") if hasattr(value, "strftime") else "-"
+
+
+def _json_safe_dashboard_value(value: object) -> object:
+    if isinstance(value, datetime):
+        return _datetime_response(value)
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe_dashboard_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_dashboard_value(item) for item in value]
+    return value
 
 
 def _byte_count_label(value: int | float | None) -> str:
@@ -3101,6 +3116,23 @@ def dashboard_failure_summary_payload(
     }
 
 
+def dashboard_failure_detail_payload(detail: DashboardFailureDetail) -> dict[str, object]:
+    return {
+        "source": detail.source,
+        "reference_id": detail.reference_id,
+        "title": detail.title,
+        "severity": detail.severity,
+        "status": detail.status,
+        "message": detail.message,
+        "occurred_at": _datetime_response(detail.occurred_at),
+        "occurred_at_label": _datetime_label(detail.occurred_at),
+        "action_url": detail.action_url,
+        "summary": _json_safe_dashboard_value(detail.summary),
+        "context": _json_safe_dashboard_value(detail.context),
+        "raw": _json_safe_dashboard_value(detail.raw),
+    }
+
+
 def document_inventory_item_payload(item: DocumentInventoryItem) -> dict[str, object]:
     return {
         "document_id": item.document_id,
@@ -3469,6 +3501,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content={"recent_failures": dashboard_failure_summary_payload(summary)})
+
+    @app.get("/api/dashboard/recent-failures/{source}/{reference_id}")
+    def api_get_dashboard_failure_detail(source: str, reference_id: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_dashboard_failure_detail(
+                settings.database_url,
+                source=source,
+                reference_id=reference_id,
+            )
+        except InvalidDashboardFailureError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dashboard failure detail not found.",
+            )
+
+        return JSONResponse(content={"failure_detail": dashboard_failure_detail_payload(detail)})
 
     @app.get("/api/chunk-policies")
     def api_list_chunk_policies() -> JSONResponse:

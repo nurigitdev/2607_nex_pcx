@@ -1169,6 +1169,56 @@ main.container-fluid {
   min-width: 20rem;
 }
 
+.dashboard-failure-detail-panel {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.dashboard-failure-detail-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.dashboard-failure-detail-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-detail-kv {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dashboard-detail-kv-row {
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.dashboard-detail-kv-row strong {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-detail-json {
+  background: #111827;
+  border-radius: 8px;
+  color: #e5e7eb;
+  max-height: 20rem;
+  overflow: auto;
+  padding: 1rem;
+  white-space: pre-wrap;
+}
+
 .dashboard-core-table td:nth-child(n + 2) {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -2685,6 +2735,7 @@ main.container-fluid {
   .evaluation-execute-form,
   .dashboard-core-grid,
   .dashboard-core-tables,
+  .dashboard-failure-detail-grid,
   .dashboard-pipeline-tables,
   .dashboard-status-grid,
   .design-component-grid,

@@ -47,6 +47,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("dashboard.recent_failures") == "Recent Operational Failures"
     assert korean("dashboard.failure_source_provider_alert") == "Provider Alert"
     assert english("dashboard.failure_source_embedding") == "Embedding"
+    assert korean("dashboard.failure_detail_title") == "운영 실패 상세"
+    assert english("dashboard.failure_detail_open_target") == "Open Target"
     assert korean("dashboard.embedding_queue_snapshot") == "임베딩 Queue 스냅샷"
     assert english("dashboard.embedding_queue_snapshot") == "Embedding Queue Snapshot"
     assert korean("nav.embedding_routes") == "Provider 라우팅"

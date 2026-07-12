@@ -445,10 +445,29 @@ def test_evaluation_dashboard_summary_api_and_page(
                 "/api/dashboard/recent-failures",
                 params={"limit": 20},
             )
+            pipeline_detail_response = client.get(
+                f"/api/dashboard/recent-failures/pipeline/{fixture['pipeline_failed_job_id']}"
+            )
+            embedding_detail_response = client.get(
+                f"/api/dashboard/recent-failures/embedding/{fixture['failed_embedding_job_id']}"
+            )
+            parsing_detail_response = client.get(
+                f"/api/dashboard/recent-failures/parsing/{fixture['embedding_file_id']}"
+            )
+            app_log_detail_response = client.get(
+                f"/api/dashboard/recent-failures/app_log/{fixture['app_error_log_id']}"
+            )
+            provider_alert_detail_response = client.get(
+                f"/api/dashboard/recent-failures/provider_alert/{fixture['provider_alert_log_id']}"
+            )
             bad_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 0})
             bad_failures_response = client.get(
                 "/api/dashboard/recent-failures",
                 params={"limit": 0},
+            )
+            bad_failure_detail_response = client.get("/api/dashboard/recent-failures/unknown/1")
+            missing_failure_detail_response = client.get(
+                "/api/dashboard/recent-failures/pipeline/999999999"
             )
             page_response = client.get("/")
 
@@ -456,6 +475,11 @@ def test_evaluation_dashboard_summary_api_and_page(
         core_metrics_payload = core_metrics_response.json()["core_metrics"]
         pipeline_queue_payload = pipeline_queue_response.json()["pipeline_queue"]
         failures_payload = failures_api_response.json()["recent_failures"]
+        pipeline_detail = pipeline_detail_response.json()["failure_detail"]
+        embedding_detail = embedding_detail_response.json()["failure_detail"]
+        parsing_detail = parsing_detail_response.json()["failure_detail"]
+        app_log_detail = app_log_detail_response.json()["failure_detail"]
+        provider_alert_detail = provider_alert_detail_response.json()["failure_detail"]
         recent_run_ids = {run.evaluation_run_id for run in summary.recent_runs}
         api_recent_run_ids = {run["evaluation_run_id"] for run in api_payload["recent_runs"]}
         failure_sources = {failure.source for failure in recent_failures.failures}
@@ -522,8 +546,30 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert {"pipeline", "embedding", "parsing", "app_log", "provider_alert"}.issubset(
             api_failure_sources
         )
+        assert pipeline_detail_response.status_code == 200
+        assert pipeline_detail["source"] == "pipeline"
+        assert pipeline_detail["context"]["job_type"] == "chunking"
+        assert pipeline_detail["summary"]["error_code"] == "SLICE_152_FAILED"
+        assert "job" in pipeline_detail["raw"]
+        assert embedding_detail_response.status_code == 200
+        assert embedding_detail["source"] == "embedding"
+        assert embedding_detail["summary"]["error_code"] == "SLICE_153_EMBEDDING_FAILED"
+        assert embedding_detail["summary"]["profile_name"] == fixture["embedding_profile_name"]
+        assert parsing_detail_response.status_code == 200
+        assert parsing_detail["source"] == "parsing"
+        assert parsing_detail["summary"]["parse_error_message"] == (
+            "dashboard parse fixture failed"
+        )
+        assert app_log_detail_response.status_code == 200
+        assert app_log_detail["source"] == "app_log"
+        assert app_log_detail["summary"]["event_type"] == "dashboard_recent_failure_fixture"
+        assert provider_alert_detail_response.status_code == 200
+        assert provider_alert_detail["source"] == "provider_alert"
+        assert provider_alert_detail["context"]["traceback_present"] is False
         assert bad_response.status_code == 400
         assert bad_failures_response.status_code == 400
+        assert bad_failure_detail_response.status_code == 400
+        assert missing_failure_detail_response.status_code == 404
         assert page_response.status_code == 200
         assert "Core Metrics" in page_response.text
         assert "slice-151" in page_response.text
@@ -533,6 +579,9 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "dashboard-stale-worker" not in page_response.text
         assert "최근 운영 실패" in page_response.text
         assert "/api/dashboard/recent-failures" in page_response.text
+        assert "data-failure-detail-button" in page_response.text
+        assert "data-failure-detail-panel" in page_response.text
+        assert "운영 실패 상세" in page_response.text
         assert "dashboard pipeline fixture failed" in page_response.text
         assert "dashboard embedding fixture failed" in page_response.text
         assert "dashboard parse fixture failed" in page_response.text

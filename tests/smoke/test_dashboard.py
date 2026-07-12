@@ -15,6 +15,7 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "/api/dashboard/core-metrics" in response.text
     assert "/api/dashboard/pipeline-queue" in response.text
     assert "/api/dashboard/recent-failures" in response.text
+    assert "data-failure-detail-panel" in response.text
     assert "/api/dashboard/embedding-backlog" in response.text
     assert "/api/dashboard/evaluations" in response.text
     assert "업로드" in response.text
@@ -73,5 +74,11 @@ def test_dashboard_embedding_backlog_api_requires_database(client) -> None:
 
 def test_dashboard_recent_failures_api_requires_database(client) -> None:
     response = client.get("/api/dashboard/recent-failures")
+
+    assert response.status_code == 503
+
+
+def test_dashboard_failure_detail_api_requires_database(client) -> None:
+    response = client.get("/api/dashboard/recent-failures/pipeline/1")
 
     assert response.status_code == 503

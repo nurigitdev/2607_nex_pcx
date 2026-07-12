@@ -394,11 +394,24 @@
               <td class="text-nowrap">{{ failure.status or "-" }}</td>
               <td class="text-nowrap">{{ failure.occurred_at_label }}</td>
               <td>
+                <div class="d-flex align-items-center gap-2">
+                {% if failure.reference_id %}
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary"
+                  data-failure-detail-button
+                  data-source="{{ failure.source }}"
+                  data-reference-id="{{ failure.reference_id }}"
+                >
+                  {{ t("dashboard.failure_detail") }}
+                </button>
+                {% endif %}
                 {% if failure.action_url %}
                 <a class="btn btn-sm btn-outline-primary" href="{{ failure.action_url }}">{{ t("dashboard.open_failure") }}</a>
                 {% else %}
                 <span class="text-secondary">-</span>
                 {% endif %}
+                </div>
               </td>
             </tr>
             {% endfor %}
@@ -412,6 +425,36 @@
         </tbody>
       </table>
     </div>
+
+    <section class="dashboard-failure-detail-panel" data-failure-detail-panel hidden>
+      <div class="dashboard-failure-detail-header">
+        <div>
+          <h3 class="h6 mb-1" data-failure-detail-title>{{ t("dashboard.failure_detail_title") }}</h3>
+          <div class="text-secondary small" data-failure-detail-meta>{{ t("dashboard.failure_detail_empty") }}</div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge text-bg-light border" data-failure-detail-source hidden></span>
+          <span class="badge text-bg-secondary" data-failure-detail-severity hidden></span>
+          <a class="btn btn-sm btn-outline-primary" data-failure-detail-action hidden>{{ t("dashboard.failure_detail_open_target") }}</a>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-failure-detail-close>{{ t("dashboard.failure_detail_close") }}</button>
+        </div>
+      </div>
+      <div class="alert alert-info mb-0" data-failure-detail-status>{{ t("dashboard.failure_detail_empty") }}</div>
+      <div class="dashboard-failure-detail-grid">
+        <div>
+          <h4 class="h6">{{ t("dashboard.failure_detail_summary") }}</h4>
+          <div class="dashboard-detail-kv" data-failure-detail-summary></div>
+        </div>
+        <div>
+          <h4 class="h6">{{ t("dashboard.failure_detail_context") }}</h4>
+          <div class="dashboard-detail-kv" data-failure-detail-context></div>
+        </div>
+      </div>
+      <div>
+        <h4 class="h6">{{ t("dashboard.failure_detail_raw") }}</h4>
+        <pre class="dashboard-detail-json" data-failure-detail-raw>{}</pre>
+      </div>
+    </section>
   </div>
 </section>
 
@@ -555,4 +598,135 @@
     </div>
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const panel = document.querySelector("[data-failure-detail-panel]");
+  if (!panel) return;
+
+  const buttons = document.querySelectorAll("[data-failure-detail-button]");
+  const title = panel.querySelector("[data-failure-detail-title]");
+  const meta = panel.querySelector("[data-failure-detail-meta]");
+  const statusBox = panel.querySelector("[data-failure-detail-status]");
+  const sourceBadge = panel.querySelector("[data-failure-detail-source]");
+  const severityBadge = panel.querySelector("[data-failure-detail-severity]");
+  const actionLink = panel.querySelector("[data-failure-detail-action]");
+  const summaryBox = panel.querySelector("[data-failure-detail-summary]");
+  const contextBox = panel.querySelector("[data-failure-detail-context]");
+  const rawBox = panel.querySelector("[data-failure-detail-raw]");
+  const closeButton = panel.querySelector("[data-failure-detail-close]");
+  const messages = {
+    empty: {{ t("dashboard.failure_detail_empty") | tojson }},
+    loading: {{ t("dashboard.failure_detail_loading") | tojson }},
+    failed: {{ t("dashboard.failure_detail_failed") | tojson }},
+    none: {{ t("dashboard.failure_detail_none") | tojson }},
+  };
+
+  const sourceLabels = {
+    pipeline: {{ t("dashboard.failure_source_pipeline") | tojson }},
+    embedding: {{ t("dashboard.failure_source_embedding") | tojson }},
+    parsing: {{ t("dashboard.failure_source_parsing") | tojson }},
+    app_log: {{ t("dashboard.failure_source_app_log") | tojson }},
+    provider_alert: {{ t("dashboard.failure_source_provider_alert") | tojson }},
+  };
+
+  function setStatus(message, level = "info") {
+    statusBox.hidden = false;
+    statusBox.className = `alert alert-${level} mb-0`;
+    statusBox.textContent = message;
+  }
+
+  function clearDetail() {
+    title.textContent = {{ t("dashboard.failure_detail_title") | tojson }};
+    meta.textContent = messages.empty;
+    sourceBadge.hidden = true;
+    severityBadge.hidden = true;
+    actionLink.hidden = true;
+    summaryBox.innerHTML = "";
+    contextBox.innerHTML = "";
+    rawBox.textContent = "{}";
+  }
+
+  function valueLabel(value) {
+    if (value === null || value === undefined || value === "") return "-";
+    if (Array.isArray(value)) return value.length ? value.join(" / ") : "-";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  }
+
+  function renderKeyValues(container, values) {
+    container.innerHTML = "";
+    const entries = Object.entries(values || {});
+    if (!entries.length) {
+      const empty = document.createElement("div");
+      empty.className = "text-secondary";
+      empty.textContent = messages.none;
+      container.appendChild(empty);
+      return;
+    }
+    entries.forEach(([key, value]) => {
+      const row = document.createElement("div");
+      row.className = "dashboard-detail-kv-row";
+      const label = document.createElement("span");
+      label.className = "metric-label";
+      label.textContent = key;
+      const content = document.createElement("strong");
+      content.textContent = valueLabel(value);
+      row.append(label, content);
+      container.appendChild(row);
+    });
+  }
+
+  async function loadDetail(button) {
+    const source = button.dataset.source;
+    const referenceId = button.dataset.referenceId;
+    if (!source || !referenceId) return;
+
+    panel.hidden = false;
+    clearDetail();
+    setStatus(messages.loading);
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    buttons.forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+
+    try {
+      const endpoint = `/api/dashboard/recent-failures/${encodeURIComponent(source)}/${encodeURIComponent(referenceId)}`;
+      const response = await fetch(endpoint);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.detail || messages.failed);
+      }
+      const detail = body.failure_detail;
+      title.textContent = detail.title;
+      meta.textContent = `${detail.status || "-"} · ${detail.occurred_at_label || "-"}`;
+      sourceBadge.hidden = false;
+      sourceBadge.textContent = sourceLabels[detail.source] || detail.source;
+      severityBadge.hidden = false;
+      severityBadge.textContent = detail.severity || "-";
+      severityBadge.className = `badge ${["critical", "error"].includes(detail.severity) ? "text-bg-danger" : detail.severity === "warning" ? "text-bg-warning" : "text-bg-secondary"}`;
+      if (detail.action_url) {
+        actionLink.hidden = false;
+        actionLink.href = detail.action_url;
+      }
+      renderKeyValues(summaryBox, detail.summary);
+      renderKeyValues(contextBox, detail.context);
+      rawBox.textContent = JSON.stringify(detail.raw || {}, null, 2);
+      statusBox.hidden = true;
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : messages.failed, "warning");
+    }
+  }
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => loadDetail(button));
+  });
+
+  closeButton.addEventListener("click", () => {
+    panel.hidden = true;
+    buttons.forEach((button) => button.classList.remove("active"));
+  });
+})();
+</script>
 {% endblock %}
