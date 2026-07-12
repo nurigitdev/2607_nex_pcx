@@ -325,6 +325,96 @@
   </div>
 </section>
 
+<section class="metric-card bg-white p-0 overflow-hidden mt-4" data-dashboard-recent-failures-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dashboard.recent_failures") }}</h2>
+      <div class="text-secondary">{{ t("dashboard.recent_failures_subtitle") }}</div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="/api/dashboard/recent-failures">{{ t("common.api") }}</a>
+      <a class="btn btn-primary btn-sm" href="/admin/logs">{{ t("dashboard.open_logs") }}</a>
+    </div>
+  </div>
+
+  <div class="dashboard-evaluation-body p-3">
+    <div class="dashboard-core-grid">
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.failure_pipeline") }}</span>
+        <strong>{{ recent_failures.pipeline_failure_count if recent_failures else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.failure_embedding") }}</span>
+        <strong>{{ recent_failures.embedding_failure_count if recent_failures else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.failure_parsing") }}</span>
+        <strong>{{ recent_failures.parsing_failure_count if recent_failures else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.failure_app_log") }}</span>
+        <strong>{{ recent_failures.app_error_count if recent_failures else 0 }}</strong>
+      </div>
+      <div class="dashboard-status-item">
+        <span class="metric-label">{{ t("dashboard.failure_provider_alert") }}</span>
+        <strong>{{ recent_failures.provider_alert_count if recent_failures else 0 }}</strong>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 dashboard-failure-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("dashboard.failure_source") }}</th>
+            <th scope="col">{{ t("dashboard.failure_severity") }}</th>
+            <th scope="col">{{ t("dashboard.failure_item") }}</th>
+            <th scope="col">{{ t("dashboard.status") }}</th>
+            <th scope="col">{{ t("dashboard.failure_occurred") }}</th>
+            <th scope="col">{{ t("dashboard.failure_action") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if recent_failures and recent_failures.failures %}
+            {% for failure in recent_failures.failures %}
+            <tr>
+              <td>
+                <span class="badge rounded-pill text-bg-light border">{{ t("dashboard.failure_source_" ~ failure.source) }}</span>
+              </td>
+              <td>
+                <span class="badge rounded-pill {% if failure.severity in ['critical', 'error'] %}text-bg-danger{% elif failure.severity == 'warning' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">
+                  {{ failure.severity }}
+                </span>
+              </td>
+              <td>
+                <div class="fw-semibold text-break">{{ failure.title }}</div>
+                {% if failure.message %}
+                <div class="text-secondary small text-break">{{ failure.message }}</div>
+                {% endif %}
+              </td>
+              <td class="text-nowrap">{{ failure.status or "-" }}</td>
+              <td class="text-nowrap">{{ failure.occurred_at_label }}</td>
+              <td>
+                {% if failure.action_url %}
+                <a class="btn btn-sm btn-outline-primary" href="{{ failure.action_url }}">{{ t("dashboard.open_failure") }}</a>
+                {% else %}
+                <span class="text-secondary">-</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+          <tr>
+            <td class="text-secondary text-center py-5" colspan="6">
+              {% if database_configured %}{{ t("dashboard.no_recent_failures") }}{% else %}{{ t("common.no_database") }}{% endif %}
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mt-4" data-dashboard-embedding-backlog-panel>
   <div class="dashboard-panel-header p-3">
     <div>

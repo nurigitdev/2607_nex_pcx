@@ -38,6 +38,12 @@ from app.core.chunks import (
     list_document_chunks,
 )
 from app.core.config import Settings, get_settings
+from app.core.dashboard_failures import (
+    DashboardFailureRecord,
+    DashboardFailureSummary,
+    InvalidDashboardFailureError,
+    get_dashboard_recent_failures,
+)
 from app.core.dashboard_metrics import (
     DashboardChunkPolicySummary,
     DashboardCoreMetrics,
@@ -3066,6 +3072,35 @@ def dashboard_core_metrics_payload(
     }
 
 
+def dashboard_failure_record_payload(record: DashboardFailureRecord) -> dict[str, object]:
+    return {
+        "source": record.source,
+        "severity": record.severity,
+        "title": record.title,
+        "message": record.message,
+        "occurred_at": _datetime_response(record.occurred_at),
+        "occurred_at_label": _datetime_label(record.occurred_at),
+        "status": record.status,
+        "action_url": record.action_url,
+        "reference_id": record.reference_id,
+        "metadata": record.metadata,
+    }
+
+
+def dashboard_failure_summary_payload(
+    summary: DashboardFailureSummary,
+) -> dict[str, object]:
+    return {
+        "total_count": summary.total_count,
+        "pipeline_failure_count": summary.pipeline_failure_count,
+        "embedding_failure_count": summary.embedding_failure_count,
+        "parsing_failure_count": summary.parsing_failure_count,
+        "app_error_count": summary.app_error_count,
+        "provider_alert_count": summary.provider_alert_count,
+        "failures": [dashboard_failure_record_payload(record) for record in summary.failures],
+    }
+
+
 def document_inventory_item_payload(item: DocumentInventoryItem) -> dict[str, object]:
     return {
         "document_id": item.document_id,
@@ -3419,6 +3454,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         summary = get_embedding_job_backlog_summary(settings.database_url)
         return JSONResponse(content={"backlog": embedding_job_backlog_summary_payload(summary)})
+
+    @app.get("/api/dashboard/recent-failures")
+    def api_get_dashboard_recent_failures(limit: int = 10) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            summary = get_dashboard_recent_failures(settings.database_url, limit=limit)
+        except InvalidDashboardFailureError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"recent_failures": dashboard_failure_summary_payload(summary)})
 
     @app.get("/api/chunk-policies")
     def api_list_chunk_policies() -> JSONResponse:
@@ -6209,6 +6259,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def dashboard(request: Request) -> HTMLResponse:
         core_metrics: DashboardCoreMetrics | None = None
         pipeline_queue: PipelineQueueSummary | None = None
+        recent_failures: DashboardFailureSummary | None = None
         evaluation_dashboard: EvaluationDashboardSummary | None = None
         embedding_backlog: EmbeddingJobBacklogSummary | None = None
         error_message = None
@@ -6222,6 +6273,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 pipeline_queue = get_pipeline_queue_summary(settings.database_url)
             except InvalidPipelineJobError as exc:
+                if error_message is None:
+                    error_message = str(exc)
+            except Exception as exc:
+                if error_message is None:
+                    error_message = str(exc)
+            try:
+                recent_failures = get_dashboard_recent_failures(
+                    settings.database_url,
+                    limit=8,
+                )
+            except InvalidDashboardFailureError as exc:
                 if error_message is None:
                     error_message = str(exc)
             except Exception as exc:
@@ -6261,6 +6323,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 pipeline_queue=(
                     pipeline_queue_summary_payload(pipeline_queue)
                     if pipeline_queue is not None
+                    else None
+                ),
+                recent_failures=(
+                    dashboard_failure_summary_payload(recent_failures)
+                    if recent_failures is not None
                     else None
                 ),
                 evaluation_dashboard=evaluation_dashboard,

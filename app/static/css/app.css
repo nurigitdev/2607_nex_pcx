@@ -1157,6 +1157,18 @@ main.container-fluid {
   min-width: 12rem;
 }
 
+.dashboard-failure-table td:nth-child(1),
+.dashboard-failure-table td:nth-child(2),
+.dashboard-failure-table td:nth-child(4),
+.dashboard-failure-table td:nth-child(5),
+.dashboard-failure-table td:nth-child(6) {
+  white-space: nowrap;
+}
+
+.dashboard-failure-table td:nth-child(3) {
+  min-width: 20rem;
+}
+
 .dashboard-core-table td:nth-child(n + 2) {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

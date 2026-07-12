@@ -4,13 +4,16 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.types.json import Json
 
+from app.core.admin_logging import log_event
 from app.core.config import Settings
+from app.core.dashboard_failures import get_dashboard_recent_failures
 from app.core.dashboard_metrics import get_dashboard_core_metrics
 from app.core.database import connect
 from app.core.embedding_jobs import (
     EmbeddingJobInput,
     create_embedding_job,
     get_embedding_job_backlog_summary,
+    mark_embedding_job_failed,
 )
 from app.core.evaluation_dashboard import get_evaluation_dashboard_summary
 from app.core.evaluation_metrics import (
@@ -49,9 +52,21 @@ def _create_dashboard_embedding_backlog_fixture(database_url: str) -> dict[str, 
                     file_size_bytes,
                     sha256_checksum,
                     storage_path,
-                    document_group
+                    document_group,
+                    parse_status,
+                    parse_error_message
                 )
-                VALUES (%s, %s, '.md', 2048, %s, %s, 'slice-151')
+                VALUES (
+                    %s,
+                    %s,
+                    '.md',
+                    2048,
+                    %s,
+                    %s,
+                    'slice-151',
+                    'failed',
+                    'dashboard parse fixture failed'
+                )
                 RETURNING file_id
                 """,
                 (
@@ -93,16 +108,49 @@ def _create_dashboard_embedding_backlog_fixture(database_url: str) -> dict[str, 
                 ),
             )
             chunk_id = cursor.fetchone()["chunk_id"]
+            cursor.execute(
+                """
+                INSERT INTO chunks (
+                    document_id,
+                    chunk_seq,
+                    chunk_text,
+                    content_hash,
+                    chunk_policy_name,
+                    token_count,
+                    char_count
+                )
+                VALUES (%s, 1, %s, %s, 'heading_512_64', 9, %s)
+                RETURNING chunk_id
+                """,
+                (
+                    document_id,
+                    "Dashboard failed embedding fixture chunk",
+                    f"failed-chunk-{checksum}",
+                    len("Dashboard failed embedding fixture chunk"),
+                ),
+            )
+            failed_chunk_id = cursor.fetchone()["chunk_id"]
 
     profile_name = "kure_v1_1024"
     job = create_embedding_job(
         database_url,
         EmbeddingJobInput(chunk_id=chunk_id, profile_name=profile_name),
     )
+    failed_job = create_embedding_job(
+        database_url,
+        EmbeddingJobInput(chunk_id=failed_chunk_id, profile_name=profile_name),
+    )
+    marked_failed_job = mark_embedding_job_failed(
+        database_url,
+        failed_job.job.job_id,
+        error_code="SLICE_153_EMBEDDING_FAILED",
+        error_message="dashboard embedding fixture failed",
+    )
     return {
         "file_id": file_id,
         "document_id": document_id,
         "job_id": job.job.job_id,
+        "failed_job_id": marked_failed_job.job_id if marked_failed_job else failed_job.job.job_id,
         "profile_name": profile_name,
     }
 
@@ -272,6 +320,24 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
         document_id=int(backlog_fixture["document_id"]),
         user_id=int(user_id),
     )
+    app_error_log_id = log_event(
+        database_url,
+        level="ERROR",
+        event_type="dashboard_recent_failure_fixture",
+        source="integration-test",
+        message="dashboard app log failure",
+        detail={"slice": 153},
+        correlation_id=f"slice-153-error-{uuid4()}",
+    )
+    provider_alert_log_id = log_event(
+        database_url,
+        level="ERROR",
+        event_type="embedding_provider_route_health_alert",
+        source="integration-test",
+        message="dashboard provider alert fixture",
+        detail={"slice": 153},
+        correlation_id=f"slice-153-alert-{uuid4()}",
+    )
 
     metric = evaluate_question(
         QuestionEvaluationInput(
@@ -319,11 +385,14 @@ def _create_dashboard_fixture(database_url: str) -> dict[str, object]:
         "failed_run_id": failed_run.evaluation_run_id,
         "embedding_file_id": backlog_fixture["file_id"],
         "embedding_job_id": backlog_fixture["job_id"],
+        "failed_embedding_job_id": backlog_fixture["failed_job_id"],
         "embedding_profile_name": backlog_fixture["profile_name"],
         "pipeline_queued_job_id": pipeline_fixture["queued_job_id"],
         "pipeline_stale_job_id": pipeline_fixture["stale_job_id"],
         "pipeline_failed_job_id": pipeline_fixture["failed_job_id"],
         "search_log_id": search_log_id,
+        "app_error_log_id": app_error_log_id,
+        "provider_alert_log_id": provider_alert_log_id,
     }
 
 
@@ -342,6 +411,16 @@ def _cleanup_dashboard_fixture(database_url: str, fixture: dict[str, object]) ->
                 "DELETE FROM files WHERE file_id = %s",
                 (fixture["embedding_file_id"],),
             )
+            log_ids = [
+                log_id
+                for log_id in (
+                    fixture.get("app_error_log_id"),
+                    fixture.get("provider_alert_log_id"),
+                )
+                if log_id is not None
+            ]
+            if log_ids:
+                cursor.execute("DELETE FROM app_logs WHERE log_id = ANY(%s)", (log_ids,))
 
 
 def test_evaluation_dashboard_summary_api_and_page(
@@ -354,6 +433,7 @@ def test_evaluation_dashboard_summary_api_and_page(
         core_metrics = get_dashboard_core_metrics(migrated_database_url)
         pipeline_queue = get_pipeline_queue_summary(migrated_database_url)
         backlog_summary = get_embedding_job_backlog_summary(migrated_database_url)
+        recent_failures = get_dashboard_recent_failures(migrated_database_url, limit=20)
         status_counts = {item.status: item.count for item in summary.status_counts}
 
         with TestClient(app) as client:
@@ -361,14 +441,25 @@ def test_evaluation_dashboard_summary_api_and_page(
             pipeline_queue_response = client.get("/api/dashboard/pipeline-queue")
             api_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 10})
             backlog_api_response = client.get("/api/dashboard/embedding-backlog")
+            failures_api_response = client.get(
+                "/api/dashboard/recent-failures",
+                params={"limit": 20},
+            )
             bad_response = client.get("/api/dashboard/evaluations", params={"recent_limit": 0})
+            bad_failures_response = client.get(
+                "/api/dashboard/recent-failures",
+                params={"limit": 0},
+            )
             page_response = client.get("/")
 
         api_payload = api_response.json()["evaluations"]
         core_metrics_payload = core_metrics_response.json()["core_metrics"]
         pipeline_queue_payload = pipeline_queue_response.json()["pipeline_queue"]
+        failures_payload = failures_api_response.json()["recent_failures"]
         recent_run_ids = {run.evaluation_run_id for run in summary.recent_runs}
         api_recent_run_ids = {run["evaluation_run_id"] for run in api_payload["recent_runs"]}
+        failure_sources = {failure.source for failure in recent_failures.failures}
+        api_failure_sources = {failure["source"] for failure in failures_payload["failures"]}
 
         assert core_metrics.document_count >= 1
         assert core_metrics.chunk_count >= 1
@@ -398,8 +489,7 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert pipeline_queue_payload["claimable_count"] >= 3
         assert any(item["stage"] == "parsing" for item in pipeline_queue_payload["stages"])
         assert any(
-            item["job_type"] == "document_ingestion"
-            for item in pipeline_queue_payload["job_types"]
+            item["job_type"] == "document_ingestion" for item in pipeline_queue_payload["job_types"]
         )
         assert summary.active_question_set_count >= 1
         assert summary.question_count >= 1
@@ -414,7 +504,26 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert backlog_api_response.status_code == 200
         assert backlog_api_response.json()["backlog"]["total_count"] == backlog_summary.total_count
         assert backlog_api_response.json()["backlog"]["pending_count"] >= 1
+        assert failures_api_response.status_code == 200
+        assert recent_failures.pipeline_failure_count >= 1
+        assert recent_failures.embedding_failure_count >= 1
+        assert recent_failures.parsing_failure_count >= 1
+        assert recent_failures.app_error_count >= 1
+        assert recent_failures.provider_alert_count >= 1
+        assert {"pipeline", "embedding", "parsing", "app_log", "provider_alert"}.issubset(
+            failure_sources
+        )
+        assert failures_payload["pipeline_failure_count"] == (
+            recent_failures.pipeline_failure_count
+        )
+        assert failures_payload["embedding_failure_count"] == (
+            recent_failures.embedding_failure_count
+        )
+        assert {"pipeline", "embedding", "parsing", "app_log", "provider_alert"}.issubset(
+            api_failure_sources
+        )
         assert bad_response.status_code == 400
+        assert bad_failures_response.status_code == 400
         assert page_response.status_code == 200
         assert "Core Metrics" in page_response.text
         assert "slice-151" in page_response.text
@@ -422,6 +531,13 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "Pipeline Queue 스냅샷" in page_response.text
         assert "/api/dashboard/pipeline-queue" in page_response.text
         assert "dashboard-stale-worker" not in page_response.text
+        assert "최근 운영 실패" in page_response.text
+        assert "/api/dashboard/recent-failures" in page_response.text
+        assert "dashboard pipeline fixture failed" in page_response.text
+        assert "dashboard embedding fixture failed" in page_response.text
+        assert "dashboard parse fixture failed" in page_response.text
+        assert "dashboard app log failure" in page_response.text
+        assert "dashboard provider alert fixture" in page_response.text
         assert "임베딩 Queue 스냅샷" in page_response.text
         assert fixture["embedding_profile_name"] in page_response.text
         assert "/api/dashboard/embedding-backlog" in page_response.text
