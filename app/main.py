@@ -603,6 +603,18 @@ DASHBOARD_REFRESH_INTERVAL_OPTIONS = (
     {"seconds": 60, "label": "60s"},
 )
 
+DASHBOARD_HEALTH_THRESHOLD_UI_ROWS = (
+    ("pipeline_stale", "critical"),
+    ("pipeline_exhausted", "critical"),
+    ("pipeline_retryable", "warning"),
+    ("embedding_stale", "critical"),
+    ("embedding_exhausted", "critical"),
+    ("embedding_retryable", "warning"),
+    ("provider_alert", "warning"),
+    ("app_error", "warning"),
+    ("parsing_failure", "warning"),
+)
+
 
 def dashboard_query_url(
     request: Request,
@@ -3255,6 +3267,19 @@ def dashboard_health_threshold_settings_payload(
     return {"thresholds": dict(settings.thresholds)}
 
 
+def dashboard_health_threshold_ui_rows(
+    settings: DashboardHealthThresholdSettings,
+) -> list[dict[str, object]]:
+    return [
+        {
+            "code": code,
+            "severity": severity,
+            "value": settings.thresholds.get(code, 1),
+        }
+        for code, severity in DASHBOARD_HEALTH_THRESHOLD_UI_ROWS
+    ]
+
+
 def dashboard_operational_health_payload(
     health: DashboardOperationalHealth,
     threshold_settings: DashboardHealthThresholdSettings | None = None,
@@ -3969,6 +3994,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     threshold_settings
                 )
             }
+        )
+
+    @app.get("/admin/dashboard-settings", response_class=HTMLResponse)
+    def dashboard_settings_page(request: Request) -> HTMLResponse:
+        error_message = None
+        threshold_settings = DashboardHealthThresholdSettings(
+            thresholds=dict(DEFAULT_DASHBOARD_HEALTH_THRESHOLDS)
+        )
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                threshold_settings = load_dashboard_health_threshold_settings(
+                    settings.database_url
+                )
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "dashboard_settings.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                error_message=error_message,
+                threshold_settings=dashboard_health_threshold_settings_payload(
+                    threshold_settings
+                ),
+                threshold_rows=dashboard_health_threshold_ui_rows(
+                    threshold_settings
+                ),
+            ),
         )
 
     @app.get("/api/dashboard/export")

@@ -580,6 +580,9 @@ def test_evaluation_dashboard_summary_api_and_page(
                 "/api/dashboard/health-thresholds",
                 json={"thresholds": {"pipeline_retryable": 1}},
             )
+            dashboard_settings_page_response = client.get(
+                "/admin/dashboard-settings"
+            )
             threshold_bad_code_response = client.put(
                 "/api/dashboard/health-thresholds",
                 json={"thresholds": {"unknown": 1}},
@@ -686,6 +689,15 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert threshold_restore_response.json()["settings"]["thresholds"][
             "pipeline_retryable"
         ] == 1
+        assert dashboard_settings_page_response.status_code == 200
+        assert "Dashboard 설정" in dashboard_settings_page_response.text
+        assert "/api/dashboard/health-thresholds" in (
+            dashboard_settings_page_response.text
+        )
+        assert 'data-threshold-code="pipeline_retryable"' in (
+            dashboard_settings_page_response.text
+        )
+        assert 'value="1"' in dashboard_settings_page_response.text
         assert threshold_bad_code_response.status_code == 400
         assert threshold_bad_value_response.status_code == 400
         assert pipeline_queue.queued_count >= 1

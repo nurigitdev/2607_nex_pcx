@@ -6,6 +6,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "dashboard_settings": "Dashboard Settings",
     "upload": "Upload",
     "documents": "Documents",
     "search": "Search",
@@ -30,6 +31,29 @@
     "inactive": "Inactive",
     "yes": "Yes",
     "no": "No"
+  },
+  "dashboard_settings": {
+    "title": "Dashboard Settings",
+    "subtitle": "Per-signal thresholds used by operational health",
+    "thresholds_title": "Operational Health Thresholds",
+    "thresholds_help": "A signal affects Dashboard health when its count is greater than or equal to the threshold.",
+    "threshold_count": "{count} rules",
+    "save_help": "Values must be at least 1 and apply immediately to the Dashboard health API.",
+    "save": "Save Settings",
+    "saving": "Saving threshold settings...",
+    "saved": "Threshold settings saved.",
+    "failed": "Threshold settings save failed",
+    "severity_critical": "Critical",
+    "severity_warning": "Warning",
+    "threshold_pipeline_stale": "Pipeline stale lease",
+    "threshold_pipeline_exhausted": "Pipeline exhausted failure",
+    "threshold_pipeline_retryable": "Pipeline retry needed",
+    "threshold_embedding_stale": "Embedding stale lease",
+    "threshold_embedding_exhausted": "Embedding exhausted failure",
+    "threshold_embedding_retryable": "Embedding retry needed",
+    "threshold_provider_alert": "Provider alert",
+    "threshold_app_error": "App error log",
+    "threshold_parsing_failure": "Parsing failure"
   },
   "status": {
     "pending": "pending",

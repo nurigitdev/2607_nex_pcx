@@ -6,6 +6,7 @@
   },
   "nav": {
     "dashboard": "대시보드",
+    "dashboard_settings": "Dashboard 설정",
     "upload": "업로드",
     "documents": "문서",
     "search": "검색",
@@ -30,6 +31,29 @@
     "inactive": "비활성",
     "yes": "예",
     "no": "아니오"
+  },
+  "dashboard_settings": {
+    "title": "Dashboard 설정",
+    "subtitle": "운영 상태 판정에 사용하는 신호별 threshold",
+    "thresholds_title": "운영 상태 Threshold",
+    "thresholds_help": "각 신호의 발생 건수가 threshold 이상일 때 Dashboard 운영 상태에 반영됩니다.",
+    "threshold_count": "{count}개 기준",
+    "save_help": "값은 1 이상이어야 하며 저장 즉시 Dashboard health API에 적용됩니다.",
+    "save": "설정 저장",
+    "saving": "Threshold 설정 저장 중...",
+    "saved": "Threshold 설정이 저장되었습니다.",
+    "failed": "Threshold 설정 저장 실패",
+    "severity_critical": "위험",
+    "severity_warning": "주의",
+    "threshold_pipeline_stale": "Pipeline stale lease",
+    "threshold_pipeline_exhausted": "Pipeline exhausted failure",
+    "threshold_pipeline_retryable": "Pipeline retry 필요",
+    "threshold_embedding_stale": "Embedding stale lease",
+    "threshold_embedding_exhausted": "Embedding exhausted failure",
+    "threshold_embedding_retryable": "Embedding retry 필요",
+    "threshold_provider_alert": "Provider alert",
+    "threshold_app_error": "App error log",
+    "threshold_parsing_failure": "Parsing failure"
   },
   "status": {
     "pending": "대기",

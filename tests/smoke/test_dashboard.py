@@ -5,6 +5,7 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert 'lang="ko"' in response.text
     assert "대시보드" in response.text
     assert "RAG 실험 벤치 운영 현황" in response.text
+    assert 'href="/admin/dashboard-settings"' in response.text
     assert "운영 상태" in response.text
     assert "정상" in response.text
     assert "/api/dashboard/operational-health" in response.text
@@ -72,6 +73,27 @@ def test_dashboard_supports_english_language_switch(client) -> None:
     assert "Embedding Queue Snapshot" in response.text
     assert "Upload" in response.text
     assert "Logs" in response.text
+
+
+def test_dashboard_settings_page_shows_configuration_message(client) -> None:
+    response = client.get("/admin/dashboard-settings")
+
+    assert response.status_code == 200
+    assert "Dashboard 설정" in response.text
+    assert "운영 상태 Threshold" in response.text
+    assert 'data-dashboard-threshold-settings' in response.text
+    assert 'data-settings-url="/api/dashboard/health-thresholds"' in response.text
+    assert 'data-threshold-code="pipeline_retryable"' in response.text
+    assert "NEX_PCX_DATABASE_URL is not configured." in response.text
+
+
+def test_dashboard_settings_page_supports_english(client) -> None:
+    response = client.get("/admin/dashboard-settings?lang=en")
+
+    assert response.status_code == 200
+    assert "Dashboard Settings" in response.text
+    assert "Operational Health Thresholds" in response.text
+    assert "Save Settings" in response.text
 
 
 def test_dashboard_uses_language_cookie(client) -> None:
