@@ -118,6 +118,14 @@ def test_dashboard_operational_health_api_requires_database(client) -> None:
     assert response.status_code == 503
 
 
+def test_dashboard_health_thresholds_api_requires_database(client) -> None:
+    get_response = client.get("/api/dashboard/health-thresholds")
+    put_response = client.put("/api/dashboard/health-thresholds", json={})
+
+    assert get_response.status_code == 503
+    assert put_response.status_code == 503
+
+
 def test_dashboard_export_api_requires_database(client) -> None:
     response = client.get("/api/dashboard/export")
 

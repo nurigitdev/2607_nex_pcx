@@ -101,3 +101,27 @@ def test_operational_health_uses_warning_when_no_critical_signals_exist() -> Non
     assert health.status == "warning"
     assert health.critical_count == 0
     assert health.warning_count == 2
+
+
+def test_operational_health_applies_signal_thresholds() -> None:
+    health = summarize_dashboard_operational_health(
+        pipeline_queue=_pipeline_queue(
+            retryable_failed_count=2,
+            stale_running_count=1,
+        ),
+        embedding_backlog=_embedding_backlog(),
+        recent_failures=_recent_failures(app_error_count=3),
+        thresholds={
+            "pipeline_retryable": 3,
+            "pipeline_stale": 1,
+            "app_error": 3,
+        },
+    )
+
+    assert health.status == "critical"
+    assert [signal.code for signal in health.signals] == [
+        "pipeline_stale",
+        "app_error",
+    ]
+    assert health.signals[0].threshold == 1
+    assert health.signals[1].threshold == 3

@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260711_0022"
+HEAD_REVISION = "20260712_0023"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -17,9 +17,18 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         test_database_url,
         "SELECT extversion FROM pg_extension WHERE extname = 'vector'",
     )
+    dashboard_threshold_settings = fetch_one(
+        test_database_url,
+        """
+        SELECT count(*) AS count
+        FROM app_log_settings
+        WHERE setting_name LIKE 'dashboard_%%_threshold'
+        """,
+    )
 
     assert revision["version_num"] == HEAD_REVISION
     assert extension["extversion"]
+    assert dashboard_threshold_settings["count"] == 9
 
 
 def test_alembic_downgrade_base_clears_revision(test_database_url: str) -> None:

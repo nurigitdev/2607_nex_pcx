@@ -52,6 +52,14 @@ from app.core.dashboard_health import (
     DashboardOperationalHealth,
     summarize_dashboard_operational_health,
 )
+from app.core.dashboard_health_settings import (
+    DEFAULT_DASHBOARD_HEALTH_THRESHOLDS,
+    DashboardHealthThresholdSettings,
+    DashboardHealthThresholdSettingsInput,
+    InvalidDashboardHealthThresholdSettingsError,
+    load_dashboard_health_threshold_settings,
+    update_dashboard_health_threshold_settings,
+)
 from app.core.dashboard_metrics import (
     DashboardChunkPolicySummary,
     DashboardCoreMetrics,
@@ -442,6 +450,10 @@ class EmbeddingBatchRunRetentionSettingsRequest(BaseModel):
 
 class EmbeddingBatchRunCleanupRequest(BaseModel):
     dry_run: bool = True
+
+
+class DashboardHealthThresholdSettingsRequest(BaseModel):
+    thresholds: dict[str, int] = Field(default_factory=dict)
 
 
 class ProviderPreflightScheduleRequest(BaseModel):
@@ -3232,14 +3244,22 @@ def dashboard_health_signal_payload(signal: DashboardHealthSignal) -> dict[str, 
         "code": signal.code,
         "severity": signal.severity,
         "count": signal.count,
+        "threshold": signal.threshold,
         "action_url": signal.action_url,
     }
 
 
+def dashboard_health_threshold_settings_payload(
+    settings: DashboardHealthThresholdSettings,
+) -> dict[str, object]:
+    return {"thresholds": dict(settings.thresholds)}
+
+
 def dashboard_operational_health_payload(
     health: DashboardOperationalHealth,
+    threshold_settings: DashboardHealthThresholdSettings | None = None,
 ) -> dict[str, object]:
-    return {
+    payload = {
         "status": health.status,
         "signal_count": health.signal_count,
         "critical_count": health.critical_count,
@@ -3248,6 +3268,9 @@ def dashboard_operational_health_payload(
             dashboard_health_signal_payload(signal) for signal in health.signals
         ],
     }
+    if threshold_settings is not None:
+        payload["thresholds"] = dict(threshold_settings.thresholds)
+    return payload
 
 
 def dashboard_snapshot_export_payload(
@@ -3264,17 +3287,20 @@ def dashboard_snapshot_export_payload(
     recent_failures = get_dashboard_recent_failures(database_url, limit=10)
     embedding_backlog = get_embedding_job_backlog_summary(database_url)
     evaluations = get_evaluation_dashboard_summary(database_url, recent_limit=10)
+    threshold_settings = load_dashboard_health_threshold_settings(database_url)
     operational_health = summarize_dashboard_operational_health(
         pipeline_queue=pipeline_queue,
         embedding_backlog=embedding_backlog,
         recent_failures=recent_failures,
+        thresholds=threshold_settings.thresholds,
     )
     return {
         "version": 1,
         "exported_at": _datetime_response(datetime.now(UTC)),
         "lookback_hours": throughput_latency.lookback_hours,
         "operational_health": dashboard_operational_health_payload(
-            operational_health
+            operational_health,
+            threshold_settings=threshold_settings,
         ),
         "core_metrics": dashboard_core_metrics_payload(core_metrics),
         "pipeline_queue": pipeline_queue_summary_payload(pipeline_queue),
@@ -3880,14 +3906,68 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pipeline_queue = get_pipeline_queue_summary(settings.database_url)
         embedding_backlog = get_embedding_job_backlog_summary(settings.database_url)
         recent_failures = get_dashboard_recent_failures(settings.database_url, limit=10)
+        threshold_settings = load_dashboard_health_threshold_settings(
+            settings.database_url
+        )
         health = summarize_dashboard_operational_health(
             pipeline_queue=pipeline_queue,
             embedding_backlog=embedding_backlog,
             recent_failures=recent_failures,
+            thresholds=threshold_settings.thresholds,
         )
         return JSONResponse(
             content={
-                "operational_health": dashboard_operational_health_payload(health)
+                "operational_health": dashboard_operational_health_payload(
+                    health,
+                    threshold_settings=threshold_settings,
+                )
+            }
+        )
+
+    @app.get("/api/dashboard/health-thresholds")
+    def api_get_dashboard_health_thresholds() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        threshold_settings = load_dashboard_health_threshold_settings(
+            settings.database_url
+        )
+        return JSONResponse(
+            content={
+                "settings": dashboard_health_threshold_settings_payload(
+                    threshold_settings
+                )
+            }
+        )
+
+    @app.put("/api/dashboard/health-thresholds")
+    def api_update_dashboard_health_thresholds(
+        payload: DashboardHealthThresholdSettingsRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            threshold_settings = update_dashboard_health_threshold_settings(
+                settings.database_url,
+                DashboardHealthThresholdSettingsInput(
+                    thresholds=dict(payload.thresholds)
+                ),
+            )
+        except InvalidDashboardHealthThresholdSettingsError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "settings": dashboard_health_threshold_settings_payload(
+                    threshold_settings
+                )
             }
         )
 
@@ -6819,6 +6899,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         embedding_backlog: EmbeddingJobBacklogSummary | None = None
         throughput_latency: DashboardThroughputLatencySnapshot | None = None
         operational_health: DashboardOperationalHealth | None = None
+        threshold_settings = DashboardHealthThresholdSettings(
+            thresholds=dict(DEFAULT_DASHBOARD_HEALTH_THRESHOLDS)
+        )
         rendered_at = datetime.now(UTC)
         selected_lookback_hours = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS
         selected_refresh_seconds = 0
@@ -6891,11 +6974,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception as exc:
                 if error_message is None:
                     error_message = str(exc)
+            try:
+                threshold_settings = load_dashboard_health_threshold_settings(
+                    settings.database_url
+                )
+            except Exception as exc:
+                if error_message is None:
+                    error_message = str(exc)
 
         operational_health = summarize_dashboard_operational_health(
             pipeline_queue=pipeline_queue,
             embedding_backlog=embedding_backlog,
             recent_failures=recent_failures,
+            thresholds=threshold_settings.thresholds,
         )
 
         return TEMPLATES.TemplateResponse(
@@ -6910,7 +7001,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     else None
                 ),
                 operational_health=dashboard_operational_health_payload(
-                    operational_health
+                    operational_health,
+                    threshold_settings=threshold_settings,
                 ),
                 pipeline_queue=(
                     pipeline_queue_summary_payload(pipeline_queue)

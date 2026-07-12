@@ -569,6 +569,25 @@ def test_evaluation_dashboard_summary_api_and_page(
                     "refresh_seconds": 30,
                 },
             )
+            threshold_settings_response = client.get(
+                "/api/dashboard/health-thresholds"
+            )
+            threshold_update_response = client.put(
+                "/api/dashboard/health-thresholds",
+                json={"thresholds": {"pipeline_retryable": 5}},
+            )
+            threshold_restore_response = client.put(
+                "/api/dashboard/health-thresholds",
+                json={"thresholds": {"pipeline_retryable": 1}},
+            )
+            threshold_bad_code_response = client.put(
+                "/api/dashboard/health-thresholds",
+                json={"thresholds": {"unknown": 1}},
+            )
+            threshold_bad_value_response = client.put(
+                "/api/dashboard/health-thresholds",
+                json={"thresholds": {"pipeline_retryable": 0}},
+            )
 
         api_payload = api_response.json()["evaluations"]
         core_metrics_payload = core_metrics_response.json()["core_metrics"]
@@ -623,6 +642,12 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert dashboard_export_json["version"] == 1
         assert dashboard_export_json["lookback_hours"] == selected_lookback_hours
         assert dashboard_export_json["operational_health"]["status"] == "critical"
+        assert dashboard_export_json["operational_health"]["thresholds"][
+            "pipeline_retryable"
+        ] == 1
+        assert dashboard_export_json["operational_health"]["signals"][0][
+            "threshold"
+        ] >= 1
         assert dashboard_export_json["core_metrics"]["document_count"] == (
             core_metrics.document_count
         )
@@ -649,6 +674,20 @@ def test_evaluation_dashboard_summary_api_and_page(
             dashboard_export_csv_response.text
         )
         assert ",6,critical," in dashboard_export_csv_response.text
+        assert threshold_settings_response.status_code == 200
+        assert threshold_settings_response.json()["settings"]["thresholds"][
+            "pipeline_retryable"
+        ] == 1
+        assert threshold_update_response.status_code == 200
+        assert threshold_update_response.json()["settings"]["thresholds"][
+            "pipeline_retryable"
+        ] == 5
+        assert threshold_restore_response.status_code == 200
+        assert threshold_restore_response.json()["settings"]["thresholds"][
+            "pipeline_retryable"
+        ] == 1
+        assert threshold_bad_code_response.status_code == 400
+        assert threshold_bad_value_response.status_code == 400
         assert pipeline_queue.queued_count >= 1
         assert pipeline_queue.stale_running_count >= 1
         assert pipeline_queue.failed_count >= 1
