@@ -338,6 +338,19 @@ def test_evaluation_execute_api_requires_database_url() -> None:
     assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
 
 
+def test_golden_search_experiment_batch_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/search/experiments/golden-question-set/run",
+            json={"question_set_id": 1, "profiles": ["kure_v1_1024"]},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
 def test_evaluation_profile_comparison_api_requires_database_url() -> None:
     app = create_app(Settings(database_url=None))
 

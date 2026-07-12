@@ -225,6 +225,21 @@ def _cleanup_question_set(database_url: str, question_set_id: int) -> None:
             )
 
 
+def _cleanup_search_experiment_batch(database_url: str, body: dict[str, object]) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            for item in body.get("questions", []):
+                experiment = item["experiment"]
+                cursor.execute(
+                    "DELETE FROM search_experiment_runs WHERE experiment_run_id = %s",
+                    (experiment["experiment_run"]["experiment_run_id"],),
+                )
+                cursor.execute(
+                    "DELETE FROM search_logs WHERE search_log_id = %s",
+                    (experiment["search_result"]["search_log_id"],),
+                )
+
+
 def test_golden_evaluation_execute_api_runs_search_and_persists_results(
     migrated_database_url: str,
 ) -> None:
@@ -288,6 +303,58 @@ def test_golden_evaluation_execute_api_runs_search_and_persists_results(
         _cleanup_files(migrated_database_url, [fixture["file_id"]])
 
 
+def test_golden_search_experiment_batch_api_runs_question_set(
+    migrated_database_url: str,
+) -> None:
+    fixture = _create_execute_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+    batch: dict[str, object] | None = None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/search/experiments/golden-question-set/run",
+                json={
+                    "question_set_id": fixture["question_set_id"],
+                    "run_name_prefix": f"slice-170-batch-{uuid4()}",
+                    "profiles": ["kure_v1_1024", "bge_m3_1024"],
+                    "strategy_name": "vector_cosine_threshold",
+                    "top_k": 2,
+                    "score_threshold": 0.0,
+                    "chunk_policy_name": "heading_512_64",
+                    "runtime_metadata": {"slice": "170"},
+                },
+            )
+            batch = response.json()["batch"]
+            experiment_run_id = batch["questions"][0]["experiment"]["experiment_run"][
+                "experiment_run_id"
+            ]
+            detail_response = client.get(f"/api/search/experiments/{experiment_run_id}")
+
+        question_report = batch["questions"][0]
+        experiment = question_report["experiment"]
+        experiment_run = experiment["experiment_run"]
+        runtime_metadata = experiment_run["runtime_metadata"]
+
+        assert response.status_code == 201
+        assert batch["question_count"] == 1
+        assert batch["question_set"]["question_set_id"] == fixture["question_set_id"]
+        assert str(fixture["question_id"]) in batch["experiment_run_ids_by_question"]
+        assert question_report["question"]["question_id"] == fixture["question_id"]
+        assert experiment_run["status"] == "succeeded"
+        assert experiment_run["profile_names"] == ["kure_v1_1024", "bge_m3_1024"]
+        assert experiment_run["result_count"] == 2
+        assert runtime_metadata["question_set_id"] == fixture["question_set_id"]
+        assert runtime_metadata["question_id"] == fixture["question_id"]
+        assert runtime_metadata["golden_question_batch"] is True
+        assert detail_response.status_code == 200
+        assert detail_response.json()["experiment_run"]["experiment_run_id"] == experiment_run_id
+    finally:
+        if batch is not None:
+            _cleanup_search_experiment_batch(migrated_database_url, batch)
+        _cleanup_question_set(migrated_database_url, fixture["question_set_id"])
+        _cleanup_files(migrated_database_url, [fixture["file_id"]])
+
+
 def test_golden_evaluation_execute_api_returns_not_found_for_missing_set(
     migrated_database_url: str,
 ) -> None:
@@ -297,6 +364,21 @@ def test_golden_evaluation_execute_api_returns_not_found_for_missing_set(
         response = client.post(
             "/api/evaluations/runs/execute",
             json={"question_set_id": 999999999, "profile_name": "kure_v1_1024"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Golden question set not found."}
+
+
+def test_golden_search_experiment_batch_api_returns_not_found_for_missing_set(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/search/experiments/golden-question-set/run",
+            json={"question_set_id": 999999999, "profiles": ["kure_v1_1024"]},
         )
 
     assert response.status_code == 404

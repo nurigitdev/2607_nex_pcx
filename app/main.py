@@ -291,6 +291,12 @@ from app.core.golden_questions import (
     update_golden_question,
     update_golden_question_set,
 )
+from app.core.golden_search_experiments import (
+    GoldenSearchExperimentBatchInput,
+    GoldenSearchExperimentBatchReport,
+    InvalidGoldenSearchExperimentError,
+    execute_golden_search_experiment_batch,
+)
 from app.core.i18n import (
     LANGUAGE_COOKIE_NAME,
     LANGUAGE_OPTIONS,
@@ -599,6 +605,19 @@ class GoldenEvaluationExecuteRequest(BaseModel):
     chunk_policy_name: str | None = None
     top_k: int = Field(default=5, ge=1)
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class GoldenSearchExperimentBatchRequest(BaseModel):
+    question_set_id: int = Field(ge=1)
+    run_name_prefix: str | None = None
+    profiles: list[str] | None = None
+    strategy_name: str = "vector_cosine"
+    top_k: int | None = Field(default=None, ge=1)
+    score_threshold: float | None = None
+    chunk_policy_name: str | None = None
+    runtime_metadata: dict[str, object] = Field(default_factory=dict)
+    created_by: str | None = "golden-search-experiment-api"
+    created_by_user_id: int | None = Field(default=None, ge=1)
 
 
 class GoldenQuestionImportTargetRequest(BaseModel):
@@ -3346,6 +3365,44 @@ def golden_evaluation_execution_payload(
             "mean_ndcg": execution.evaluation.summary.mean_ndcg,
             "no_answer_success_rate": execution.evaluation.summary.no_answer_success_rate,
         },
+    }
+
+
+def golden_search_experiment_batch_input_from_request(
+    payload: GoldenSearchExperimentBatchRequest,
+) -> GoldenSearchExperimentBatchInput:
+    return GoldenSearchExperimentBatchInput(
+        question_set_id=payload.question_set_id,
+        run_name_prefix=payload.run_name_prefix,
+        profiles=tuple(payload.profiles) if payload.profiles is not None else None,
+        strategy_name=payload.strategy_name,
+        top_k=payload.top_k,
+        score_threshold=payload.score_threshold,
+        chunk_policy_name=payload.chunk_policy_name,
+        runtime_metadata=dict(payload.runtime_metadata),
+        created_by=payload.created_by,
+        created_by_user_id=payload.created_by_user_id,
+    )
+
+
+def golden_search_experiment_batch_payload(
+    report: GoldenSearchExperimentBatchReport,
+) -> dict[str, object]:
+    return {
+        "question_set": golden_question_set_payload(report.question_set),
+        "question_count": len(report.question_reports),
+        "total_elapsed_ms": report.total_elapsed_ms,
+        "experiment_run_ids_by_question": {
+            str(question_id): experiment_run_id
+            for question_id, experiment_run_id in report.experiment_run_ids_by_question.items()
+        },
+        "questions": [
+            {
+                "question": golden_question_payload(item.question),
+                "experiment": search_experiment_execution_payload(item.experiment),
+            }
+            for item in report.question_reports
+        ],
     }
 
 
@@ -7073,6 +7130,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
             content={"execution": golden_evaluation_execution_payload(execution)},
+        )
+
+    @app.post("/api/search/experiments/golden-question-set/run")
+    def api_run_golden_search_experiment_batch(
+        payload: GoldenSearchExperimentBatchRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            report = execute_golden_search_experiment_batch(
+                settings.database_url,
+                golden_search_experiment_batch_input_from_request(payload),
+            )
+        except (
+            InvalidGoldenSearchExperimentError,
+            InvalidGoldenQuestionError,
+            InvalidSearchExperimentExecutionError,
+            InvalidSearchExperimentError,
+            InvalidSearchCompareError,
+            InvalidPermissionError,
+            InvalidVectorSearchError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden question set not found.",
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"batch": golden_search_experiment_batch_payload(report)},
         )
 
     @app.get("/api/evaluations/profile-comparison")
