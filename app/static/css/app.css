@@ -1450,6 +1450,126 @@ main.container-fluid {
   white-space: nowrap;
 }
 
+.embedding-coverage-filter {
+  flex-wrap: wrap;
+}
+
+.embedding-coverage-filter .form-control,
+.embedding-coverage-filter .form-select {
+  min-width: 8rem;
+  width: 11rem;
+}
+
+.embedding-coverage-filter .embedding-coverage-limit {
+  min-width: 5rem;
+  width: 6rem;
+}
+
+.embedding-coverage-summary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.embedding-coverage-profile-table th:nth-child(n + 3),
+.embedding-coverage-profile-table td:nth-child(n + 3) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.embedding-coverage-table-wrap {
+  max-height: 42rem;
+}
+
+.embedding-coverage-table th:first-child,
+.embedding-coverage-table td:first-child {
+  left: 0;
+  min-width: 18rem;
+  position: sticky;
+  z-index: 1;
+}
+
+.embedding-coverage-table th:first-child {
+  background: var(--bs-light);
+  z-index: 2;
+}
+
+.embedding-coverage-table td:first-child {
+  background: var(--bs-white);
+}
+
+.embedding-coverage-table th:nth-child(2),
+.embedding-coverage-table td:nth-child(2) {
+  min-width: 6rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.embedding-coverage-table th:nth-child(n + 3),
+.embedding-coverage-table td:nth-child(n + 3) {
+  min-width: 12rem;
+}
+
+.embedding-coverage-cell {
+  border: 1px solid var(--pcx-border);
+  border-radius: 0.375rem;
+  min-height: 5.25rem;
+  padding: 0.5rem;
+}
+
+.embedding-coverage-cell-main {
+  font-weight: 700;
+  margin-top: 0.375rem;
+}
+
+.embedding-coverage-badge {
+  border: 1px solid transparent;
+}
+
+.embedding-coverage-status-complete {
+  background: #effaf3;
+  border-color: #bfe8cb;
+}
+
+.embedding-coverage-status-complete .embedding-coverage-badge {
+  background: #146c43;
+}
+
+.embedding-coverage-status-running,
+.embedding-coverage-status-pending {
+  background: #fff8e6;
+  border-color: #ffe08a;
+}
+
+.embedding-coverage-status-running .embedding-coverage-badge,
+.embedding-coverage-status-pending .embedding-coverage-badge {
+  background: #946200;
+}
+
+.embedding-coverage-status-failed,
+.embedding-coverage-status-partial {
+  background: #fff1f0;
+  border-color: #f3b7b2;
+}
+
+.embedding-coverage-status-failed .embedding-coverage-badge,
+.embedding-coverage-status-partial .embedding-coverage-badge {
+  background: #b42318;
+}
+
+.embedding-coverage-status-missing,
+.embedding-coverage-status-not_chunked,
+.embedding-coverage-status-skipped {
+  background: #f8f9fa;
+  border-color: #d7dde3;
+}
+
+.embedding-coverage-status-missing .embedding-coverage-badge,
+.embedding-coverage-status-not_chunked .embedding-coverage-badge,
+.embedding-coverage-status-skipped .embedding-coverage-badge {
+  background: #5c6670;
+}
+
 .chunk-policy-table td:nth-child(1) {
   min-width: 14rem;
 }
@@ -2861,9 +2981,18 @@ main.container-fluid {
     width: 100%;
   }
 
+  .embedding-coverage-filter {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
   .document-filter-form .form-control,
   .document-filter-form .form-select,
   .document-filter-form .btn,
+  .embedding-coverage-filter .form-control,
+  .embedding-coverage-filter .form-select,
+  .embedding-coverage-filter .btn,
   .document-chunk-filter .form-control,
   .document-chunk-filter .btn {
     width: 100%;
@@ -2910,6 +3039,7 @@ main.container-fluid {
   .design-token-layout,
   .document-detail-grid,
   .embedding-backlog-summary-grid,
+  .embedding-coverage-summary-grid,
   .feedback-comment-list,
   .feedback-summary-grid,
   .golden-fieldset,

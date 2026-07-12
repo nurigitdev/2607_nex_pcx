@@ -12,12 +12,12 @@ from app.core.embedding_providers import (
     InvalidEmbeddingProviderError,
 )
 from app.core.embedding_worker import (
+    EMBEDDING_WORKER_BATCH_STOP_LIMIT_REACHED,
+    EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY,
     ERROR_CODE_EMBEDDING_PROVIDER_ERROR,
     ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_NOT_READY,
     ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING,
     ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
-    EMBEDDING_WORKER_BATCH_STOP_LIMIT_REACHED,
-    EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY,
     EmbeddingWorkerResult,
     process_embedding_worker_batch,
     process_next_embedding_job_with_provider_routes,

@@ -90,6 +90,14 @@ from app.core.document_inventory import (
     list_document_inventory,
     update_document_permission,
 )
+from app.core.embedding_coverage import (
+    EmbeddingCoverageDocument,
+    EmbeddingCoverageMatrix,
+    EmbeddingCoverageProfileCell,
+    EmbeddingCoverageProfileSummary,
+    InvalidEmbeddingCoverageError,
+    get_embedding_coverage_matrix,
+)
 from app.core.embedding_jobs import (
     EmbeddingJobBacklogProfileSummary,
     EmbeddingJobBacklogSummary,
@@ -1363,6 +1371,109 @@ def embedding_model_readiness_payload(readiness: EmbeddingModelReadiness) -> dic
         "has_model_weights": readiness.has_model_weights,
         "file_count": readiness.file_count,
         "total_size_bytes": readiness.total_size_bytes,
+    }
+
+
+def embedding_coverage_profile_cell_payload(
+    cell: EmbeddingCoverageProfileCell,
+) -> dict[str, object]:
+    return {
+        "profile_name": cell.profile_name,
+        "model_name": cell.model_name,
+        "dimension": cell.dimension,
+        "storage_type": cell.storage_type,
+        "is_active": cell.is_active,
+        "chunk_count": cell.chunk_count,
+        "job_count": cell.job_count,
+        "pending_count": cell.pending_count,
+        "running_count": cell.running_count,
+        "failed_count": cell.failed_count,
+        "retryable_failed_count": cell.retryable_failed_count,
+        "exhausted_failed_count": cell.exhausted_failed_count,
+        "succeeded_job_count": cell.succeeded_job_count,
+        "skipped_count": cell.skipped_count,
+        "embedded_chunk_count": cell.embedded_chunk_count,
+        "coverage_percent": _percent_value(cell.coverage_percent),
+        "coverage_label": _percent_label(cell.coverage_percent),
+        "status": cell.status,
+        "latest_job_updated_at": _datetime_response(cell.latest_job_updated_at),
+        "latest_embedding_at": _datetime_response(cell.latest_embedding_at),
+        "average_embedding_elapsed_ms": (
+            str(cell.average_embedding_elapsed_ms)
+            if cell.average_embedding_elapsed_ms is not None
+            else None
+        ),
+    }
+
+
+def embedding_coverage_document_payload(
+    document: EmbeddingCoverageDocument,
+) -> dict[str, object]:
+    return {
+        "document_id": document.document_id,
+        "file_id": document.file_id,
+        "document_title": document.document_title,
+        "original_file_name": document.original_file_name,
+        "file_ext": document.file_ext,
+        "document_group": document.document_group,
+        "parse_status": document.parse_status,
+        "access_scope": document.access_scope,
+        "chunk_count": document.chunk_count,
+        "uploaded_at": _datetime_response(document.uploaded_at),
+        "complete_profile_count": document.complete_profile_count,
+        "attention_profile_count": document.attention_profile_count,
+        "missing_profile_count": document.missing_profile_count,
+        "profiles": [
+            embedding_coverage_profile_cell_payload(cell) for cell in document.profiles
+        ],
+    }
+
+
+def embedding_coverage_profile_summary_payload(
+    summary: EmbeddingCoverageProfileSummary,
+) -> dict[str, object]:
+    return {
+        "profile_name": summary.profile_name,
+        "model_name": summary.model_name,
+        "document_count": summary.document_count,
+        "complete_document_count": summary.complete_document_count,
+        "partial_document_count": summary.partial_document_count,
+        "pending_document_count": summary.pending_document_count,
+        "running_document_count": summary.running_document_count,
+        "failed_document_count": summary.failed_document_count,
+        "missing_document_count": summary.missing_document_count,
+        "not_chunked_document_count": summary.not_chunked_document_count,
+        "total_chunk_count": summary.total_chunk_count,
+        "embedded_chunk_count": summary.embedded_chunk_count,
+        "coverage_percent": _percent_value(summary.coverage_percent),
+        "coverage_label": _percent_label(summary.coverage_percent),
+    }
+
+
+def embedding_coverage_matrix_payload(
+    matrix: EmbeddingCoverageMatrix,
+) -> dict[str, object]:
+    summary = matrix.summary
+    return {
+        "summary": {
+            "document_count": summary.document_count,
+            "profile_count": summary.profile_count,
+            "total_chunk_count": summary.total_chunk_count,
+            "expected_embedding_count": summary.expected_embedding_count,
+            "embedded_chunk_count": summary.embedded_chunk_count,
+            "complete_cell_count": summary.complete_cell_count,
+            "incomplete_cell_count": summary.incomplete_cell_count,
+            "attention_cell_count": summary.attention_cell_count,
+            "coverage_percent": _percent_value(summary.coverage_percent),
+            "coverage_label": _percent_label(summary.coverage_percent),
+            "profiles": [
+                embedding_coverage_profile_summary_payload(profile)
+                for profile in summary.profile_summaries
+            ],
+        },
+        "documents": [
+            embedding_coverage_document_payload(document) for document in matrix.documents
+        ],
     }
 
 
@@ -5454,6 +5565,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         summary = get_embedding_job_backlog_summary(settings.database_url)
         return JSONResponse(content={"backlog": embedding_job_backlog_summary_payload(summary)})
 
+    @app.get("/api/admin/embedding-coverage")
+    def api_get_embedding_coverage_matrix(
+        parse_status: str | None = None,
+        document_group: str | None = None,
+        profile_name: str | None = None,
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            matrix = get_embedding_coverage_matrix(
+                settings.database_url,
+                parse_status=parse_status,
+                document_group=document_group,
+                profile_name=profile_name,
+                limit=limit,
+            )
+        except InvalidEmbeddingCoverageError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=embedding_coverage_matrix_payload(matrix))
+
     @app.get("/api/admin/embedding-jobs/stale-leases")
     def api_list_stale_embedding_job_leases(
         profile_name: str | None = None,
@@ -7634,6 +7771,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_events=selected_events,
                 selected_status=status_filter or "",
                 selected_job_id=job_id,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/embedding-coverage", response_class=HTMLResponse)
+    def embedding_coverage_page(
+        request: Request,
+        parse_status: str | None = None,
+        document_group: str | None = None,
+        profile_name: str | None = None,
+        limit: int = 100,
+    ) -> HTMLResponse:
+        matrix: EmbeddingCoverageMatrix | None = None
+        profiles: list[EmbeddingProfileRecord] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                profiles = list_active_embedding_profiles(settings.database_url)
+                matrix = get_embedding_coverage_matrix(
+                    settings.database_url,
+                    parse_status=parse_status,
+                    document_group=document_group,
+                    profile_name=profile_name,
+                    limit=limit,
+                )
+            except InvalidEmbeddingCoverageError as exc:
+                error_message = str(exc)
+            except InvalidEmbeddingJobError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "embedding_coverage.html",
+            template_context(
+                request,
+                matrix=matrix,
+                profiles=profiles,
+                selected_parse_status=parse_status or "",
+                selected_document_group=document_group or "",
+                selected_profile_name=profile_name or "",
+                selected_limit=limit,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

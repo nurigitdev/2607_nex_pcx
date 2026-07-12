@@ -17,8 +17,8 @@ from app.core.embedding_providers import (
 )
 from app.core.embedding_vectors import get_chunk_embedding
 from app.core.embedding_worker import (
-    ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
     EMBEDDING_WORKER_BATCH_STOP_QUEUE_EMPTY,
+    ERROR_CODE_UNSUPPORTED_EMBEDDING_PROFILE,
     process_embedding_worker_batch,
     process_next_embedding_job_with_provider,
     process_next_embedding_job_with_provider_routes,
