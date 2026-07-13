@@ -153,6 +153,12 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
 
     assert response.status_code == 200
     assert "임베딩 Provider 라우팅" in response.text
+    assert "Provider Preset 등록" in response.text
+    assert "data-provider-preset-registration-panel" in response.text
+    assert "data-provider-preset-form" in response.text
+    assert "data-provider-preset-preview-table" in response.text
+    assert "/api/admin/embedding-provider-routes/presets" in response.text
+    assert "/api/admin/embedding-provider-routes/presets/register" in response.text
     assert "Provider 운영 요약" in response.text
     assert "운영 Playbook" in response.text
     assert "/admin/embedding-provider-routes/playbook" in response.text

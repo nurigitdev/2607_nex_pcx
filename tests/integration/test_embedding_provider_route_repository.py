@@ -481,9 +481,13 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             page_response = client.get("/admin/embedding-provider-routes")
             assert page_response.status_code == 200
             assert "임베딩 Provider 라우팅" in page_response.text
+            assert "Provider Preset 등록" in page_response.text
+            assert "data-provider-preset-registration-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/presets/register" in (page_response.text)
             assert api_provider_name in page_response.text
             assert form_provider_name in page_response.text
             assert "/api/admin/embedding-provider-routes" in page_response.text
+            assert "/api/admin/embedding-provider-routes/presets" in page_response.text
             assert "data-provider-operations-summary-panel" in page_response.text
             assert "/api/admin/embedding-provider-routes/operations-summary" in page_response.text
             assert "data-route-readiness-panel" in page_response.text
@@ -540,6 +544,71 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "/api/admin/embedding-provider-routes/contract-sample-sets" in page_response.text
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
+
+
+def test_embedding_provider_route_preset_registration_api_creates_qwen_routes(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"qwen-preset-ui-{suffix}"
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            presets_response = client.get("/api/admin/embedding-provider-routes/presets")
+            assert presets_response.status_code == 200
+            presets = presets_response.json()["presets"]
+            assert {preset["preset_name"] for preset in presets} >= {"kure", "bge", "qwen"}
+
+            register_response = client.post(
+                "/api/admin/embedding-provider-routes/presets/register",
+                json={
+                    "preset_name": "qwen",
+                    "provider_name": provider_name,
+                    "host": "gpu-qwen.local",
+                    "port": 19103,
+                    "timeout_seconds": 42.0,
+                    "priority": 12,
+                    "is_active": True,
+                    "health_check_enabled": True,
+                    "runtime_metadata": {"operator": "integration"},
+                },
+            )
+            assert register_response.status_code == 200
+            body = register_response.json()
+            assert body["registered_count"] == 2
+            assert [route["profile_name"] for route in body["routes"]] == [
+                "qwen3_4b_1000",
+                "qwen3_4b_2560",
+            ]
+            assert {route["provider_name"] for route in body["routes"]} == {provider_name}
+            assert {route["provider_base_url"] for route in body["routes"]} == {
+                "http://gpu-qwen.local:19103"
+            }
+            assert all(
+                route["runtime_metadata"]["source"] == "preset_registration_ui"
+                for route in body["routes"]
+            )
+            assert all(
+                route["runtime_metadata"]["operator"] == "integration" for route in body["routes"]
+            )
+
+            list_response = client.get(
+                "/api/admin/embedding-provider-routes",
+                params={"active_only": "true"},
+            )
+            assert list_response.status_code == 200
+            registered_routes = [
+                route
+                for route in list_response.json()["routes"]
+                if route["provider_name"] == provider_name
+            ]
+            assert {route["profile_name"] for route in registered_routes} == {
+                "qwen3_4b_1000",
+                "qwen3_4b_2560",
+            }
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
 
 
 def test_embedding_provider_route_health_api_summarizes_mock_routes(

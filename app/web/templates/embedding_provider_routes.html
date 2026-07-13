@@ -20,6 +20,96 @@
 <div class="alert alert-success" role="alert">{{ success_message }}</div>
 {% endif %}
 
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-provider-preset-registration-panel
+  data-register-api-url="/api/admin/embedding-provider-routes/presets/register"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.preset_registration") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.preset_registration_help") }}</div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/api/admin/embedding-provider-routes/presets">{{ t("common.api") }}</a>
+  </div>
+  <form class="p-3 border-top" data-provider-preset-form>
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="provider_preset">{{ t("embedding_routes.provider_preset") }}</label>
+        <select class="form-select" id="provider_preset" name="preset_name" data-provider-preset-select {% if not provider_presets %}disabled{% endif %}>
+          {% for preset in provider_presets %}
+          <option
+            value="{{ preset.preset_name }}"
+            data-provider-name="{{ preset.provider_name }}"
+            data-backend="{{ preset.backend }}"
+            data-model-key="{{ preset.model_key }}"
+            data-provider-model-id="{{ preset.provider_model_id }}"
+            data-default-host="{{ preset.default_host }}"
+            data-default-port="{{ preset.default_port }}"
+            data-profile-names='{{ preset.profile_names | list | tojson }}'
+          >{{ preset.preset_name }} · {{ preset.provider_name }}</option>
+          {% else %}
+          <option value="">{{ t("embedding_routes.no_presets") }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-lg-2">
+        <label class="form-label" for="preset_provider_name">{{ t("embedding_routes.provider_name") }}</label>
+        <input class="form-control" id="preset_provider_name" name="provider_name" data-preset-provider-name {% if not database_configured or not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label" for="preset_host">{{ t("embedding_routes.host") }}</label>
+        <input class="form-control" id="preset_host" name="host" data-preset-host {% if not database_configured or not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label" for="preset_port">{{ t("embedding_routes.port") }}</label>
+        <input class="form-control" id="preset_port" name="port" type="number" min="1" max="65535" step="1" data-preset-port {% if not database_configured or not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-6 col-md-3 col-lg-1">
+        <label class="form-label" for="preset_timeout_seconds">{{ t("embedding_routes.timeout") }}</label>
+        <input class="form-control" id="preset_timeout_seconds" name="timeout_seconds" type="number" min="0.001" step="0.001" value="30" data-preset-timeout {% if not database_configured or not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-6 col-md-3 col-lg-1">
+        <label class="form-label" for="preset_priority">{{ t("embedding_routes.priority") }}</label>
+        <input class="form-control" id="preset_priority" name="priority" type="number" min="0" step="1" value="100" data-preset-priority {% if not database_configured or not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-12 d-flex flex-wrap gap-3">
+        <div class="form-check">
+          <input class="form-check-input" id="preset_is_active" name="is_active" type="checkbox" value="true" checked data-preset-active {% if not database_configured or not provider_presets %}disabled{% endif %}>
+          <label class="form-check-label" for="preset_is_active">{{ t("embedding_routes.active") }}</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" id="preset_health_check_enabled" name="health_check_enabled" type="checkbox" value="true" checked data-preset-health-check {% if not database_configured or not provider_presets %}disabled{% endif %}>
+          <label class="form-check-label" for="preset_health_check_enabled">{{ t("embedding_routes.health_check") }}</label>
+        </div>
+        <button class="btn btn-primary ms-auto" type="submit" {% if not database_configured or not provider_presets %}disabled{% endif %}>{{ t("embedding_routes.register_preset_routes") }}</button>
+      </div>
+    </div>
+    <div class="small mt-3" data-provider-preset-status aria-live="polite">
+      {% if not database_configured %}{{ t("common.no_database") }}{% endif %}
+    </div>
+  </form>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.profile") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.base_url") }}</th>
+          <th scope="col">{{ t("embedding_routes.port") }}</th>
+          <th scope="col">{{ t("embedding_routes.model") }}</th>
+        </tr>
+      </thead>
+      <tbody data-provider-preset-preview-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="5">{{ t("embedding_routes.no_preset_selected") }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-3 mb-4">
   <form class="row g-3 align-items-end" method="post" action="/admin/embedding-provider-routes">
     <div class="col-12 col-md-3">
@@ -977,6 +1067,11 @@
     sampleSetDeleteFailed: {{ t("embedding_routes.sample_set_delete_failed") | tojson }},
     sampleSetConfirmDelete: {{ t("embedding_routes.sample_set_confirm_delete") | tojson }},
     sampleSetEmptyText: {{ t("embedding_routes.sample_set_empty_text") | tojson }},
+    noPresetSelected: {{ t("embedding_routes.no_preset_selected") | tojson }},
+    presetRegistrationReady: {{ t("embedding_routes.preset_registration_ready") | tojson }},
+    presetRegistering: {{ t("embedding_routes.preset_registering") | tojson }},
+    presetRegistered: {{ t("embedding_routes.preset_registered") | tojson }},
+    presetRegistrationFailed: {{ t("embedding_routes.preset_registration_failed") | tojson }},
     edit: {{ t("embedding_routes.edit") | tojson }},
     delete: {{ t("embedding_routes.delete") | tojson }},
     defaultSampleSet: {{ t("embedding_routes.default_sample_set") | tojson }},
@@ -1092,6 +1187,18 @@
   const retentionBreakdown = retentionPanel?.querySelector("[data-retention-breakdown]");
   const preflightButton = document.querySelector("[data-route-preflight-button]");
   const preflightStatus = document.querySelector("[data-route-preflight-status]");
+  const presetPanel = document.querySelector("[data-provider-preset-registration-panel]");
+  const presetForm = presetPanel?.querySelector("[data-provider-preset-form]");
+  const presetSelect = presetPanel?.querySelector("[data-provider-preset-select]");
+  const presetProviderName = presetPanel?.querySelector("[data-preset-provider-name]");
+  const presetHost = presetPanel?.querySelector("[data-preset-host]");
+  const presetPort = presetPanel?.querySelector("[data-preset-port]");
+  const presetTimeout = presetPanel?.querySelector("[data-preset-timeout]");
+  const presetPriority = presetPanel?.querySelector("[data-preset-priority]");
+  const presetActive = presetPanel?.querySelector("[data-preset-active]");
+  const presetHealthCheck = presetPanel?.querySelector("[data-preset-health-check]");
+  const presetStatus = presetPanel?.querySelector("[data-provider-preset-status]");
+  const presetPreviewTable = presetPanel?.querySelector("[data-provider-preset-preview-table]");
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
@@ -1143,6 +1250,14 @@
     sampleSetStatus.textContent = message;
   }
 
+  function setPresetStatus(message, className = "text-secondary") {
+    if (!presetStatus) {
+      return;
+    }
+    presetStatus.className = `small mt-3 ${className}`;
+    presetStatus.textContent = message;
+  }
+
   function setRetentionStatus(message, className = "text-secondary") {
     if (!retentionStatus) {
       return;
@@ -1189,6 +1304,15 @@
     row.appendChild(cell);
   }
 
+  function escapeHtml(value) {
+    return String(value || "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
   function formatDateTime(value) {
     if (!value) {
       return labels.none;
@@ -1210,6 +1334,127 @@
     }
     const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
     return localDate.toISOString().slice(0, 16);
+  }
+
+  function selectedPresetOption() {
+    if (!presetSelect) {
+      return null;
+    }
+    return presetSelect.options[presetSelect.selectedIndex] || null;
+  }
+
+  function selectedPresetProfileNames(option) {
+    if (!option?.dataset.profileNames) {
+      return [];
+    }
+    try {
+      return JSON.parse(option.dataset.profileNames);
+    } catch {
+      return [];
+    }
+  }
+
+  function presetBaseUrl() {
+    const host = presetHost?.value?.trim();
+    const port = presetPort?.value?.trim();
+    if (!host || !port) {
+      return labels.none;
+    }
+    return `http://${host}:${port}`;
+  }
+
+  function updatePresetPreview(resetDefaults = false) {
+    if (!presetPreviewTable) {
+      return;
+    }
+    const option = selectedPresetOption();
+    if (!option?.value) {
+      presetPreviewTable.innerHTML = `
+        <tr><td class="text-secondary text-center py-4" colspan="5">${labels.noPresetSelected}</td></tr>
+      `;
+      return;
+    }
+    if (resetDefaults) {
+      if (presetProviderName) {
+        presetProviderName.value = option.dataset.providerName || "";
+      }
+      if (presetHost) {
+        presetHost.value = option.dataset.defaultHost || "127.0.0.1";
+      }
+      if (presetPort) {
+        presetPort.value = option.dataset.defaultPort || "";
+      }
+    }
+    const rows = selectedPresetProfileNames(option).map((profileName) => `
+      <tr>
+        <td><span class="badge text-bg-light border">${escapeHtml(profileName)}</span></td>
+        <td>${escapeHtml(presetProviderName?.value || option.dataset.providerName || labels.none)}</td>
+        <td class="model-path">${escapeHtml(presetBaseUrl())}</td>
+        <td>${escapeHtml(presetPort?.value || option.dataset.defaultPort || labels.none)}</td>
+        <td>
+          <div>${escapeHtml(option.dataset.modelKey || labels.none)}</div>
+          <div class="small text-secondary">${escapeHtml(option.dataset.providerModelId || labels.none)}</div>
+        </td>
+      </tr>
+    `);
+    presetPreviewTable.innerHTML = rows.join("") || `
+      <tr><td class="text-secondary text-center py-4" colspan="5">${labels.noPresetSelected}</td></tr>
+    `;
+    if (presetPanel?.dataset.databaseConfigured === "true") {
+      setPresetStatus(labels.presetRegistrationReady);
+    } else {
+      setPresetStatus(labels.noDatabase, "text-warning");
+    }
+  }
+
+  async function registerPresetRoutes(event) {
+    event.preventDefault();
+    if (!presetPanel || presetPanel.dataset.databaseConfigured !== "true") {
+      setPresetStatus(labels.noDatabase, "text-warning");
+      return;
+    }
+    const option = selectedPresetOption();
+    if (!option?.value) {
+      setPresetStatus(labels.noPresetSelected, "text-warning");
+      return;
+    }
+    const submitButton = presetForm?.querySelector("button[type='submit']");
+    if (submitButton) {
+      submitButton.disabled = true;
+    }
+    setPresetStatus(labels.presetRegistering);
+    try {
+      const response = await fetch(presetPanel.dataset.registerApiUrl, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          preset_name: option.value,
+          provider_name: presetProviderName?.value || option.dataset.providerName,
+          host: presetHost?.value,
+          port: Number.parseInt(presetPort?.value || option.dataset.defaultPort || "0", 10),
+          timeout_seconds: Number.parseFloat(presetTimeout?.value || "30"),
+          priority: Number.parseInt(presetPriority?.value || "100", 10),
+          is_active: presetActive?.checked ?? true,
+          health_check_enabled: presetHealthCheck?.checked ?? true,
+          runtime_metadata: {registered_from: "admin_ui"},
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const body = await response.json();
+      setPresetStatus(
+        labels.presetRegistered.replace("{count}", body.registered_count ?? 0),
+        "text-success",
+      );
+      window.setTimeout(() => window.location.reload(), 700);
+    } catch (error) {
+      setPresetStatus(`${labels.presetRegistrationFailed}: ${error.message}`, "text-danger");
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
+    }
   }
 
   function setOperationsEmpty(message) {
@@ -2795,6 +3040,18 @@
     sampleSetReset?.addEventListener("click", resetSampleSetForm);
   }
 
+  function wirePresetRegistrationForm() {
+    if (!presetPanel) {
+      return;
+    }
+    presetSelect?.addEventListener("change", () => updatePresetPreview(true));
+    presetProviderName?.addEventListener("input", () => updatePresetPreview(false));
+    presetHost?.addEventListener("input", () => updatePresetPreview(false));
+    presetPort?.addEventListener("input", () => updatePresetPreview(false));
+    presetForm?.addEventListener("submit", registerPresetRoutes);
+    updatePresetPreview(true);
+  }
+
   function wireScheduleForm() {
     scheduleForm?.addEventListener("submit", saveSchedule);
     scheduleReset?.addEventListener("click", resetScheduleForm);
@@ -2815,6 +3072,7 @@
   wireOperationsSummaryControls();
   wireReadinessControls();
   wireSampleSetForm();
+  wirePresetRegistrationForm();
   wireScheduleForm();
   wireRetentionControls();
   loadOperationsSummary();

@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from app.core.embedding_provider_presets import (
+    InvalidEmbeddingProviderPresetError,
+    build_embedding_provider_preset_route_plans,
     get_embedding_provider_preset,
     list_embedding_provider_presets,
 )
@@ -36,6 +38,88 @@ def test_embedding_provider_presets_define_expected_ports_and_profiles() -> None
     assert presets["bge"].default_port == 9102
     assert presets["qwen"].default_port == 9103
     assert presets["qwen"].profile_names == ("qwen3_4b_1000", "qwen3_4b_2560")
+
+
+def test_embedding_provider_preset_route_plans_cover_shared_qwen_profiles() -> None:
+    plans = build_embedding_provider_preset_route_plans(
+        get_embedding_provider_preset("qwen"),
+        host="gpu-qwen.local",
+        port=19103,
+        provider_name="qwen-gpu-primary",
+        timeout_seconds=12.5,
+        priority=11,
+        runtime_metadata={"operator": "slice-179"},
+        metadata_source="unit_test",
+    )
+
+    assert [plan.profile_name for plan in plans] == ["qwen3_4b_1000", "qwen3_4b_2560"]
+    assert {plan.provider_base_url for plan in plans} == {"http://gpu-qwen.local:19103"}
+    assert {plan.provider_port for plan in plans} == {19103}
+    assert {plan.provider_name for plan in plans} == {"qwen-gpu-primary"}
+    assert {plan.timeout_seconds for plan in plans} == {12.5}
+    assert {plan.priority for plan in plans} == {11}
+    assert all(plan.runtime_metadata["source"] == "unit_test" for plan in plans)
+    assert all(plan.runtime_metadata["operator"] == "slice-179" for plan in plans)
+
+    route_input = plans[0].to_route_input()
+    assert route_input.profile_name == "qwen3_4b_1000"
+    assert route_input.provider_base_url == "http://gpu-qwen.local:19103"
+
+
+def test_embedding_provider_preset_route_plans_reject_invalid_base_url() -> None:
+    with pytest.raises(InvalidEmbeddingProviderPresetError, match="absolute http"):
+        build_embedding_provider_preset_route_plans(
+            get_embedding_provider_preset("kure"),
+            base_url="gpu-provider.local:9101",
+        )
+
+
+@pytest.mark.parametrize(
+    ("preset_name", "message"),
+    [
+        (" ", "preset_name is required"),
+        ("missing", "Unsupported embedding provider preset"),
+    ],
+)
+def test_embedding_provider_preset_lookup_rejects_invalid_names(
+    preset_name: str,
+    message: str,
+) -> None:
+    with pytest.raises(InvalidEmbeddingProviderPresetError, match=message):
+        get_embedding_provider_preset(preset_name)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"provider_name": " "}, "provider_name is required"),
+        ({"timeout_seconds": 0}, "timeout_seconds must be greater than 0"),
+        ({"priority": -1}, "priority must be greater than or equal to 0"),
+        ({"base_url": "   "}, "base_url is required"),
+        ({"host": " "}, "host is required"),
+        ({"port": 70000}, "port must be between 1 and 65535"),
+    ],
+)
+def test_embedding_provider_preset_route_plans_reject_invalid_operator_inputs(
+    kwargs,
+    message: str,
+) -> None:
+    with pytest.raises(InvalidEmbeddingProviderPresetError, match=message):
+        build_embedding_provider_preset_route_plans(
+            get_embedding_provider_preset("kure"),
+            **kwargs,
+        )
+
+
+def test_embedding_provider_preset_route_plans_normalize_absolute_base_url() -> None:
+    plans = build_embedding_provider_preset_route_plans(
+        get_embedding_provider_preset("bge"),
+        base_url="https://gpu-bge.local:9443/",
+    )
+
+    assert len(plans) == 1
+    assert plans[0].provider_base_url == "https://gpu-bge.local:9443"
+    assert plans[0].provider_port == 9443
 
 
 def test_run_embedding_provider_builds_qwen_launch_plan() -> None:
