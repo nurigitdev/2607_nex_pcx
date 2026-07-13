@@ -306,3 +306,22 @@ NEX_PCX_PROVIDER_MODEL_ID=local-qwen3-embedding-4b \
 Register both `qwen3_4b_1000` and `qwen3_4b_2560` routes with the same provider
 base URL, such as `http://127.0.0.1:9103`. The request profile and output
 dimension select the storage profile while the provider keeps one Qwen model loaded.
+
+Provider launch and route registration helpers are available for local operations:
+
+```bash
+./.venv/bin/python scripts/run_embedding_provider.py --provider qwen --dry-run --json
+./.venv/bin/python scripts/run_embedding_provider.py --provider qwen
+
+./.venv/bin/python scripts/register_embedding_provider_routes.py \
+  --provider qwen \
+  --database-url "$NEX_PCX_DATABASE_URL" \
+  --dry-run \
+  --json
+./.venv/bin/python scripts/register_embedding_provider_routes.py \
+  --provider qwen \
+  --database-url "$NEX_PCX_DATABASE_URL"
+```
+
+Default local ports are `9101` for KURE, `9102` for BGE-M3, and `9103` for the
+shared Qwen provider.

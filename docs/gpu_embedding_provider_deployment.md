@@ -144,6 +144,34 @@ against the same `provider_base_url`. The provider health response may set
 Avoid loading all large models into one small GPU process unless memory has been measured.
 For early experiments, prefer explicit routing over clever auto-balancing.
 
+## Local Launch And Route Helper
+
+NeX_PCX provides local operation helpers for launching provider processes and registering
+routes:
+
+```bash
+./.venv/bin/python scripts/run_embedding_provider.py --provider kure
+./.venv/bin/python scripts/run_embedding_provider.py --provider bge
+./.venv/bin/python scripts/run_embedding_provider.py --provider qwen
+```
+
+The default local ports are:
+
+- KURE: `9101`
+- BGE-M3: `9102`
+- Qwen shared provider: `9103`
+
+Register routes after the database is migrated:
+
+```bash
+./.venv/bin/python scripts/register_embedding_provider_routes.py \
+  --provider all \
+  --database-url "$NEX_PCX_DATABASE_URL"
+```
+
+Use `--dry-run --json` first when checking a new host, port, or provider name. For a
+remote GPU host, pass `--host <gpu-hostname>` or a single-provider `--base-url`.
+
 ## Startup Checklist
 
 On the GPU server:
