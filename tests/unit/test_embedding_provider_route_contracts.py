@@ -33,6 +33,7 @@ def test_route_contract_passes_remote_health_and_embedding_request() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen_paths.append(request.url.path)
+        assert request.headers["x-provider-route"] == "gpu-primary"
         if request.url.path == "/healthz":
             return httpx.Response(
                 200,
@@ -70,7 +71,7 @@ def test_route_contract_passes_remote_health_and_embedding_request() -> None:
         return httpx.Response(404, json={"detail": "not found"})
 
     result = check_embedding_provider_route_contract(
-        make_route(),
+        make_route(runtime_metadata={"request_headers": {"X-Provider-Route": "gpu-primary"}}),
         sample_texts=("unit contract sample",),
         sample_set_name="unit_samples",
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),

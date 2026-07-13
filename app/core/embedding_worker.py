@@ -17,6 +17,10 @@ from app.core.embedding_model_distribution import (
     InvalidEmbeddingModelDistributionError,
     get_embedding_model_distribution_for_profile,
 )
+from app.core.embedding_provider_route_auth import (
+    InvalidEmbeddingProviderRouteAuthError,
+    resolve_embedding_provider_route_request_headers,
+)
 from app.core.embedding_provider_route_readiness import (
     EmbeddingProviderRouteReadinessItem,
     EmbeddingProviderRouteReadinessSummary,
@@ -27,6 +31,7 @@ from app.core.embedding_provider_routes import (
     list_embedding_provider_routes,
 )
 from app.core.embedding_providers import (
+    REMOTE_EMBEDDING_PROVIDER_TYPE,
     EmbeddingProvider,
     EmbeddingProviderRequest,
     EmbeddingProviderRuntimeConfig,
@@ -115,9 +120,7 @@ class EmbeddingWorkerBatchResult:
     @property
     def failed_count(self) -> int:
         return sum(
-            1
-            for result in self.results
-            if result.job is not None and result.job.status == "failed"
+            1 for result in self.results if result.job is not None and result.job.status == "failed"
         )
 
     @property
@@ -190,9 +193,7 @@ def _validate_embedding_worker_batch_limit(limit: int) -> None:
     if limit <= 0:
         raise ValueError("limit must be greater than 0")
     if limit > MAX_EMBEDDING_WORKER_BATCH_LIMIT:
-        raise ValueError(
-            f"limit must be less than or equal to {MAX_EMBEDDING_WORKER_BATCH_LIMIT}"
-        )
+        raise ValueError(f"limit must be less than or equal to {MAX_EMBEDDING_WORKER_BATCH_LIMIT}")
 
 
 def process_next_embedding_job_with_provider(
@@ -324,17 +325,19 @@ def process_next_embedding_job_with_provider_routes(
         )
 
     route = route_candidates[0] if route_candidates else None
-    runtime_config = _runtime_config_for_job(
-        route,
-        fallback_runtime_config=fallback_runtime_config,
-    )
-    runtime_metadata = _runtime_metadata_for_job_provider(
-        route,
-        runtime_config=runtime_config,
-        route_readiness=route_readiness_by_id.get(route.route_id) if route else None,
-    )
     provider = None
+    runtime_mode = route.provider_mode if route else fallback_runtime_config.mode
     try:
+        runtime_config = _runtime_config_for_job(
+            route,
+            fallback_runtime_config=fallback_runtime_config,
+        )
+        runtime_mode = runtime_config.mode
+        runtime_metadata = _runtime_metadata_for_job_provider(
+            route,
+            runtime_config=runtime_config,
+            route_readiness=route_readiness_by_id.get(route.route_id) if route else None,
+        )
         provider = provider_builder(runtime_config)
         return _process_claimed_embedding_job_with_provider(
             database_url,
@@ -348,7 +351,7 @@ def process_next_embedding_job_with_provider_routes(
         failed_job = _fail_claimed_embedding_job(
             database_url,
             job,
-            error_code=_provider_error_code_for_provider_mode(runtime_config.mode),
+            error_code=_provider_error_code_for_provider_mode(runtime_mode),
             error_message=str(exc),
         )
         return EmbeddingWorkerResult(
@@ -440,22 +443,22 @@ def _process_claimed_embedding_job_with_provider_route_failover(
     failed_attempts: list[dict[str, object]] = []
     provider = None
     for attempt_index, route in enumerate(routes, start=1):
-        runtime_config = _runtime_config_for_job(
-            route,
-            fallback_runtime_config=fallback_runtime_config,
-        )
-        runtime_metadata = _runtime_metadata_for_job_provider(
-            route,
-            runtime_config=runtime_config,
-            route_readiness=(
-                route_readiness_by_id.get(route.route_id) if route_readiness_by_id else None
-            ),
-            failover_attempt_index=attempt_index,
-            failover_candidate_count=len(routes),
-            failed_route_attempts=failed_attempts,
-        )
         provider = None
         try:
+            runtime_config = _runtime_config_for_job(
+                route,
+                fallback_runtime_config=fallback_runtime_config,
+            )
+            runtime_metadata = _runtime_metadata_for_job_provider(
+                route,
+                runtime_config=runtime_config,
+                route_readiness=(
+                    route_readiness_by_id.get(route.route_id) if route_readiness_by_id else None
+                ),
+                failover_attempt_index=attempt_index,
+                failover_candidate_count=len(routes),
+                failed_route_attempts=failed_attempts,
+            )
             provider = provider_builder(runtime_config)
             return _process_claimed_embedding_job_with_provider(
                 database_url,
@@ -669,11 +672,20 @@ def _runtime_config_for_job(
 ) -> EmbeddingProviderRuntimeConfig:
     if route is None:
         return normalize_embedding_provider_runtime_config(fallback_runtime_config)
+    try:
+        remote_headers = (
+            resolve_embedding_provider_route_request_headers(route.runtime_metadata)
+            if route.provider_mode == REMOTE_EMBEDDING_PROVIDER_TYPE
+            else {}
+        )
+    except InvalidEmbeddingProviderRouteAuthError as exc:
+        raise InvalidEmbeddingProviderError(str(exc)) from exc
     return normalize_embedding_provider_runtime_config(
         EmbeddingProviderRuntimeConfig(
             mode=route.provider_mode,
             remote_base_url=route.provider_base_url,
             remote_timeout_seconds=route.timeout_seconds,
+            remote_headers=remote_headers,
         )
     )
 

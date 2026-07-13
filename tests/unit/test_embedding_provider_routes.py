@@ -87,7 +87,11 @@ def test_embedding_provider_route_input_normalizes_remote_route() -> None:
             provider_base_url="http://provider.local/",
             timeout_seconds=5.5,
             priority=10,
-            runtime_metadata={"device": "cuda:0"},
+            runtime_metadata={
+                "device": "cuda:0",
+                "request_headers": {" X-Tenant ": " nex "},
+                "auth": {"type": "bearer", "token_env": "NEX_PCX_PROVIDER_TOKEN"},
+            },
         )
     )
 
@@ -95,7 +99,11 @@ def test_embedding_provider_route_input_normalizes_remote_route() -> None:
     assert route_input.provider_name == "gpu-a"
     assert route_input.provider_mode == "remote"
     assert route_input.provider_base_url == "http://provider.local"
-    assert route_input.runtime_metadata == {"device": "cuda:0"}
+    assert route_input.runtime_metadata == {
+        "device": "cuda:0",
+        "request_headers": {"X-Tenant": "nex"},
+        "auth": {"type": "bearer", "token_env": "NEX_PCX_PROVIDER_TOKEN"},
+    }
 
 
 @pytest.mark.parametrize(
@@ -132,6 +140,15 @@ def test_embedding_provider_route_input_normalizes_remote_route() -> None:
                 priority=-1,
             ),
             "priority",
+        ),
+        (
+            EmbeddingProviderRouteInput(
+                profile_name="p",
+                provider_name="gpu",
+                provider_base_url="http://p",
+                runtime_metadata={"request_headers": {"Bad:Header": "value"}},
+            ),
+            "header name",
         ),
     ],
 )

@@ -7,6 +7,10 @@ from app.core.embedding_model_distribution import (
     InvalidEmbeddingModelDistributionError,
     get_embedding_model_distribution_for_profile,
 )
+from app.core.embedding_provider_route_auth import (
+    InvalidEmbeddingProviderRouteAuthError,
+    resolve_embedding_provider_route_request_headers,
+)
 from app.core.embedding_provider_route_health import (
     EmbeddingProviderRouteHealthResult,
     check_embedding_provider_route_health,
@@ -158,9 +162,14 @@ def _build_provider(route: EmbeddingProviderRouteRecord, *, http_client: object 
     if route.provider_mode == MOCK_EMBEDDING_PROVIDER_TYPE:
         return MockEmbeddingProvider()
     if route.provider_mode == REMOTE_EMBEDDING_PROVIDER_TYPE:
+        try:
+            headers = resolve_embedding_provider_route_request_headers(route.runtime_metadata)
+        except InvalidEmbeddingProviderRouteAuthError as exc:
+            raise InvalidEmbeddingProviderError(str(exc)) from exc
         return RemoteEmbeddingProviderClient(
             route.provider_base_url or "",
             timeout_seconds=route.timeout_seconds,
+            headers=headers,
             http_client=http_client,
         )
     raise InvalidEmbeddingProviderError(f"Unsupported provider_mode: {route.provider_mode}")

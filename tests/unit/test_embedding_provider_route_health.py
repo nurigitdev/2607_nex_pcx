@@ -32,6 +32,7 @@ def make_route(**overrides) -> EmbeddingProviderRouteRecord:
 def test_route_health_reports_remote_provider_ready() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/healthz"
+        assert request.headers["x-provider-route"] == "gpu-primary"
         return httpx.Response(
             200,
             json={
@@ -47,7 +48,7 @@ def test_route_health_reports_remote_provider_ready() -> None:
         )
 
     health = check_embedding_provider_route_health(
-        make_route(),
+        make_route(runtime_metadata={"request_headers": {"X-Provider-Route": "gpu-primary"}}),
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 

@@ -156,6 +156,14 @@ from app.core.embedding_provider_presets import (
     get_embedding_provider_preset,
     list_embedding_provider_presets,
 )
+from app.core.embedding_provider_route_auth import (
+    AUTH_TYPE_API_KEY,
+    AUTH_TYPE_BEARER,
+    AUTH_TYPE_NONE,
+    InvalidEmbeddingProviderRouteAuthError,
+    describe_embedding_provider_route_request_metadata,
+    normalize_embedding_provider_route_metadata,
+)
 from app.core.embedding_provider_route_contract_snapshots import (
     EmbeddingProviderRouteContractSnapshotRecord,
     InvalidEmbeddingProviderRouteContractSnapshotError,
@@ -1612,6 +1620,7 @@ def embedding_provider_contract_sample_set_input_from_request(
 
 
 def embedding_provider_route_payload(route: EmbeddingProviderRouteRecord) -> dict[str, object]:
+    request_metadata = describe_embedding_provider_route_request_metadata(route.runtime_metadata)
     return {
         "route_id": route.route_id,
         "profile_name": route.profile_name,
@@ -1623,6 +1632,10 @@ def embedding_provider_route_payload(route: EmbeddingProviderRouteRecord) -> dic
         "is_active": route.is_active,
         "health_check_enabled": route.health_check_enabled,
         "runtime_metadata": route.runtime_metadata,
+        "request_header_names": sorted(request_metadata.request_headers),
+        "auth_type": request_metadata.auth_type,
+        "auth_token_env": request_metadata.auth_token_env,
+        "auth_header_name": request_metadata.auth_header_name,
         "created_at": _datetime_response(route.created_at),
         "updated_at": _datetime_response(route.updated_at),
     }
@@ -2168,6 +2181,47 @@ def embedding_provider_route_input_from_request(
         health_check_enabled=payload.health_check_enabled,
         runtime_metadata=payload.runtime_metadata,
     )
+
+
+def embedding_provider_route_runtime_metadata_from_form(
+    *,
+    request_headers_json: str | None,
+    auth_type: str,
+    auth_token_env: str | None,
+    auth_header_name: str | None,
+) -> dict[str, object]:
+    runtime_metadata: dict[str, object] = {}
+    headers_text = (request_headers_json or "").strip()
+    if headers_text and headers_text != "{}":
+        try:
+            request_headers = json.loads(headers_text)
+        except json.JSONDecodeError as exc:
+            raise InvalidEmbeddingProviderRouteError(
+                "request_headers_json must be a JSON object"
+            ) from exc
+        if not isinstance(request_headers, dict):
+            raise InvalidEmbeddingProviderRouteError("request_headers_json must be a JSON object")
+        runtime_metadata["request_headers"] = request_headers
+
+    selected_auth_type = auth_type.strip().lower() if auth_type else AUTH_TYPE_NONE
+    if selected_auth_type == AUTH_TYPE_BEARER:
+        runtime_metadata["auth"] = {
+            "type": AUTH_TYPE_BEARER,
+            "token_env": auth_token_env or "",
+        }
+    elif selected_auth_type == AUTH_TYPE_API_KEY:
+        runtime_metadata["auth"] = {
+            "type": AUTH_TYPE_API_KEY,
+            "key_env": auth_token_env or "",
+            "header_name": auth_header_name or "X-API-Key",
+        }
+    elif selected_auth_type != AUTH_TYPE_NONE:
+        raise InvalidEmbeddingProviderRouteError(f"Unsupported auth type: {selected_auth_type}")
+
+    try:
+        return normalize_embedding_provider_route_metadata(runtime_metadata)
+    except InvalidEmbeddingProviderRouteAuthError as exc:
+        raise InvalidEmbeddingProviderRouteError(str(exc)) from exc
 
 
 def embedding_provider_route_import_inputs_from_request(
@@ -9706,6 +9760,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         priority: int = Form(100),
         is_active: bool = Form(False),
         health_check_enabled: bool = Form(False),
+        request_headers_json: str | None = Form("{}"),
+        auth_type: str = Form(AUTH_TYPE_NONE),
+        auth_token_env: str | None = Form(None),
+        auth_header_name: str | None = Form("X-API-Key"),
     ) -> HTMLResponse:
         routes: list[EmbeddingProviderRouteRecord] = []
         profiles: list[EmbeddingProfileRecord] = []
@@ -9727,6 +9785,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         priority=priority,
                         is_active=is_active,
                         health_check_enabled=health_check_enabled,
+                        runtime_metadata=embedding_provider_route_runtime_metadata_from_form(
+                            request_headers_json=request_headers_json,
+                            auth_type=auth_type,
+                            auth_token_env=auth_token_env,
+                            auth_header_name=auth_header_name,
+                        ),
                     ),
                 )
                 success_message = "Embedding provider route saved."

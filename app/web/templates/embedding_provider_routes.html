@@ -321,6 +321,26 @@
       <label class="form-label" for="priority">{{ t("embedding_routes.priority") }}</label>
       <input class="form-control" id="priority" name="priority" type="number" min="0" step="1" value="100" {% if not database_configured or not profiles %}disabled{% endif %}>
     </div>
+    <div class="col-12 col-lg-5">
+      <label class="form-label" for="request_headers_json">{{ t("embedding_routes.request_headers_json") }}</label>
+      <textarea class="form-control font-monospace small" id="request_headers_json" name="request_headers_json" rows="2" {% if not database_configured or not profiles %}disabled{% endif %}>{}</textarea>
+    </div>
+    <div class="col-12 col-md-4 col-lg-2">
+      <label class="form-label" for="auth_type">{{ t("embedding_routes.auth_type") }}</label>
+      <select class="form-select" id="auth_type" name="auth_type" {% if not database_configured or not profiles %}disabled{% endif %}>
+        <option value="none">{{ t("embedding_routes.auth_none") }}</option>
+        <option value="bearer">Bearer</option>
+        <option value="api_key">API Key</option>
+      </select>
+    </div>
+    <div class="col-12 col-md-4 col-lg-3">
+      <label class="form-label" for="auth_token_env">{{ t("embedding_routes.auth_token_env") }}</label>
+      <input class="form-control" id="auth_token_env" name="auth_token_env" placeholder="NEX_PCX_PROVIDER_TOKEN" {% if not database_configured or not profiles %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-md-4 col-lg-2">
+      <label class="form-label" for="auth_header_name">{{ t("embedding_routes.auth_header_name") }}</label>
+      <input class="form-control" id="auth_header_name" name="auth_header_name" value="X-API-Key" {% if not database_configured or not profiles %}disabled{% endif %}>
+    </div>
     <div class="col-12 d-flex flex-wrap gap-3">
       <div class="form-check">
         <input class="form-check-input" id="is_active" name="is_active" type="checkbox" value="true" checked {% if not database_configured or not profiles %}disabled{% endif %}>
@@ -1086,11 +1106,15 @@
           <th scope="col">{{ t("embedding_routes.timeout") }}</th>
           <th scope="col">{{ t("embedding_routes.priority") }}</th>
           <th scope="col">{{ t("embedding_routes.status") }}</th>
+          <th scope="col">{{ t("embedding_routes.request_auth") }}</th>
           <th scope="col">{{ t("embedding_routes.actions") }}</th>
         </tr>
       </thead>
       <tbody>
         {% for route in routes %}
+        {% set request_metadata = route.runtime_metadata or {} %}
+        {% set request_headers = request_metadata.get("request_headers") or {} %}
+        {% set auth = request_metadata.get("auth") or {} %}
         <tr>
           <td><span class="badge text-bg-light border">{{ route.profile_name }}</span></td>
           <td><strong>{{ route.provider_name }}</strong></td>
@@ -1106,6 +1130,16 @@
             {% endif %}
             {% if route.health_check_enabled %}
             <span class="badge text-bg-light border">{{ t("embedding_routes.health_check") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if auth %}
+            <span class="badge text-bg-primary-subtle text-primary-emphasis border">{{ auth.get("type") }}</span>
+            {% else %}
+            <span class="badge text-bg-light border">{{ t("embedding_routes.auth_none") }}</span>
+            {% endif %}
+            {% if request_headers %}
+            <span class="badge text-bg-light border">{{ t("embedding_routes.headers") }} {{ request_headers|length }}</span>
             {% endif %}
           </td>
           <td>
@@ -1129,7 +1163,7 @@
         </tr>
         {% else %}
         <tr>
-          <td class="text-secondary text-center py-5" colspan="8">
+          <td class="text-secondary text-center py-5" colspan="9">
             {% if database_configured %}{{ t("embedding_routes.no_routes") }}{% else %}{{ t("common.no_database") }}{% endif %}
           </td>
         </tr>

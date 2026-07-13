@@ -168,6 +168,9 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-provider-route-import-export-panel" in response.text
     assert "/api/admin/embedding-provider-routes/export" in response.text
     assert "/api/admin/embedding-provider-routes/import" in response.text
+    assert "request_headers_json" in response.text
+    assert "auth_token_env" in response.text
+    assert "Request Auth" in response.text
     assert "/api/admin/embedding-provider-routes/presets/register" in response.text
     assert "Provider 운영 요약" in response.text
     assert "운영 Playbook" in response.text

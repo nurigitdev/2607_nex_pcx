@@ -483,6 +483,10 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                     "priority": "7",
                     "is_active": "true",
                     "health_check_enabled": "true",
+                    "request_headers_json": '{"X-Tenant": "nex"}',
+                    "auth_type": "bearer",
+                    "auth_token_env": "NEX_PCX_FORM_PROVIDER_TOKEN",
+                    "auth_header_name": "X-API-Key",
                 },
             )
             assert form_response.status_code == 200
@@ -560,6 +564,25 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "data-contract-sample-set-panel" in page_response.text
             assert "data-sample-set-form" in page_response.text
             assert "/api/admin/embedding-provider-routes/contract-sample-sets" in page_response.text
+
+            saved_routes_response = client.get(
+                "/api/admin/embedding-provider-routes",
+                params={"profile_name": "kure_v1_1024"},
+            )
+            assert saved_routes_response.status_code == 200
+            form_routes = [
+                route
+                for route in saved_routes_response.json()["routes"]
+                if route["provider_name"] == form_provider_name
+            ]
+            assert len(form_routes) == 1
+            assert form_routes[0]["runtime_metadata"] == {
+                "request_headers": {"X-Tenant": "nex"},
+                "auth": {"type": "bearer", "token_env": "NEX_PCX_FORM_PROVIDER_TOKEN"},
+            }
+            assert form_routes[0]["request_header_names"] == ["X-Tenant"]
+            assert form_routes[0]["auth_type"] == "bearer"
+            assert form_routes[0]["auth_token_env"] == "NEX_PCX_FORM_PROVIDER_TOKEN"
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
 

@@ -56,6 +56,7 @@ class EmbeddingProviderRuntimeConfig:
     mode: str = MOCK_EMBEDDING_PROVIDER_TYPE
     remote_base_url: str | None = None
     remote_timeout_seconds: float = 30.0
+    remote_headers: Mapping[str, str] = field(default_factory=dict)
 
 
 class EmbeddingProvider(Protocol):
@@ -102,6 +103,7 @@ def normalize_embedding_provider_runtime_config(
         mode=mode,
         remote_base_url=remote_base_url,
         remote_timeout_seconds=config.remote_timeout_seconds,
+        remote_headers=_normalize_remote_headers(config.remote_headers),
     )
 
 
@@ -118,6 +120,7 @@ def build_embedding_provider_from_runtime_config(
     return RemoteEmbeddingProviderClient(
         normalized.remote_base_url,
         timeout_seconds=normalized.remote_timeout_seconds,
+        headers=normalized.remote_headers,
         http_client=http_client,
     )
 
@@ -215,6 +218,7 @@ class RemoteEmbeddingProviderClient:
         base_url: str,
         *,
         timeout_seconds: float = 30.0,
+        headers: Mapping[str, str] | None = None,
         http_client: object | None = None,
     ) -> None:
         normalized_base_url = base_url.strip().rstrip("/")
@@ -224,6 +228,7 @@ class RemoteEmbeddingProviderClient:
             raise InvalidEmbeddingProviderError("timeout_seconds must be greater than 0")
         self.base_url = normalized_base_url
         self.timeout_seconds = timeout_seconds
+        self.headers = _normalize_remote_headers(headers or {})
         self._owns_client = http_client is None
         self._client = http_client or _create_httpx_client(timeout_seconds=timeout_seconds)
 
@@ -293,11 +298,15 @@ class RemoteEmbeddingProviderClient:
             self._client.close()
 
     def _request_json(self, method: str, path: str, **kwargs) -> dict[str, object]:
+        request_headers = dict(self.headers)
+        if kwargs.get("headers"):
+            request_headers.update(dict(kwargs.pop("headers")))
         try:
             response = self._client.request(  # type: ignore[attr-defined]
                 method,
                 urljoin(f"{self.base_url}/", path.lstrip("/")),
                 timeout=self.timeout_seconds,
+                headers=request_headers or None,
                 **kwargs,
             )
             response.raise_for_status()
@@ -324,6 +333,19 @@ def _validate_nonblank(value: str, field_name: str) -> str:
     if not normalized:
         raise InvalidEmbeddingProviderError(f"{field_name} is required")
     return normalized
+
+
+def _normalize_remote_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    normalized_headers: dict[str, str] = {}
+    for key, value in headers.items():
+        header_name = _validate_nonblank(str(key), "header")
+        if any(char in header_name for char in ("\r", "\n", ":")):
+            raise InvalidEmbeddingProviderError("header contains invalid characters")
+        header_value = str(value).strip()
+        if any(char in header_value for char in ("\r", "\n")):
+            raise InvalidEmbeddingProviderError("header value contains invalid characters")
+        normalized_headers[header_name] = header_value
+    return normalized_headers
 
 
 def _validate_embedding_values(values: Sequence[float], expected_dimension: int) -> None:

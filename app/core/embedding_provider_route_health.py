@@ -8,6 +8,10 @@ from app.core.embedding_model_distribution import (
     InvalidEmbeddingModelDistributionError,
     get_embedding_model_distribution_for_profile,
 )
+from app.core.embedding_provider_route_auth import (
+    InvalidEmbeddingProviderRouteAuthError,
+    resolve_embedding_provider_route_request_headers,
+)
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteRecord,
     list_embedding_provider_routes,
@@ -137,14 +141,16 @@ def _remote_route_health(
     http_client: object | None,
 ) -> EmbeddingProviderRouteHealthResult:
     started_at = perf_counter()
-    client = RemoteEmbeddingProviderClient(
-        route.provider_base_url or "",
-        timeout_seconds=route.timeout_seconds,
-        http_client=http_client,
-    )
+    client = None
     try:
+        client = RemoteEmbeddingProviderClient(
+            route.provider_base_url or "",
+            timeout_seconds=route.timeout_seconds,
+            headers=resolve_embedding_provider_route_request_headers(route.runtime_metadata),
+            http_client=http_client,
+        )
         health = client.health()
-    except InvalidEmbeddingProviderError as exc:
+    except (InvalidEmbeddingProviderError, InvalidEmbeddingProviderRouteAuthError) as exc:
         return EmbeddingProviderRouteHealthResult(
             route=route,
             checked=True,
@@ -161,7 +167,8 @@ def _remote_route_health(
             error_message=str(exc),
         )
     finally:
-        client.close()
+        if client is not None:
+            client.close()
 
     elapsed_ms = max(0, int((perf_counter() - started_at) * 1000))
     validation_errors = _validate_route_health_match(route, health)

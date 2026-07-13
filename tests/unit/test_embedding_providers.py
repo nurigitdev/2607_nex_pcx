@@ -169,6 +169,7 @@ def test_remote_embedding_provider_client_reads_health_and_embeddings() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen_requests.append(request)
+        assert request.headers["x-provider-route"] == "gpu-a"
         if request.url.path == "/healthz":
             return httpx.Response(
                 200,
@@ -203,6 +204,7 @@ def test_remote_embedding_provider_client_reads_health_and_embeddings() -> None:
 
     client = RemoteEmbeddingProviderClient(
         "http://embedding-provider.local/",
+        headers={"X-Provider-Route": "gpu-a"},
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
@@ -224,6 +226,12 @@ def test_remote_embedding_provider_client_rejects_invalid_settings_and_responses
 
     with pytest.raises(InvalidEmbeddingProviderError, match="timeout_seconds"):
         RemoteEmbeddingProviderClient("http://provider", timeout_seconds=0)
+
+    with pytest.raises(InvalidEmbeddingProviderError, match="header"):
+        RemoteEmbeddingProviderClient("http://provider", headers={"Bad:Header": "value"})
+
+    with pytest.raises(InvalidEmbeddingProviderError, match="header value"):
+        RemoteEmbeddingProviderClient("http://provider", headers={"X-Good": "bad\nvalue"})
 
     bad_client = RemoteEmbeddingProviderClient(
         "http://provider",

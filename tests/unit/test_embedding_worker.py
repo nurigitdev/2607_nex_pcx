@@ -291,9 +291,15 @@ def test_route_aware_embedding_worker_fails_over_to_next_route(monkeypatch) -> N
         provider_name="gpu-ready",
         provider_base_url="http://gpu-ready.local",
         priority=1,
+        runtime_metadata={
+            "request_headers": {"X-Provider-Route": "gpu-ready"},
+            "auth": {"type": "bearer", "token_env": "NEX_PCX_ROUTE_TOKEN"},
+        },
     )
     built_urls: list[str | None] = []
+    built_headers: dict[str, dict[str, str]] = {}
     captured_metadata: dict[str, object] = {}
+    monkeypatch.setenv("NEX_PCX_ROUTE_TOKEN", "route-secret")
     monkeypatch.setattr(
         "app.core.embedding_worker.claim_next_embedding_job",
         lambda *args, **kwargs: job,
@@ -301,6 +307,7 @@ def test_route_aware_embedding_worker_fails_over_to_next_route(monkeypatch) -> N
 
     def fake_provider_builder(runtime_config: EmbeddingProviderRuntimeConfig):
         built_urls.append(runtime_config.remote_base_url)
+        built_headers[str(runtime_config.remote_base_url)] = dict(runtime_config.remote_headers)
         if runtime_config.remote_base_url == "http://gpu-down.local":
             raise InvalidEmbeddingProviderError("gpu-down unavailable")
         return FakeClosableProvider()
@@ -334,6 +341,10 @@ def test_route_aware_embedding_worker_fails_over_to_next_route(monkeypatch) -> N
     assert result.job is not None
     assert result.job.status == "succeeded"
     assert built_urls == ["http://gpu-down.local", "http://gpu-ready.local"]
+    assert built_headers["http://gpu-ready.local"] == {
+        "X-Provider-Route": "gpu-ready",
+        "Authorization": "Bearer route-secret",
+    }
     assert captured_metadata["provider_route_id"] == second_route.route_id
     assert captured_metadata["provider_route_failover_attempt"] == 2
     assert captured_metadata["provider_route_failover_candidate_count"] == 2
@@ -534,9 +545,10 @@ def test_route_aware_embedding_worker_defers_when_readiness_gate_blocks_all_rout
     assert result.job.lease_owner == "readiness-gate"
     assert result.job.error_code == ERROR_CODE_EMBEDDING_PROVIDER_ROUTE_WAITING
     assert captured["defer_seconds"] == 45
-    assert result.job.runtime_metadata["provider_route_readiness_blocked_routes"][0][
-        "provider_name"
-    ] == "gpu-warming"
+    assert (
+        result.job.runtime_metadata["provider_route_readiness_blocked_routes"][0]["provider_name"]
+        == "gpu-warming"
+    )
 
 
 def test_route_aware_embedding_worker_marks_failed_when_all_routes_fail(

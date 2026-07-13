@@ -7,6 +7,10 @@ from typing import Any
 from psycopg.types.json import Json
 
 from app.core.database import connect
+from app.core.embedding_provider_route_auth import (
+    InvalidEmbeddingProviderRouteAuthError,
+    normalize_embedding_provider_route_metadata,
+)
 from app.core.embedding_providers import EMBEDDING_PROVIDER_MODES
 
 
@@ -70,6 +74,13 @@ def validate_embedding_provider_route_input(
     if route_input.priority < 0:
         raise InvalidEmbeddingProviderRouteError("priority must be greater than or equal to 0")
 
+    try:
+        runtime_metadata = normalize_embedding_provider_route_metadata(
+            route_input.runtime_metadata or {}
+        )
+    except InvalidEmbeddingProviderRouteAuthError as exc:
+        raise InvalidEmbeddingProviderRouteError(str(exc)) from exc
+
     return EmbeddingProviderRouteInput(
         profile_name=profile_name,
         provider_name=provider_name,
@@ -79,7 +90,7 @@ def validate_embedding_provider_route_input(
         priority=route_input.priority,
         is_active=route_input.is_active,
         health_check_enabled=route_input.health_check_enabled,
-        runtime_metadata=dict(route_input.runtime_metadata or {}),
+        runtime_metadata=runtime_metadata,
     )
 
 
