@@ -626,6 +626,8 @@ def test_embedding_provider_model_availability_api_combines_models_and_routes(
             assert body["profile_count"] >= 4
             assert rows["kure_v1_1024"]["model_ready"] is True
             assert rows["kure_v1_1024"]["active_route_count"] >= 1
+            assert rows["kure_v1_1024"]["severity"] == "warning"
+            assert rows["kure_v1_1024"]["action_code"] == "run_preflight"
             assert provider_name in rows["kure_v1_1024"]["provider_names"]
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])

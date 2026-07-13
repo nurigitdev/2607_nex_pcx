@@ -427,6 +427,7 @@
           <th scope="col">{{ t("embedding_routes.model_status") }}</th>
           <th scope="col">{{ t("embedding_routes.routes") }}</th>
           <th scope="col">{{ t("embedding_routes.providers") }}</th>
+          <th scope="col">{{ t("embedding_routes.availability_action") }}</th>
           <th scope="col">{{ t("embedding_routes.status") }}</th>
         </tr>
       </thead>
@@ -460,12 +461,16 @@
             <span class="text-secondary">-</span>
             {% endfor %}
           </td>
+          <td>
+            {% set action_badge_class = "text-bg-success" if row.severity == "ok" else "text-bg-danger" if row.severity == "blocked" else "text-bg-warning" %}
+            <span class="badge {{ action_badge_class }}">{{ t("embedding_routes.action_" ~ row.action_code) }}</span>
+          </td>
           <td><span class="badge text-bg-light border">{{ t("embedding_routes." ~ row.status) }}</span></td>
         </tr>
         {% endfor %}
         {% else %}
         <tr>
-          <td class="text-secondary text-center py-4" colspan="6">
+          <td class="text-secondary text-center py-4" colspan="7">
             {% if database_configured %}{{ t("embedding_routes.no_model_availability") }}{% else %}{{ t("common.no_database") }}{% endif %}
           </td>
         </tr>

@@ -28,6 +28,8 @@ class ProviderModelAvailabilityRow:
     ready_route_count: int
     blocked_route_count: int
     status: str
+    severity: str
+    action_code: str
     route_status_counts: dict[str, int]
     provider_names: tuple[str, ...]
 
@@ -82,6 +84,8 @@ def build_provider_model_availability_matrix(
             active_routes = tuple(route for route in profile_routes if route.route.is_active)
             ready_routes = tuple(route for route in profile_routes if route.ready)
             route_status_counts = _route_status_counts(profile_routes)
+            status = _availability_status(item, profile_routes)
+            guidance = _availability_guidance(status)
             rows.append(
                 ProviderModelAvailabilityRow(
                     profile_name=profile_name,
@@ -95,7 +99,9 @@ def build_provider_model_availability_matrix(
                     active_route_count=len(active_routes),
                     ready_route_count=len(ready_routes),
                     blocked_route_count=len(profile_routes) - len(ready_routes),
-                    status=_availability_status(item, profile_routes),
+                    status=status,
+                    severity=guidance[0],
+                    action_code=guidance[1],
                     route_status_counts=route_status_counts,
                     provider_names=tuple(
                         sorted({route.route.provider_name for route in profile_routes})
@@ -126,6 +132,20 @@ def _model_status(model_readiness: EmbeddingModelReadiness) -> str:
     if model_readiness.exists:
         return "model_incomplete"
     return "model_missing"
+
+
+def _availability_guidance(status: str) -> tuple[str, str]:
+    if status == "ready":
+        return ("ok", "ready")
+    if status == "model_missing":
+        return ("blocked", "download_model")
+    if status == "model_incomplete":
+        return ("blocked", "complete_model_bundle")
+    if status == "missing_route":
+        return ("warning", "register_route")
+    if status == "route_inactive":
+        return ("warning", "activate_route")
+    return ("warning", "run_preflight")
 
 
 def _route_status_counts(

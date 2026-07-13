@@ -173,6 +173,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "Request Auth" in response.text
     assert "data-provider-model-availability-panel" in response.text
     assert "/api/admin/embedding-provider-routes/model-availability" in response.text
+    assert "권장 조치" in response.text
     assert "/api/admin/embedding-provider-routes/presets/register" in response.text
     assert "Provider 운영 요약" in response.text
     assert "운영 Playbook" in response.text

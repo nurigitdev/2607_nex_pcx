@@ -86,6 +86,8 @@ def test_provider_model_availability_matrix_summarizes_ready_profile() -> None:
     assert matrix.profile_count == 1
     assert matrix.ready_count == 1
     assert row.status == "ready"
+    assert row.severity == "ok"
+    assert row.action_code == "ready"
     assert row.model_status == "ready"
     assert row.active_route_count == 1
     assert row.ready_route_count == 1
@@ -101,6 +103,8 @@ def test_provider_model_availability_matrix_marks_missing_model_first() -> None:
 
     row = matrix.rows[0]
     assert row.status == "model_missing"
+    assert row.severity == "blocked"
+    assert row.action_code == "download_model"
     assert row.model_status == "model_missing"
     assert row.blocked_route_count == 1
 
@@ -125,5 +129,23 @@ def test_provider_model_availability_matrix_marks_route_gaps() -> None:
 
     rows = {row.profile_name: row for row in matrix.rows}
     assert rows["missing_route"].status == "missing_route"
+    assert rows["missing_route"].severity == "warning"
+    assert rows["missing_route"].action_code == "register_route"
     assert rows["inactive_profile"].status == "route_inactive"
+    assert rows["inactive_profile"].severity == "warning"
+    assert rows["inactive_profile"].action_code == "activate_route"
     assert matrix.status_counts == {"missing_route": 1, "route_inactive": 1}
+
+
+def test_provider_model_availability_matrix_recommends_preflight_for_unready_route() -> None:
+    matrix = build_provider_model_availability_matrix(
+        (make_model_readiness(),),
+        EmbeddingProviderRouteReadinessSummary(
+            routes=(make_route_item(ready=False, status="health_not_ready"),)
+        ),
+    )
+
+    row = matrix.rows[0]
+    assert row.status == "route_not_ready"
+    assert row.severity == "warning"
+    assert row.action_code == "run_preflight"

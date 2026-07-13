@@ -1508,6 +1508,8 @@ def provider_model_availability_row_payload(
         "ready_route_count": row.ready_route_count,
         "blocked_route_count": row.blocked_route_count,
         "status": row.status,
+        "severity": row.severity,
+        "action_code": row.action_code,
         "route_status_counts": row.route_status_counts,
         "provider_names": list(row.provider_names),
     }
