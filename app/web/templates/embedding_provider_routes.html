@@ -21,6 +21,7 @@
 {% endif %}
 
 <section
+  id="provider-preset-registration"
   class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-provider-preset-registration-panel
   data-register-api-url="/api/admin/embedding-provider-routes/presets/register"
@@ -142,6 +143,7 @@
 </section>
 
 <section
+  id="provider-launch-plan"
   class="metric-card bg-white p-0 overflow-hidden mb-4"
   data-provider-launch-plan-panel
   data-launch-plan-api-url="/api/admin/embedding-provider-routes/presets/launch-plan"
@@ -495,6 +497,8 @@
     <div class="d-flex flex-wrap gap-2">
       {% if model_availability_drilldown %}
       <span class="badge text-bg-light border">{{ model_availability_drilldown.row.profile_name }}</span>
+      <a class="btn btn-outline-primary btn-sm" href="#provider-preset-registration">{{ t("embedding_routes.shortcut_register_route") }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="#provider-launch-plan">{{ t("embedding_routes.shortcut_launch_plan") }}</a>
       <a class="btn btn-outline-secondary btn-sm" href="/api/admin/embedding-provider-routes/model-availability/{{ model_availability_drilldown.row.profile_name|urlencode }}">{{ t("common.api") }}</a>
       {% elif selected_availability_profile %}
       <span class="badge text-bg-warning">{{ selected_availability_profile }}</span>
@@ -529,6 +533,20 @@
         <span class="badge {{ detail_action_badge_class }}">{{ t("embedding_routes.action_" ~ detail.row.action_code) }}</span>
       </div>
       <div class="small text-secondary mt-2">{{ t("embedding_routes." ~ detail.row.status) }}</div>
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <button
+          class="btn btn-outline-primary btn-sm"
+          type="button"
+          data-availability-profile-preflight-button
+          data-preflight-action-url="/api/admin/embedding-provider-routes/preflight?profile_name={{ detail.row.profile_name|urlencode }}&amp;active_only=true"
+          {% if not database_configured or not detail.route_readiness %}disabled{% endif %}
+        >{{ t("embedding_routes.shortcut_run_profile_preflight") }}</button>
+        <a class="btn btn-outline-secondary btn-sm" href="#provider-preset-registration">{{ t("embedding_routes.shortcut_register_route") }}</a>
+        <a class="btn btn-outline-secondary btn-sm" href="#provider-launch-plan">{{ t("embedding_routes.shortcut_launch_plan") }}</a>
+      </div>
+      <div class="small text-secondary mt-2" data-availability-profile-preflight-status aria-live="polite">
+        {% if detail.route_readiness %}{{ t("embedding_routes.shortcut_profile_preflight_ready") }}{% else %}{{ t("embedding_routes.no_drilldown_routes") }}{% endif %}
+      </div>
     </div>
     <div class="bg-white p-3 border rounded-2">
       <div class="metric-label">{{ t("embedding_routes.latest_preflight") }}</div>
@@ -1430,6 +1448,9 @@
     preflightRunning: {{ t("embedding_routes.preflight_running") | tojson }},
     preflightComplete: {{ t("embedding_routes.preflight_complete") | tojson }},
     preflightFailed: {{ t("embedding_routes.preflight_failed") | tojson }},
+    shortcutProfilePreflightRunning: {{ t("embedding_routes.shortcut_profile_preflight_running") | tojson }},
+    shortcutProfilePreflightComplete: {{ t("embedding_routes.shortcut_profile_preflight_complete") | tojson }},
+    shortcutProfilePreflightFailed: {{ t("embedding_routes.shortcut_profile_preflight_failed") | tojson }},
     loadingSchedules: {{ t("embedding_routes.loading_schedules") | tojson }},
     noSchedules: {{ t("embedding_routes.no_schedules") | tojson }},
     scheduleSaved: {{ t("embedding_routes.schedule_saved") | tojson }},
@@ -1641,6 +1662,12 @@
   const retentionBreakdown = retentionPanel?.querySelector("[data-retention-breakdown]");
   const preflightButton = document.querySelector("[data-route-preflight-button]");
   const preflightStatus = document.querySelector("[data-route-preflight-status]");
+  const availabilityProfilePreflightButton = document.querySelector(
+    "[data-availability-profile-preflight-button]",
+  );
+  const availabilityProfilePreflightStatus = document.querySelector(
+    "[data-availability-profile-preflight-status]",
+  );
   const presetPanel = document.querySelector("[data-provider-preset-registration-panel]");
   const presetForm = presetPanel?.querySelector("[data-provider-preset-form]");
   const presetSelect = presetPanel?.querySelector("[data-provider-preset-select]");
@@ -1723,6 +1750,14 @@
     }
     preflightStatus.className = `small ${className}`;
     preflightStatus.textContent = message;
+  }
+
+  function setAvailabilityProfilePreflightStatus(message, className = "text-secondary") {
+    if (!availabilityProfilePreflightStatus) {
+      return;
+    }
+    availabilityProfilePreflightStatus.className = `small mt-2 ${className}`;
+    availabilityProfilePreflightStatus.textContent = message;
   }
 
   function setOperationsStatus(message, className = "text-secondary") {
@@ -3759,40 +3794,64 @@
     });
   }
 
+  async function runPreflightFromButton(button, setStatus, messages = {}) {
+    const originalText = button.textContent;
+    const runningLabel = messages.running || labels.preflightRunning;
+    const completeLabel = messages.complete || labels.preflightComplete;
+    const failedLabel = messages.failed || labels.preflightFailed;
+    button.disabled = true;
+    button.textContent = runningLabel;
+    setStatus(runningLabel);
+
+    try {
+      const response = await fetch(button.dataset.preflightActionUrl, {
+        method: "POST",
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || failedLabel);
+      }
+      const message = `${completeLabel}: ${body.passed_count}/${body.route_count}`;
+      setStatus(message, body.failed_count ? "text-warning" : "text-success");
+      await loadHealth();
+      await loadHistory();
+      await loadContractHistory();
+      await loadAlerts();
+      await loadPreflightRuns();
+      await loadReadiness();
+      await loadOperationsSummary();
+    } catch (error) {
+      setStatus(error.message || failedLabel, "text-danger");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+
   function wirePreflightButton() {
     if (!preflightButton) {
       return;
     }
     preflightButton.addEventListener("click", async () => {
-      const originalText = preflightButton.textContent;
-      preflightButton.disabled = true;
-      preflightButton.textContent = labels.preflightRunning;
-      setPreflightStatus(labels.preflightRunning);
+      await runPreflightFromButton(preflightButton, setPreflightStatus);
+    });
+  }
 
-      try {
-        const response = await fetch(preflightButton.dataset.preflightActionUrl, {
-          method: "POST",
-          headers: {Accept: "application/json"},
-        });
-        const body = await response.json();
-        if (!response.ok) {
-          throw new Error(body.detail || labels.preflightFailed);
-        }
-        const message = `${labels.preflightComplete}: ${body.passed_count}/${body.route_count}`;
-        setPreflightStatus(message, body.failed_count ? "text-warning" : "text-success");
-        await loadHealth();
-        await loadHistory();
-        await loadContractHistory();
-        await loadAlerts();
-        await loadPreflightRuns();
-        await loadReadiness();
-        await loadOperationsSummary();
-      } catch (error) {
-        setPreflightStatus(error.message || labels.preflightFailed, "text-danger");
-      } finally {
-        preflightButton.disabled = false;
-        preflightButton.textContent = originalText;
-      }
+  function wireAvailabilityProfileShortcuts() {
+    if (!availabilityProfilePreflightButton) {
+      return;
+    }
+    availabilityProfilePreflightButton.addEventListener("click", async () => {
+      await runPreflightFromButton(
+        availabilityProfilePreflightButton,
+        setAvailabilityProfilePreflightStatus,
+        {
+          running: labels.shortcutProfilePreflightRunning,
+          complete: labels.shortcutProfilePreflightComplete,
+          failed: labels.shortcutProfilePreflightFailed,
+        },
+      );
     });
   }
 
@@ -3873,6 +3932,7 @@
   wireManualHealthButtons();
   wireContractButtons();
   wirePreflightButton();
+  wireAvailabilityProfileShortcuts();
   wireAlertFilters();
   wireOperationsSummaryControls();
   wireReadinessControls();

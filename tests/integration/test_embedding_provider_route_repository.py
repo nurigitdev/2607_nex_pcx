@@ -656,9 +656,17 @@ def test_embedding_provider_model_availability_api_combines_models_and_routes(
             )
             assert page_response.status_code == 200
             assert "data-provider-model-availability-drilldown-panel" in page_response.text
+            assert "data-availability-profile-preflight-button" in page_response.text
             assert "Provider 가용성 상세" in page_response.text
+            assert "Profile Preflight 실행" in page_response.text
+            assert "#provider-preset-registration" in page_response.text
+            assert "#provider-launch-plan" in page_response.text
             assert (
                 "/api/admin/embedding-provider-routes/model-availability/kure_v1_1024"
+                in page_response.text
+            )
+            assert (
+                "/api/admin/embedding-provider-routes/preflight?profile_name=kure_v1_1024&amp;active_only=true"
                 in page_response.text
             )
             assert provider_name in page_response.text

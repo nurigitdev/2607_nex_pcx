@@ -64,6 +64,10 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("embedding_routes.operations_summary_failed") == (
         "Operations summary failed to load"
     )
+    assert korean("embedding_routes.shortcut_run_profile_preflight") == ("Profile Preflight 실행")
+    assert english("embedding_routes.shortcut_profile_preflight_complete") == (
+        "Profile preflight complete"
+    )
     assert korean("embedding_routes.readiness") == "Provider Route Readiness"
     assert english("embedding_routes.readiness_failed") == "Readiness failed to load"
     assert korean("embedding_routes.status_needs_contract") == "Needs Contract"

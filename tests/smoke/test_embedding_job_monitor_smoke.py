@@ -154,6 +154,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert response.status_code == 200
     assert "임베딩 Provider 라우팅" in response.text
     assert "Provider Preset 등록" in response.text
+    assert 'id="provider-preset-registration"' in response.text
     assert "data-provider-preset-registration-panel" in response.text
     assert "data-provider-preset-form" in response.text
     assert "data-preset-run-preflight" in response.text
@@ -161,6 +162,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-provider-preset-preview-table" in response.text
     assert "/api/admin/embedding-provider-routes/presets" in response.text
     assert "Provider Runtime Launch Plan" in response.text
+    assert 'id="provider-launch-plan"' in response.text
     assert "data-provider-launch-plan-panel" in response.text
     assert "data-provider-launch-shell-command" in response.text
     assert "/api/admin/embedding-provider-routes/presets/launch-plan" in response.text
@@ -175,6 +177,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "/api/admin/embedding-provider-routes/model-availability" in response.text
     assert "권장 조치" in response.text
     assert "data-provider-model-availability-drilldown-panel" in response.text
+    assert "wireAvailabilityProfileShortcuts" in response.text
     assert "Provider 가용성 상세" in response.text
     assert "/api/admin/embedding-provider-routes/presets/register" in response.text
     assert "Provider 운영 요약" in response.text
