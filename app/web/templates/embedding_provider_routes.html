@@ -1330,12 +1330,13 @@
   </div>
 </section>
 
-<section class="metric-card bg-white p-0 overflow-hidden">
+<section class="metric-card bg-white p-0 overflow-hidden" data-provider-route-management-panel>
   <div class="dashboard-panel-header p-3">
     <div>
       <h2 class="h5 mb-1">{{ t("embedding_routes.routes") }}</h2>
       <div class="text-secondary">{{ t("embedding_routes.routes_help") }}</div>
     </div>
+    <span class="small text-secondary" data-provider-route-status aria-live="polite"></span>
   </div>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
@@ -1352,12 +1353,15 @@
           <th scope="col">{{ t("embedding_routes.actions") }}</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody data-provider-route-table>
         {% for route in routes %}
         {% set request_metadata = route.runtime_metadata or {} %}
         {% set request_headers = request_metadata.get("request_headers") or {} %}
         {% set auth = request_metadata.get("auth") or {} %}
-        <tr>
+        {% set route_auth_type = auth.get("type") or "none" %}
+        {% set route_auth_token_env = auth.get("token_env") or auth.get("key_env") or "" %}
+        {% set route_auth_header_name = auth.get("header_name") or "X-API-Key" %}
+        <tr data-provider-route-row data-route-id="{{ route.route_id }}" data-profile-name="{{ route.profile_name }}">
           <td><span class="badge text-bg-light border">{{ route.profile_name }}</span></td>
           <td><strong>{{ route.provider_name }}</strong></td>
           <td>{{ route.provider_mode }}</td>
@@ -1387,6 +1391,20 @@
           <td>
             <div class="d-flex flex-wrap gap-2">
               <button
+                class="btn btn-outline-secondary btn-sm"
+                type="button"
+                data-provider-route-edit-button
+                data-route-id="{{ route.route_id }}"
+              >{{ t("embedding_routes.edit") }}</button>
+              <button
+                class="btn btn-outline-secondary btn-sm"
+                type="button"
+                data-provider-route-activation-button
+                data-route-id="{{ route.route_id }}"
+                data-is-active="{{ 'true' if route.is_active else 'false' }}"
+                data-activation-action-url="/api/admin/embedding-provider-routes/{{ route.route_id }}/activation"
+              >{% if route.is_active %}{{ t("embedding_routes.deactivate_route") }}{% else %}{{ t("embedding_routes.activate_route") }}{% endif %}</button>
+              <button
                 class="btn btn-outline-primary btn-sm"
                 type="button"
                 data-manual-health-button
@@ -1401,6 +1419,77 @@
             </div>
             <div class="small text-secondary mt-1" data-manual-health-status></div>
             <div class="small text-secondary mt-1" data-contract-status></div>
+          </td>
+        </tr>
+        <tr class="d-none" data-provider-route-edit-row data-route-id="{{ route.route_id }}">
+          <td colspan="9" class="bg-light-subtle">
+            <form
+              class="row g-3 align-items-end"
+              data-provider-route-edit-form
+              data-route-id="{{ route.route_id }}"
+              data-route-update-url="/api/admin/embedding-provider-routes/{{ route.route_id }}"
+            >
+              <div class="col-12 col-md-3">
+                <label class="form-label" for="route_{{ route.route_id }}_profile_name">{{ t("embedding_routes.profile") }}</label>
+                <input class="form-control" id="route_{{ route.route_id }}_profile_name" name="profile_name" value="{{ route.profile_name }}" required>
+              </div>
+              <div class="col-12 col-md-3">
+                <label class="form-label" for="route_{{ route.route_id }}_provider_name">{{ t("embedding_routes.provider_name") }}</label>
+                <input class="form-control" id="route_{{ route.route_id }}_provider_name" name="provider_name" value="{{ route.provider_name }}" required>
+              </div>
+              <div class="col-12 col-md-2">
+                <label class="form-label" for="route_{{ route.route_id }}_provider_mode">{{ t("embedding_routes.mode") }}</label>
+                <select class="form-select" id="route_{{ route.route_id }}_provider_mode" name="provider_mode">
+                  <option value="remote" {% if route.provider_mode == "remote" %}selected{% endif %}>remote</option>
+                  <option value="mock" {% if route.provider_mode == "mock" %}selected{% endif %}>mock</option>
+                </select>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="route_{{ route.route_id }}_provider_base_url">{{ t("embedding_routes.base_url") }}</label>
+                <input class="form-control" id="route_{{ route.route_id }}_provider_base_url" name="provider_base_url" value="{{ route.provider_base_url or '' }}" placeholder="http://127.0.0.1:9000">
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label" for="route_{{ route.route_id }}_timeout_seconds">{{ t("embedding_routes.timeout") }}</label>
+                <input class="form-control" id="route_{{ route.route_id }}_timeout_seconds" name="timeout_seconds" type="number" min="0.001" step="0.001" value="{{ route.timeout_seconds }}">
+              </div>
+              <div class="col-6 col-md-2">
+                <label class="form-label" for="route_{{ route.route_id }}_priority">{{ t("embedding_routes.priority") }}</label>
+                <input class="form-control" id="route_{{ route.route_id }}_priority" name="priority" type="number" min="0" step="1" value="{{ route.priority }}">
+              </div>
+              <div class="col-12 col-lg-4">
+                <label class="form-label" for="route_{{ route.route_id }}_request_headers_json">{{ t("embedding_routes.request_headers_json") }}</label>
+                <textarea class="form-control font-monospace small" id="route_{{ route.route_id }}_request_headers_json" name="request_headers_json" rows="2">{{ request_headers | tojson }}</textarea>
+              </div>
+              <div class="col-12 col-md-4 col-lg-2">
+                <label class="form-label" for="route_{{ route.route_id }}_auth_type">{{ t("embedding_routes.auth_type") }}</label>
+                <select class="form-select" id="route_{{ route.route_id }}_auth_type" name="auth_type">
+                  <option value="none" {% if route_auth_type == "none" %}selected{% endif %}>{{ t("embedding_routes.auth_none") }}</option>
+                  <option value="bearer" {% if route_auth_type == "bearer" %}selected{% endif %}>Bearer</option>
+                  <option value="api_key" {% if route_auth_type == "api_key" %}selected{% endif %}>API Key</option>
+                </select>
+              </div>
+              <div class="col-12 col-md-4 col-lg-3">
+                <label class="form-label" for="route_{{ route.route_id }}_auth_token_env">{{ t("embedding_routes.auth_token_env") }}</label>
+                <input class="form-control" id="route_{{ route.route_id }}_auth_token_env" name="auth_token_env" value="{{ route_auth_token_env }}">
+              </div>
+              <div class="col-12 col-md-4 col-lg-3">
+                <label class="form-label" for="route_{{ route.route_id }}_auth_header_name">{{ t("embedding_routes.auth_header_name") }}</label>
+                <input class="form-control" id="route_{{ route.route_id }}_auth_header_name" name="auth_header_name" value="{{ route_auth_header_name }}">
+              </div>
+              <div class="col-12 d-flex flex-wrap align-items-center gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" id="route_{{ route.route_id }}_is_active" name="is_active" type="checkbox" value="true" {% if route.is_active %}checked{% endif %}>
+                  <label class="form-check-label" for="route_{{ route.route_id }}_is_active">{{ t("embedding_routes.active") }}</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" id="route_{{ route.route_id }}_health_check_enabled" name="health_check_enabled" type="checkbox" value="true" {% if route.health_check_enabled %}checked{% endif %}>
+                  <label class="form-check-label" for="route_{{ route.route_id }}_health_check_enabled">{{ t("embedding_routes.health_check") }}</label>
+                </div>
+                <button class="btn btn-primary ms-auto" type="submit">{{ t("embedding_routes.save_changes") }}</button>
+                <button class="btn btn-outline-secondary" type="button" data-provider-route-cancel-edit>{{ t("embedding_routes.cancel") }}</button>
+                <span class="small text-secondary" data-provider-route-edit-status></span>
+              </div>
+            </form>
           </td>
         </tr>
         {% else %}
@@ -1547,6 +1636,16 @@
     importFailed: {{ t("embedding_routes.import_failed") | tojson }},
     invalidJson: {{ t("embedding_routes.invalid_json") | tojson }},
     routeCountLabel: {{ t("embedding_routes.route_count") | tojson }},
+    routeEditReady: {{ t("embedding_routes.route_edit_ready") | tojson }},
+    routeSaving: {{ t("embedding_routes.route_saving") | tojson }},
+    routeSaved: {{ t("embedding_routes.route_saved") | tojson }},
+    routeSaveFailed: {{ t("embedding_routes.route_save_failed") | tojson }},
+    routeActivationUpdating: {{ t("embedding_routes.route_activation_updating") | tojson }},
+    routeActivated: {{ t("embedding_routes.route_activated") | tojson }},
+    routeDeactivated: {{ t("embedding_routes.route_deactivated") | tojson }},
+    routeActivationFailed: {{ t("embedding_routes.route_activation_failed") | tojson }},
+    activateRoute: {{ t("embedding_routes.activate_route") | tojson }},
+    deactivateRoute: {{ t("embedding_routes.deactivate_route") | tojson }},
     edit: {{ t("embedding_routes.edit") | tojson }},
     delete: {{ t("embedding_routes.delete") | tojson }},
     defaultSampleSet: {{ t("embedding_routes.default_sample_set") | tojson }},
@@ -1725,6 +1824,8 @@
   const routeImportExportBadge = importExportPanel?.querySelector(
     "[data-provider-route-import-export-badge]",
   );
+  const routeManagementPanel = document.querySelector("[data-provider-route-management-panel]");
+  const providerRouteStatus = routeManagementPanel?.querySelector("[data-provider-route-status]");
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
@@ -1810,6 +1911,23 @@
     }
   }
 
+  function setProviderRouteStatus(message, className = "text-secondary") {
+    if (!providerRouteStatus) {
+      return;
+    }
+    providerRouteStatus.className = `small ${className}`;
+    providerRouteStatus.textContent = message;
+  }
+
+  function setProviderRouteEditStatus(form, message, className = "text-secondary") {
+    const statusNode = form.querySelector("[data-provider-route-edit-status]");
+    if (!statusNode) {
+      return;
+    }
+    statusNode.className = `small ${className}`;
+    statusNode.textContent = message;
+  }
+
   function setRetentionStatus(message, className = "text-secondary") {
     if (!retentionStatus) {
       return;
@@ -1886,6 +2004,71 @@
     }
     const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
     return localDate.toISOString().slice(0, 16);
+  }
+
+  function parseJsonObject(text, fallback = {}) {
+    const normalized = (text || "").trim();
+    if (!normalized || normalized === "{}") {
+      return fallback;
+    }
+    const parsed = JSON.parse(normalized);
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error(labels.invalidJson);
+    }
+    return parsed;
+  }
+
+  function providerRouteRuntimeMetadataFromForm(form) {
+    const runtimeMetadata = {};
+    const requestHeaders = parseJsonObject(
+      form.querySelector("[name='request_headers_json']")?.value || "{}",
+    );
+    if (Object.keys(requestHeaders).length) {
+      runtimeMetadata.request_headers = requestHeaders;
+    }
+
+    const authType = form.querySelector("[name='auth_type']")?.value || "none";
+    const tokenEnv = form.querySelector("[name='auth_token_env']")?.value?.trim() || "";
+    const headerName =
+      form.querySelector("[name='auth_header_name']")?.value?.trim() || "X-API-Key";
+    if (authType === "bearer") {
+      runtimeMetadata.auth = {type: "bearer", token_env: tokenEnv};
+    } else if (authType === "api_key") {
+      runtimeMetadata.auth = {type: "api_key", key_env: tokenEnv, header_name: headerName};
+    }
+    return runtimeMetadata;
+  }
+
+  function providerRoutePayloadFromForm(form) {
+    const formData = new FormData(form);
+    const timeoutSeconds = Number.parseFloat(formData.get("timeout_seconds") || "0");
+    const priority = Number.parseInt(formData.get("priority") || "0", 10);
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+      throw new Error("timeout_seconds must be greater than 0");
+    }
+    if (!Number.isFinite(priority) || priority < 0) {
+      throw new Error("priority must be greater than or equal to 0");
+    }
+    const providerBaseUrl = String(formData.get("provider_base_url") || "").trim();
+    return {
+      profile_name: String(formData.get("profile_name") || "").trim(),
+      provider_name: String(formData.get("provider_name") || "").trim(),
+      provider_mode: String(formData.get("provider_mode") || "remote").trim(),
+      provider_base_url: providerBaseUrl || null,
+      timeout_seconds: timeoutSeconds,
+      priority,
+      is_active: form.querySelector("[name='is_active']")?.checked ?? false,
+      health_check_enabled: form.querySelector("[name='health_check_enabled']")?.checked ?? false,
+      runtime_metadata: providerRouteRuntimeMetadataFromForm(form),
+    };
+  }
+
+  function refreshProviderRoutePage(route) {
+    const url = new URL(window.location.href);
+    if (route?.profile_name) {
+      url.searchParams.set("availability_profile", route.profile_name);
+    }
+    window.setTimeout(() => window.location.assign(url.toString()), 250);
   }
 
   function selectedPresetOption() {
@@ -2264,6 +2447,80 @@
       if (routeImportValidateButton) {
         routeImportValidateButton.disabled = false;
       }
+    }
+  }
+
+  function toggleProviderRouteEditRow(routeId, visible) {
+    const row = routeManagementPanel?.querySelector(
+      `[data-provider-route-edit-row][data-route-id="${routeId}"]`,
+    );
+    if (!row) {
+      return;
+    }
+    row.classList.toggle("d-none", !visible);
+    if (visible) {
+      setProviderRouteStatus(labels.routeEditReady);
+      row.querySelector("input, select, textarea")?.focus();
+    }
+  }
+
+  async function saveProviderRoute(form) {
+    const submitButton = form.querySelector("button[type='submit']");
+    const originalText = submitButton?.textContent || "";
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = labels.routeSaving;
+    }
+    setProviderRouteEditStatus(form, labels.routeSaving);
+    try {
+      const payload = providerRoutePayloadFromForm(form);
+      const response = await fetch(form.dataset.routeUpdateUrl, {
+        method: "PUT",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.routeSaveFailed);
+      }
+      setProviderRouteEditStatus(form, labels.routeSaved, "text-success");
+      setProviderRouteStatus(labels.routeSaved, "text-success");
+      refreshProviderRoutePage(body.route);
+    } catch (error) {
+      const message = error.message || labels.routeSaveFailed;
+      setProviderRouteEditStatus(form, message, "text-danger");
+      setProviderRouteStatus(message, "text-danger");
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
+      }
+    }
+  }
+
+  async function updateProviderRouteActivation(button) {
+    const originalText = button.textContent;
+    const nextActive = button.dataset.isActive !== "true";
+    button.disabled = true;
+    button.textContent = labels.routeActivationUpdating;
+    setProviderRouteStatus(labels.routeActivationUpdating);
+    try {
+      const response = await fetch(button.dataset.activationActionUrl, {
+        method: "PATCH",
+        headers: {"Accept": "application/json", "Content-Type": "application/json"},
+        body: JSON.stringify({is_active: nextActive}),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.routeActivationFailed);
+      }
+      const message = nextActive ? labels.routeActivated : labels.routeDeactivated;
+      setProviderRouteStatus(message, "text-success");
+      refreshProviderRoutePage(body.route);
+    } catch (error) {
+      setProviderRouteStatus(error.message || labels.routeActivationFailed, "text-danger");
+      button.disabled = false;
+      button.textContent = originalText;
     }
   }
 
@@ -3916,6 +4173,40 @@
     setImportExportStatus(labels.importExportReady);
   }
 
+  function wireProviderRouteManagementControls() {
+    if (!routeManagementPanel) {
+      return;
+    }
+    routeManagementPanel.querySelectorAll("[data-provider-route-edit-button]").forEach((button) => {
+      button.addEventListener("click", () => {
+        toggleProviderRouteEditRow(button.dataset.routeId, true);
+      });
+    });
+    routeManagementPanel
+      .querySelectorAll("[data-provider-route-cancel-edit]")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          const form = button.closest("[data-provider-route-edit-form]");
+          toggleProviderRouteEditRow(form?.dataset.routeId, false);
+        });
+      });
+    routeManagementPanel
+      .querySelectorAll("[data-provider-route-edit-form]")
+      .forEach((form) => {
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          await saveProviderRoute(form);
+        });
+      });
+    routeManagementPanel
+      .querySelectorAll("[data-provider-route-activation-button]")
+      .forEach((button) => {
+        button.addEventListener("click", async () => {
+          await updateProviderRouteActivation(button);
+        });
+      });
+  }
+
   function wireScheduleForm() {
     scheduleForm?.addEventListener("submit", saveSchedule);
     scheduleReset?.addEventListener("click", resetScheduleForm);
@@ -3940,6 +4231,7 @@
   wirePresetRegistrationForm();
   wireLaunchPlanForm();
   wireImportExportControls();
+  wireProviderRouteManagementControls();
   wireScheduleForm();
   wireRetentionControls();
   loadOperationsSummary();

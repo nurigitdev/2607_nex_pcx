@@ -32,8 +32,11 @@ from app.core.embedding_provider_route_readiness import (
 )
 from app.core.embedding_provider_routes import (
     EmbeddingProviderRouteInput,
+    InvalidEmbeddingProviderRouteError,
     list_embedding_provider_routes,
     select_embedding_provider_route,
+    set_embedding_provider_route_active,
+    update_embedding_provider_route,
     upsert_embedding_provider_route,
 )
 from app.main import create_app, log_embedding_provider_route_health_alert
@@ -173,6 +176,82 @@ def test_embedding_provider_routes_table_exists_and_enforces_remote_url(
                     (f"invalid-{uuid4()}",),
                 )
             connection.rollback()
+
+
+def test_embedding_provider_route_repository_updates_route_and_activation(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"gpu-route-update-{suffix}"
+    updated_provider_name = f"gpu-route-updated-{suffix}"
+
+    try:
+        created = upsert_embedding_provider_route(
+            migrated_database_url,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=provider_name,
+                provider_mode="remote",
+                provider_base_url="http://gpu-route-update.local/",
+                timeout_seconds=10,
+                priority=10,
+                is_active=True,
+                health_check_enabled=True,
+                runtime_metadata={"purpose": "update-test"},
+            ),
+        )
+
+        updated = update_embedding_provider_route(
+            migrated_database_url,
+            created.route_id,
+            EmbeddingProviderRouteInput(
+                profile_name="kure_v1_1024",
+                provider_name=updated_provider_name,
+                provider_mode="remote",
+                provider_base_url="http://gpu-route-updated.local/",
+                timeout_seconds=11,
+                priority=11,
+                is_active=False,
+                health_check_enabled=False,
+                runtime_metadata={"purpose": "updated"},
+            ),
+        )
+
+        assert updated is not None
+        assert updated.route_id == created.route_id
+        assert updated.provider_name == updated_provider_name
+        assert updated.provider_base_url == "http://gpu-route-updated.local"
+        assert updated.timeout_seconds == 11
+        assert updated.priority == 11
+        assert updated.is_active is False
+        assert updated.health_check_enabled is False
+        assert updated.runtime_metadata == {"purpose": "updated"}
+
+        activated = set_embedding_provider_route_active(
+            migrated_database_url,
+            created.route_id,
+            True,
+        )
+        assert activated is not None
+        assert activated.is_active is True
+        assert set_embedding_provider_route_active(migrated_database_url, 999999999, False) is None
+        assert (
+            update_embedding_provider_route(
+                migrated_database_url,
+                999999999,
+                EmbeddingProviderRouteInput(
+                    profile_name="kure_v1_1024",
+                    provider_name=f"missing-{suffix}",
+                    provider_mode="mock",
+                    provider_base_url=None,
+                ),
+            )
+            is None
+        )
+        with pytest.raises(InvalidEmbeddingProviderRouteError):
+            set_embedding_provider_route_active(migrated_database_url, 0, True)
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name, updated_provider_name])
 
 
 def test_embedding_provider_contract_sample_set_repository_and_api(
@@ -472,6 +551,57 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             ]
             assert api_provider_name in provider_names_from_api
 
+            update_response = client.put(
+                f"/api/admin/embedding-provider-routes/{route['route_id']}",
+                json={
+                    "profile_name": "kure_v1_1024",
+                    "provider_name": api_provider_name,
+                    "provider_mode": "remote",
+                    "provider_base_url": "http://gpu-admin-api-edited.local/",
+                    "timeout_seconds": 12.0,
+                    "priority": 12,
+                    "is_active": False,
+                    "health_check_enabled": False,
+                    "runtime_metadata": {"request_headers": {"X-Edited": "true"}},
+                },
+            )
+            assert update_response.status_code == 200
+            updated_route = update_response.json()["route"]
+            assert updated_route["route_id"] == route["route_id"]
+            assert updated_route["provider_base_url"] == "http://gpu-admin-api-edited.local"
+            assert updated_route["timeout_seconds"] == 12.0
+            assert updated_route["priority"] == 12
+            assert updated_route["is_active"] is False
+            assert updated_route["health_check_enabled"] is False
+            assert updated_route["request_header_names"] == ["X-Edited"]
+
+            activation_response = client.patch(
+                f"/api/admin/embedding-provider-routes/{route['route_id']}/activation",
+                json={"is_active": True},
+            )
+            assert activation_response.status_code == 200
+            assert activation_response.json()["route"]["is_active"] is True
+
+            missing_update_response = client.put(
+                "/api/admin/embedding-provider-routes/999999999",
+                json={
+                    "profile_name": "kure_v1_1024",
+                    "provider_name": f"missing-route-{suffix}",
+                    "provider_mode": "mock",
+                    "provider_base_url": None,
+                    "timeout_seconds": 5.0,
+                    "priority": 5,
+                    "is_active": True,
+                    "health_check_enabled": False,
+                },
+            )
+            assert missing_update_response.status_code == 404
+            missing_activation_response = client.patch(
+                "/api/admin/embedding-provider-routes/999999999/activation",
+                json={"is_active": False},
+            )
+            assert missing_activation_response.status_code == 404
+
             form_response = client.post(
                 "/admin/embedding-provider-routes",
                 data={
@@ -526,6 +656,15 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "data-contract-button" in page_response.text
             assert (
                 f"/api/admin/embedding-provider-routes/{route['route_id']}/contract-check"
+                in page_response.text
+            )
+            assert "data-provider-route-management-panel" in page_response.text
+            assert "data-provider-route-edit-button" in page_response.text
+            assert "data-provider-route-edit-form" in page_response.text
+            assert f"/api/admin/embedding-provider-routes/{route['route_id']}" in page_response.text
+            assert "data-provider-route-activation-button" in page_response.text
+            assert (
+                f"/api/admin/embedding-provider-routes/{route['route_id']}/activation"
                 in page_response.text
             )
             assert "data-route-preflight-button" in page_response.text

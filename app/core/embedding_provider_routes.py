@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from psycopg import errors
 from psycopg.types.json import Json
 
 from app.core.database import connect
@@ -141,6 +142,77 @@ def upsert_embedding_provider_route(
             )
             row = cursor.fetchone()
     return _row_to_route_record(dict(row))
+
+
+def update_embedding_provider_route(
+    database_url: str,
+    route_id: int,
+    route_input: EmbeddingProviderRouteInput,
+) -> EmbeddingProviderRouteRecord | None:
+    if route_id <= 0:
+        raise InvalidEmbeddingProviderRouteError("route_id must be greater than 0")
+    validated = validate_embedding_provider_route_input(route_input)
+    try:
+        with connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    UPDATE embedding_provider_routes
+                    SET profile_name = %s,
+                        provider_name = %s,
+                        provider_mode = %s,
+                        provider_base_url = %s,
+                        timeout_seconds = %s,
+                        priority = %s,
+                        is_active = %s,
+                        health_check_enabled = %s,
+                        runtime_metadata = %s,
+                        updated_at = now()
+                    WHERE route_id = %s
+                    RETURNING {_select_route_columns()}
+                    """,
+                    (
+                        validated.profile_name,
+                        validated.provider_name,
+                        validated.provider_mode,
+                        validated.provider_base_url,
+                        validated.timeout_seconds,
+                        validated.priority,
+                        validated.is_active,
+                        validated.health_check_enabled,
+                        Json(validated.runtime_metadata or {}),
+                        route_id,
+                    ),
+                )
+                row = cursor.fetchone()
+    except errors.UniqueViolation as exc:
+        raise InvalidEmbeddingProviderRouteError(
+            "provider route already exists for this profile/provider pair"
+        ) from exc
+    return _row_to_route_record(dict(row)) if row else None
+
+
+def set_embedding_provider_route_active(
+    database_url: str,
+    route_id: int,
+    is_active: bool,
+) -> EmbeddingProviderRouteRecord | None:
+    if route_id <= 0:
+        raise InvalidEmbeddingProviderRouteError("route_id must be greater than 0")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE embedding_provider_routes
+                SET is_active = %s,
+                    updated_at = now()
+                WHERE route_id = %s
+                RETURNING {_select_route_columns()}
+                """,
+                (is_active, route_id),
+            )
+            row = cursor.fetchone()
+    return _row_to_route_record(dict(row)) if row else None
 
 
 def list_embedding_provider_routes(

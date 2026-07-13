@@ -213,6 +213,8 @@ from app.core.embedding_provider_routes import (
     InvalidEmbeddingProviderRouteError,
     get_embedding_provider_route,
     list_embedding_provider_routes,
+    set_embedding_provider_route_active,
+    update_embedding_provider_route,
     upsert_embedding_provider_route,
     validate_embedding_provider_route_input,
 )
@@ -588,6 +590,10 @@ class EmbeddingProviderRouteRequest(BaseModel):
     is_active: bool = True
     health_check_enabled: bool = True
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class EmbeddingProviderRouteActivationRequest(BaseModel):
+    is_active: bool
 
 
 class EmbeddingProviderRouteImportRequest(BaseModel):
@@ -6819,6 +6825,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except InvalidEmbeddingProviderRouteError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"route": embedding_provider_route_payload(route)})
+
+    @app.put("/api/admin/embedding-provider-routes/{route_id}")
+    def api_update_embedding_provider_route(
+        route_id: int,
+        payload: EmbeddingProviderRouteRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            route = update_embedding_provider_route(
+                settings.database_url,
+                route_id,
+                embedding_provider_route_input_from_request(payload),
+            )
+        except InvalidEmbeddingProviderRouteError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if route is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Embedding provider route not found.",
+            )
+
+        return JSONResponse(content={"route": embedding_provider_route_payload(route)})
+
+    @app.patch("/api/admin/embedding-provider-routes/{route_id}/activation")
+    def api_update_embedding_provider_route_activation(
+        route_id: int,
+        payload: EmbeddingProviderRouteActivationRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            route = set_embedding_provider_route_active(
+                settings.database_url,
+                route_id,
+                payload.is_active,
+            )
+        except InvalidEmbeddingProviderRouteError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if route is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Embedding provider route not found.",
+            )
 
         return JSONResponse(content={"route": embedding_provider_route_payload(route)})
 

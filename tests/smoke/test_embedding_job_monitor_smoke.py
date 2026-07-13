@@ -194,6 +194,8 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-route-health-panel" in response.text
     assert "Preflight 실행" in response.text
     assert "data-route-preflight-button" in response.text
+    assert "data-provider-route-management-panel" in response.text
+    assert "wireProviderRouteManagementControls" in response.text
     assert "Preflight 스케줄" in response.text
     assert "data-preflight-schedule-panel" in response.text
     assert "data-due-schedule-controls" in response.text
