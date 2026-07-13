@@ -10,6 +10,7 @@ from app.core.embedding_vectors import EmbeddingVectorTable, generate_mock_embed
 
 DEFAULT_ADAPTER_NAME = "mock"
 SENTENCE_TRANSFORMERS_ADAPTER_NAME = "sentence_transformers"
+QWEN_EMBEDDING_ADAPTER_NAME = "qwen_embedding"
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,86 @@ class SentenceTransformersEmbeddingAdapter:
         return [_coerce_vector(vector, self.profile.dimension) for vector in encoded]
 
 
+class QwenEmbeddingAdapter:
+    _shared_models: dict[tuple[str, str, str], object] = {}
+
+    def __init__(self, profile: EmbeddingModelProfile) -> None:
+        _validate_profile(profile)
+        self.profile = profile
+        self.model_source = profile.local_model_path or profile.model_name
+        self._cache_key = (
+            self.model_source,
+            profile.device or "",
+            profile.dtype or "",
+        )
+        self._model = self._load_shared_model()
+
+    def embed_documents(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
+        validated_texts = [
+            _apply_instruction(
+                _validate_text(text, "document text"), self.profile.document_instruction
+            )
+            for text in texts
+        ]
+        return self._encode_batch(validated_texts)
+
+    def embed_query(self, text: str) -> tuple[float, ...]:
+        validated_text = _apply_instruction(
+            _validate_text(text, "query text"),
+            self.profile.query_instruction,
+        )
+        return self._encode_batch([validated_text])[0]
+
+    def runtime_metadata(self) -> dict[str, object]:
+        return {
+            "adapter": QWEN_EMBEDDING_ADAPTER_NAME,
+            "profile_name": self.profile.profile_name,
+            "model_name": self.profile.model_name,
+            "model_source": self.model_source,
+            "dimension": self.profile.dimension,
+            "storage_type": self.profile.storage_type,
+            "normalize_embeddings": self.profile.normalize_embeddings,
+            "pooling_strategy": "sentence-transformers-truncate-dim",
+            "query_instruction": self.profile.query_instruction,
+            "document_instruction": self.profile.document_instruction,
+            "dtype": self.profile.dtype,
+            "device": self.profile.device,
+            "shared_model_cache_key": ":".join(self._cache_key),
+        }
+
+    @classmethod
+    def clear_shared_model_cache(cls) -> None:
+        cls._shared_models.clear()
+
+    def _load_shared_model(self) -> object:
+        if self._cache_key in self._shared_models:
+            return self._shared_models[self._cache_key]
+
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise InvalidEmbeddingAdapterError(
+                "sentence-transformers is required for qwen_embedding. Install it with "
+                '`./.venv/bin/pip install -e ".[models]"`.'
+            ) from exc
+
+        model_kwargs = {}
+        if self.profile.device:
+            model_kwargs["device"] = self.profile.device
+        model = SentenceTransformer(self.model_source, **model_kwargs)
+        self._shared_models[self._cache_key] = model
+        return model
+
+    def _encode_batch(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
+        encoded = self._model.encode(
+            list(texts),
+            normalize_embeddings=self.profile.normalize_embeddings,
+            convert_to_numpy=False,
+            truncate_dim=self.profile.dimension,
+        )
+        return [_coerce_vector(vector, self.profile.dimension) for vector in encoded]
+
+
 def _apply_instruction(text: str, instruction: str | None) -> str:
     if instruction is None or not instruction.strip():
         return text
@@ -229,6 +310,7 @@ class EmbeddingAdapterCache:
         self._adapter_factories = adapter_factories or {
             DEFAULT_ADAPTER_NAME: MockEmbeddingAdapter,
             SENTENCE_TRANSFORMERS_ADAPTER_NAME: SentenceTransformersEmbeddingAdapter,
+            QWEN_EMBEDDING_ADAPTER_NAME: QwenEmbeddingAdapter,
         }
         self._adapters: dict[str, EmbeddingAdapter] = {}
 

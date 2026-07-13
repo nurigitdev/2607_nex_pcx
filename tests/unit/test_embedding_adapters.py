@@ -5,11 +5,13 @@ import pytest
 
 from app.core.embedding_adapters import (
     DEFAULT_ADAPTER_NAME,
+    QWEN_EMBEDDING_ADAPTER_NAME,
     SENTENCE_TRANSFORMERS_ADAPTER_NAME,
     EmbeddingAdapterCache,
     EmbeddingModelProfile,
     InvalidEmbeddingAdapterError,
     MockEmbeddingAdapter,
+    QwenEmbeddingAdapter,
     SentenceTransformersEmbeddingAdapter,
 )
 
@@ -174,6 +176,60 @@ def test_sentence_transformers_adapter_rejects_dimension_mismatch(monkeypatch) -
         adapter.embed_query("hello")
 
 
+def test_qwen_embedding_adapter_shares_model_and_truncates_by_profile(monkeypatch) -> None:
+    calls = {"init": [], "encode": []}
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_source, **kwargs) -> None:
+            calls["init"].append((model_source, kwargs))
+
+        def encode(self, texts, **kwargs):
+            calls["encode"].append((list(texts), kwargs))
+            dimension = kwargs["truncate_dim"]
+            return [[float(index + 1) for _ in range(dimension)] for index, _ in enumerate(texts)]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
+    )
+    QwenEmbeddingAdapter.clear_shared_model_cache()
+    adapter_1000 = QwenEmbeddingAdapter(
+        make_profile(
+            profile_name="qwen3_4b_1000",
+            model_name="qwen3_embedding_4b",
+            dimension=3,
+            adapter_name=QWEN_EMBEDDING_ADAPTER_NAME,
+            local_model_path="models/qwen3_embedding_4b",
+            device="cpu",
+        )
+    )
+    adapter_2560 = QwenEmbeddingAdapter(
+        make_profile(
+            profile_name="qwen3_4b_2560",
+            model_name="qwen3_embedding_4b",
+            dimension=5,
+            storage_type="halfvec",
+            adapter_name=QWEN_EMBEDDING_ADAPTER_NAME,
+            local_model_path="models/qwen3_embedding_4b",
+            device="cpu",
+        )
+    )
+
+    documents = adapter_1000.embed_documents(["alpha", "beta"])
+    query = adapter_2560.embed_query("gamma")
+
+    assert calls["init"] == [("models/qwen3_embedding_4b", {"device": "cpu"})]
+    assert calls["encode"][0][1]["truncate_dim"] == 3
+    assert calls["encode"][1][1]["truncate_dim"] == 5
+    assert len(documents) == 2
+    assert len(documents[0]) == 3
+    assert len(query) == 5
+    assert adapter_2560.runtime_metadata()["adapter"] == QWEN_EMBEDDING_ADAPTER_NAME
+    assert adapter_2560.runtime_metadata()["model_source"] == "models/qwen3_embedding_4b"
+    QwenEmbeddingAdapter.clear_shared_model_cache()
+
+
 def test_embedding_adapter_cache_supports_sentence_transformers(monkeypatch) -> None:
     class FakeSentenceTransformer:
         def __init__(self, model_source, **kwargs) -> None:
@@ -200,3 +256,35 @@ def test_embedding_adapter_cache_supports_sentence_transformers(monkeypatch) -> 
     assert cache.loaded_cache_keys() == (
         "sentence_transformers:kure_v1_1024:3:vector:models/bge_m3:",
     )
+
+
+def test_embedding_adapter_cache_supports_qwen_embedding(monkeypatch) -> None:
+    class FakeSentenceTransformer:
+        def __init__(self, model_source, **kwargs) -> None:
+            pass
+
+        def encode(self, texts, **kwargs):
+            return [[1.0, 2.0, 3.0] for _ in texts]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
+    )
+    QwenEmbeddingAdapter.clear_shared_model_cache()
+    cache = EmbeddingAdapterCache()
+    profile = make_profile(
+        profile_name="qwen3_4b_1000",
+        model_name="qwen3_embedding_4b",
+        dimension=3,
+        adapter_name=QWEN_EMBEDDING_ADAPTER_NAME,
+        local_model_path="models/qwen3_embedding_4b",
+    )
+
+    adapter = cache.get_adapter(profile)
+
+    assert adapter.embed_query("hello") == (1.0, 2.0, 3.0)
+    assert cache.loaded_cache_keys() == (
+        "qwen_embedding:qwen3_4b_1000:3:vector:models/qwen3_embedding_4b:",
+    )
+    QwenEmbeddingAdapter.clear_shared_model_cache()

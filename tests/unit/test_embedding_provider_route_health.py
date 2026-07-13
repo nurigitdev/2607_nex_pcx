@@ -92,6 +92,72 @@ def test_route_health_marks_remote_provider_mismatch() -> None:
     assert any("model_key mismatch" in error for error in health.validation_errors)
 
 
+def test_route_health_accepts_profile_dimension_metadata_for_shared_qwen_provider() -> None:
+    health = check_embedding_provider_route_health(
+        make_route(profile_name="qwen3_4b_2560", provider_name="qwen-primary"),
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200,
+                    json={
+                        "ready": True,
+                        "provider_type": "remote",
+                        "provider_model_id": "gpu-qwen3-4b",
+                        "model_key": "qwen3_embedding_4b",
+                        "profile_names": ["qwen3_4b_1000", "qwen3_4b_2560"],
+                        "dimension": None,
+                        "device": "cuda:0",
+                        "runtime_metadata": {
+                            "profile_dimensions": {
+                                "qwen3_4b_1000": 1000,
+                                "qwen3_4b_2560": 2560,
+                            }
+                        },
+                    },
+                )
+            )
+        ),
+    )
+
+    assert health.checked is True
+    assert health.ready is True
+    assert health.status == "ready"
+    assert health.dimension is None
+    assert health.validation_errors == ()
+
+
+def test_route_health_rejects_mismatched_profile_dimension_metadata() -> None:
+    health = check_embedding_provider_route_health(
+        make_route(profile_name="qwen3_4b_2560", provider_name="qwen-primary"),
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200,
+                    json={
+                        "ready": True,
+                        "provider_type": "remote",
+                        "provider_model_id": "gpu-qwen3-4b",
+                        "model_key": "qwen3_embedding_4b",
+                        "profile_names": ["qwen3_4b_1000", "qwen3_4b_2560"],
+                        "dimension": None,
+                        "device": "cuda:0",
+                        "runtime_metadata": {
+                            "profile_dimensions": {
+                                "qwen3_4b_1000": 1000,
+                                "qwen3_4b_2560": 1000,
+                            }
+                        },
+                    },
+                )
+            )
+        ),
+    )
+
+    assert health.ready is False
+    assert health.status == "mismatch"
+    assert any("dimension mismatch" in error for error in health.validation_errors)
+
+
 def test_route_health_reports_unreachable_remote_provider() -> None:
     health = check_embedding_provider_route_health(
         make_route(),

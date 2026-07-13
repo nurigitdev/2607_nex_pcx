@@ -10,6 +10,7 @@ from app.core.embedding_model_distribution import (
 from app.core.embedding_provider_route_health import (
     EmbeddingProviderRouteHealthResult,
     check_embedding_provider_route_health,
+    provider_health_dimension_for_profile,
 )
 from app.core.embedding_provider_routes import EmbeddingProviderRouteRecord
 from app.core.embedding_providers import (
@@ -178,9 +179,14 @@ def _validate_embedding_contract(
             "provider_model_id mismatch: "
             f"health={health.provider_model_id}, embedding={response.provider_model_id}"
         )
-    if health.dimension is not None and response.dimension != health.dimension:
+    provider_dimension = provider_health_dimension_for_profile(
+        health.dimension,
+        profile_name=route.profile_name,
+        runtime_metadata=health.runtime_metadata,
+    )
+    if provider_dimension is not None and response.dimension != provider_dimension:
         validation_errors.append(
-            f"dimension mismatch: health={health.dimension}, embedding={response.dimension}"
+            f"dimension mismatch: health={provider_dimension}, embedding={response.dimension}"
         )
     return tuple(validation_errors)
 

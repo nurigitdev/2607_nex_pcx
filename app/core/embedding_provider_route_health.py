@@ -1,6 +1,6 @@
 """Health aggregation for profile-specific embedding provider routes."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -212,14 +212,36 @@ def _validate_route_health_match(
 
     try:
         expected_table = get_embedding_vector_table(route.profile_name)
-        if health.dimension is not None and health.dimension != expected_table.dimension:
+        provider_dimension = provider_health_dimension_for_profile(
+            health.dimension,
+            profile_name=route.profile_name,
+            runtime_metadata=health.runtime_metadata,
+        )
+        if provider_dimension is not None and provider_dimension != expected_table.dimension:
             validation_errors.append(
-                f"dimension mismatch: expected {expected_table.dimension}, got {health.dimension}"
+                f"dimension mismatch: expected {expected_table.dimension}, got {provider_dimension}"
             )
     except InvalidEmbeddingVectorError as exc:
         validation_errors.append(str(exc))
 
     return tuple(validation_errors)
+
+
+def provider_health_dimension_for_profile(
+    dimension: int | None,
+    *,
+    profile_name: str,
+    runtime_metadata: Mapping[str, object],
+) -> int | None:
+    profile_dimensions = runtime_metadata.get("profile_dimensions")
+    if isinstance(profile_dimensions, Mapping):
+        profile_dimension = profile_dimensions.get(profile_name)
+        if profile_dimension is not None:
+            try:
+                return int(profile_dimension)
+            except (TypeError, ValueError):
+                return dimension
+    return dimension
 
 
 def _unchecked_route_health(

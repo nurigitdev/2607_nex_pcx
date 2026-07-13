@@ -11,9 +11,11 @@ from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 from app.core.embedding_adapters import (
+    QWEN_EMBEDDING_ADAPTER_NAME,
     SENTENCE_TRANSFORMERS_ADAPTER_NAME,
     EmbeddingAdapter,
     EmbeddingModelProfile,
+    QwenEmbeddingAdapter,
     SentenceTransformersEmbeddingAdapter,
 )
 from app.core.embedding_model_distribution import (
@@ -31,6 +33,7 @@ from app.core.embedding_vectors import generate_mock_embedding, get_embedding_ve
 
 PROVIDER_BACKEND_MOCK = "mock"
 PROVIDER_BACKEND_SENTENCE_TRANSFORMERS = "sentence_transformers"
+PROVIDER_BACKEND_QWEN_EMBEDDING = QWEN_EMBEDDING_ADAPTER_NAME
 
 
 @dataclass(frozen=True)
@@ -113,6 +116,7 @@ class LocalSentenceTransformersProvider:
                     profile_name,
                     settings=settings,
                     local_model_dir=self.local_model_dir,
+                    adapter_name=SENTENCE_TRANSFORMERS_ADAPTER_NAME,
                 )
             )
             for profile_name in settings.profile_names
@@ -157,6 +161,71 @@ class LocalSentenceTransformersProvider:
         return validate_embedding_provider_response(response, validated)
 
 
+class LocalQwenEmbeddingProvider:
+    def __init__(self, settings: EmbeddingProviderServiceSettings) -> None:
+        self.settings = settings
+        self.distribution = get_embedding_model_distribution(settings.model_key)
+        if self.distribution.adapter_name != QWEN_EMBEDDING_ADAPTER_NAME:
+            raise ValueError(f"Model {settings.model_key} does not use the qwen_embedding adapter")
+        self.local_model_dir = resolve_embedding_model_dir(self.distribution, settings.models_dir)
+        self._adapters: dict[str, QwenEmbeddingAdapter] = {
+            profile_name: QwenEmbeddingAdapter(
+                _embedding_model_profile_for_provider(
+                    profile_name,
+                    settings=settings,
+                    local_model_dir=self.local_model_dir,
+                    adapter_name=QWEN_EMBEDDING_ADAPTER_NAME,
+                )
+            )
+            for profile_name in settings.profile_names
+        }
+
+    @property
+    def profile_dimensions(self) -> dict[str, int]:
+        return {
+            profile_name: adapter.profile.dimension
+            for profile_name, adapter in self._adapters.items()
+        }
+
+    def embed(self, request: EmbeddingProviderRequest) -> EmbeddingProviderResponse:
+        validated = validate_embedding_provider_request(request)
+        if validated.model_key != self.settings.model_key:
+            raise ValueError(f"Unsupported model_key: {validated.model_key}")
+        try:
+            adapter = self._adapters[validated.profile_name]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported profile_name: {validated.profile_name}") from exc
+
+        if validated.output_dimension != adapter.profile.dimension:
+            raise ValueError(
+                f"Unsupported output_dimension: {validated.output_dimension}; "
+                f"expected {adapter.profile.dimension}"
+            )
+
+        started_at = perf_counter()
+        if validated.input_type == "query":
+            embeddings = tuple(adapter.embed_query(text) for text in validated.texts)
+        else:
+            embeddings = tuple(adapter.embed_documents(validated.texts))
+        response = EmbeddingProviderResponse(
+            embeddings=embeddings,
+            dimension=validated.output_dimension,
+            provider_model_id=self.settings.provider_model_id,
+            provider_type=REMOTE_EMBEDDING_PROVIDER_TYPE,
+            elapsed_ms=max(0, int((perf_counter() - started_at) * 1000)),
+            input_count=len(validated.texts),
+            runtime_metadata={
+                **adapter.runtime_metadata(),
+                "service": "nex_pcx_embedding_provider_service",
+                "backend": PROVIDER_BACKEND_QWEN_EMBEDDING,
+                "device": self.settings.device,
+                "model_key": self.settings.model_key,
+                "trace_id": validated.trace_id,
+            },
+        )
+        return validate_embedding_provider_response(response, validated)
+
+
 def get_embedding_provider_service_settings() -> EmbeddingProviderServiceSettings:
     app_settings = get_settings()
     return EmbeddingProviderServiceSettings(
@@ -191,19 +260,28 @@ def create_app(
 
     @app.get("/healthz")
     def healthz() -> dict[str, object]:
+        runtime_metadata = {
+            "service": "nex_pcx_embedding_provider_skeleton",
+            "backend": provider_settings.backend,
+            "models_dir": str(provider_settings.models_dir),
+        }
+        dimension: int | None = provider_settings.dimension
+        profile_dimensions = getattr(embedding_provider, "profile_dimensions", None)
+        if profile_dimensions:
+            normalized_profile_dimensions = dict(profile_dimensions)
+            runtime_metadata["profile_dimensions"] = normalized_profile_dimensions
+            unique_dimensions = set(normalized_profile_dimensions.values())
+            dimension = next(iter(unique_dimensions)) if len(unique_dimensions) == 1 else None
+
         return {
             "ready": provider_settings.ready,
             "provider_type": REMOTE_EMBEDDING_PROVIDER_TYPE,
             "provider_model_id": provider_settings.provider_model_id,
             "model_key": provider_settings.model_key,
             "profile_names": list(provider_settings.profile_names),
-            "dimension": provider_settings.dimension,
+            "dimension": dimension,
             "device": provider_settings.device,
-            "runtime_metadata": {
-                "service": "nex_pcx_embedding_provider_skeleton",
-                "backend": provider_settings.backend,
-                "models_dir": str(provider_settings.models_dir),
-            },
+            "runtime_metadata": runtime_metadata,
         }
 
     @app.post("/v1/embeddings")
@@ -258,6 +336,8 @@ def _build_provider(settings: EmbeddingProviderServiceSettings) -> object:
         return SkeletonEmbeddingProvider(settings)
     if settings.backend == PROVIDER_BACKEND_SENTENCE_TRANSFORMERS:
         return LocalSentenceTransformersProvider(settings)
+    if settings.backend == PROVIDER_BACKEND_QWEN_EMBEDDING:
+        return LocalQwenEmbeddingProvider(settings)
     raise ValueError(f"Unsupported provider backend: {settings.backend}")
 
 
@@ -266,6 +346,7 @@ def _embedding_model_profile_for_provider(
     *,
     settings: EmbeddingProviderServiceSettings,
     local_model_dir: Path,
+    adapter_name: str,
 ) -> EmbeddingModelProfile:
     table = get_embedding_vector_table(profile_name)
     return EmbeddingModelProfile(
@@ -273,7 +354,7 @@ def _embedding_model_profile_for_provider(
         model_name=settings.model_key,
         dimension=table.dimension,
         storage_type=table.storage_type,
-        adapter_name=SENTENCE_TRANSFORMERS_ADAPTER_NAME,
+        adapter_name=adapter_name,
         local_model_path=str(local_model_dir),
         device=settings.device,
     )

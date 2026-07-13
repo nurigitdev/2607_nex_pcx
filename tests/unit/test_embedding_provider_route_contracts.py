@@ -120,6 +120,61 @@ def test_route_contract_blocks_embedding_when_health_mismatches() -> None:
     assert seen_paths == ["/healthz"]
 
 
+def test_route_contract_passes_shared_qwen_provider_with_profile_dimension_metadata() -> None:
+    seen_payloads = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/healthz":
+            return httpx.Response(
+                200,
+                json={
+                    "ready": True,
+                    "provider_type": "remote",
+                    "provider_model_id": "gpu-qwen3-4b",
+                    "model_key": "qwen3_embedding_4b",
+                    "profile_names": ["qwen3_4b_1000", "qwen3_4b_2560"],
+                    "dimension": None,
+                    "device": "cuda:0",
+                    "runtime_metadata": {
+                        "profile_dimensions": {
+                            "qwen3_4b_1000": 1000,
+                            "qwen3_4b_2560": 2560,
+                        }
+                    },
+                },
+            )
+        if request.url.path == "/v1/embeddings":
+            payload = json_from_request(request)
+            seen_payloads.append(payload)
+            return httpx.Response(
+                200,
+                json={
+                    "embeddings": [[0.25] * 2560],
+                    "dimension": 2560,
+                    "provider_model_id": "gpu-qwen3-4b",
+                    "provider_type": "remote",
+                    "elapsed_ms": 18,
+                    "input_count": 1,
+                    "runtime_metadata": {"device": "cuda:0"},
+                },
+            )
+        return httpx.Response(404, json={"detail": "not found"})
+
+    result = check_embedding_provider_route_contract(
+        make_route(profile_name="qwen3_4b_2560", provider_name="qwen-primary"),
+        sample_texts=("qwen contract sample",),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    assert result.passed is True
+    assert result.status == "passed"
+    assert result.expected_dimension == 2560
+    assert result.dimension == 2560
+    assert seen_payloads[0]["profile_name"] == "qwen3_4b_2560"
+    assert seen_payloads[0]["model_key"] == "qwen3_embedding_4b"
+    assert seen_payloads[0]["output_dimension"] == 2560
+
+
 def test_route_contract_passes_mock_route() -> None:
     result = check_embedding_provider_route_contract(
         make_route(provider_mode="mock", provider_base_url=None)

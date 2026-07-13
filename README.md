@@ -292,3 +292,17 @@ NEX_PCX_PROVIDER_PROFILE_NAMES=kure_v1_1024 \
 NEX_PCX_PROVIDER_MODEL_ID=local-kure-v1 \
 ./.venv/bin/uvicorn app.embedding_provider_service:app --host 127.0.0.1 --port 9000
 ```
+
+Run the Qwen provider with one loaded model serving both Qwen profiles:
+
+```bash
+NEX_PCX_PROVIDER_BACKEND=qwen_embedding \
+NEX_PCX_PROVIDER_MODEL_KEY=qwen3_embedding_4b \
+NEX_PCX_PROVIDER_PROFILE_NAMES=qwen3_4b_1000,qwen3_4b_2560 \
+NEX_PCX_PROVIDER_MODEL_ID=local-qwen3-embedding-4b \
+./.venv/bin/uvicorn app.embedding_provider_service:app --host 127.0.0.1 --port 9103
+```
+
+Register both `qwen3_4b_1000` and `qwen3_4b_2560` routes with the same provider
+base URL, such as `http://127.0.0.1:9103`. The request profile and output
+dimension select the storage profile while the provider keeps one Qwen model loaded.

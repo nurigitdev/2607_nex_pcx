@@ -126,6 +126,21 @@ Qwen is the largest bundle and should normally be GPU-only. Keep both Qwen profi
 to the same loaded model, while honoring each request's `output_dimension` and storage
 profile metadata.
 
+For a shared Qwen provider, register both `qwen3_4b_1000` and `qwen3_4b_2560` routes
+against the same `provider_base_url`. The provider health response may set
+`dimension` to `null` and expose profile-specific dimensions in runtime metadata:
+
+```json
+{
+  "runtime_metadata": {
+    "profile_dimensions": {
+      "qwen3_4b_1000": 1000,
+      "qwen3_4b_2560": 2560
+    }
+  }
+}
+```
+
 Avoid loading all large models into one small GPU process unless memory has been measured.
 For early experiments, prefer explicit routing over clever auto-balancing.
 
