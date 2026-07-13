@@ -356,6 +356,10 @@ def test_golden_search_experiment_batch_api_runs_question_set(
                 "/api/search/experiments/golden-question-batches/"
                 f"{batch_summary['batch_key']}/metric-snapshots"
             )
+            snapshot_trend_response = client.get(
+                "/api/search/experiments/golden-question-batches/"
+                f"{batch_summary['batch_key']}/metric-snapshots/trend"
+            )
             batch_metric_response = client.get(
                 "/api/search/experiments/golden-question-batches/"
                 f"{batch_summary['batch_key']}/metrics"
@@ -372,6 +376,21 @@ def test_golden_search_experiment_batch_api_runs_question_set(
                 "/api/search/experiments/golden-question-batches/"
                 f"{batch_summary['batch_key']}/metric-snapshots"
             )
+            manual_snapshot_id = manual_snapshot_response.json()["snapshot"]["snapshot_id"]
+            snapshot_compare_response = client.get(
+                "/api/search/experiments/golden-question-batch-metric-snapshots/compare",
+                params={
+                    "base_snapshot_id": auto_snapshot_id,
+                    "target_snapshot_id": manual_snapshot_id,
+                },
+            )
+            missing_snapshot_compare_response = client.get(
+                "/api/search/experiments/golden-question-batch-metric-snapshots/compare",
+                params={
+                    "base_snapshot_id": auto_snapshot_id,
+                    "target_snapshot_id": 999999999,
+                },
+            )
             batch_page_response = client.get(
                 f"/search/experiments?golden_batch_key={batch_summary['batch_key']}"
             )
@@ -384,8 +403,10 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         batch_metrics = batch_metric_response.json()
         auto_snapshot = batch["metric_snapshot"]
         snapshot_list = snapshot_list_response.json()["snapshots"]
+        snapshot_trend = snapshot_trend_response.json()["trend"]
         snapshot_detail = snapshot_detail_response.json()
         manual_snapshot = manual_snapshot_response.json()
+        snapshot_compare = snapshot_compare_response.json()["comparison"]
 
         assert response.status_code == 201
         assert batch["batch_key"] == batch_summary["batch_key"]
@@ -456,6 +477,13 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         assert auto_snapshot["mean_ndcg"] == pytest.approx(1)
         assert snapshot_list_response.status_code == 200
         assert snapshot_list[0]["snapshot_id"] == auto_snapshot["snapshot_id"]
+        assert snapshot_trend_response.status_code == 200
+        assert snapshot_trend["batch_key"] == batch_summary["batch_key"]
+        assert snapshot_trend["snapshot_count"] == 1
+        assert snapshot_trend["first_snapshot"]["snapshot_id"] == auto_snapshot["snapshot_id"]
+        assert snapshot_trend["latest_snapshot"]["snapshot_id"] == auto_snapshot["snapshot_id"]
+        assert snapshot_trend["points"][0]["previous_snapshot_id"] is None
+        assert snapshot_trend["points"][0]["mean_recall_at_k_delta"] is None
         assert snapshot_detail_response.status_code == 200
         assert snapshot_detail["snapshot"]["snapshot_id"] == auto_snapshot["snapshot_id"]
         assert missing_snapshot_detail_response.status_code == 404
@@ -471,11 +499,31 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         assert manual_snapshot["snapshot"]["batch_key"] == batch_summary["batch_key"]
         assert manual_snapshot["snapshot"]["snapshot_id"] != auto_snapshot["snapshot_id"]
         assert manual_snapshot["snapshot"]["mean_ndcg"] == pytest.approx(1)
+        assert snapshot_compare_response.status_code == 200
+        assert snapshot_compare["base"]["snapshot"]["snapshot_id"] == auto_snapshot_id
+        assert snapshot_compare["target"]["snapshot"]["snapshot_id"] == manual_snapshot_id
+        assert snapshot_compare["overall"]["mean_recall_at_k_delta"] == pytest.approx(0)
+        assert snapshot_compare["overall"]["mean_reciprocal_rank_delta"] == pytest.approx(0)
+        assert snapshot_compare["overall"]["mean_ndcg_delta"] == pytest.approx(0)
+        assert snapshot_compare["compatibility_warnings"] == []
+        assert {item["profile_name"] for item in snapshot_compare["profiles"]} == {
+            "kure_v1_1024",
+            "bge_m3_1024",
+        }
+        assert len(snapshot_compare["questions"]) == 2
+        assert missing_snapshot_compare_response.status_code == 404
+        assert missing_snapshot_compare_response.json() == {
+            "detail": "Golden batch metric snapshot comparison target not found."
+        }
         assert batch_page_response.status_code == 200
         assert "골든 질문 Batch 결과" in batch_page_response.text
         assert "Recall@K" in batch_page_response.text
         assert "Metric API" in batch_page_response.text
         assert "Metric Snapshot" in batch_page_response.text
+        assert "Snapshot 비교" in batch_page_response.text
+        assert "Snapshot Trend" in batch_page_response.text
+        assert "Compare API" in batch_page_response.text
+        assert "Trend API" in batch_page_response.text
         assert f"#{manual_snapshot['snapshot']['snapshot_id']}" in batch_page_response.text
         assert run_name_prefix in batch_page_response.text
         assert f"/api/search/experiments/golden-question-batches/{batch_summary['batch_key']}" in (
@@ -488,6 +536,13 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         assert (
             "/api/search/experiments/golden-question-batches/"
             f"{batch_summary['batch_key']}/metric-snapshots"
+        ) in batch_page_response.text
+        assert (
+            "/api/search/experiments/golden-question-batches/"
+            f"{batch_summary['batch_key']}/metric-snapshots/trend"
+        ) in batch_page_response.text
+        assert (
+            "/api/search/experiments/golden-question-batch-metric-snapshots/compare"
         ) in batch_page_response.text
     finally:
         if batch is not None:

@@ -69,6 +69,11 @@
     "canceled": "canceled",
     "skipped": "skipped"
   },
+  "comparison_status": {
+    "common": "common",
+    "added": "added",
+    "removed": "removed"
+  },
   "dashboard": {
     "title": "Dashboard",
     "subtitle": "RAG experiment bench operations",
@@ -299,7 +304,22 @@
     "save_snapshot": "Save Snapshot",
     "snapshot_id": "Snapshot",
     "created_at": "Created",
-    "source_updated": "Source updated"
+    "source_updated": "Source updated",
+    "base_snapshot": "Base Snapshot",
+    "target_snapshot": "Target Snapshot",
+    "compare_snapshots": "Compare Snapshots",
+    "compare_api": "Compare API",
+    "snapshot_compare": "Snapshot Compare",
+    "compare_warnings": "Condition differences",
+    "compare_compatible": "Compatible",
+    "metric": "Metric",
+    "base": "Base",
+    "target": "Target",
+    "snapshot_trend": "Snapshot Trend",
+    "snapshot_trend_help": "Time-ordered metric changes across saved snapshots",
+    "trend_api": "Trend API",
+    "first": "First Snapshot",
+    "latest": "Latest"
   },
   "pipeline_queue": {
     "claimable": "Claimable",

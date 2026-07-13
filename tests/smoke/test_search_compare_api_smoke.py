@@ -91,11 +91,18 @@ def test_golden_search_experiment_batch_summary_api_requires_database_url() -> N
         snapshot_list_response = client.get(
             "/api/search/experiments/golden-question-batches/dummy/metric-snapshots"
         )
+        snapshot_trend_response = client.get(
+            "/api/search/experiments/golden-question-batches/dummy/metric-snapshots/trend"
+        )
         snapshot_create_response = client.post(
             "/api/search/experiments/golden-question-batches/dummy/metric-snapshots"
         )
         snapshot_detail_response = client.get(
             "/api/search/experiments/golden-question-batch-metric-snapshots/1"
+        )
+        snapshot_compare_response = client.get(
+            "/api/search/experiments/golden-question-batch-metric-snapshots/compare",
+            params={"base_snapshot_id": 1, "target_snapshot_id": 2},
         )
 
     assert list_response.status_code == 503
@@ -106,10 +113,14 @@ def test_golden_search_experiment_batch_summary_api_requires_database_url() -> N
     assert metric_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
     assert snapshot_list_response.status_code == 503
     assert snapshot_list_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+    assert snapshot_trend_response.status_code == 503
+    assert snapshot_trend_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
     assert snapshot_create_response.status_code == 503
     assert snapshot_create_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
     assert snapshot_detail_response.status_code == 503
     assert snapshot_detail_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+    assert snapshot_compare_response.status_code == 503
+    assert snapshot_compare_response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
 
 
 def test_search_feedback_api_requires_database_url() -> None:

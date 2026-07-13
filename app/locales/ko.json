@@ -69,6 +69,11 @@
     "canceled": "취소",
     "skipped": "건너뜀"
   },
+  "comparison_status": {
+    "common": "공통",
+    "added": "추가",
+    "removed": "제거"
+  },
   "dashboard": {
     "title": "대시보드",
     "subtitle": "RAG 실험 벤치 운영 현황",
@@ -299,7 +304,22 @@
     "save_snapshot": "Snapshot 저장",
     "snapshot_id": "Snapshot",
     "created_at": "Created",
-    "source_updated": "Source updated"
+    "source_updated": "Source updated",
+    "base_snapshot": "기준 Snapshot",
+    "target_snapshot": "비교 Snapshot",
+    "compare_snapshots": "Snapshot 비교",
+    "compare_api": "Compare API",
+    "snapshot_compare": "Snapshot 비교",
+    "compare_warnings": "조건 차이 있음",
+    "compare_compatible": "조건 일치",
+    "metric": "Metric",
+    "base": "기준",
+    "target": "비교",
+    "snapshot_trend": "Snapshot Trend",
+    "snapshot_trend_help": "저장된 snapshot의 시간순 metric 변화",
+    "trend_api": "Trend API",
+    "first": "첫 Snapshot",
+    "latest": "최신"
   },
   "pipeline_queue": {
     "claimable": "Claimable",

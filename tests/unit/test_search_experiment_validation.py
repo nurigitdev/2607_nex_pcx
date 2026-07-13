@@ -7,7 +7,9 @@ import pytest
 
 from app.core.golden_batch_metric_snapshots import (
     InvalidGoldenBatchMetricSnapshotError,
+    compare_golden_batch_metric_snapshots,
     get_golden_batch_metric_snapshot_detail,
+    get_golden_batch_metric_snapshot_trend,
     list_golden_batch_metric_snapshots,
     record_golden_batch_metric_snapshot,
 )
@@ -301,6 +303,12 @@ def test_golden_batch_metric_snapshot_helpers_validate_before_connecting() -> No
         list_golden_batch_metric_snapshots("postgresql://unused", batch_key, limit=101)
     with pytest.raises(InvalidSearchExperimentError, match="Invalid golden"):
         list_golden_batch_metric_snapshots("postgresql://unused", "not-a-valid-key")
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="greater than 0"):
+        get_golden_batch_metric_snapshot_trend("postgresql://unused", batch_key, limit=0)
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="less than or equal"):
+        get_golden_batch_metric_snapshot_trend("postgresql://unused", batch_key, limit=101)
+    with pytest.raises(InvalidSearchExperimentError, match="Invalid golden"):
+        get_golden_batch_metric_snapshot_trend("postgresql://unused", "not-a-valid-key")
     with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="snapshot_id"):
         get_golden_batch_metric_snapshot_detail("postgresql://unused", 0)
     with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="created_by_user_id"):
@@ -311,6 +319,24 @@ def test_golden_batch_metric_snapshot_helpers_validate_before_connecting() -> No
         )
     with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="created_by"):
         record_golden_batch_metric_snapshot("postgresql://unused", batch_key, created_by=" ")
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="base_snapshot_id"):
+        compare_golden_batch_metric_snapshots(
+            "postgresql://unused",
+            base_snapshot_id=0,
+            target_snapshot_id=1,
+        )
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="target_snapshot_id"):
+        compare_golden_batch_metric_snapshots(
+            "postgresql://unused",
+            base_snapshot_id=1,
+            target_snapshot_id=0,
+        )
+    with pytest.raises(InvalidGoldenBatchMetricSnapshotError, match="different"):
+        compare_golden_batch_metric_snapshots(
+            "postgresql://unused",
+            base_snapshot_id=1,
+            target_snapshot_id=1,
+        )
 
 
 def test_golden_search_experiment_batch_prefix_and_identity_helpers() -> None:

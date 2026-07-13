@@ -252,6 +252,216 @@
           </form>
         </div>
       </div>
+      {% if selected_golden_batch_metric_snapshots|length >= 2 %}
+      <div class="search-experiment-snapshot-compare mb-3">
+        <form class="row g-2 align-items-end mb-3" method="get">
+          <input type="hidden" name="golden_batch_key" value="{{ selected_golden_batch_detail.summary.batch_key }}">
+          <input type="hidden" name="status_filter" value="{{ selected_status_filter }}">
+          <input type="hidden" name="limit" value="{{ selected_limit }}">
+          <div class="col-12 col-md-4">
+            <label class="form-label small text-secondary" for="base_metric_snapshot_id">{{ t("search_experiments.base_snapshot") }}</label>
+            <select class="form-select form-select-sm" id="base_metric_snapshot_id" name="base_metric_snapshot_id">
+              {% for snapshot in selected_golden_batch_metric_snapshots %}
+              <option value="{{ snapshot.snapshot_id }}" {% if selected_base_metric_snapshot_id == snapshot.snapshot_id %}selected{% endif %}>
+                #{{ snapshot.snapshot_id }} · {{ snapshot.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label small text-secondary" for="target_metric_snapshot_id">{{ t("search_experiments.target_snapshot") }}</label>
+            <select class="form-select form-select-sm" id="target_metric_snapshot_id" name="target_metric_snapshot_id">
+              {% for snapshot in selected_golden_batch_metric_snapshots %}
+              <option value="{{ snapshot.snapshot_id }}" {% if selected_target_metric_snapshot_id == snapshot.snapshot_id %}selected{% endif %}>
+                #{{ snapshot.snapshot_id }} · {{ snapshot.created_at.strftime("%Y-%m-%d %H:%M:%S") }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-auto">
+            <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t("search_experiments.compare_snapshots") }}</button>
+          </div>
+          {% if selected_golden_batch_metric_snapshot_comparison %}
+          <div class="col-12 col-md-auto">
+            <a
+              class="btn btn-outline-secondary btn-sm"
+              href="/api/search/experiments/golden-question-batch-metric-snapshots/compare?base_snapshot_id={{ selected_golden_batch_metric_snapshot_comparison.base.snapshot.snapshot_id }}&target_snapshot_id={{ selected_golden_batch_metric_snapshot_comparison.target.snapshot.snapshot_id }}"
+            >
+              {{ t("search_experiments.compare_api") }}
+            </a>
+          </div>
+          {% endif %}
+        </form>
+        {% if selected_golden_batch_metric_snapshot_comparison %}
+        <div class="search-experiment-snapshot-compare-summary">
+          <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+            <div>
+              <div class="fw-semibold">{{ t("search_experiments.snapshot_compare") }}</div>
+              <div class="text-secondary small">
+                #{{ selected_golden_batch_metric_snapshot_comparison.base.snapshot.snapshot_id }}
+                →
+                #{{ selected_golden_batch_metric_snapshot_comparison.target.snapshot.snapshot_id }}
+              </div>
+            </div>
+            {% if selected_golden_batch_metric_snapshot_comparison.compatibility_warnings %}
+            <span class="badge text-bg-warning">{{ t("search_experiments.compare_warnings") }}</span>
+            {% else %}
+            <span class="badge text-bg-success">{{ t("search_experiments.compare_compatible") }}</span>
+            {% endif %}
+          </div>
+          {% if selected_golden_batch_metric_snapshot_comparison.compatibility_warnings %}
+          <div class="text-secondary small mb-2">
+            {{ selected_golden_batch_metric_snapshot_comparison.compatibility_warnings | join(", ") }}
+          </div>
+          {% endif %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm align-middle mb-0 search-experiment-batch-snapshot-compare-table">
+              <thead>
+                <tr>
+                  <th scope="col">{{ t("search_experiments.metric") }}</th>
+                  <th scope="col">{{ t("search_experiments.base") }}</th>
+                  <th scope="col">{{ t("search_experiments.target") }}</th>
+                  <th scope="col">Delta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in selected_golden_batch_metric_snapshot_compare_rows %}
+                <tr>
+                  <td>{{ t(row.label_key) }}</td>
+                  <td>{{ row.base }}</td>
+                  <td>{{ row.target }}</td>
+                  <td class="fw-semibold {{ row.delta_class }}">{{ row.delta }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 search-experiment-batch-snapshot-profile-compare-table">
+              <thead>
+                <tr>
+                  <th scope="col">{{ t("search_experiments.profile") }}</th>
+                  <th scope="col">{{ t("search_experiments.status") }}</th>
+                  <th scope="col">{{ t("search_experiments.recall_at_k") }}</th>
+                  <th scope="col">{{ t("search_experiments.mrr") }}</th>
+                  <th scope="col">{{ t("search_experiments.ndcg") }}</th>
+                  <th scope="col">{{ t("search_experiments.hidden") }}</th>
+                  <th scope="col">{{ t("search_experiments.avg_elapsed") }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for profile in selected_golden_batch_metric_snapshot_comparison.profiles %}
+                <tr>
+                  <td class="fw-semibold text-break">{{ profile.profile_name }}</td>
+                  <td>{{ t("comparison_status." ~ profile.comparison_status) }}</td>
+                  <td>{% if profile.mean_recall_at_k_delta is not none %}{{ "%+.2f"|format(profile.mean_recall_at_k_delta * 100) }}pp{% else %}-{% endif %}</td>
+                  <td>{% if profile.mean_reciprocal_rank_delta is not none %}{{ "%+.2f"|format(profile.mean_reciprocal_rank_delta * 100) }}pp{% else %}-{% endif %}</td>
+                  <td>{% if profile.mean_ndcg_delta is not none %}{{ "%+.2f"|format(profile.mean_ndcg_delta * 100) }}pp{% else %}-{% endif %}</td>
+                  <td>{% if profile.hidden_violation_count_delta is not none %}{{ "%+d"|format(profile.hidden_violation_count_delta) }}{% else %}-{% endif %}</td>
+                  <td>{% if profile.average_elapsed_ms_delta is not none %}{{ "%+.1f"|format(profile.average_elapsed_ms_delta) }} ms{% else %}-{% endif %}</td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td class="text-secondary text-center py-4" colspan="7">{{ t("search_experiments.no_metric_profiles") }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if selected_golden_batch_metric_snapshot_trend %}
+      <div class="search-experiment-snapshot-trend mb-3">
+        <div class="d-flex align-items-center justify-content-between gap-3 mb-2">
+          <div>
+            <div class="fw-semibold">{{ t("search_experiments.snapshot_trend") }}</div>
+            <div class="text-secondary small">
+              {{ t("search_experiments.snapshot_trend_help") }}
+              · {{ selected_golden_batch_metric_snapshot_trend.points | length }}
+            </div>
+          </div>
+          <a
+            class="btn btn-outline-secondary btn-sm"
+            href="/api/search/experiments/golden-question-batches/{{ selected_golden_batch_detail.summary.batch_key }}/metric-snapshots/trend"
+          >
+            {{ t("search_experiments.trend_api") }}
+          </a>
+        </div>
+        {% if selected_golden_batch_metric_snapshot_trend_summary_rows %}
+        <div class="table-responsive mb-3">
+          <table class="table table-sm align-middle mb-0 search-experiment-batch-snapshot-trend-summary-table">
+            <thead>
+              <tr>
+                <th scope="col">{{ t("search_experiments.metric") }}</th>
+                <th scope="col">{{ t("search_experiments.first") }}</th>
+                <th scope="col">{{ t("search_experiments.latest") }}</th>
+                <th scope="col">Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in selected_golden_batch_metric_snapshot_trend_summary_rows %}
+              <tr>
+                <td>{{ t(row.label_key) }}</td>
+                <td>{{ row.first }}</td>
+                <td>{{ row.latest }}</td>
+                <td class="fw-semibold {{ row.delta_class }}">{{ row.delta }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0 search-experiment-batch-snapshot-trend-table">
+            <thead>
+              <tr>
+                <th scope="col">{{ t("search_experiments.snapshot_id") }}</th>
+                <th scope="col">{{ t("search_experiments.created_at") }}</th>
+                <th scope="col">{{ t("search_experiments.recall_at_k") }}</th>
+                <th scope="col">{{ t("search_experiments.mrr") }}</th>
+                <th scope="col">{{ t("search_experiments.ndcg") }}</th>
+                <th scope="col">{{ t("search_experiments.hidden") }}</th>
+                <th scope="col">{{ t("search_experiments.avg_elapsed") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in selected_golden_batch_metric_snapshot_trend_rows %}
+              <tr>
+                <td>{{ row.snapshot_id }}</td>
+                <td>{{ row.created_at }}</td>
+                <td>
+                  <div>{{ row.recall_at_k }}</div>
+                  <div class="small fw-semibold {{ row.recall_delta_class }}">{{ row.recall_delta }}</div>
+                </td>
+                <td>
+                  <div>{{ row.mrr }}</div>
+                  <div class="small fw-semibold {{ row.mrr_delta_class }}">{{ row.mrr_delta }}</div>
+                </td>
+                <td>
+                  <div>{{ row.ndcg }}</div>
+                  <div class="small fw-semibold {{ row.ndcg_delta_class }}">{{ row.ndcg_delta }}</div>
+                </td>
+                <td>
+                  <div>{{ row.hidden }}</div>
+                  <div class="small fw-semibold {{ row.hidden_delta_class }}">{{ row.hidden_delta }}</div>
+                </td>
+                <td>
+                  <div>{{ row.average_elapsed }}</div>
+                  <div class="small fw-semibold {{ row.average_elapsed_delta_class }}">{{ row.average_elapsed_delta }}</div>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td class="text-secondary text-center py-4" colspan="7">{{ t("search_experiments.no_metric_snapshots") }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 search-experiment-batch-snapshot-table">
           <thead>

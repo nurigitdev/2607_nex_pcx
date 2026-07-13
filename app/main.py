@@ -247,12 +247,19 @@ from app.core.file_metadata import (
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
 from app.core.golden_batch_metric_snapshots import (
+    GoldenBatchMetricSnapshotComparison,
     GoldenBatchMetricSnapshotDetail,
     GoldenBatchMetricSnapshotRecord,
+    GoldenBatchMetricSnapshotTrend,
+    GoldenBatchMetricSnapshotTrendPoint,
+    GoldenBatchProfileMetricSnapshotComparison,
     GoldenBatchProfileMetricSnapshotRecord,
+    GoldenBatchQuestionMetricSnapshotComparison,
     GoldenBatchQuestionMetricSnapshotRecord,
     InvalidGoldenBatchMetricSnapshotError,
+    compare_golden_batch_metric_snapshots,
     get_golden_batch_metric_snapshot_detail,
+    get_golden_batch_metric_snapshot_trend,
     get_latest_golden_batch_metric_snapshot,
     list_golden_batch_metric_snapshots,
     record_golden_batch_metric_snapshot,
@@ -2415,6 +2422,387 @@ def golden_batch_metric_snapshot_detail_payload(
             golden_batch_question_metric_snapshot_payload(question) for question in detail.questions
         ],
     }
+
+
+def golden_batch_metric_snapshot_overall_comparison_payload(
+    comparison: GoldenBatchMetricSnapshotComparison,
+) -> dict[str, object]:
+    overall = comparison.overall
+    return {
+        "evaluated_row_count_delta": overall.evaluated_row_count_delta,
+        "total_result_count_delta": overall.total_result_count_delta,
+        "average_result_count_delta": overall.average_result_count_delta,
+        "total_elapsed_ms_delta": overall.total_elapsed_ms_delta,
+        "average_elapsed_ms_delta": overall.average_elapsed_ms_delta,
+        "hidden_violation_count_delta": overall.hidden_violation_count_delta,
+        "mean_recall_at_k_delta": overall.mean_recall_at_k_delta,
+        "mean_reciprocal_rank_delta": overall.mean_reciprocal_rank_delta,
+        "mean_ndcg_delta": overall.mean_ndcg_delta,
+        "no_answer_success_rate_delta": overall.no_answer_success_rate_delta,
+    }
+
+
+def golden_batch_profile_metric_snapshot_comparison_payload(
+    profile: GoldenBatchProfileMetricSnapshotComparison,
+) -> dict[str, object]:
+    return {
+        "profile_name": profile.profile_name,
+        "comparison_status": profile.comparison_status,
+        "base": (
+            golden_batch_profile_metric_snapshot_payload(profile.base)
+            if profile.base is not None
+            else None
+        ),
+        "target": (
+            golden_batch_profile_metric_snapshot_payload(profile.target)
+            if profile.target is not None
+            else None
+        ),
+        "question_count_delta": profile.question_count_delta,
+        "hidden_violation_count_delta": profile.hidden_violation_count_delta,
+        "mean_recall_at_k_delta": profile.mean_recall_at_k_delta,
+        "mean_reciprocal_rank_delta": profile.mean_reciprocal_rank_delta,
+        "mean_ndcg_delta": profile.mean_ndcg_delta,
+        "no_answer_success_rate_delta": profile.no_answer_success_rate_delta,
+        "average_result_count_delta": profile.average_result_count_delta,
+        "average_elapsed_ms_delta": profile.average_elapsed_ms_delta,
+    }
+
+
+def golden_batch_question_metric_snapshot_comparison_payload(
+    question: GoldenBatchQuestionMetricSnapshotComparison,
+) -> dict[str, object]:
+    return {
+        "question_id": question.question_id,
+        "question_text": question.question_text,
+        "profile_name": question.profile_name,
+        "comparison_status": question.comparison_status,
+        "base": (
+            golden_batch_question_metric_snapshot_payload(question.base)
+            if question.base is not None
+            else None
+        ),
+        "target": (
+            golden_batch_question_metric_snapshot_payload(question.target)
+            if question.target is not None
+            else None
+        ),
+        "result_count_delta": question.result_count_delta,
+        "elapsed_ms_delta": question.elapsed_ms_delta,
+        "matched_visible_count_delta": question.matched_visible_count_delta,
+        "hidden_violation_count_delta": question.hidden_violation_count_delta,
+        "recall_at_k_delta": question.recall_at_k_delta,
+        "reciprocal_rank_delta": question.reciprocal_rank_delta,
+        "ndcg_delta": question.ndcg_delta,
+    }
+
+
+def golden_batch_metric_snapshot_comparison_payload(
+    comparison: GoldenBatchMetricSnapshotComparison,
+) -> dict[str, object]:
+    return {
+        "base": golden_batch_metric_snapshot_detail_payload(comparison.base),
+        "target": golden_batch_metric_snapshot_detail_payload(comparison.target),
+        "overall": golden_batch_metric_snapshot_overall_comparison_payload(comparison),
+        "profiles": [
+            golden_batch_profile_metric_snapshot_comparison_payload(profile)
+            for profile in comparison.profiles
+        ],
+        "questions": [
+            golden_batch_question_metric_snapshot_comparison_payload(question)
+            for question in comparison.questions
+        ],
+        "compatibility_warnings": list(comparison.compatibility_warnings),
+    }
+
+
+def golden_batch_metric_snapshot_trend_point_payload(
+    point: GoldenBatchMetricSnapshotTrendPoint,
+) -> dict[str, object]:
+    return {
+        "sequence_number": point.sequence_number,
+        "previous_snapshot_id": point.previous_snapshot_id,
+        "snapshot": golden_batch_metric_snapshot_record_payload(point.snapshot),
+        "evaluated_row_count_delta": point.evaluated_row_count_delta,
+        "total_result_count_delta": point.total_result_count_delta,
+        "average_result_count_delta": point.average_result_count_delta,
+        "total_elapsed_ms_delta": point.total_elapsed_ms_delta,
+        "average_elapsed_ms_delta": point.average_elapsed_ms_delta,
+        "hidden_violation_count_delta": point.hidden_violation_count_delta,
+        "mean_recall_at_k_delta": point.mean_recall_at_k_delta,
+        "mean_reciprocal_rank_delta": point.mean_reciprocal_rank_delta,
+        "mean_ndcg_delta": point.mean_ndcg_delta,
+        "no_answer_success_rate_delta": point.no_answer_success_rate_delta,
+    }
+
+
+def golden_batch_metric_snapshot_trend_payload(
+    trend: GoldenBatchMetricSnapshotTrend,
+) -> dict[str, object]:
+    return {
+        "batch_key": trend.batch_key,
+        "snapshot_count": len(trend.points),
+        "first_snapshot": (
+            golden_batch_metric_snapshot_record_payload(trend.first_snapshot)
+            if trend.first_snapshot is not None
+            else None
+        ),
+        "latest_snapshot": (
+            golden_batch_metric_snapshot_record_payload(trend.latest_snapshot)
+            if trend.latest_snapshot is not None
+            else None
+        ),
+        "points": [
+            golden_batch_metric_snapshot_trend_point_payload(point) for point in trend.points
+        ],
+    }
+
+
+def golden_batch_metric_snapshot_compare_ui_rows(
+    comparison: GoldenBatchMetricSnapshotComparison,
+) -> list[dict[str, str]]:
+    base = comparison.base.snapshot
+    target = comparison.target.snapshot
+    overall = comparison.overall
+    return [
+        {
+            "label_key": "search_experiments.evaluated_rows",
+            "base": f"{base.evaluated_row_count}",
+            "target": f"{target.evaluated_row_count}",
+            "delta": _signed_int_label(overall.evaluated_row_count_delta),
+            "delta_class": _delta_text_class(overall.evaluated_row_count_delta),
+        },
+        {
+            "label_key": "search_experiments.recall_at_k",
+            "base": _percent_value_label(base.mean_recall_at_k),
+            "target": _percent_value_label(target.mean_recall_at_k),
+            "delta": _percent_delta_label(overall.mean_recall_at_k_delta),
+            "delta_class": _delta_text_class(
+                overall.mean_recall_at_k_delta,
+                higher_is_better=True,
+            ),
+        },
+        {
+            "label_key": "search_experiments.mrr",
+            "base": _percent_value_label(base.mean_reciprocal_rank),
+            "target": _percent_value_label(target.mean_reciprocal_rank),
+            "delta": _percent_delta_label(overall.mean_reciprocal_rank_delta),
+            "delta_class": _delta_text_class(
+                overall.mean_reciprocal_rank_delta,
+                higher_is_better=True,
+            ),
+        },
+        {
+            "label_key": "search_experiments.ndcg",
+            "base": _percent_value_label(base.mean_ndcg),
+            "target": _percent_value_label(target.mean_ndcg),
+            "delta": _percent_delta_label(overall.mean_ndcg_delta),
+            "delta_class": _delta_text_class(
+                overall.mean_ndcg_delta,
+                higher_is_better=True,
+            ),
+        },
+        {
+            "label_key": "search_experiments.hidden_violations",
+            "base": f"{base.hidden_violation_count}",
+            "target": f"{target.hidden_violation_count}",
+            "delta": _signed_int_label(overall.hidden_violation_count_delta),
+            "delta_class": _delta_text_class(
+                overall.hidden_violation_count_delta,
+                higher_is_better=False,
+            ),
+        },
+        {
+            "label_key": "search_experiments.avg_results",
+            "base": f"{base.average_result_count:.2f}",
+            "target": f"{target.average_result_count:.2f}",
+            "delta": _signed_float_label(overall.average_result_count_delta),
+            "delta_class": _delta_text_class(overall.average_result_count_delta),
+        },
+        {
+            "label_key": "search_experiments.avg_elapsed",
+            "base": _ms_value_label(base.average_elapsed_ms),
+            "target": _ms_value_label(target.average_elapsed_ms),
+            "delta": _ms_delta_label(overall.average_elapsed_ms_delta),
+            "delta_class": _delta_text_class(
+                overall.average_elapsed_ms_delta,
+                higher_is_better=False,
+            ),
+        },
+    ]
+
+
+def golden_batch_metric_snapshot_trend_ui_rows(
+    trend: GoldenBatchMetricSnapshotTrend,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "snapshot_id": f"#{point.snapshot.snapshot_id}",
+            "created_at": _datetime_label(point.snapshot.created_at),
+            "recall_at_k": _percent_value_label(point.snapshot.mean_recall_at_k),
+            "recall_delta": _percent_delta_label(point.mean_recall_at_k_delta),
+            "recall_delta_class": _delta_text_class(
+                point.mean_recall_at_k_delta,
+                higher_is_better=True,
+            ),
+            "mrr": _percent_value_label(point.snapshot.mean_reciprocal_rank),
+            "mrr_delta": _percent_delta_label(point.mean_reciprocal_rank_delta),
+            "mrr_delta_class": _delta_text_class(
+                point.mean_reciprocal_rank_delta,
+                higher_is_better=True,
+            ),
+            "ndcg": _percent_value_label(point.snapshot.mean_ndcg),
+            "ndcg_delta": _percent_delta_label(point.mean_ndcg_delta),
+            "ndcg_delta_class": _delta_text_class(
+                point.mean_ndcg_delta,
+                higher_is_better=True,
+            ),
+            "hidden": f"{point.snapshot.hidden_violation_count}",
+            "hidden_delta": _signed_int_label(point.hidden_violation_count_delta),
+            "hidden_delta_class": _delta_text_class(
+                point.hidden_violation_count_delta,
+                higher_is_better=False,
+            ),
+            "average_elapsed": _ms_value_label(point.snapshot.average_elapsed_ms),
+            "average_elapsed_delta": _ms_delta_label(point.average_elapsed_ms_delta),
+            "average_elapsed_delta_class": _delta_text_class(
+                point.average_elapsed_ms_delta,
+                higher_is_better=False,
+            ),
+        }
+        for point in trend.points
+    ]
+
+
+def golden_batch_metric_snapshot_trend_summary_ui_rows(
+    trend: GoldenBatchMetricSnapshotTrend,
+) -> list[dict[str, str]]:
+    if trend.first_snapshot is None or trend.latest_snapshot is None:
+        return []
+    overall = _compare_metric_snapshot_records_for_ui(
+        trend.first_snapshot,
+        trend.latest_snapshot,
+    )
+    return [
+        {
+            "label_key": "search_experiments.recall_at_k",
+            "first": _percent_value_label(trend.first_snapshot.mean_recall_at_k),
+            "latest": _percent_value_label(trend.latest_snapshot.mean_recall_at_k),
+            "delta": _percent_delta_label(overall["mean_recall_at_k_delta"]),
+            "delta_class": _delta_text_class(
+                overall["mean_recall_at_k_delta"],
+                higher_is_better=True,
+            ),
+        },
+        {
+            "label_key": "search_experiments.mrr",
+            "first": _percent_value_label(trend.first_snapshot.mean_reciprocal_rank),
+            "latest": _percent_value_label(trend.latest_snapshot.mean_reciprocal_rank),
+            "delta": _percent_delta_label(overall["mean_reciprocal_rank_delta"]),
+            "delta_class": _delta_text_class(
+                overall["mean_reciprocal_rank_delta"],
+                higher_is_better=True,
+            ),
+        },
+        {
+            "label_key": "search_experiments.ndcg",
+            "first": _percent_value_label(trend.first_snapshot.mean_ndcg),
+            "latest": _percent_value_label(trend.latest_snapshot.mean_ndcg),
+            "delta": _percent_delta_label(overall["mean_ndcg_delta"]),
+            "delta_class": _delta_text_class(
+                overall["mean_ndcg_delta"],
+                higher_is_better=True,
+            ),
+        },
+        {
+            "label_key": "search_experiments.hidden_violations",
+            "first": f"{trend.first_snapshot.hidden_violation_count}",
+            "latest": f"{trend.latest_snapshot.hidden_violation_count}",
+            "delta": _signed_int_label(overall["hidden_violation_count_delta"]),
+            "delta_class": _delta_text_class(
+                overall["hidden_violation_count_delta"],
+                higher_is_better=False,
+            ),
+        },
+        {
+            "label_key": "search_experiments.avg_elapsed",
+            "first": _ms_value_label(trend.first_snapshot.average_elapsed_ms),
+            "latest": _ms_value_label(trend.latest_snapshot.average_elapsed_ms),
+            "delta": _ms_delta_label(overall["average_elapsed_ms_delta"]),
+            "delta_class": _delta_text_class(
+                overall["average_elapsed_ms_delta"],
+                higher_is_better=False,
+            ),
+        },
+    ]
+
+
+def _compare_metric_snapshot_records_for_ui(
+    base: GoldenBatchMetricSnapshotRecord,
+    target: GoldenBatchMetricSnapshotRecord,
+) -> dict[str, float | int | None]:
+    return {
+        "mean_recall_at_k_delta": _optional_numeric_delta(
+            base.mean_recall_at_k,
+            target.mean_recall_at_k,
+        ),
+        "mean_reciprocal_rank_delta": _optional_numeric_delta(
+            base.mean_reciprocal_rank,
+            target.mean_reciprocal_rank,
+        ),
+        "mean_ndcg_delta": _optional_numeric_delta(base.mean_ndcg, target.mean_ndcg),
+        "hidden_violation_count_delta": target.hidden_violation_count - base.hidden_violation_count,
+        "average_elapsed_ms_delta": _optional_numeric_delta(
+            base.average_elapsed_ms,
+            target.average_elapsed_ms,
+        ),
+    }
+
+
+def _percent_value_label(value: float | None) -> str:
+    return "-" if value is None else f"{value * 100:.2f}%"
+
+
+def _percent_delta_label(value: float | int | None) -> str:
+    return "-" if value is None else f"{float(value) * 100:+.2f}pp"
+
+
+def _ms_value_label(value: float | int | None) -> str:
+    return "-" if value is None else f"{float(value):.1f} ms"
+
+
+def _ms_delta_label(value: float | int | None) -> str:
+    return "-" if value is None else f"{float(value):+.1f} ms"
+
+
+def _signed_int_label(value: int | None) -> str:
+    return "-" if value is None else f"{value:+d}"
+
+
+def _signed_float_label(value: float | int | None) -> str:
+    return "-" if value is None else f"{float(value):+.2f}"
+
+
+def _optional_numeric_delta(
+    base_value: float | int | None,
+    target_value: float | int | None,
+) -> float | None:
+    if base_value is None or target_value is None:
+        return None
+    return float(target_value) - float(base_value)
+
+
+def _delta_text_class(
+    value: float | int | None,
+    *,
+    higher_is_better: bool | None = None,
+) -> str:
+    if value is None or abs(float(value)) < 0.0000001:
+        return "text-secondary"
+    if higher_is_better is None:
+        return "text-body"
+    improved = float(value) > 0 if higher_is_better else float(value) < 0
+    return "text-success" if improved else "text-danger"
 
 
 def search_experiment_execution_payload(
@@ -6426,6 +6814,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/search/experiments/golden-question-batches/{batch_key}/metric-snapshots/trend")
+    def api_get_golden_search_experiment_batch_metric_snapshot_trend(
+        batch_key: str,
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            trend = get_golden_batch_metric_snapshot_trend(
+                settings.database_url,
+                batch_key,
+                limit=limit,
+            )
+        except (InvalidGoldenBatchMetricSnapshotError, InvalidSearchExperimentError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"trend": golden_batch_metric_snapshot_trend_payload(trend)})
+
     @app.post("/api/search/experiments/golden-question-batches/{batch_key}/metric-snapshots")
     def api_record_golden_search_experiment_batch_metric_snapshot(
         batch_key: str,
@@ -6510,6 +6920,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return JSONResponse(content=golden_search_experiment_batch_detail_payload(detail))
+
+    @app.get("/api/search/experiments/golden-question-batch-metric-snapshots/compare")
+    def api_compare_golden_search_experiment_batch_metric_snapshots(
+        base_snapshot_id: int = Query(..., ge=1),
+        target_snapshot_id: int = Query(..., ge=1),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            comparison = compare_golden_batch_metric_snapshots(
+                settings.database_url,
+                base_snapshot_id=base_snapshot_id,
+                target_snapshot_id=target_snapshot_id,
+            )
+        except InvalidGoldenBatchMetricSnapshotError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if comparison is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Golden batch metric snapshot comparison target not found.",
+            )
+
+        return JSONResponse(
+            content={"comparison": golden_batch_metric_snapshot_comparison_payload(comparison)}
+        )
 
     @app.get("/api/search/experiments/golden-question-batch-metric-snapshots/{snapshot_id}")
     def api_get_golden_search_experiment_batch_metric_snapshot(
@@ -8153,6 +8592,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         experiment_run_id: int | None = None,
         golden_batch_key: str | None = None,
+        base_metric_snapshot_id: int | None = None,
+        target_metric_snapshot_id: int | None = None,
         status_filter: str | None = None,
         limit: int = 50,
     ) -> HTMLResponse:
@@ -8162,6 +8603,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected_golden_batch_detail: GoldenSearchExperimentBatchDetail | None = None
         selected_golden_batch_metric_summary: GoldenSearchExperimentBatchMetricSummary | None = None
         selected_golden_batch_metric_snapshots: list[GoldenBatchMetricSnapshotRecord] = []
+        selected_golden_batch_metric_snapshot_comparison: (
+            GoldenBatchMetricSnapshotComparison | None
+        ) = None
+        selected_golden_batch_metric_snapshot_trend: GoldenBatchMetricSnapshotTrend | None = None
+        selected_base_metric_snapshot_id = base_metric_snapshot_id
+        selected_target_metric_snapshot_id = target_metric_snapshot_id
+        selected_golden_batch_metric_snapshot_compare_rows: list[dict[str, str]] = []
+        selected_golden_batch_metric_snapshot_trend_rows: list[dict[str, str]] = []
+        selected_golden_batch_metric_snapshot_trend_summary_rows: list[dict[str, str]] = []
         error_message = None
 
         if not settings.database_url:
@@ -8194,6 +8644,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             selected_golden_batch_key,
                             limit=5,
                         )
+                        selected_golden_batch_metric_snapshot_trend = (
+                            get_golden_batch_metric_snapshot_trend(
+                                settings.database_url,
+                                selected_golden_batch_key,
+                                limit=10,
+                            )
+                        )
+                        selected_golden_batch_metric_snapshot_trend_rows = (
+                            golden_batch_metric_snapshot_trend_ui_rows(
+                                selected_golden_batch_metric_snapshot_trend
+                            )
+                        )
+                        selected_golden_batch_metric_snapshot_trend_summary_rows = (
+                            golden_batch_metric_snapshot_trend_summary_ui_rows(
+                                selected_golden_batch_metric_snapshot_trend
+                            )
+                        )
+                        if len(selected_golden_batch_metric_snapshots) >= 2:
+                            if selected_target_metric_snapshot_id is None:
+                                selected_target_metric_snapshot_id = (
+                                    selected_golden_batch_metric_snapshots[0].snapshot_id
+                                )
+                            if selected_base_metric_snapshot_id is None:
+                                selected_base_metric_snapshot_id = (
+                                    selected_golden_batch_metric_snapshots[1].snapshot_id
+                                )
+                            if (
+                                selected_base_metric_snapshot_id is not None
+                                and selected_target_metric_snapshot_id is not None
+                                and selected_base_metric_snapshot_id
+                                != selected_target_metric_snapshot_id
+                            ):
+                                selected_golden_batch_metric_snapshot_comparison = (
+                                    compare_golden_batch_metric_snapshots(
+                                        settings.database_url,
+                                        base_snapshot_id=selected_base_metric_snapshot_id,
+                                        target_snapshot_id=selected_target_metric_snapshot_id,
+                                    )
+                                )
+                                if selected_golden_batch_metric_snapshot_comparison is None:
+                                    error_message = (
+                                        "Golden batch metric snapshot comparison target "
+                                        "not found."
+                                    )
+                                else:
+                                    selected_golden_batch_metric_snapshot_compare_rows = (
+                                        golden_batch_metric_snapshot_compare_ui_rows(
+                                            selected_golden_batch_metric_snapshot_comparison
+                                        )
+                                    )
                 runs = list_search_experiment_runs(
                     settings.database_url,
                     status=status_filter.strip() if status_filter else None,
@@ -8226,6 +8726,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_golden_batch_detail=selected_golden_batch_detail,
                 selected_golden_batch_metric_summary=selected_golden_batch_metric_summary,
                 selected_golden_batch_metric_snapshots=selected_golden_batch_metric_snapshots,
+                selected_golden_batch_metric_snapshot_comparison=(
+                    selected_golden_batch_metric_snapshot_comparison
+                ),
+                selected_golden_batch_metric_snapshot_compare_rows=(
+                    selected_golden_batch_metric_snapshot_compare_rows
+                ),
+                selected_golden_batch_metric_snapshot_trend=(
+                    selected_golden_batch_metric_snapshot_trend
+                ),
+                selected_golden_batch_metric_snapshot_trend_rows=(
+                    selected_golden_batch_metric_snapshot_trend_rows
+                ),
+                selected_golden_batch_metric_snapshot_trend_summary_rows=(
+                    selected_golden_batch_metric_snapshot_trend_summary_rows
+                ),
+                selected_base_metric_snapshot_id=selected_base_metric_snapshot_id,
+                selected_target_metric_snapshot_id=selected_target_metric_snapshot_id,
                 selected_golden_batch_key=(
                     selected_golden_batch_detail.summary.batch_key
                     if selected_golden_batch_detail
