@@ -171,6 +171,8 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "request_headers_json" in response.text
     assert "auth_token_env" in response.text
     assert "Request Auth" in response.text
+    assert "data-provider-model-availability-panel" in response.text
+    assert "/api/admin/embedding-provider-routes/model-availability" in response.text
     assert "/api/admin/embedding-provider-routes/presets/register" in response.text
     assert "Provider 운영 요약" in response.text
     assert "운영 Playbook" in response.text
@@ -259,6 +261,9 @@ def test_embedding_provider_route_import_export_api_requires_database_url() -> N
 
     with TestClient(app) as client:
         export_response = client.get("/api/admin/embedding-provider-routes/export")
+        availability_response = client.get(
+            "/api/admin/embedding-provider-routes/model-availability"
+        )
         import_response = client.post(
             "/api/admin/embedding-provider-routes/import",
             json={
@@ -275,6 +280,7 @@ def test_embedding_provider_route_import_export_api_requires_database_url() -> N
         )
 
     assert export_response.status_code == 503
+    assert availability_response.status_code == 503
     assert import_response.status_code == 503
 
 

@@ -127,6 +127,11 @@ from app.core.embedding_provider_contract_sample_sets import (
     upsert_embedding_provider_contract_sample_set,
 )
 from app.core.embedding_provider_health import get_embedding_provider_health_status
+from app.core.embedding_provider_model_availability import (
+    ProviderModelAvailabilityMatrix,
+    ProviderModelAvailabilityRow,
+    get_provider_model_availability_matrix,
+)
 from app.core.embedding_provider_preflight_runs import (
     EmbeddingProviderPreflightRunInput,
     EmbeddingProviderPreflightRunRecord,
@@ -1484,6 +1489,39 @@ def embedding_model_readiness_payload(readiness: EmbeddingModelReadiness) -> dic
         "has_model_weights": readiness.has_model_weights,
         "file_count": readiness.file_count,
         "total_size_bytes": readiness.total_size_bytes,
+    }
+
+
+def provider_model_availability_row_payload(
+    row: ProviderModelAvailabilityRow,
+) -> dict[str, object]:
+    return {
+        "profile_name": row.profile_name,
+        "model_key": row.model_key,
+        "repo_id": row.repo_id,
+        "local_dir": str(row.local_dir),
+        "model_ready": row.model_ready,
+        "model_exists": row.model_exists,
+        "model_status": row.model_status,
+        "route_count": row.route_count,
+        "active_route_count": row.active_route_count,
+        "ready_route_count": row.ready_route_count,
+        "blocked_route_count": row.blocked_route_count,
+        "status": row.status,
+        "route_status_counts": row.route_status_counts,
+        "provider_names": list(row.provider_names),
+    }
+
+
+def provider_model_availability_matrix_payload(
+    matrix: ProviderModelAvailabilityMatrix,
+) -> dict[str, object]:
+    return {
+        "profile_count": matrix.profile_count,
+        "ready_count": matrix.ready_count,
+        "blocked_count": matrix.blocked_count,
+        "status_counts": matrix.status_counts,
+        "rows": [provider_model_availability_row_payload(row) for row in matrix.rows],
     }
 
 
@@ -6192,6 +6230,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=embedding_provider_route_readiness_summary_payload(readiness))
 
+    @app.get("/api/admin/embedding-provider-routes/model-availability")
+    def api_embedding_provider_model_availability() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            matrix = get_provider_model_availability_matrix(
+                settings.database_url,
+                models_dir=settings.embedding_models_dir,
+            )
+        except (
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderRouteHealthSnapshotError,
+            InvalidEmbeddingProviderRouteContractSnapshotError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=provider_model_availability_matrix_payload(matrix))
+
     @app.get("/api/admin/embedding-provider-routes/operations-summary")
     def api_embedding_provider_route_operations_summary() -> JSONResponse:
         if not settings.database_url:
@@ -9712,6 +9771,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def embedding_provider_routes_page(request: Request) -> HTMLResponse:
         routes: list[EmbeddingProviderRouteRecord] = []
         profiles: list[EmbeddingProfileRecord] = []
+        model_availability: ProviderModelAvailabilityMatrix | None = None
         error_message = None
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
@@ -9719,7 +9779,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 routes = list_embedding_provider_routes(settings.database_url)
                 profiles = list_active_embedding_profiles(settings.database_url)
-            except (InvalidEmbeddingProviderRouteError, InvalidEmbeddingJobError) as exc:
+                model_availability = get_provider_model_availability_matrix(
+                    settings.database_url,
+                    models_dir=settings.embedding_models_dir,
+                )
+            except (
+                InvalidEmbeddingProviderRouteError,
+                InvalidEmbeddingJobError,
+                InvalidEmbeddingProviderRouteHealthSnapshotError,
+                InvalidEmbeddingProviderRouteContractSnapshotError,
+            ) as exc:
                 error_message = str(exc)
 
         return TEMPLATES.TemplateResponse(
@@ -9729,6 +9798,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 routes=routes,
                 profiles=profiles,
+                model_availability=model_availability,
                 provider_presets=list_embedding_provider_presets(),
                 embedding_models_dir=str(settings.embedding_models_dir),
                 error_message=error_message,
@@ -9767,6 +9837,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> HTMLResponse:
         routes: list[EmbeddingProviderRouteRecord] = []
         profiles: list[EmbeddingProfileRecord] = []
+        model_availability: ProviderModelAvailabilityMatrix | None = None
         error_message = None
         success_message = None
 
@@ -9800,7 +9871,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 routes = list_embedding_provider_routes(settings.database_url)
                 profiles = list_active_embedding_profiles(settings.database_url)
-            except (InvalidEmbeddingProviderRouteError, InvalidEmbeddingJobError) as exc:
+                model_availability = get_provider_model_availability_matrix(
+                    settings.database_url,
+                    models_dir=settings.embedding_models_dir,
+                )
+            except (
+                InvalidEmbeddingProviderRouteError,
+                InvalidEmbeddingJobError,
+                InvalidEmbeddingProviderRouteHealthSnapshotError,
+                InvalidEmbeddingProviderRouteContractSnapshotError,
+            ) as exc:
                 error_message = error_message or str(exc)
 
         return TEMPLATES.TemplateResponse(
@@ -9810,6 +9890,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 routes=routes,
                 profiles=profiles,
+                model_availability=model_availability,
                 provider_presets=list_embedding_provider_presets(),
                 embedding_models_dir=str(settings.embedding_models_dir),
                 error_message=error_message,

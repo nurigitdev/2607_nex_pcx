@@ -506,6 +506,8 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "data-provider-route-import-export-panel" in page_response.text
             assert "/api/admin/embedding-provider-routes/export" in page_response.text
             assert "/api/admin/embedding-provider-routes/import" in page_response.text
+            assert "data-provider-model-availability-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/model-availability" in page_response.text
             assert api_provider_name in page_response.text
             assert form_provider_name in page_response.text
             assert "/api/admin/embedding-provider-routes" in page_response.text
@@ -585,6 +587,48 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert form_routes[0]["auth_token_env"] == "NEX_PCX_FORM_PROVIDER_TOKEN"
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
+
+
+def test_embedding_provider_model_availability_api_combines_models_and_routes(
+    migrated_database_url: str,
+    tmp_path,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"gpu-availability-{suffix}"
+    model_dir = tmp_path / "kure_v1"
+    model_dir.mkdir()
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.safetensors").write_bytes(b"model")
+    app = create_app(Settings(database_url=migrated_database_url, embedding_models_dir=tmp_path))
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/admin/embedding-provider-routes",
+                json={
+                    "profile_name": "kure_v1_1024",
+                    "provider_name": provider_name,
+                    "provider_mode": "remote",
+                    "provider_base_url": "http://gpu-availability.local/",
+                    "timeout_seconds": 8.0,
+                    "priority": 8,
+                    "is_active": True,
+                    "health_check_enabled": True,
+                },
+            )
+            assert create_response.status_code == 200
+
+            response = client.get("/api/admin/embedding-provider-routes/model-availability")
+            assert response.status_code == 200
+            body = response.json()
+
+            rows = {row["profile_name"]: row for row in body["rows"]}
+            assert body["profile_count"] >= 4
+            assert rows["kure_v1_1024"]["model_ready"] is True
+            assert rows["kure_v1_1024"]["active_route_count"] >= 1
+            assert provider_name in rows["kure_v1_1024"]["provider_names"]
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
 
 
 def test_embedding_provider_route_import_export_api_round_trips_routes(
