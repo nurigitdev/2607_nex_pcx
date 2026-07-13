@@ -164,6 +164,10 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-provider-launch-plan-panel" in response.text
     assert "data-provider-launch-shell-command" in response.text
     assert "/api/admin/embedding-provider-routes/presets/launch-plan" in response.text
+    assert "Provider Route Import/Export" in response.text
+    assert "data-provider-route-import-export-panel" in response.text
+    assert "/api/admin/embedding-provider-routes/export" in response.text
+    assert "/api/admin/embedding-provider-routes/import" in response.text
     assert "/api/admin/embedding-provider-routes/presets/register" in response.text
     assert "Provider 운영 요약" in response.text
     assert "운영 Playbook" in response.text
@@ -245,6 +249,30 @@ def test_embedding_provider_launch_plan_api_works_without_database_url() -> None
     assert plan["provider_model_id"] == "gpu-qwen3-4b"
     assert plan["environment"]["NEX_PCX_PROVIDER_BACKEND"] == "qwen_embedding"
     assert "--reload" in plan["command"]
+
+
+def test_embedding_provider_route_import_export_api_requires_database_url() -> None:
+    app = create_app(Settings())
+
+    with TestClient(app) as client:
+        export_response = client.get("/api/admin/embedding-provider-routes/export")
+        import_response = client.post(
+            "/api/admin/embedding-provider-routes/import",
+            json={
+                "routes": [
+                    {
+                        "profile_name": "kure_v1_1024",
+                        "provider_name": "gpu-smoke",
+                        "provider_mode": "remote",
+                        "provider_base_url": "http://gpu-smoke.local",
+                    }
+                ],
+                "dry_run": True,
+            },
+        )
+
+    assert export_response.status_code == 503
+    assert import_response.status_code == 503
 
 
 def test_embedding_provider_route_playbook_page_loads_document_source() -> None:

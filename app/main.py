@@ -199,6 +199,7 @@ from app.core.embedding_provider_routes import (
     get_embedding_provider_route,
     list_embedding_provider_routes,
     upsert_embedding_provider_route,
+    validate_embedding_provider_route_input,
 )
 from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
@@ -572,6 +573,11 @@ class EmbeddingProviderRouteRequest(BaseModel):
     is_active: bool = True
     health_check_enabled: bool = True
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class EmbeddingProviderRouteImportRequest(BaseModel):
+    routes: list[EmbeddingProviderRouteRequest] = Field(min_length=1, max_length=200)
+    dry_run: bool = True
 
 
 class EmbeddingProviderRoutePresetRegistrationRequest(BaseModel):
@@ -1622,6 +1628,33 @@ def embedding_provider_route_payload(route: EmbeddingProviderRouteRecord) -> dic
     }
 
 
+def embedding_provider_route_portable_payload(
+    route: EmbeddingProviderRouteRecord | EmbeddingProviderRouteInput,
+) -> dict[str, object]:
+    return {
+        "profile_name": route.profile_name,
+        "provider_name": route.provider_name,
+        "provider_mode": route.provider_mode,
+        "provider_base_url": route.provider_base_url,
+        "timeout_seconds": route.timeout_seconds,
+        "priority": route.priority,
+        "is_active": route.is_active,
+        "health_check_enabled": route.health_check_enabled,
+        "runtime_metadata": route.runtime_metadata or {},
+    }
+
+
+def embedding_provider_route_export_payload(
+    routes: list[EmbeddingProviderRouteRecord],
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "exported_at": _datetime_response(datetime.now(UTC)),
+        "route_count": len(routes),
+        "routes": [embedding_provider_route_portable_payload(route) for route in routes],
+    }
+
+
 def embedding_provider_preset_payload(
     preset: EmbeddingProviderPreset,
 ) -> dict[str, object]:
@@ -2135,6 +2168,15 @@ def embedding_provider_route_input_from_request(
         health_check_enabled=payload.health_check_enabled,
         runtime_metadata=payload.runtime_metadata,
     )
+
+
+def embedding_provider_route_import_inputs_from_request(
+    payload: EmbeddingProviderRouteImportRequest,
+) -> list[EmbeddingProviderRouteInput]:
+    return [
+        validate_embedding_provider_route_input(embedding_provider_route_input_from_request(route))
+        for route in payload.routes
+    ]
 
 
 def embedding_provider_preset_route_plans_from_request(
@@ -5898,6 +5940,63 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             content={
                 "routes": [embedding_provider_route_payload(route) for route in routes],
+            }
+        )
+
+    @app.get("/api/admin/embedding-provider-routes/export")
+    def api_export_embedding_provider_routes(
+        profile_name: str | None = None,
+        active_only: bool = False,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            routes = list_embedding_provider_routes(
+                settings.database_url,
+                profile_name=profile_name,
+                active_only=active_only,
+            )
+        except InvalidEmbeddingProviderRouteError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(content=embedding_provider_route_export_payload(routes))
+
+    @app.post("/api/admin/embedding-provider-routes/import")
+    def api_import_embedding_provider_routes(
+        payload: EmbeddingProviderRouteImportRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            route_inputs = embedding_provider_route_import_inputs_from_request(payload)
+            imported_routes = (
+                [
+                    upsert_embedding_provider_route(settings.database_url, route_input)
+                    for route_input in route_inputs
+                ]
+                if not payload.dry_run
+                else []
+            )
+        except InvalidEmbeddingProviderRouteError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content={
+                "dry_run": payload.dry_run,
+                "route_count": len(route_inputs),
+                "imported_count": len(imported_routes),
+                "routes": (
+                    [embedding_provider_route_payload(route) for route in imported_routes]
+                    if imported_routes
+                    else [
+                        embedding_provider_route_portable_payload(route_input)
+                        for route_input in route_inputs
+                    ]
+                ),
             }
         )
 

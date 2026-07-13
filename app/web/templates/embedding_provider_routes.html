@@ -228,6 +228,64 @@
   </div>
 </section>
 
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-provider-route-import-export-panel
+  data-export-api-url="/api/admin/embedding-provider-routes/export"
+  data-import-api-url="/api/admin/embedding-provider-routes/import"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.import_export") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.import_export_help") }}</div>
+    </div>
+    <span class="badge text-bg-light border" data-provider-route-import-export-badge>-</span>
+  </div>
+  <div class="border-top p-3">
+    <div class="row g-3">
+      <div class="col-12 col-xl-6">
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+          <label class="form-label mb-0" for="provider_route_export_json">{{ t("embedding_routes.export_json") }}</label>
+          <div class="form-check ms-xl-auto">
+            <input class="form-check-input" id="provider_route_export_active_only" type="checkbox" data-provider-route-export-active-only {% if not database_configured %}disabled{% endif %}>
+            <label class="form-check-label" for="provider_route_export_active_only">{{ t("embedding_routes.active_only") }}</label>
+          </div>
+          <button class="btn btn-outline-primary btn-sm" type="button" data-provider-route-export-button {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.export_json") }}</button>
+        </div>
+        <textarea
+          class="form-control font-monospace small"
+          id="provider_route_export_json"
+          rows="12"
+          readonly
+          data-provider-route-export-output
+        >{{ t("embedding_routes.no_export_json") }}</textarea>
+      </div>
+      <div class="col-12 col-xl-6">
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+          <label class="form-label mb-0" for="provider_route_import_json">{{ t("embedding_routes.import_json") }}</label>
+          <div class="form-check ms-xl-auto">
+            <input class="form-check-input" id="provider_route_import_dry_run" type="checkbox" checked data-provider-route-import-dry-run {% if not database_configured %}disabled{% endif %}>
+            <label class="form-check-label" for="provider_route_import_dry_run">{{ t("embedding_routes.dry_run") }}</label>
+          </div>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-provider-route-import-validate {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.validate_import") }}</button>
+          <button class="btn btn-primary btn-sm" type="button" data-provider-route-import-apply {% if not database_configured %}disabled{% endif %}>{{ t("embedding_routes.apply_import") }}</button>
+        </div>
+        <textarea
+          class="form-control font-monospace small"
+          id="provider_route_import_json"
+          rows="12"
+          data-provider-route-import-input
+          {% if not database_configured %}disabled{% endif %}
+        >{{ t("embedding_routes.paste_import_json") }}</textarea>
+      </div>
+    </div>
+    <div class="small mt-3" data-provider-route-import-export-status aria-live="polite">
+      {% if database_configured %}{{ t("embedding_routes.import_export_ready") }}{% else %}{{ t("common.no_database") }}{% endif %}
+    </div>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-3 mb-4">
   <form class="row g-3 align-items-end" method="post" action="/admin/embedding-provider-routes">
     <div class="col-12 col-md-3">
@@ -1200,6 +1258,16 @@
     launchPlanBuilt: {{ t("embedding_routes.launch_plan_built") | tojson }},
     launchPlanFailed: {{ t("embedding_routes.launch_plan_failed") | tojson }},
     noLaunchPlan: {{ t("embedding_routes.no_launch_plan") | tojson }},
+    importExportReady: {{ t("embedding_routes.import_export_ready") | tojson }},
+    exportRunning: {{ t("embedding_routes.export_running") | tojson }},
+    exportComplete: {{ t("embedding_routes.export_complete") | tojson }},
+    exportFailed: {{ t("embedding_routes.export_failed") | tojson }},
+    importRunning: {{ t("embedding_routes.import_running") | tojson }},
+    importValidated: {{ t("embedding_routes.import_validated") | tojson }},
+    importComplete: {{ t("embedding_routes.import_complete") | tojson }},
+    importFailed: {{ t("embedding_routes.import_failed") | tojson }},
+    invalidJson: {{ t("embedding_routes.invalid_json") | tojson }},
+    routeCountLabel: {{ t("embedding_routes.route_count") | tojson }},
     edit: {{ t("embedding_routes.edit") | tojson }},
     delete: {{ t("embedding_routes.delete") | tojson }},
     defaultSampleSet: {{ t("embedding_routes.default_sample_set") | tojson }},
@@ -1348,6 +1416,30 @@
   const launchEnvironmentTable = launchPanel?.querySelector(
     "[data-provider-launch-environment-table]",
   );
+  const importExportPanel = document.querySelector("[data-provider-route-import-export-panel]");
+  const routeExportButton = importExportPanel?.querySelector("[data-provider-route-export-button]");
+  const routeExportActiveOnly = importExportPanel?.querySelector(
+    "[data-provider-route-export-active-only]",
+  );
+  const routeExportOutput = importExportPanel?.querySelector(
+    "[data-provider-route-export-output]",
+  );
+  const routeImportInput = importExportPanel?.querySelector("[data-provider-route-import-input]");
+  const routeImportDryRun = importExportPanel?.querySelector(
+    "[data-provider-route-import-dry-run]",
+  );
+  const routeImportValidateButton = importExportPanel?.querySelector(
+    "[data-provider-route-import-validate]",
+  );
+  const routeImportApplyButton = importExportPanel?.querySelector(
+    "[data-provider-route-import-apply]",
+  );
+  const routeImportExportStatus = importExportPanel?.querySelector(
+    "[data-provider-route-import-export-status]",
+  );
+  const routeImportExportBadge = importExportPanel?.querySelector(
+    "[data-provider-route-import-export-badge]",
+  );
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
@@ -1413,6 +1505,16 @@
     }
     launchStatus.className = `small mt-3 ${className}`;
     launchStatus.textContent = message;
+  }
+
+  function setImportExportStatus(message, className = "text-secondary", badgeText = "-") {
+    if (routeImportExportStatus) {
+      routeImportExportStatus.className = `small mt-3 ${className}`;
+      routeImportExportStatus.textContent = message;
+    }
+    if (routeImportExportBadge) {
+      routeImportExportBadge.textContent = badgeText;
+    }
   }
 
   function setRetentionStatus(message, className = "text-secondary") {
@@ -1774,6 +1876,100 @@
     } finally {
       if (submitButton) {
         submitButton.disabled = false;
+      }
+    }
+  }
+
+  function formatRouteBundle(bundle) {
+    return JSON.stringify(bundle, null, 2);
+  }
+
+  function parseRouteImportPayload() {
+    try {
+      const parsed = JSON.parse(routeImportInput?.value || "");
+      const routes = Array.isArray(parsed) ? parsed : parsed.routes;
+      if (!Array.isArray(routes) || routes.length === 0) {
+        throw new Error(labels.invalidJson);
+      }
+      return routes;
+    } catch (error) {
+      throw new Error(error.message || labels.invalidJson);
+    }
+  }
+
+  async function exportProviderRoutes() {
+    if (!importExportPanel || !routeExportButton || !routeExportOutput) {
+      return;
+    }
+    routeExportButton.disabled = true;
+    setImportExportStatus(labels.exportRunning);
+    try {
+      const params = new URLSearchParams({
+        active_only: routeExportActiveOnly?.checked ? "true" : "false",
+      });
+      const response = await fetch(`${importExportPanel.dataset.exportApiUrl}?${params}`);
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.exportFailed);
+      }
+      const exportJson = formatRouteBundle(body);
+      routeExportOutput.value = exportJson;
+      if (routeImportInput) {
+        routeImportInput.value = exportJson;
+      }
+      setImportExportStatus(
+        `${labels.exportComplete}: ${body.route_count}`,
+        "text-success",
+        `${labels.routeCountLabel} ${body.route_count}`,
+      );
+    } catch (error) {
+      setImportExportStatus(error.message || labels.exportFailed, "text-danger");
+    } finally {
+      routeExportButton.disabled = false;
+    }
+  }
+
+  async function importProviderRoutes(forceDryRun) {
+    if (!importExportPanel || !routeImportInput) {
+      return;
+    }
+    const dryRun = forceDryRun ?? routeImportDryRun?.checked ?? true;
+    const activeButton = dryRun ? routeImportValidateButton : routeImportApplyButton;
+    if (activeButton) {
+      activeButton.disabled = true;
+    }
+    if (routeImportValidateButton && !dryRun) {
+      routeImportValidateButton.disabled = true;
+    }
+    setImportExportStatus(labels.importRunning);
+    try {
+      const routes = parseRouteImportPayload();
+      const response = await fetch(importExportPanel.dataset.importApiUrl, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({routes, dry_run: dryRun}),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.importFailed);
+      }
+      const message = dryRun ? labels.importValidated : labels.importComplete;
+      setImportExportStatus(
+        `${message}: ${body.route_count}`,
+        "text-success",
+        `${labels.routeCountLabel} ${body.route_count}`,
+      );
+      if (routeExportOutput) {
+        routeExportOutput.value = formatRouteBundle(body);
+      }
+    } catch (error) {
+      setImportExportStatus(error.message || labels.importFailed, "text-danger");
+    } finally {
+      if (activeButton) {
+        activeButton.disabled = false;
+      }
+      if (routeImportValidateButton) {
+        routeImportValidateButton.disabled = false;
       }
     }
   }
@@ -3390,6 +3586,19 @@
     }
   }
 
+  function wireImportExportControls() {
+    if (!importExportPanel) {
+      return;
+    }
+    if (importExportPanel.dataset.databaseConfigured !== "true") {
+      return;
+    }
+    routeExportButton?.addEventListener("click", exportProviderRoutes);
+    routeImportValidateButton?.addEventListener("click", () => importProviderRoutes(true));
+    routeImportApplyButton?.addEventListener("click", () => importProviderRoutes(false));
+    setImportExportStatus(labels.importExportReady);
+  }
+
   function wireScheduleForm() {
     scheduleForm?.addEventListener("submit", saveSchedule);
     scheduleReset?.addEventListener("click", resetScheduleForm);
@@ -3412,6 +3621,7 @@
   wireSampleSetForm();
   wirePresetRegistrationForm();
   wireLaunchPlanForm();
+  wireImportExportControls();
   wireScheduleForm();
   wireRetentionControls();
   loadOperationsSummary();

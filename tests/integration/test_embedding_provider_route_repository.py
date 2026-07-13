@@ -499,6 +499,9 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "/api/admin/embedding-provider-routes/presets/launch-plan" in (
                 page_response.text
             )
+            assert "data-provider-route-import-export-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/export" in page_response.text
+            assert "/api/admin/embedding-provider-routes/import" in page_response.text
             assert api_provider_name in page_response.text
             assert form_provider_name in page_response.text
             assert "/api/admin/embedding-provider-routes" in page_response.text
@@ -557,6 +560,100 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "data-contract-sample-set-panel" in page_response.text
             assert "data-sample-set-form" in page_response.text
             assert "/api/admin/embedding-provider-routes/contract-sample-sets" in page_response.text
+    finally:
+        _cleanup_routes(migrated_database_url, provider_names)
+
+
+def test_embedding_provider_route_import_export_api_round_trips_routes(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    export_provider_name = f"gpu-export-{suffix}"
+    import_provider_name = f"gpu-import-{suffix}"
+    provider_names = [export_provider_name, import_provider_name]
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/admin/embedding-provider-routes",
+                json={
+                    "profile_name": "kure_v1_1024",
+                    "provider_name": export_provider_name,
+                    "provider_mode": "remote",
+                    "provider_base_url": "http://gpu-export.local/",
+                    "timeout_seconds": 11.0,
+                    "priority": 11,
+                    "is_active": True,
+                    "health_check_enabled": False,
+                    "runtime_metadata": {"source": "export-test"},
+                },
+            )
+            assert create_response.status_code == 200
+
+            export_response = client.get(
+                "/api/admin/embedding-provider-routes/export",
+                params={"profile_name": "kure_v1_1024", "active_only": "true"},
+            )
+            assert export_response.status_code == 200
+            export_body = export_response.json()
+            exported_routes = [
+                route
+                for route in export_body["routes"]
+                if route["provider_name"] == export_provider_name
+            ]
+            assert export_body["schema_version"] == 1
+            assert exported_routes == [
+                {
+                    "profile_name": "kure_v1_1024",
+                    "provider_name": export_provider_name,
+                    "provider_mode": "remote",
+                    "provider_base_url": "http://gpu-export.local",
+                    "timeout_seconds": 11.0,
+                    "priority": 11,
+                    "is_active": True,
+                    "health_check_enabled": False,
+                    "runtime_metadata": {"source": "export-test"},
+                }
+            ]
+
+            import_route = dict(exported_routes[0])
+            import_route["provider_name"] = import_provider_name
+            import_route["provider_base_url"] = "http://gpu-import.local/"
+            dry_run_response = client.post(
+                "/api/admin/embedding-provider-routes/import",
+                json={"routes": [import_route], "dry_run": True},
+            )
+            assert dry_run_response.status_code == 200
+            dry_run_body = dry_run_response.json()
+            assert dry_run_body["dry_run"] is True
+            assert dry_run_body["route_count"] == 1
+            assert dry_run_body["imported_count"] == 0
+            assert dry_run_body["routes"][0]["provider_base_url"] == "http://gpu-import.local"
+
+            import_response = client.post(
+                "/api/admin/embedding-provider-routes/import",
+                json={"routes": [import_route], "dry_run": False},
+            )
+            assert import_response.status_code == 200
+            import_body = import_response.json()
+            assert import_body["dry_run"] is False
+            assert import_body["route_count"] == 1
+            assert import_body["imported_count"] == 1
+            assert import_body["routes"][0]["route_id"] > 0
+
+            list_response = client.get(
+                "/api/admin/embedding-provider-routes",
+                params={"profile_name": "kure_v1_1024"},
+            )
+            assert list_response.status_code == 200
+            imported = [
+                route
+                for route in list_response.json()["routes"]
+                if route["provider_name"] == import_provider_name
+            ]
+            assert len(imported) == 1
+            assert imported[0]["provider_base_url"] == "http://gpu-import.local"
     finally:
         _cleanup_routes(migrated_database_url, provider_names)
 
