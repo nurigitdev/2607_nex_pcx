@@ -83,6 +83,10 @@
           <input class="form-check-input" id="preset_health_check_enabled" name="health_check_enabled" type="checkbox" value="true" checked data-preset-health-check {% if not database_configured or not provider_presets %}disabled{% endif %}>
           <label class="form-check-label" for="preset_health_check_enabled">{{ t("embedding_routes.health_check") }}</label>
         </div>
+        <div class="form-check">
+          <input class="form-check-input" id="preset_run_preflight" name="run_preflight" type="checkbox" value="true" data-preset-run-preflight {% if not database_configured or not provider_presets %}disabled{% endif %}>
+          <label class="form-check-label" for="preset_run_preflight">{{ t("embedding_routes.run_preflight_after_registration") }}</label>
+        </div>
         <button class="btn btn-primary ms-auto" type="submit" {% if not database_configured or not provider_presets %}disabled{% endif %}>{{ t("embedding_routes.register_preset_routes") }}</button>
       </div>
     </div>
@@ -90,6 +94,33 @@
       {% if not database_configured %}{{ t("common.no_database") }}{% endif %}
     </div>
   </form>
+  <div class="border-top p-3 d-none" data-provider-preset-result-panel>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+      <div>
+        <h3 class="h6 mb-1">{{ t("embedding_routes.registration_result") }}</h3>
+        <div class="text-secondary small" data-provider-preset-result-summary></div>
+      </div>
+      <span class="badge text-bg-light border" data-provider-preset-result-badge>-</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("embedding_routes.profile") }}</th>
+            <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+            <th scope="col">{{ t("embedding_routes.base_url") }}</th>
+            <th scope="col">{{ t("embedding_routes.status") }}</th>
+            <th scope="col">{{ t("embedding_routes.validation") }}</th>
+          </tr>
+        </thead>
+        <tbody data-provider-preset-result-table>
+          <tr>
+            <td class="text-secondary text-center py-4" colspan="5">{{ t("embedding_routes.no_registration_result") }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
   <div class="table-responsive border-top">
     <table class="table table-sm align-middle mb-0">
       <thead>
@@ -1072,6 +1103,11 @@
     presetRegistering: {{ t("embedding_routes.preset_registering") | tojson }},
     presetRegistered: {{ t("embedding_routes.preset_registered") | tojson }},
     presetRegistrationFailed: {{ t("embedding_routes.preset_registration_failed") | tojson }},
+    registrationRoutesSaved: {{ t("embedding_routes.registration_routes_saved") | tojson }},
+    registrationPreflightSkipped: {{ t("embedding_routes.registration_preflight_skipped") | tojson }},
+    registrationPreflightComplete: {{ t("embedding_routes.registration_preflight_complete") | tojson }},
+    registrationPreflightRun: {{ t("embedding_routes.registration_preflight_run") | tojson }},
+    noValidation: {{ t("embedding_routes.no_validation") | tojson }},
     edit: {{ t("embedding_routes.edit") | tojson }},
     delete: {{ t("embedding_routes.delete") | tojson }},
     defaultSampleSet: {{ t("embedding_routes.default_sample_set") | tojson }},
@@ -1197,8 +1233,13 @@
   const presetPriority = presetPanel?.querySelector("[data-preset-priority]");
   const presetActive = presetPanel?.querySelector("[data-preset-active]");
   const presetHealthCheck = presetPanel?.querySelector("[data-preset-health-check]");
+  const presetRunPreflight = presetPanel?.querySelector("[data-preset-run-preflight]");
   const presetStatus = presetPanel?.querySelector("[data-provider-preset-status]");
   const presetPreviewTable = presetPanel?.querySelector("[data-provider-preset-preview-table]");
+  const presetResultPanel = presetPanel?.querySelector("[data-provider-preset-result-panel]");
+  const presetResultSummary = presetPanel?.querySelector("[data-provider-preset-result-summary]");
+  const presetResultBadge = presetPanel?.querySelector("[data-provider-preset-result-badge]");
+  const presetResultTable = presetPanel?.querySelector("[data-provider-preset-result-table]");
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
@@ -1407,6 +1448,59 @@
     }
   }
 
+  function renderPresetRegistrationResult(body) {
+    if (!presetResultPanel || !presetResultSummary || !presetResultBadge || !presetResultTable) {
+      return;
+    }
+    const routes = body.routes || [];
+    const preflight = body.preflight || null;
+    presetResultPanel.classList.remove("d-none");
+    presetResultBadge.className = preflight?.failed_count
+      ? "badge text-bg-warning"
+      : "badge text-bg-success";
+    presetResultBadge.textContent = preflight
+      ? labels.registrationPreflightComplete
+          .replace("{passed_count}", preflight.passed_count ?? 0)
+          .replace("{route_count}", preflight.route_count ?? routes.length)
+      : labels.registrationRoutesSaved.replace("{count}", body.registered_count ?? routes.length);
+    const preflightRun = preflight?.preflight_run;
+    presetResultSummary.textContent = preflightRun
+      ? `${labels.registrationPreflightRun} #${preflightRun.run_id}`
+      : labels.registrationPreflightSkipped;
+
+    const resultsByRouteId = new Map();
+    (preflight?.results || []).forEach((result) => {
+      if (result.route?.route_id != null) {
+        resultsByRouteId.set(result.route.route_id, result);
+      }
+    });
+    presetResultTable.innerHTML = routes.map((route) => {
+      const result = resultsByRouteId.get(route.route_id);
+      const contract = result?.contract;
+      const status = contract
+        ? labels.status[contract.status] || contract.status
+        : labels.registrationPreflightSkipped;
+      const validation = [
+        ...((contract?.validation_errors) || []),
+        ...(contract?.error_message ? [contract.error_message] : []),
+      ];
+      const badgeClass = contract
+        ? (contract.passed ? "text-bg-success" : "text-bg-warning")
+        : "text-bg-light border";
+      return `
+        <tr>
+          <td><span class="badge text-bg-light border">${escapeHtml(route.profile_name)}</span></td>
+          <td>${escapeHtml(route.provider_name)}</td>
+          <td class="model-path">${escapeHtml(route.provider_base_url || labels.none)}</td>
+          <td><span class="badge ${badgeClass}">${escapeHtml(status)}</span></td>
+          <td>${escapeHtml(validation.join("; ") || labels.noValidation)}</td>
+        </tr>
+      `;
+    }).join("") || `
+      <tr><td class="text-secondary text-center py-4" colspan="5">${labels.noPresetSelected}</td></tr>
+    `;
+  }
+
   async function registerPresetRoutes(event) {
     event.preventDefault();
     if (!presetPanel || presetPanel.dataset.databaseConfigured !== "true") {
@@ -1436,6 +1530,7 @@
           priority: Number.parseInt(presetPriority?.value || "100", 10),
           is_active: presetActive?.checked ?? true,
           health_check_enabled: presetHealthCheck?.checked ?? true,
+          run_preflight: presetRunPreflight?.checked ?? false,
           runtime_metadata: {registered_from: "admin_ui"},
         }),
       });
@@ -1447,7 +1542,14 @@
         labels.presetRegistered.replace("{count}", body.registered_count ?? 0),
         "text-success",
       );
-      window.setTimeout(() => window.location.reload(), 700);
+      renderPresetRegistrationResult(body);
+      await loadOperationsSummary();
+      await loadReadiness();
+      await loadHealth();
+      await loadHistory();
+      await loadContractHistory();
+      await loadPreflightRuns();
+      await loadAlerts();
     } catch (error) {
       setPresetStatus(`${labels.presetRegistrationFailed}: ${error.message}`, "text-danger");
     } finally {

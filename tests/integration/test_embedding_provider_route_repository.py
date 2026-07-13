@@ -71,6 +71,17 @@ def _cleanup_contract_sample_sets(database_url: str, sample_set_names: list[str]
             )
 
 
+def _cleanup_preflight_runs(database_url: str, run_ids: list[int]) -> None:
+    if not run_ids:
+        return
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM embedding_provider_preflight_runs WHERE run_id = ANY(%s)",
+                (run_ids,),
+            )
+
+
 def _create_embedding_profile(database_url: str, profile_name: str) -> None:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
@@ -577,6 +588,7 @@ def test_embedding_provider_route_preset_registration_api_creates_qwen_routes(
             assert register_response.status_code == 200
             body = register_response.json()
             assert body["registered_count"] == 2
+            assert body["preflight"] is None
             assert [route["profile_name"] for route in body["routes"]] == [
                 "qwen3_4b_1000",
                 "qwen3_4b_2560",
@@ -609,6 +621,57 @@ def test_embedding_provider_route_preset_registration_api_creates_qwen_routes(
             }
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])
+
+
+def test_embedding_provider_route_preset_registration_api_can_run_immediate_preflight(
+    migrated_database_url: str,
+) -> None:
+    suffix = uuid4().hex
+    provider_name = f"kure-preset-preflight-{suffix}"
+    created_run_ids: list[int] = []
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            register_response = client.post(
+                "/api/admin/embedding-provider-routes/presets/register",
+                json={
+                    "preset_name": "kure",
+                    "provider_name": provider_name,
+                    "host": "127.0.0.1",
+                    "port": 1,
+                    "timeout_seconds": 0.001,
+                    "priority": 13,
+                    "is_active": True,
+                    "health_check_enabled": True,
+                    "run_preflight": True,
+                },
+            )
+            assert register_response.status_code == 200
+            body = register_response.json()
+            preflight = body["preflight"]
+            assert body["registered_count"] == 1
+            assert preflight["route_count"] == 1
+            assert preflight["passed_count"] == 0
+            assert preflight["failed_count"] == 1
+            assert preflight["trigger_source"] == "preset_registration"
+            assert preflight["preflight_run"]["status"] == "failed"
+            created_run_ids.append(preflight["preflight_run"]["run_id"])
+            result = preflight["results"][0]
+            assert result["route"]["provider_name"] == provider_name
+            assert result["health"]["status"] == "unreachable"
+            assert result["contract"]["status"] == "health_unreachable"
+
+            detail_response = client.get(
+                f"/api/admin/embedding-provider-routes/preflight-runs/{created_run_ids[0]}"
+            )
+            assert detail_response.status_code == 200
+            assert detail_response.json()["run"]["result"]["trigger_source"] == (
+                "preset_registration"
+            )
+    finally:
+        _cleanup_routes(migrated_database_url, [provider_name])
+        _cleanup_preflight_runs(migrated_database_url, created_run_ids)
 
 
 def test_embedding_provider_route_health_api_summarizes_mock_routes(

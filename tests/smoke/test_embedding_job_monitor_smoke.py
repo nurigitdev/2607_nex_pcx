@@ -156,6 +156,8 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "Provider Preset 등록" in response.text
     assert "data-provider-preset-registration-panel" in response.text
     assert "data-provider-preset-form" in response.text
+    assert "data-preset-run-preflight" in response.text
+    assert "data-provider-preset-result-panel" in response.text
     assert "data-provider-preset-preview-table" in response.text
     assert "/api/admin/embedding-provider-routes/presets" in response.text
     assert "/api/admin/embedding-provider-routes/presets/register" in response.text

@@ -582,6 +582,7 @@ class EmbeddingProviderRoutePresetRegistrationRequest(BaseModel):
     priority: int = Field(default=100, ge=0)
     is_active: bool = True
     health_check_enabled: bool = True
+    run_preflight: bool = False
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
 
 
@@ -2119,6 +2120,81 @@ def embedding_provider_preset_route_plans_from_request(
         runtime_metadata=payload.runtime_metadata,
         metadata_source="preset_registration_ui",
     )
+
+
+def run_registered_embedding_provider_route_preflight(
+    database_url: str,
+    routes: list[EmbeddingProviderRouteRecord],
+) -> dict[str, object]:
+    started_at = datetime.now(UTC)
+    started_perf = perf_counter()
+    sample_set = get_default_embedding_provider_contract_sample_set(database_url)
+    results = []
+    for route in routes:
+        contract = check_embedding_provider_route_contract(
+            route,
+            sample_texts=sample_set.sample_texts,
+            input_type=sample_set.input_type,
+            sample_set_name=sample_set.sample_set_name,
+        )
+        health_snapshot = None
+        if contract.health is not None:
+            health_snapshot = record_embedding_provider_route_health_snapshot(
+                database_url,
+                contract.health,
+            )
+            log_embedding_provider_route_health_alert(database_url, contract.health)
+        contract_snapshot = record_embedding_provider_route_contract_snapshot(
+            database_url,
+            contract,
+        )
+        log_embedding_provider_route_contract_alert(database_url, contract)
+        results.append(
+            {
+                "route": embedding_provider_route_payload(route),
+                "health": (
+                    embedding_provider_route_health_payload(contract.health)
+                    if contract.health is not None
+                    else None
+                ),
+                "health_snapshot": (
+                    embedding_provider_route_health_snapshot_payload(health_snapshot)
+                    if health_snapshot is not None
+                    else None
+                ),
+                "contract": embedding_provider_route_contract_payload(contract),
+                "contract_snapshot": embedding_provider_route_contract_snapshot_payload(
+                    contract_snapshot,
+                ),
+            }
+        )
+
+    passed_count = sum(1 for result in results if result["contract"]["passed"])
+    response_content: dict[str, object] = {
+        "route_count": len(routes),
+        "passed_count": passed_count,
+        "failed_count": len(routes) - passed_count,
+        "sample_set": embedding_provider_contract_sample_set_payload(sample_set),
+        "results": results,
+        "trigger_source": "preset_registration",
+    }
+    completed_at = datetime.now(UTC)
+    elapsed_ms = int((perf_counter() - started_perf) * 1000)
+    preflight_run = record_embedding_provider_preflight_run(
+        database_url,
+        EmbeddingProviderPreflightRunInput(
+            trigger_source="manual_api",
+            status="succeeded" if response_content["failed_count"] == 0 else "failed",
+            result=response_content,
+            profile_name=None,
+            active_only=False,
+            elapsed_ms=elapsed_ms,
+            started_at=started_at,
+            completed_at=completed_at,
+        ),
+    )
+    response_content["preflight_run"] = embedding_provider_preflight_run_payload(preflight_run)
+    return response_content
 
 
 def vector_search_result_payload(result: VectorSearchResult) -> dict[str, object]:
@@ -5712,7 +5788,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 upsert_embedding_provider_route(settings.database_url, plan.to_route_input())
                 for plan in plans
             ]
-        except (InvalidEmbeddingProviderPresetError, InvalidEmbeddingProviderRouteError) as exc:
+            preflight = (
+                run_registered_embedding_provider_route_preflight(
+                    settings.database_url,
+                    routes,
+                )
+                if payload.run_preflight
+                else None
+            )
+        except (
+            InvalidEmbeddingProviderPresetError,
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderContractSampleSetError,
+            InvalidEmbeddingProviderRouteHealthSnapshotError,
+            InvalidEmbeddingProviderRouteContractSnapshotError,
+            InvalidEmbeddingProviderPreflightRunError,
+        ) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(
@@ -5720,6 +5811,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "registered_count": len(routes),
                 "plans": [embedding_provider_preset_route_plan_payload(plan) for plan in plans],
                 "routes": [embedding_provider_route_payload(route) for route in routes],
+                "preflight": preflight,
             }
         )
 
