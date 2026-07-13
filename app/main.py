@@ -147,9 +147,11 @@ from app.core.embedding_provider_preflight_schedules import (
     upsert_embedding_provider_preflight_schedule,
 )
 from app.core.embedding_provider_presets import (
+    EmbeddingProviderLaunchPlan,
     EmbeddingProviderPreset,
     EmbeddingProviderPresetRoutePlan,
     InvalidEmbeddingProviderPresetError,
+    build_embedding_provider_launch_plan,
     build_embedding_provider_preset_route_plans,
     get_embedding_provider_preset,
     list_embedding_provider_presets,
@@ -584,6 +586,17 @@ class EmbeddingProviderRoutePresetRegistrationRequest(BaseModel):
     health_check_enabled: bool = True
     run_preflight: bool = False
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class EmbeddingProviderLaunchPlanRequest(BaseModel):
+    preset_name: str
+    python_bin: str = Field(default="./.venv/bin/python", max_length=500)
+    host: str | None = Field(default=None, max_length=255)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    device: str = Field(default="cpu", max_length=120)
+    models_dir: str | None = Field(default=None, max_length=1000)
+    provider_model_id: str | None = Field(default=None, max_length=255)
+    reload: bool = False
 
 
 class EmbeddingProviderContractSampleSetRequest(BaseModel):
@@ -1643,6 +1656,27 @@ def embedding_provider_preset_route_plan_payload(
     }
 
 
+def embedding_provider_launch_plan_payload(
+    plan: EmbeddingProviderLaunchPlan,
+) -> dict[str, object]:
+    return {
+        "preset_name": plan.preset_name,
+        "provider_name": plan.provider_name,
+        "backend": plan.backend,
+        "model_key": plan.model_key,
+        "profile_names": list(plan.profile_names),
+        "provider_model_id": plan.provider_model_id,
+        "host": plan.host,
+        "port": plan.port,
+        "base_url": plan.base_url,
+        "device": plan.device,
+        "models_dir": plan.models_dir,
+        "command": list(plan.command),
+        "environment": plan.environment,
+        "shell_command": plan.shell_command,
+    }
+
+
 def embedding_provider_route_health_payload(
     route_health: EmbeddingProviderRouteHealthResult,
 ) -> dict[str, object]:
@@ -2119,6 +2153,23 @@ def embedding_provider_preset_route_plans_from_request(
         health_check_enabled=payload.health_check_enabled,
         runtime_metadata=payload.runtime_metadata,
         metadata_source="preset_registration_ui",
+    )
+
+
+def embedding_provider_launch_plan_from_request(
+    payload: EmbeddingProviderLaunchPlanRequest,
+    settings: Settings,
+) -> EmbeddingProviderLaunchPlan:
+    preset = get_embedding_provider_preset(payload.preset_name)
+    return build_embedding_provider_launch_plan(
+        preset,
+        python_bin=payload.python_bin,
+        host=payload.host,
+        port=payload.port,
+        device=payload.device,
+        models_dir=payload.models_dir or str(settings.embedding_models_dir),
+        provider_model_id=payload.provider_model_id,
+        reload=payload.reload,
     )
 
 
@@ -5772,6 +5823,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "presets": [embedding_provider_preset_payload(preset) for preset in presets],
             }
         )
+
+    @app.post("/api/admin/embedding-provider-routes/presets/launch-plan")
+    def api_build_embedding_provider_launch_plan(
+        payload: EmbeddingProviderLaunchPlanRequest,
+    ) -> JSONResponse:
+        try:
+            plan = embedding_provider_launch_plan_from_request(payload, settings)
+        except InvalidEmbeddingProviderPresetError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(content={"plan": embedding_provider_launch_plan_payload(plan)})
 
     @app.post("/api/admin/embedding-provider-routes/presets/register")
     def api_register_embedding_provider_route_preset(
@@ -9516,6 +9577,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 routes=routes,
                 profiles=profiles,
                 provider_presets=list_embedding_provider_presets(),
+                embedding_models_dir=str(settings.embedding_models_dir),
                 error_message=error_message,
                 success_message=None,
                 database_configured=bool(settings.database_url),
@@ -9586,6 +9648,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 routes=routes,
                 profiles=profiles,
                 provider_presets=list_embedding_provider_presets(),
+                embedding_models_dir=str(settings.embedding_models_dir),
                 error_message=error_message,
                 success_message=success_message,
                 database_configured=bool(settings.database_url),

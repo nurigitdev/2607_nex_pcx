@@ -3,9 +3,8 @@
 import argparse
 import json
 import os
-import shlex
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -14,38 +13,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.core.config import get_settings  # noqa: E402
 from app.core.embedding_provider_presets import (  # noqa: E402
+    EmbeddingProviderLaunchPlan,
     EmbeddingProviderPreset,
+    build_embedding_provider_launch_plan,
     get_embedding_provider_preset,
     list_embedding_provider_presets,
 )
-
-
-@dataclass(frozen=True)
-class EmbeddingProviderLaunchPlan:
-    preset_name: str
-    provider_name: str
-    backend: str
-    model_key: str
-    profile_names: tuple[str, ...]
-    provider_model_id: str
-    host: str
-    port: int
-    device: str
-    models_dir: str
-    command: tuple[str, ...]
-    environment: dict[str, str]
-
-    @property
-    def base_url(self) -> str:
-        return f"http://{self.host}:{self.port}"
-
-    @property
-    def shell_command(self) -> str:
-        env_parts = [
-            f"{key}={shlex.quote(value)}" for key, value in sorted(self.environment.items())
-        ]
-        command = " ".join(shlex.quote(part) for part in self.command)
-        return " ".join([*env_parts, command])
 
 
 def build_launch_plan(
@@ -59,43 +32,15 @@ def build_launch_plan(
     provider_model_id: str | None = None,
     reload: bool = False,
 ) -> EmbeddingProviderLaunchPlan:
-    selected_host = host or preset.default_host
-    selected_port = port or preset.default_port
-    selected_models_dir = str(models_dir or get_settings().embedding_models_dir)
-    selected_provider_model_id = provider_model_id or preset.provider_model_id
-    command = [
-        python_bin,
-        "-m",
-        "uvicorn",
-        "app.embedding_provider_service:app",
-        "--host",
-        selected_host,
-        "--port",
-        str(selected_port),
-    ]
-    if reload:
-        command.append("--reload")
-
-    return EmbeddingProviderLaunchPlan(
-        preset_name=preset.preset_name,
-        provider_name=preset.provider_name,
-        backend=preset.backend,
-        model_key=preset.model_key,
-        profile_names=preset.profile_names,
-        provider_model_id=selected_provider_model_id,
-        host=selected_host,
-        port=selected_port,
+    return build_embedding_provider_launch_plan(
+        preset,
+        python_bin=python_bin,
+        host=host,
+        port=port,
         device=device,
-        models_dir=selected_models_dir,
-        command=tuple(command),
-        environment={
-            "NEX_PCX_PROVIDER_BACKEND": preset.backend,
-            "NEX_PCX_PROVIDER_MODEL_KEY": preset.model_key,
-            "NEX_PCX_PROVIDER_PROFILE_NAMES": ",".join(preset.profile_names),
-            "NEX_PCX_PROVIDER_MODEL_ID": selected_provider_model_id,
-            "NEX_PCX_PROVIDER_DEVICE": device,
-            "NEX_PCX_PROVIDER_MODELS_DIR": selected_models_dir,
-        },
+        models_dir=str(models_dir or get_settings().embedding_models_dir),
+        provider_model_id=provider_model_id,
+        reload=reload,
     )
 
 

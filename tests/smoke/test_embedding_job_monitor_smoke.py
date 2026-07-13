@@ -160,6 +160,10 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-provider-preset-result-panel" in response.text
     assert "data-provider-preset-preview-table" in response.text
     assert "/api/admin/embedding-provider-routes/presets" in response.text
+    assert "Provider Runtime Launch Plan" in response.text
+    assert "data-provider-launch-plan-panel" in response.text
+    assert "data-provider-launch-shell-command" in response.text
+    assert "/api/admin/embedding-provider-routes/presets/launch-plan" in response.text
     assert "/api/admin/embedding-provider-routes/presets/register" in response.text
     assert "Provider 운영 요약" in response.text
     assert "운영 Playbook" in response.text
@@ -215,6 +219,32 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "/api/admin/embedding-provider-routes/health-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/contract-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/alerts" in response.text
+
+
+def test_embedding_provider_launch_plan_api_works_without_database_url() -> None:
+    app = create_app(Settings())
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/admin/embedding-provider-routes/presets/launch-plan",
+            json={
+                "preset_name": "qwen",
+                "host": "0.0.0.0",
+                "port": 19103,
+                "device": "cuda:0",
+                "models_dir": "/srv/nex_pcx/models",
+                "provider_model_id": "gpu-qwen3-4b",
+                "python_bin": "/opt/nex-pcx/.venv/bin/python",
+                "reload": True,
+            },
+        )
+
+    assert response.status_code == 200
+    plan = response.json()["plan"]
+    assert plan["base_url"] == "http://0.0.0.0:19103"
+    assert plan["provider_model_id"] == "gpu-qwen3-4b"
+    assert plan["environment"]["NEX_PCX_PROVIDER_BACKEND"] == "qwen_embedding"
+    assert "--reload" in plan["command"]
 
 
 def test_embedding_provider_route_playbook_page_loads_document_source() -> None:

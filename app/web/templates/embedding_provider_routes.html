@@ -141,6 +141,93 @@
   </div>
 </section>
 
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-provider-launch-plan-panel
+  data-launch-plan-api-url="/api/admin/embedding-provider-routes/presets/launch-plan"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.launch_plan") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.launch_plan_help") }}</div>
+    </div>
+    <span class="badge text-bg-light border" data-provider-launch-plan-base-url>-</span>
+  </div>
+  <form class="p-3 border-top" data-provider-launch-plan-form>
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="launch_provider_preset">{{ t("embedding_routes.provider_preset") }}</label>
+        <select class="form-select" id="launch_provider_preset" name="preset_name" data-launch-preset-select {% if not provider_presets %}disabled{% endif %}>
+          {% for preset in provider_presets %}
+          <option
+            value="{{ preset.preset_name }}"
+            data-provider-name="{{ preset.provider_name }}"
+            data-provider-model-id="{{ preset.provider_model_id }}"
+            data-default-host="{{ preset.default_host }}"
+            data-default-port="{{ preset.default_port }}"
+            data-profile-names='{{ preset.profile_names | list | tojson }}'
+          >{{ preset.preset_name }} · {{ preset.provider_name }}</option>
+          {% else %}
+          <option value="">{{ t("embedding_routes.no_presets") }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-4 col-lg-2">
+        <label class="form-label" for="launch_host">{{ t("embedding_routes.host") }}</label>
+        <input class="form-control" id="launch_host" name="host" data-launch-host {% if not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label" for="launch_port">{{ t("embedding_routes.port") }}</label>
+        <input class="form-control" id="launch_port" name="port" type="number" min="1" max="65535" step="1" data-launch-port {% if not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label" for="launch_device">{{ t("embedding_routes.device") }}</label>
+        <input class="form-control" id="launch_device" name="device" value="cpu" data-launch-device {% if not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="launch_python_bin">{{ t("embedding_routes.python_bin") }}</label>
+        <input class="form-control" id="launch_python_bin" name="python_bin" value="./.venv/bin/python" data-launch-python-bin {% if not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-12 col-lg-6">
+        <label class="form-label" for="launch_models_dir">{{ t("embedding_routes.models_dir") }}</label>
+        <input class="form-control" id="launch_models_dir" name="models_dir" value="{{ embedding_models_dir }}" data-launch-models-dir {% if not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-12 col-lg-4">
+        <label class="form-label" for="launch_provider_model_id">{{ t("embedding_routes.provider_model_id") }}</label>
+        <input class="form-control" id="launch_provider_model_id" name="provider_model_id" data-launch-provider-model-id {% if not provider_presets %}disabled{% endif %}>
+      </div>
+      <div class="col-12 col-lg-2 d-flex flex-wrap align-items-center gap-3">
+        <div class="form-check mt-lg-4">
+          <input class="form-check-input" id="launch_reload" name="reload" type="checkbox" value="true" data-launch-reload {% if not provider_presets %}disabled{% endif %}>
+          <label class="form-check-label" for="launch_reload">{{ t("embedding_routes.reload") }}</label>
+        </div>
+        <button class="btn btn-outline-primary ms-lg-auto mt-lg-3" type="submit" {% if not provider_presets %}disabled{% endif %}>{{ t("embedding_routes.build_launch_plan") }}</button>
+      </div>
+    </div>
+    <div class="small mt-3" data-provider-launch-plan-status aria-live="polite"></div>
+  </form>
+  <div class="border-top p-3">
+    <div class="row g-3">
+      <div class="col-12 col-xl-7">
+        <label class="form-label" for="launch_shell_command">{{ t("embedding_routes.shell_command") }}</label>
+        <pre class="preflight-run-json-viewer mb-0" id="launch_shell_command" data-provider-launch-shell-command>{{ t("embedding_routes.no_launch_plan") }}</pre>
+      </div>
+      <div class="col-12 col-xl-5">
+        <label class="form-label">{{ t("embedding_routes.environment") }}</label>
+        <div class="table-responsive border rounded-2">
+          <table class="table table-sm align-middle mb-0">
+            <tbody data-provider-launch-environment-table>
+              <tr>
+                <td class="text-secondary text-center py-4" colspan="2">{{ t("embedding_routes.no_launch_plan") }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-3 mb-4">
   <form class="row g-3 align-items-end" method="post" action="/admin/embedding-provider-routes">
     <div class="col-12 col-md-3">
@@ -1108,6 +1195,11 @@
     registrationPreflightComplete: {{ t("embedding_routes.registration_preflight_complete") | tojson }},
     registrationPreflightRun: {{ t("embedding_routes.registration_preflight_run") | tojson }},
     noValidation: {{ t("embedding_routes.no_validation") | tojson }},
+    launchPlanReady: {{ t("embedding_routes.launch_plan_ready") | tojson }},
+    launchPlanBuilding: {{ t("embedding_routes.launch_plan_building") | tojson }},
+    launchPlanBuilt: {{ t("embedding_routes.launch_plan_built") | tojson }},
+    launchPlanFailed: {{ t("embedding_routes.launch_plan_failed") | tojson }},
+    noLaunchPlan: {{ t("embedding_routes.no_launch_plan") | tojson }},
     edit: {{ t("embedding_routes.edit") | tojson }},
     delete: {{ t("embedding_routes.delete") | tojson }},
     defaultSampleSet: {{ t("embedding_routes.default_sample_set") | tojson }},
@@ -1240,6 +1332,22 @@
   const presetResultSummary = presetPanel?.querySelector("[data-provider-preset-result-summary]");
   const presetResultBadge = presetPanel?.querySelector("[data-provider-preset-result-badge]");
   const presetResultTable = presetPanel?.querySelector("[data-provider-preset-result-table]");
+  const launchPanel = document.querySelector("[data-provider-launch-plan-panel]");
+  const launchForm = launchPanel?.querySelector("[data-provider-launch-plan-form]");
+  const launchPresetSelect = launchPanel?.querySelector("[data-launch-preset-select]");
+  const launchHost = launchPanel?.querySelector("[data-launch-host]");
+  const launchPort = launchPanel?.querySelector("[data-launch-port]");
+  const launchDevice = launchPanel?.querySelector("[data-launch-device]");
+  const launchPythonBin = launchPanel?.querySelector("[data-launch-python-bin]");
+  const launchModelsDir = launchPanel?.querySelector("[data-launch-models-dir]");
+  const launchProviderModelId = launchPanel?.querySelector("[data-launch-provider-model-id]");
+  const launchReload = launchPanel?.querySelector("[data-launch-reload]");
+  const launchStatus = launchPanel?.querySelector("[data-provider-launch-plan-status]");
+  const launchBaseUrl = launchPanel?.querySelector("[data-provider-launch-plan-base-url]");
+  const launchShellCommand = launchPanel?.querySelector("[data-provider-launch-shell-command]");
+  const launchEnvironmentTable = launchPanel?.querySelector(
+    "[data-provider-launch-environment-table]",
+  );
 
   function setManualStatus(button, message, className = "text-secondary") {
     const statusNode = button.closest("td")?.querySelector("[data-manual-health-status]");
@@ -1297,6 +1405,14 @@
     }
     presetStatus.className = `small mt-3 ${className}`;
     presetStatus.textContent = message;
+  }
+
+  function setLaunchStatus(message, className = "text-secondary") {
+    if (!launchStatus) {
+      return;
+    }
+    launchStatus.className = `small mt-3 ${className}`;
+    launchStatus.textContent = message;
   }
 
   function setRetentionStatus(message, className = "text-secondary") {
@@ -1384,6 +1500,13 @@
     return presetSelect.options[presetSelect.selectedIndex] || null;
   }
 
+  function selectedLaunchPresetOption() {
+    if (!launchPresetSelect) {
+      return null;
+    }
+    return launchPresetSelect.options[launchPresetSelect.selectedIndex] || null;
+  }
+
   function selectedPresetProfileNames(option) {
     if (!option?.dataset.profileNames) {
       return [];
@@ -1402,6 +1525,41 @@
       return labels.none;
     }
     return `http://${host}:${port}`;
+  }
+
+  function launchPlanBaseUrl() {
+    const host = launchHost?.value?.trim();
+    const port = launchPort?.value?.trim();
+    if (!host || !port) {
+      return labels.none;
+    }
+    return `http://${host}:${port}`;
+  }
+
+  function updateLaunchPlanDefaults() {
+    const option = selectedLaunchPresetOption();
+    if (!option?.value) {
+      return;
+    }
+    if (launchHost) {
+      launchHost.value = option.dataset.defaultHost || "127.0.0.1";
+    }
+    if (launchPort) {
+      launchPort.value = option.dataset.defaultPort || "";
+    }
+    if (launchProviderModelId) {
+      launchProviderModelId.value = option.dataset.providerModelId || "";
+    }
+    if (launchBaseUrl) {
+      launchBaseUrl.textContent = launchPlanBaseUrl();
+    }
+    setLaunchStatus(labels.launchPlanReady);
+  }
+
+  function updateLaunchPlanBaseUrl() {
+    if (launchBaseUrl) {
+      launchBaseUrl.textContent = launchPlanBaseUrl();
+    }
   }
 
   function updatePresetPreview(resetDefaults = false) {
@@ -1552,6 +1710,67 @@
       await loadAlerts();
     } catch (error) {
       setPresetStatus(`${labels.presetRegistrationFailed}: ${error.message}`, "text-danger");
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
+    }
+  }
+
+  function renderLaunchPlan(plan) {
+    if (!launchShellCommand || !launchEnvironmentTable || !launchBaseUrl) {
+      return;
+    }
+    launchBaseUrl.textContent = plan.base_url || labels.none;
+    launchShellCommand.textContent = plan.shell_command || labels.noLaunchPlan;
+    const rows = Object.entries(plan.environment || {}).sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+    launchEnvironmentTable.innerHTML = rows.map(([key, value]) => `
+      <tr>
+        <th scope="row" class="text-nowrap">${escapeHtml(key)}</th>
+        <td class="model-path">${escapeHtml(value)}</td>
+      </tr>
+    `).join("") || `
+      <tr><td class="text-secondary text-center py-4" colspan="2">${labels.noLaunchPlan}</td></tr>
+    `;
+  }
+
+  async function buildLaunchPlan(event) {
+    event.preventDefault();
+    const option = selectedLaunchPresetOption();
+    if (!option?.value) {
+      setLaunchStatus(labels.noPresetSelected, "text-warning");
+      return;
+    }
+    const submitButton = launchForm?.querySelector("button[type='submit']");
+    if (submitButton) {
+      submitButton.disabled = true;
+    }
+    setLaunchStatus(labels.launchPlanBuilding);
+    try {
+      const response = await fetch(launchPanel.dataset.launchPlanApiUrl, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          preset_name: option.value,
+          python_bin: launchPythonBin?.value,
+          host: launchHost?.value,
+          port: Number.parseInt(launchPort?.value || option.dataset.defaultPort || "0", 10),
+          device: launchDevice?.value,
+          models_dir: launchModelsDir?.value,
+          provider_model_id: launchProviderModelId?.value,
+          reload: launchReload?.checked ?? false,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.launchPlanFailed);
+      }
+      renderLaunchPlan(body.plan || {});
+      setLaunchStatus(labels.launchPlanBuilt, "text-success");
+    } catch (error) {
+      setLaunchStatus(`${labels.launchPlanFailed}: ${error.message}`, "text-danger");
     } finally {
       if (submitButton) {
         submitButton.disabled = false;
@@ -3154,6 +3373,23 @@
     updatePresetPreview(true);
   }
 
+  function wireLaunchPlanForm() {
+    if (!launchPanel) {
+      return;
+    }
+    launchPresetSelect?.addEventListener("change", () => {
+      updateLaunchPlanDefaults();
+      buildLaunchPlan(new Event("submit"));
+    });
+    launchHost?.addEventListener("input", updateLaunchPlanBaseUrl);
+    launchPort?.addEventListener("input", updateLaunchPlanBaseUrl);
+    launchForm?.addEventListener("submit", buildLaunchPlan);
+    updateLaunchPlanDefaults();
+    if (launchPresetSelect?.value) {
+      buildLaunchPlan(new Event("submit"));
+    }
+  }
+
   function wireScheduleForm() {
     scheduleForm?.addEventListener("submit", saveSchedule);
     scheduleReset?.addEventListener("click", resetScheduleForm);
@@ -3175,6 +3411,7 @@
   wireReadinessControls();
   wireSampleSetForm();
   wirePresetRegistrationForm();
+  wireLaunchPlanForm();
   wireScheduleForm();
   wireRetentionControls();
   loadOperationsSummary();

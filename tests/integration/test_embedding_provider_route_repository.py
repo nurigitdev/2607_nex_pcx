@@ -495,6 +495,10 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "Provider Preset 등록" in page_response.text
             assert "data-provider-preset-registration-panel" in page_response.text
             assert "/api/admin/embedding-provider-routes/presets/register" in (page_response.text)
+            assert "data-provider-launch-plan-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/presets/launch-plan" in (
+                page_response.text
+            )
             assert api_provider_name in page_response.text
             assert form_provider_name in page_response.text
             assert "/api/admin/embedding-provider-routes" in page_response.text

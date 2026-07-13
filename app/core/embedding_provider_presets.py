@@ -1,5 +1,6 @@
 """Local launch and route registration presets for embedding providers."""
 
+import shlex
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
@@ -49,6 +50,34 @@ class EmbeddingProviderPresetRoutePlan:
             health_check_enabled=self.health_check_enabled,
             runtime_metadata=self.runtime_metadata,
         )
+
+
+@dataclass(frozen=True)
+class EmbeddingProviderLaunchPlan:
+    preset_name: str
+    provider_name: str
+    backend: str
+    model_key: str
+    profile_names: tuple[str, ...]
+    provider_model_id: str
+    host: str
+    port: int
+    device: str
+    models_dir: str
+    command: tuple[str, ...]
+    environment: dict[str, str]
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+    @property
+    def shell_command(self) -> str:
+        env_parts = [
+            f"{key}={shlex.quote(value)}" for key, value in sorted(self.environment.items())
+        ]
+        command = " ".join(shlex.quote(part) for part in self.command)
+        return " ".join([*env_parts, command])
 
 
 EMBEDDING_PROVIDER_PRESETS: tuple[EmbeddingProviderPreset, ...] = (
@@ -162,6 +191,72 @@ def build_embedding_provider_preset_route_plans(
     )
 
 
+def build_embedding_provider_launch_plan(
+    preset: EmbeddingProviderPreset,
+    *,
+    python_bin: str,
+    host: str | None = None,
+    port: int | None = None,
+    device: str = "cpu",
+    models_dir: str,
+    provider_model_id: str | None = None,
+    reload: bool = False,
+) -> EmbeddingProviderLaunchPlan:
+    selected_host = (host or preset.default_host).strip()
+    if not selected_host:
+        raise InvalidEmbeddingProviderPresetError("host is required")
+    selected_port = preset.default_port if port is None else port
+    if selected_port <= 0 or selected_port > 65535:
+        raise InvalidEmbeddingProviderPresetError("port must be between 1 and 65535")
+    selected_python_bin = python_bin.strip()
+    if not selected_python_bin:
+        raise InvalidEmbeddingProviderPresetError("python_bin is required")
+    selected_device = device.strip()
+    if not selected_device:
+        raise InvalidEmbeddingProviderPresetError("device is required")
+    selected_models_dir = models_dir.strip()
+    if not selected_models_dir:
+        raise InvalidEmbeddingProviderPresetError("models_dir is required")
+    selected_provider_model_id = (provider_model_id or preset.provider_model_id).strip()
+    if not selected_provider_model_id:
+        raise InvalidEmbeddingProviderPresetError("provider_model_id is required")
+
+    command = [
+        selected_python_bin,
+        "-m",
+        "uvicorn",
+        "app.embedding_provider_service:app",
+        "--host",
+        selected_host,
+        "--port",
+        str(selected_port),
+    ]
+    if reload:
+        command.append("--reload")
+
+    return EmbeddingProviderLaunchPlan(
+        preset_name=preset.preset_name,
+        provider_name=preset.provider_name,
+        backend=preset.backend,
+        model_key=preset.model_key,
+        profile_names=preset.profile_names,
+        provider_model_id=selected_provider_model_id,
+        host=selected_host,
+        port=selected_port,
+        device=selected_device,
+        models_dir=selected_models_dir,
+        command=tuple(command),
+        environment={
+            "NEX_PCX_PROVIDER_BACKEND": preset.backend,
+            "NEX_PCX_PROVIDER_MODEL_KEY": preset.model_key,
+            "NEX_PCX_PROVIDER_PROFILE_NAMES": ",".join(preset.profile_names),
+            "NEX_PCX_PROVIDER_MODEL_ID": selected_provider_model_id,
+            "NEX_PCX_PROVIDER_DEVICE": selected_device,
+            "NEX_PCX_PROVIDER_MODELS_DIR": selected_models_dir,
+        },
+    )
+
+
 def _resolve_preset_base_url(
     preset: EmbeddingProviderPreset,
     *,
@@ -181,7 +276,7 @@ def _resolve_preset_base_url(
     selected_host = (host or preset.default_host).strip()
     if not selected_host:
         raise InvalidEmbeddingProviderPresetError("host is required")
-    selected_port = port or preset.default_port
+    selected_port = preset.default_port if port is None else port
     if selected_port <= 0 or selected_port > 65535:
         raise InvalidEmbeddingProviderPresetError("port must be between 1 and 65535")
     return f"http://{selected_host}:{selected_port}"

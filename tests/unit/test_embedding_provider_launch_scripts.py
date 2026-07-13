@@ -9,6 +9,7 @@ import pytest
 
 from app.core.embedding_provider_presets import (
     InvalidEmbeddingProviderPresetError,
+    build_embedding_provider_launch_plan,
     build_embedding_provider_preset_route_plans,
     get_embedding_provider_preset,
     list_embedding_provider_presets,
@@ -120,6 +121,52 @@ def test_embedding_provider_preset_route_plans_normalize_absolute_base_url() -> 
     assert len(plans) == 1
     assert plans[0].provider_base_url == "https://gpu-bge.local:9443"
     assert plans[0].provider_port == 9443
+
+
+def test_embedding_provider_launch_plan_builds_shell_command_from_core_helper() -> None:
+    plan = build_embedding_provider_launch_plan(
+        get_embedding_provider_preset("qwen"),
+        python_bin="./.venv/bin/python",
+        host="0.0.0.0",
+        port=19103,
+        device="cuda:0",
+        models_dir="/srv/nex_pcx/models",
+        provider_model_id="gpu-qwen3-4b",
+        reload=True,
+    )
+
+    assert plan.base_url == "http://0.0.0.0:19103"
+    assert plan.command[-1] == "--reload"
+    assert plan.environment["NEX_PCX_PROVIDER_BACKEND"] == "qwen_embedding"
+    assert plan.environment["NEX_PCX_PROVIDER_PROFILE_NAMES"] == "qwen3_4b_1000,qwen3_4b_2560"
+    assert "NEX_PCX_PROVIDER_DEVICE=cuda:0" in plan.shell_command
+    assert "./.venv/bin/python -m uvicorn" in plan.shell_command
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"python_bin": " "}, "python_bin is required"),
+        ({"device": " "}, "device is required"),
+        ({"models_dir": " "}, "models_dir is required"),
+        ({"provider_model_id": " "}, "provider_model_id is required"),
+        ({"port": 0}, "port must be between 1 and 65535"),
+    ],
+)
+def test_embedding_provider_launch_plan_rejects_invalid_operator_inputs(
+    kwargs,
+    message: str,
+) -> None:
+    base_kwargs = {
+        "python_bin": "./.venv/bin/python",
+        "models_dir": "/srv/nex_pcx/models",
+    }
+    base_kwargs.update(kwargs)
+    with pytest.raises(InvalidEmbeddingProviderPresetError, match=message):
+        build_embedding_provider_launch_plan(
+            get_embedding_provider_preset("kure"),
+            **base_kwargs,
+        )
 
 
 def test_run_embedding_provider_builds_qwen_launch_plan() -> None:
