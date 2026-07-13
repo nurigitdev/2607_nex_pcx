@@ -7,6 +7,10 @@ from app.core.embedding_model_distribution import (
     EmbeddingModelReadiness,
     audit_embedding_model_readiness,
 )
+from app.core.embedding_provider_preflight_runs import (
+    EmbeddingProviderPreflightRunRecord,
+    list_embedding_provider_preflight_runs,
+)
 from app.core.embedding_provider_route_readiness import (
     EmbeddingProviderRouteReadinessItem,
     EmbeddingProviderRouteReadinessSummary,
@@ -58,6 +62,17 @@ class ProviderModelAvailabilityMatrix:
         return counts
 
 
+@dataclass(frozen=True)
+class ProviderModelAvailabilityDrilldown:
+    row: ProviderModelAvailabilityRow
+    route_readiness: tuple[EmbeddingProviderRouteReadinessItem, ...]
+    latest_preflight_run: EmbeddingProviderPreflightRunRecord | None
+
+    @property
+    def route_count(self) -> int:
+        return len(self.route_readiness)
+
+
 def get_provider_model_availability_matrix(
     database_url: str,
     *,
@@ -66,6 +81,42 @@ def get_provider_model_availability_matrix(
     return build_provider_model_availability_matrix(
         audit_embedding_model_readiness(models_dir),
         get_embedding_provider_route_readiness_summary(database_url, active_only=False),
+    )
+
+
+def get_provider_model_availability_drilldown(
+    database_url: str,
+    *,
+    models_dir: Path,
+    profile_name: str,
+) -> ProviderModelAvailabilityDrilldown | None:
+    normalized_profile = profile_name.strip()
+    if not normalized_profile:
+        return None
+
+    matrix = get_provider_model_availability_matrix(database_url, models_dir=models_dir)
+    row = next(
+        (item for item in matrix.rows if item.profile_name == normalized_profile),
+        None,
+    )
+    if row is None:
+        return None
+
+    readiness = get_embedding_provider_route_readiness_summary(
+        database_url,
+        profile_name=normalized_profile,
+        active_only=False,
+    )
+    latest_preflight_runs = list_embedding_provider_preflight_runs(
+        database_url,
+        profile_name=normalized_profile,
+        limit=1,
+    )
+    latest_preflight_run = latest_preflight_runs[0] if latest_preflight_runs else None
+    return ProviderModelAvailabilityDrilldown(
+        row=row,
+        route_readiness=readiness.routes,
+        latest_preflight_run=latest_preflight_run,
     )
 
 

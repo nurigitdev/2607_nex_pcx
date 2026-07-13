@@ -174,6 +174,8 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "data-provider-model-availability-panel" in response.text
     assert "/api/admin/embedding-provider-routes/model-availability" in response.text
     assert "권장 조치" in response.text
+    assert "data-provider-model-availability-drilldown-panel" in response.text
+    assert "Provider 가용성 상세" in response.text
     assert "/api/admin/embedding-provider-routes/presets/register" in response.text
     assert "Provider 운영 요약" in response.text
     assert "운영 Playbook" in response.text
@@ -265,6 +267,9 @@ def test_embedding_provider_route_import_export_api_requires_database_url() -> N
         availability_response = client.get(
             "/api/admin/embedding-provider-routes/model-availability"
         )
+        drilldown_response = client.get(
+            "/api/admin/embedding-provider-routes/model-availability/kure_v1_1024"
+        )
         import_response = client.post(
             "/api/admin/embedding-provider-routes/import",
             json={
@@ -282,6 +287,7 @@ def test_embedding_provider_route_import_export_api_requires_database_url() -> N
 
     assert export_response.status_code == 503
     assert availability_response.status_code == 503
+    assert drilldown_response.status_code == 503
     assert import_response.status_code == 503
 
 

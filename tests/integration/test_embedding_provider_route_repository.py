@@ -629,6 +629,39 @@ def test_embedding_provider_model_availability_api_combines_models_and_routes(
             assert rows["kure_v1_1024"]["severity"] == "warning"
             assert rows["kure_v1_1024"]["action_code"] == "run_preflight"
             assert provider_name in rows["kure_v1_1024"]["provider_names"]
+
+            drilldown_response = client.get(
+                "/api/admin/embedding-provider-routes/model-availability/kure_v1_1024"
+            )
+            assert drilldown_response.status_code == 200
+            drilldown = drilldown_response.json()
+            assert drilldown["profile_name"] == "kure_v1_1024"
+            assert drilldown["availability"]["action_code"] == "run_preflight"
+            assert drilldown["route_count"] >= 1
+            drilldown_provider_names = [
+                item["route"]["provider_name"] for item in drilldown["routes"]
+            ]
+            assert provider_name in drilldown_provider_names
+            if drilldown["latest_preflight_run"] is not None:
+                assert drilldown["latest_preflight_run"]["profile_name"] == "kure_v1_1024"
+
+            missing_response = client.get(
+                "/api/admin/embedding-provider-routes/model-availability/not_a_profile"
+            )
+            assert missing_response.status_code == 404
+
+            page_response = client.get(
+                "/admin/embedding-provider-routes",
+                params={"availability_profile": "kure_v1_1024"},
+            )
+            assert page_response.status_code == 200
+            assert "data-provider-model-availability-drilldown-panel" in page_response.text
+            assert "Provider 가용성 상세" in page_response.text
+            assert (
+                "/api/admin/embedding-provider-routes/model-availability/kure_v1_1024"
+                in page_response.text
+            )
+            assert provider_name in page_response.text
     finally:
         _cleanup_routes(migrated_database_url, [provider_name])
 

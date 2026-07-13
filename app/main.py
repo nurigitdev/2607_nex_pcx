@@ -128,8 +128,10 @@ from app.core.embedding_provider_contract_sample_sets import (
 )
 from app.core.embedding_provider_health import get_embedding_provider_health_status
 from app.core.embedding_provider_model_availability import (
+    ProviderModelAvailabilityDrilldown,
     ProviderModelAvailabilityMatrix,
     ProviderModelAvailabilityRow,
+    get_provider_model_availability_drilldown,
     get_provider_model_availability_matrix,
 )
 from app.core.embedding_provider_preflight_runs import (
@@ -1524,6 +1526,25 @@ def provider_model_availability_matrix_payload(
         "blocked_count": matrix.blocked_count,
         "status_counts": matrix.status_counts,
         "rows": [provider_model_availability_row_payload(row) for row in matrix.rows],
+    }
+
+
+def provider_model_availability_drilldown_payload(
+    drilldown: ProviderModelAvailabilityDrilldown,
+) -> dict[str, object]:
+    return {
+        "profile_name": drilldown.row.profile_name,
+        "availability": provider_model_availability_row_payload(drilldown.row),
+        "route_count": drilldown.route_count,
+        "routes": [
+            embedding_provider_route_readiness_item_payload(item)
+            for item in drilldown.route_readiness
+        ],
+        "latest_preflight_run": (
+            embedding_provider_preflight_run_payload(drilldown.latest_preflight_run)
+            if drilldown.latest_preflight_run is not None
+            else None
+        ),
     }
 
 
@@ -6253,6 +6274,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=provider_model_availability_matrix_payload(matrix))
 
+    @app.get("/api/admin/embedding-provider-routes/model-availability/{profile_name}")
+    def api_embedding_provider_model_availability_drilldown(
+        profile_name: str,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            drilldown = get_provider_model_availability_drilldown(
+                settings.database_url,
+                models_dir=settings.embedding_models_dir,
+                profile_name=profile_name,
+            )
+        except (
+            InvalidEmbeddingProviderRouteError,
+            InvalidEmbeddingProviderRouteHealthSnapshotError,
+            InvalidEmbeddingProviderRouteContractSnapshotError,
+            InvalidEmbeddingProviderPreflightRunError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if drilldown is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Unknown provider model availability profile: {profile_name}",
+            )
+
+        return JSONResponse(content=provider_model_availability_drilldown_payload(drilldown))
+
     @app.get("/api/admin/embedding-provider-routes/operations-summary")
     def api_embedding_provider_route_operations_summary() -> JSONResponse:
         if not settings.database_url:
@@ -9770,10 +9821,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/admin/embedding-provider-routes", response_class=HTMLResponse)
-    def embedding_provider_routes_page(request: Request) -> HTMLResponse:
+    def embedding_provider_routes_page(
+        request: Request,
+        availability_profile: str | None = Query(None),
+    ) -> HTMLResponse:
         routes: list[EmbeddingProviderRouteRecord] = []
         profiles: list[EmbeddingProfileRecord] = []
         model_availability: ProviderModelAvailabilityMatrix | None = None
+        model_availability_drilldown: ProviderModelAvailabilityDrilldown | None = None
+        selected_availability_profile = availability_profile
         error_message = None
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
@@ -9785,11 +9841,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.database_url,
                     models_dir=settings.embedding_models_dir,
                 )
+                if selected_availability_profile is None and model_availability.rows:
+                    selected_availability_profile = model_availability.rows[0].profile_name
+                if selected_availability_profile:
+                    model_availability_drilldown = get_provider_model_availability_drilldown(
+                        settings.database_url,
+                        models_dir=settings.embedding_models_dir,
+                        profile_name=selected_availability_profile,
+                    )
             except (
                 InvalidEmbeddingProviderRouteError,
                 InvalidEmbeddingJobError,
                 InvalidEmbeddingProviderRouteHealthSnapshotError,
                 InvalidEmbeddingProviderRouteContractSnapshotError,
+                InvalidEmbeddingProviderPreflightRunError,
             ) as exc:
                 error_message = str(exc)
 
@@ -9801,6 +9866,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 routes=routes,
                 profiles=profiles,
                 model_availability=model_availability,
+                model_availability_drilldown=model_availability_drilldown,
+                selected_availability_profile=selected_availability_profile or "",
                 provider_presets=list_embedding_provider_presets(),
                 embedding_models_dir=str(settings.embedding_models_dir),
                 error_message=error_message,
@@ -9840,6 +9907,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         routes: list[EmbeddingProviderRouteRecord] = []
         profiles: list[EmbeddingProfileRecord] = []
         model_availability: ProviderModelAvailabilityMatrix | None = None
+        model_availability_drilldown: ProviderModelAvailabilityDrilldown | None = None
+        selected_availability_profile = profile_name
         error_message = None
         success_message = None
 
@@ -9877,11 +9946,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.database_url,
                     models_dir=settings.embedding_models_dir,
                 )
+                if selected_availability_profile:
+                    model_availability_drilldown = get_provider_model_availability_drilldown(
+                        settings.database_url,
+                        models_dir=settings.embedding_models_dir,
+                        profile_name=selected_availability_profile,
+                    )
             except (
                 InvalidEmbeddingProviderRouteError,
                 InvalidEmbeddingJobError,
                 InvalidEmbeddingProviderRouteHealthSnapshotError,
                 InvalidEmbeddingProviderRouteContractSnapshotError,
+                InvalidEmbeddingProviderPreflightRunError,
             ) as exc:
                 error_message = error_message or str(exc)
 
@@ -9893,6 +9969,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 routes=routes,
                 profiles=profiles,
                 model_availability=model_availability,
+                model_availability_drilldown=model_availability_drilldown,
+                selected_availability_profile=selected_availability_profile or "",
                 provider_presets=list_embedding_provider_presets(),
                 embedding_models_dir=str(settings.embedding_models_dir),
                 error_message=error_message,

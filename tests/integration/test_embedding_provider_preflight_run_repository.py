@@ -123,6 +123,11 @@ def test_preflight_run_repository_records_and_filters_history(
             schedule_name=schedule_name,
             limit=10,
         )
+        profile_runs = list_embedding_provider_preflight_runs(
+            migrated_database_url,
+            profile_name="kure_v1_1024",
+            limit=10,
+        )
 
         assert manual_run.run_id in [run.run_id for run in latest_runs]
         assert scheduled_run.run_id in [run.run_id for run in latest_runs]
@@ -133,6 +138,9 @@ def test_preflight_run_repository_records_and_filters_history(
         assert scheduled_run.input_type == "document"
         assert scheduled_run.elapsed_ms == 2000
         assert [run.run_id for run in scheduled_runs] == [scheduled_run.run_id]
+        profile_run_ids = [run.run_id for run in profile_runs]
+        assert scheduled_run.run_id in profile_run_ids
+        assert manual_run.run_id not in profile_run_ids
         assert scheduled_run.run_id in [run.run_id for run in failed_runs]
     finally:
         _cleanup_preflight_runs(migrated_database_url, run_ids)

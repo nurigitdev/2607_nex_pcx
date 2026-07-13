@@ -119,6 +119,7 @@ def list_embedding_provider_preflight_runs(
     database_url: str,
     *,
     schedule_name: str | None = None,
+    profile_name: str | None = None,
     status: str | None = None,
     limit: int = 50,
 ) -> list[EmbeddingProviderPreflightRunRecord]:
@@ -128,6 +129,9 @@ def list_embedding_provider_preflight_runs(
     if schedule_name is not None:
         where_clauses.append("schedule_name = %s")
         params.append(_validate_nonblank(schedule_name, "schedule_name"))
+    if profile_name is not None:
+        where_clauses.append("profile_name = %s")
+        params.append(_validate_nonblank(profile_name, "profile_name"))
     if status is not None:
         where_clauses.append("status = %s")
         params.append(_validate_status(status))

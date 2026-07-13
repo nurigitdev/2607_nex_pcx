@@ -434,8 +434,11 @@
       <tbody>
         {% if model_availability %}
         {% for row in model_availability.rows %}
-        <tr>
-          <td><span class="badge text-bg-light border">{{ row.profile_name }}</span></td>
+        <tr class="{% if selected_availability_profile == row.profile_name %}table-active{% endif %}">
+          <td>
+            <span class="badge text-bg-light border">{{ row.profile_name }}</span>
+            <a class="ms-2 small" href="/admin/embedding-provider-routes?availability_profile={{ row.profile_name|urlencode }}">{{ t("embedding_routes.view_details") }}</a>
+          </td>
           <td>
             <strong>{{ row.model_key }}</strong>
             <div class="text-secondary small">{{ row.repo_id }}</div>
@@ -478,6 +481,148 @@
       </tbody>
     </table>
   </div>
+</section>
+
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-provider-model-availability-drilldown-panel
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.availability_drilldown") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.availability_drilldown_help") }}</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      {% if model_availability_drilldown %}
+      <span class="badge text-bg-light border">{{ model_availability_drilldown.row.profile_name }}</span>
+      <a class="btn btn-outline-secondary btn-sm" href="/api/admin/embedding-provider-routes/model-availability/{{ model_availability_drilldown.row.profile_name|urlencode }}">{{ t("common.api") }}</a>
+      {% elif selected_availability_profile %}
+      <span class="badge text-bg-warning">{{ selected_availability_profile }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if model_availability_drilldown %}
+  {% set detail = model_availability_drilldown %}
+  <section class="document-detail-grid p-3 border-top">
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.profile") }}</div>
+      <div class="metric-value fs-5">{{ detail.row.profile_name }}</div>
+      <div class="small text-secondary">{{ detail.row.model_key }}</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.model_status") }}</div>
+      <div class="mt-2">
+        {% if detail.row.model_ready %}
+        <span class="badge text-bg-success">{{ t("embedding_routes.ready") }}</span>
+        {% elif detail.row.model_exists %}
+        <span class="badge text-bg-warning">{{ t("embedding_routes.model_incomplete") }}</span>
+        {% else %}
+        <span class="badge text-bg-danger">{{ t("embedding_routes.model_missing") }}</span>
+        {% endif %}
+      </div>
+      <div class="small text-secondary mt-2">{{ detail.row.local_dir }}</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.availability_action") }}</div>
+      {% set detail_action_badge_class = "text-bg-success" if detail.row.severity == "ok" else "text-bg-danger" if detail.row.severity == "blocked" else "text-bg-warning" %}
+      <div class="mt-2">
+        <span class="badge {{ detail_action_badge_class }}">{{ t("embedding_routes.action_" ~ detail.row.action_code) }}</span>
+      </div>
+      <div class="small text-secondary mt-2">{{ t("embedding_routes." ~ detail.row.status) }}</div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("embedding_routes.latest_preflight") }}</div>
+      {% if detail.latest_preflight_run %}
+      <div class="metric-value fs-5">{{ detail.latest_preflight_run.status }}</div>
+      <div class="small text-secondary">
+        #{{ detail.latest_preflight_run.run_id }}
+        · {{ detail.latest_preflight_run.passed_count }}/{{ detail.latest_preflight_run.route_count }}
+        · {{ detail.latest_preflight_run.completed_at.strftime("%Y-%m-%d %H:%M:%S") }}
+      </div>
+      {% else %}
+      <div class="metric-value fs-5">-</div>
+      <div class="small text-secondary">{{ t("embedding_routes.no_preflight_runs") }}</div>
+      {% endif %}
+    </div>
+  </section>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.active") }}</th>
+          <th scope="col">{{ t("embedding_routes.readiness") }}</th>
+          <th scope="col">{{ t("embedding_routes.reasons") }}</th>
+          <th scope="col">{{ t("embedding_routes.latest_health") }}</th>
+          <th scope="col">{{ t("embedding_routes.latest_contract") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in detail.route_readiness %}
+        <tr>
+          <td>
+            <strong>{{ item.route.provider_name }}</strong>
+            <div class="text-secondary small">{{ item.route.provider_base_url or "-" }}</div>
+          </td>
+          <td>
+            {% if item.route.is_active %}
+            <span class="badge text-bg-success">{{ t("common.active") }}</span>
+            {% else %}
+            <span class="badge text-bg-secondary">{{ t("embedding_routes.status_inactive") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge text-bg-light border">{{ t("embedding_routes.status_" ~ item.status) }}</span>
+            {% if item.ready %}
+            {% set recovery_action = "ready_for_worker" %}
+            {% elif item.status == "inactive" %}
+            {% set recovery_action = "activate_route" %}
+            {% elif item.status == "contract_failed" %}
+            {% set recovery_action = "review_contract_snapshot" %}
+            {% elif item.status == "health_not_ready" %}
+            {% set recovery_action = "check_provider_health" %}
+            {% else %}
+            {% set recovery_action = "run_preflight" %}
+            {% endif %}
+            <div class="small text-secondary mt-1">{{ t("embedding_routes.recovery_" ~ recovery_action) }}</div>
+          </td>
+          <td>
+            {% for reason in item.reasons %}
+            <span class="badge text-bg-light border">{{ reason }}</span>
+            {% else %}
+            <span class="text-secondary">{{ t("embedding_routes.no_reasons") }}</span>
+            {% endfor %}
+          </td>
+          <td>
+            {% if item.latest_health_snapshot %}
+            <span class="badge text-bg-light border">{{ item.latest_health_snapshot.status }}</span>
+            <div class="small text-secondary">{{ item.latest_health_snapshot.checked_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>
+            {% else %}
+            <span class="text-secondary">{{ t("embedding_routes.no_snapshot") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.latest_contract_snapshot %}
+            <span class="badge text-bg-light border">{{ item.latest_contract_snapshot.status }}</span>
+            <div class="small text-secondary">{{ item.latest_contract_snapshot.checked_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>
+            {% else %}
+            <span class="text-secondary">{{ t("embedding_routes.no_snapshot") }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="6">{{ t("embedding_routes.no_drilldown_routes") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-secondary text-center py-4">
+    {% if database_configured %}{{ t("embedding_routes.no_availability_drilldown") }}{% else %}{{ t("common.no_database") }}{% endif %}
+  </div>
+  {% endif %}
 </section>
 
 <section
