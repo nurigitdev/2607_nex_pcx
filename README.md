@@ -276,6 +276,8 @@ Run `scripts/run_remote_provider_foreground_smoke.py --provider kure --json` fro
 app host to start KURE over SSH, verify `/healthz`, and stop the foreground process.
 The first KURE DGX Spark smoke result is recorded in
 `docs/remote_kure_foreground_health_smoke_result.md`.
+The first BGE DGX Spark smoke result is recorded in
+`docs/remote_bge_foreground_health_smoke_result.md`.
 Run `scripts/check_remote_gpu_provider_host.py` from the app host for a read-only
 readiness report against the DGX Spark provider server.
 

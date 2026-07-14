@@ -184,6 +184,14 @@ To run the KURE foreground launch and health smoke as one managed command from t
   --json
 ```
 
+Use the same runner for BGE on port `9102`:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_foreground_smoke.py \
+  --provider bge \
+  --json
+```
+
 ## Provider Health Smoke Test
 
 From the NeX_PCX app host:

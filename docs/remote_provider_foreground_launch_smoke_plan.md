@@ -6,6 +6,8 @@ Slice 196 adds an executable foreground smoke that starts the remote provider ov
 polls `/healthz` from the app host, and stops the foreground process after the check.
 The first passing KURE result is captured in
 `docs/remote_kure_foreground_health_smoke_result.md`.
+The first passing BGE result is captured in
+`docs/remote_bge_foreground_health_smoke_result.md`.
 
 Use a foreground launch before systemd so the operator can see startup logs, model load
 errors, and shutdown behavior directly. Start with `kure` or `bge` before `qwen`; Qwen is
