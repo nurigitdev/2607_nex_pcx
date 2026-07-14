@@ -18,6 +18,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.core.config import get_settings  # noqa: E402
 from app.core.database import connect  # noqa: E402
+from app.core.dgx_ingestion_benchmarks import (  # noqa: E402
+    DgxIngestionBenchmarkDetail,
+    DgxIngestionBenchmarkInput,
+    DgxIngestionBenchmarkJobInput,
+    DgxIngestionBenchmarkProfileInput,
+    record_dgx_ingestion_benchmark,
+)
 from app.core.embedding_jobs import EmbeddingJobInput, create_embedding_job  # noqa: E402
 from app.core.embedding_provider_presets import (  # noqa: E402
     InvalidEmbeddingProviderPresetError,
@@ -1178,6 +1185,160 @@ def _report_payload(report: DgxSmallCorpusBenchmarkReport) -> dict[str, Any]:
     }
 
 
+def persist_dgx_small_corpus_benchmark_report(
+    database_url: str,
+    report: DgxSmallCorpusBenchmarkReport,
+    *,
+    created_by: str | None = None,
+    created_by_user_id: int | None = None,
+) -> DgxIngestionBenchmarkDetail:
+    benchmark_input = build_dgx_ingestion_benchmark_input_from_report(
+        report,
+        created_by=created_by,
+        created_by_user_id=created_by_user_id,
+    )
+    return record_dgx_ingestion_benchmark(database_url, benchmark_input)
+
+
+def build_dgx_ingestion_benchmark_input_from_report(
+    report: DgxSmallCorpusBenchmarkReport,
+    *,
+    created_by: str | None = None,
+    created_by_user_id: int | None = None,
+) -> DgxIngestionBenchmarkInput:
+    profile_inputs: list[DgxIngestionBenchmarkProfileInput] = []
+    for provider_result in report.results:
+        job_results_by_profile: dict[str, list[DgxEmbeddingWorkerProfileSmokeResult]] = {}
+        for job_result in provider_result.profile_results:
+            job_results_by_profile.setdefault(job_result.profile_name, []).append(job_result)
+        for summary in provider_result.profile_summaries:
+            job_inputs = tuple(
+                _benchmark_job_input_from_profile_result(
+                    provider_result.provider,
+                    job_result,
+                )
+                for job_result in job_results_by_profile.get(summary.profile_name, [])
+            )
+            profile_inputs.append(
+                DgxIngestionBenchmarkProfileInput(
+                    provider=provider_result.provider,
+                    profile_name=summary.profile_name,
+                    expected_job_count=summary.expected_job_count,
+                    processed_count=summary.processed_count,
+                    succeeded_count=summary.succeeded_count,
+                    failed_count=summary.failed_count,
+                    vector_count=summary.vector_count,
+                    passed=summary.passed,
+                    vector_table_name=summary.vector_table_name,
+                    vector_dimension=summary.vector_dimension,
+                    vector_storage_type=summary.vector_storage_type,
+                    provider_route_id=summary.provider_route_id,
+                    provider_route_name=summary.provider_route_name,
+                    provider_runtime_base_url=summary.provider_runtime_base_url,
+                    provider_model_id=summary.provider_model_id,
+                    provider_type=summary.provider_type,
+                    readiness_status=summary.readiness_status,
+                    readiness_health_snapshot_id=summary.readiness_health_snapshot_id,
+                    readiness_contract_snapshot_id=summary.readiness_contract_snapshot_id,
+                    total_provider_elapsed_ms=summary.total_provider_elapsed_ms,
+                    avg_provider_elapsed_ms=summary.avg_provider_elapsed_ms,
+                    max_provider_elapsed_ms=summary.max_provider_elapsed_ms,
+                    total_worker_elapsed_ms=summary.total_worker_elapsed_ms,
+                    avg_worker_elapsed_ms=summary.avg_worker_elapsed_ms,
+                    max_worker_elapsed_ms=summary.max_worker_elapsed_ms,
+                    errors=summary.errors,
+                    jobs=job_inputs,
+                )
+            )
+
+    provider_names = tuple(provider.provider for provider in report.plan.providers)
+    profile_names = _plan_profile_names(report.plan)
+    fixture_payload = _fixture_payload(report.fixture) or {}
+    return DgxIngestionBenchmarkInput(
+        benchmark_run_key=(
+            report.fixture.benchmark_run_key
+            if report.fixture is not None
+            else f"dgx-small-corpus-report-{int(time.time() * 1000)}"
+        ),
+        script_name=Path(__file__).name,
+        provider_names=provider_names,
+        profile_names=profile_names,
+        chunk_count=report.plan.chunk_count,
+        expected_job_count=sum(profile.expected_job_count for profile in profile_inputs),
+        processed_count=sum(profile.processed_count for profile in profile_inputs),
+        succeeded_count=sum(profile.succeeded_count for profile in profile_inputs),
+        failed_count=sum(profile.failed_count for profile in profile_inputs),
+        vector_count=sum(profile.vector_count for profile in profile_inputs),
+        passed=report.passed,
+        preflight_before_worker=report.plan.preflight_before_worker,
+        active_only_preflight=report.plan.active_only_preflight,
+        cleanup_attempted=report.cleanup_attempted,
+        cleanup_confirmed=report.cleanup_confirmed,
+        total_elapsed_seconds=report.total_elapsed_seconds,
+        total_provider_elapsed_ms=_sum_optional_ints(
+            profile.total_provider_elapsed_ms for profile in profile_inputs
+        ),
+        total_worker_elapsed_ms=_sum_optional_ints(
+            profile.total_worker_elapsed_ms for profile in profile_inputs
+        ),
+        fixture_file_id=report.fixture.file_id if report.fixture is not None else None,
+        fixture_document_id=report.fixture.document_id if report.fixture is not None else None,
+        fixture_chunk_ids=report.fixture.chunk_ids if report.fixture is not None else (),
+        plan_payload=_plan_payload(report.plan),
+        fixture_payload=fixture_payload,
+        report_payload=_report_payload(report),
+        created_by=created_by,
+        created_by_user_id=created_by_user_id,
+        profiles=tuple(profile_inputs),
+    )
+
+
+def _benchmark_job_input_from_profile_result(
+    provider: str,
+    result: DgxEmbeddingWorkerProfileSmokeResult,
+) -> DgxIngestionBenchmarkJobInput:
+    return DgxIngestionBenchmarkJobInput(
+        provider=provider,
+        profile_name=result.profile_name,
+        source_job_id=result.job_id,
+        source_chunk_id=result.chunk_id,
+        processed=result.processed,
+        job_status=result.job_status,
+        vector_table_name=result.vector_table_name,
+        vector_dimension=result.vector_dimension,
+        vector_storage_type=result.vector_storage_type,
+        provider_route_id=result.provider_route_id,
+        provider_route_name=result.provider_route_name,
+        provider_runtime_base_url=result.provider_runtime_base_url,
+        provider_model_id=result.provider_model_id,
+        provider_type=result.provider_type,
+        provider_elapsed_ms=result.provider_elapsed_ms,
+        worker_elapsed_ms=result.elapsed_ms,
+        readiness_status=result.readiness_status,
+        readiness_health_snapshot_id=result.readiness_health_snapshot_id,
+        readiness_contract_snapshot_id=result.readiness_contract_snapshot_id,
+        message=result.message,
+        error=result.error,
+        passed=result.passed,
+    )
+
+
+def _sum_optional_ints(values: Any) -> int | None:
+    normalized_values = tuple(value for value in values if value is not None)
+    return sum(normalized_values) if normalized_values else None
+
+
+def _persistence_payload(detail: DgxIngestionBenchmarkDetail | None) -> dict[str, Any] | None:
+    if detail is None:
+        return None
+    return {
+        "benchmark_run_id": detail.run.benchmark_run_id,
+        "benchmark_run_key": detail.run.benchmark_run_key,
+        "profile_count": len(detail.profiles),
+        "job_result_count": len(detail.jobs),
+    }
+
+
 def _print_human_report(report: DgxSmallCorpusBenchmarkReport) -> None:
     status = "PASS" if report.passed else "FAIL"
     print(f"DGX small corpus ingestion benchmark: {status}")
@@ -1413,6 +1574,22 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--readiness-gate-defer-seconds", type=int, default=300)
     parser.add_argument("--fail-fast", action="store_true")
+    parser.add_argument(
+        "--persist-result",
+        action="store_true",
+        help="Persist the benchmark run/profile/job evidence to the database.",
+    )
+    parser.add_argument(
+        "--created-by",
+        default=None,
+        help="Optional actor label stored with --persist-result.",
+    )
+    parser.add_argument(
+        "--created-by-user-id",
+        type=int,
+        default=None,
+        help="Optional app_users.user_id stored with --persist-result.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--markdown-output", default=None)
@@ -1465,13 +1642,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     report = run_dgx_small_corpus_benchmark(plan)
+    persistence_detail = None
+    if args.persist_result:
+        persistence_detail = persist_dgx_small_corpus_benchmark_report(
+            database_url,
+            report,
+            created_by=args.created_by,
+            created_by_user_id=args.created_by_user_id,
+        )
     if args.markdown_output:
         write_markdown_report(report, Path(args.markdown_output))
 
     if args.json:
-        print(json.dumps(_report_payload(report), ensure_ascii=False))
+        payload = _report_payload(report)
+        payload["persistence"] = _persistence_payload(persistence_detail)
+        print(json.dumps(payload, ensure_ascii=False))
     else:
         _print_human_report(report)
+        if persistence_detail is not None:
+            print("- persisted_benchmark_run_id: " f"{persistence_detail.run.benchmark_run_id}")
     return 0 if report.passed else 1
 
 

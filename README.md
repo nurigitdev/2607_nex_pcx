@@ -399,11 +399,14 @@ persistence, and removes the fixture by default:
 ./.venv/bin/python scripts/run_dgx_small_corpus_embedding_benchmark.py \
   --database-url "$NEX_PCX_DATABASE_URL" \
   --chunk-count 3 \
+  --persist-result \
   --json
 ```
 
 The first passing development DB small corpus benchmark result is recorded in
 `docs/dgx_small_corpus_embedding_benchmark_result.md`.
+The first persisted benchmark DB verification is recorded in
+`docs/dgx_ingestion_benchmark_persistence_result.md`.
 
 Default local ports are `9101` for KURE, `9102` for BGE-M3, and `9103` for the
 shared Qwen provider.

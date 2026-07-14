@@ -340,12 +340,15 @@ and summarizes vector persistence plus provider/worker elapsed metadata:
 ./.venv/bin/python scripts/run_dgx_small_corpus_embedding_benchmark.py \
   --database-url "$NEX_PCX_DATABASE_URL" \
   --chunk-count 3 \
+  --persist-result \
   --json \
   --markdown-output artifacts/dgx_small_corpus_embedding_benchmark.md
 ```
 
 The first passing development DB benchmark is captured in
 `docs/dgx_small_corpus_embedding_benchmark_result.md`.
+The first persisted benchmark DB verification is captured in
+`docs/dgx_ingestion_benchmark_persistence_result.md`.
 
 If providers are already running under systemd or another supervisor, run the standalone
 preflight command instead:

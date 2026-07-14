@@ -535,3 +535,92 @@ def test_markdown_report_includes_profile_summary_and_job_evidence(tmp_path: Pat
     assert "`chunk_embeddings_qwen3_4b_1000`" in content
     assert "`20.00`" in content
     assert "`local-qwen3-embedding-4b`" in content
+
+
+def test_build_persistence_input_from_report_aggregates_profile_and_job_evidence() -> None:
+    plan = _plan("qwen")
+    fixture = _fixture()
+    qwen_1000_results = (
+        _profile_result("qwen3_4b_1000", 201, 33, provider_elapsed_ms=10),
+        _profile_result("qwen3_4b_1000", 202, 34, provider_elapsed_ms=30),
+    )
+    qwen_2560_results = (
+        _profile_result("qwen3_4b_2560", 301, 33, dimension=2560, provider_elapsed_ms=40),
+        _profile_result("qwen3_4b_2560", 302, 34, dimension=2560, provider_elapsed_ms=60),
+    )
+    provider_result = runner.DgxSmallCorpusProviderBenchmarkResult(
+        provider="qwen",
+        provider_name="qwen-primary",
+        base_url="http://192.168.20.243:9103",
+        health_url="http://192.168.20.243:9103/healthz",
+        launch_command=("ssh", "nexpcx@192.168.20.243"),
+        profile_names=("qwen3_4b_1000", "qwen3_4b_2560"),
+        startup_timeout_seconds=1,
+        health_timeout_seconds=0.1,
+        poll_interval_seconds=0.1,
+        shutdown_timeout_seconds=0.1,
+        pre_launch_health_reachable=False,
+        launched=True,
+        health_checked=True,
+        health_ok=True,
+        health_attempts=1,
+        health_status_code=200,
+        health_payload={},
+        health_error=None,
+        health_mismatches=(),
+        preflight_results=(
+            _preflight_result("qwen3_4b_1000"),
+            _preflight_result("qwen3_4b_2560"),
+        ),
+        profile_summaries=(
+            runner._summarize_profile_benchmark(
+                "qwen3_4b_1000",
+                targets=fixture.job_targets_by_profile["qwen3_4b_1000"],
+                results=qwen_1000_results,
+            ),
+            runner._summarize_profile_benchmark(
+                "qwen3_4b_2560",
+                targets=fixture.job_targets_by_profile["qwen3_4b_2560"],
+                results=qwen_2560_results,
+            ),
+        ),
+        profile_results=(*qwen_1000_results, *qwen_2560_results),
+        process_exit_code_before_stop=None,
+        process_exit_code_after_stop=143,
+        stopped=True,
+        stop_confirmed=True,
+        remote_stop_attempted=False,
+        remote_stop_exit_code=None,
+        remote_stop_stdout="",
+        remote_stop_stderr="",
+        post_stop_health_reachable=False,
+        elapsed_seconds=0.1,
+        stdout_tail="",
+        stderr_tail="",
+    )
+    report = runner.DgxSmallCorpusBenchmarkReport(
+        plan=plan,
+        fixture=fixture,
+        results=(provider_result,),
+        cleanup_attempted=True,
+        cleanup_confirmed=True,
+        total_elapsed_seconds=12.5,
+    )
+
+    benchmark_input = runner.build_dgx_ingestion_benchmark_input_from_report(
+        report,
+        created_by="pytest",
+    )
+
+    assert benchmark_input.benchmark_run_key == "unit-benchmark"
+    assert benchmark_input.provider_names == ("qwen",)
+    assert benchmark_input.profile_names == ("qwen3_4b_1000", "qwen3_4b_2560")
+    assert benchmark_input.expected_job_count == 4
+    assert benchmark_input.processed_count == 4
+    assert benchmark_input.vector_count == 4
+    assert benchmark_input.total_provider_elapsed_ms == 140
+    assert benchmark_input.fixture_chunk_ids == (33, 34)
+    assert benchmark_input.created_by == "pytest"
+    assert benchmark_input.profiles[1].vector_storage_type == "halfvec"
+    assert benchmark_input.profiles[1].jobs[0].source_job_id == 301
+    assert "secret" not in json.dumps(benchmark_input.report_payload)
