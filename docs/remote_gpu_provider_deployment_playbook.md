@@ -241,6 +241,8 @@ input count, row count, and output dimension for each selected profile.
 
 The first passing KURE request smoke result is captured in
 `docs/remote_kure_embedding_request_smoke_result.md`.
+The first passing BGE request smoke result is captured in
+`docs/remote_bge_embedding_request_smoke_result.md`.
 
 ## Register Routes In NeX_PCX
 
