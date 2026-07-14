@@ -65,6 +65,26 @@ Use the existing model checker when the runtime dependencies are installed:
 ./.venv/bin/python scripts/check_embedding_models.py --dry-run
 ```
 
+From the NeX_PCX app host, run the read-only remote readiness checker before installing or
+starting provider services:
+
+```bash
+./.venv/bin/python scripts/check_remote_gpu_provider_host.py --dry-run
+./.venv/bin/python scripts/check_remote_gpu_provider_host.py --json
+```
+
+The checker connects through `ssh -o BatchMode=yes`, so it will fail fast instead of
+prompting for a password. It verifies SSH identity, work directory, virtualenv Python,
+provider imports, `nvidia-smi`, expected model directories, configured provider ports, and
+the setup dry-run for each provider preset.
+
+Common readiness failures:
+
+- `provider_runtime_import` fails with `No module named 'fastapi'`: install the app
+  runtime dependencies in the remote `.venv`.
+- `setup_script_exists` or `setup_dry_run_*` fails: update or copy the latest NeX_PCX
+  source files to the remote work directory before generating provider service files.
+
 ## Generate Provider Service Files
 
 `scripts/setup_remote_gpu_provider.py` is designed to be run on the GPU server. It does not

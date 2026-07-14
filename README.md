@@ -268,6 +268,8 @@ Route health aggregation is exposed at `/api/admin/embedding-provider-routes/hea
 Remote GPU host setup is documented in `docs/remote_gpu_provider_deployment_playbook.md`,
 with generated env/systemd files available through
 `scripts/setup_remote_gpu_provider.py`.
+Run `scripts/check_remote_gpu_provider_host.py` from the app host for a read-only
+readiness report against the DGX Spark provider server.
 
 Run due scheduled route preflight checks after enabling rows in
 `embedding_provider_preflight_schedules`:
