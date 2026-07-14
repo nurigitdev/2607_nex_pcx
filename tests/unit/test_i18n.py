@@ -70,6 +70,9 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     )
     assert korean("embedding_routes.route_saved") == "Route 저장됨"
     assert english("embedding_routes.route_activation_failed") == ("Route status update failed")
+    assert korean("embedding_routes.change_logs") == "Provider Route 변경 이력"
+    assert english("embedding_routes.change_logs_failed") == "Change log load failed"
+    assert korean("embedding_routes.action_activation_changed") == "활성 상태 변경"
     assert korean("embedding_routes.readiness") == "Provider Route Readiness"
     assert english("embedding_routes.readiness_failed") == "Readiness failed to load"
     assert korean("embedding_routes.status_needs_contract") == "Needs Contract"

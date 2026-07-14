@@ -19,6 +19,11 @@ PROVIDER_ROUTE_ALERT_EVENT_TYPES = (
     "embedding_provider_route_health_alert",
     "embedding_provider_route_contract_alert",
 )
+PROVIDER_ROUTE_CHANGE_EVENT_TYPES = (
+    "embedding_provider_route_created",
+    "embedding_provider_route_updated",
+    "embedding_provider_route_activation_changed",
+)
 
 
 @dataclass(frozen=True)
@@ -190,7 +195,7 @@ def list_provider_route_alert_logs(
 ) -> list[dict[str, Any]]:
     with connect(database_url) as connection:
         settings = load_log_settings(connection)
-        row_limit = _normalize_limit(limit or settings.page_size)
+        row_limit = _normalize_limit(settings.page_size if limit is None else limit)
         where_clauses = ["event_type = ANY(%s)"]
         params: list[object] = [list(PROVIDER_ROUTE_ALERT_EVENT_TYPES)]
         if level:
@@ -200,6 +205,51 @@ def list_provider_route_alert_logs(
             where_clauses.append("acknowledged_at IS NOT NULL")
         elif acknowledged is False:
             where_clauses.append("acknowledged_at IS NULL")
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT *
+                FROM app_logs
+                WHERE {' AND '.join(where_clauses)}
+                ORDER BY occurred_at DESC, log_id DESC
+                LIMIT %s
+                """,
+                (*params, row_limit),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+
+def list_provider_route_change_logs(
+    database_url: str,
+    *,
+    profile_name: str | None = None,
+    provider_name: str | None = None,
+    route_id: int | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    with connect(database_url) as connection:
+        settings = load_log_settings(connection)
+        row_limit = _normalize_limit(settings.page_size if limit is None else limit)
+        where_clauses = ["event_type = ANY(%s)"]
+        params: list[object] = [list(PROVIDER_ROUTE_CHANGE_EVENT_TYPES)]
+        if profile_name is not None:
+            profile = _validate_nonblank(profile_name, "profile_name")
+            where_clauses.append(
+                "(detail->>'profile_name' = %s OR detail->>'previous_profile_name' = %s)"
+            )
+            params.extend([profile, profile])
+        if provider_name is not None:
+            provider = _validate_nonblank(provider_name, "provider_name")
+            where_clauses.append(
+                "(detail->>'provider_name' = %s OR detail->>'previous_provider_name' = %s)"
+            )
+            params.extend([provider, provider])
+        if route_id is not None:
+            if route_id <= 0:
+                raise InvalidAdminLogError("route_id must be greater than 0")
+            where_clauses.append("detail->>'route_id' = %s")
+            params.append(str(route_id))
 
         with connection.cursor() as cursor:
             cursor.execute(

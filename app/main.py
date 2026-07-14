@@ -24,6 +24,7 @@ from app.core.admin_logging import (
     count_provider_route_alert_logs,
     list_logs,
     list_provider_route_alert_logs,
+    list_provider_route_change_logs,
     log_event,
 )
 from app.core.chunk_policies import (
@@ -2232,6 +2233,177 @@ def log_embedding_provider_route_contract_alert(
         },
         correlation_id=f"embedding-provider-route:{route.route_id}:contract",
     )
+
+
+PROVIDER_ROUTE_CHANGE_EVENT_BY_ACTION = {
+    "created": "embedding_provider_route_created",
+    "updated": "embedding_provider_route_updated",
+    "activation_changed": "embedding_provider_route_activation_changed",
+}
+
+PROVIDER_ROUTE_CHANGE_MESSAGE_BY_ACTION = {
+    "created": "created",
+    "updated": "updated",
+    "activation_changed": "activation changed",
+}
+
+
+def embedding_provider_route_audit_snapshot(
+    route: EmbeddingProviderRouteRecord,
+) -> dict[str, object]:
+    request_metadata = describe_embedding_provider_route_request_metadata(route.runtime_metadata)
+    return {
+        "route_id": route.route_id,
+        "profile_name": route.profile_name,
+        "provider_name": route.provider_name,
+        "provider_mode": route.provider_mode,
+        "provider_base_url": route.provider_base_url,
+        "timeout_seconds": route.timeout_seconds,
+        "priority": route.priority,
+        "is_active": route.is_active,
+        "health_check_enabled": route.health_check_enabled,
+        "request_header_names": sorted(request_metadata.request_headers),
+        "auth_type": request_metadata.auth_type,
+        "auth_header_name": request_metadata.auth_header_name,
+        "runtime_metadata_keys": sorted(route.runtime_metadata.keys()),
+    }
+
+
+def embedding_provider_route_changed_fields(
+    previous_route: EmbeddingProviderRouteRecord | None,
+    route: EmbeddingProviderRouteRecord,
+) -> list[str]:
+    current = embedding_provider_route_audit_snapshot(route)
+    if previous_route is None:
+        return sorted(field for field in current if field != "route_id")
+    previous = embedding_provider_route_audit_snapshot(previous_route)
+    return sorted(
+        field
+        for field, value in current.items()
+        if field != "route_id" and previous.get(field) != value
+    )
+
+
+def log_embedding_provider_route_change(
+    database_url: str,
+    *,
+    action: str,
+    route: EmbeddingProviderRouteRecord,
+    previous_route: EmbeddingProviderRouteRecord | None = None,
+    request_path: str | None = None,
+) -> int | None:
+    event_type = PROVIDER_ROUTE_CHANGE_EVENT_BY_ACTION[action]
+    current = embedding_provider_route_audit_snapshot(route)
+    previous = (
+        embedding_provider_route_audit_snapshot(previous_route)
+        if previous_route is not None
+        else None
+    )
+    changed_fields = embedding_provider_route_changed_fields(previous_route, route)
+    return log_event(
+        database_url,
+        level="INFO",
+        event_type=event_type,
+        source="embedding_provider_routes",
+        message=(
+            f"Embedding provider route {route.provider_name} "
+            f"{PROVIDER_ROUTE_CHANGE_MESSAGE_BY_ACTION[action]}."
+        ),
+        detail={
+            "action": action,
+            "route_id": route.route_id,
+            "profile_name": route.profile_name,
+            "provider_name": route.provider_name,
+            "previous_profile_name": previous_route.profile_name if previous_route else None,
+            "previous_provider_name": previous_route.provider_name if previous_route else None,
+            "changed_fields": changed_fields,
+            "current": current,
+            "previous": previous,
+            "changed_by": "operator",
+        },
+        request_path=request_path,
+        correlation_id=f"embedding-provider-route:{route.route_id}:change",
+    )
+
+
+def find_existing_embedding_provider_route_for_input(
+    database_url: str,
+    route_input: EmbeddingProviderRouteInput,
+) -> EmbeddingProviderRouteRecord | None:
+    existing_routes = list_embedding_provider_routes(
+        database_url,
+        profile_name=route_input.profile_name,
+    )
+    return next(
+        (route for route in existing_routes if route.provider_name == route_input.provider_name),
+        None,
+    )
+
+
+def upsert_embedding_provider_route_with_audit(
+    database_url: str,
+    route_input: EmbeddingProviderRouteInput,
+    *,
+    request_path: str,
+) -> EmbeddingProviderRouteRecord:
+    validated_input = validate_embedding_provider_route_input(route_input)
+    previous_route = find_existing_embedding_provider_route_for_input(
+        database_url,
+        validated_input,
+    )
+    route = upsert_embedding_provider_route(database_url, validated_input)
+    log_embedding_provider_route_change(
+        database_url,
+        action="updated" if previous_route else "created",
+        route=route,
+        previous_route=previous_route,
+        request_path=request_path,
+    )
+    return route
+
+
+def update_embedding_provider_route_with_audit(
+    database_url: str,
+    route_id: int,
+    route_input: EmbeddingProviderRouteInput,
+    *,
+    request_path: str,
+) -> EmbeddingProviderRouteRecord | None:
+    previous_route = get_embedding_provider_route(database_url, route_id)
+    if previous_route is None:
+        return None
+    route = update_embedding_provider_route(database_url, route_id, route_input)
+    if route is not None:
+        log_embedding_provider_route_change(
+            database_url,
+            action="updated",
+            route=route,
+            previous_route=previous_route,
+            request_path=request_path,
+        )
+    return route
+
+
+def set_embedding_provider_route_active_with_audit(
+    database_url: str,
+    route_id: int,
+    is_active: bool,
+    *,
+    request_path: str,
+) -> EmbeddingProviderRouteRecord | None:
+    previous_route = get_embedding_provider_route(database_url, route_id)
+    if previous_route is None:
+        return None
+    route = set_embedding_provider_route_active(database_url, route_id, is_active)
+    if route is not None and previous_route.is_active != route.is_active:
+        log_embedding_provider_route_change(
+            database_url,
+            action="activation_changed",
+            route=route,
+            previous_route=previous_route,
+            request_path=request_path,
+        )
+    return route
 
 
 def embedding_provider_route_input_from_request(
@@ -6009,7 +6181,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             plans = embedding_provider_preset_route_plans_from_request(payload)
             routes = [
-                upsert_embedding_provider_route(settings.database_url, plan.to_route_input())
+                upsert_embedding_provider_route_with_audit(
+                    settings.database_url,
+                    plan.to_route_input(),
+                    request_path="/api/admin/embedding-provider-routes/presets/register",
+                )
                 for plan in plans
             ]
             preflight = (
@@ -6097,7 +6273,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             route_inputs = embedding_provider_route_import_inputs_from_request(payload)
             imported_routes = (
                 [
-                    upsert_embedding_provider_route(settings.database_url, route_input)
+                    upsert_embedding_provider_route_with_audit(
+                        settings.database_url,
+                        route_input,
+                        request_path="/api/admin/embedding-provider-routes/import",
+                    )
                     for route_input in route_inputs
                 ]
                 if not payload.dry_run
@@ -6379,6 +6559,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={
                 "alert_count": len(alerts),
                 "alerts": [admin_log_payload(alert) for alert in alerts],
+            }
+        )
+
+    @app.get("/api/admin/embedding-provider-routes/change-logs")
+    def api_list_embedding_provider_route_change_logs(
+        profile_name: str | None = None,
+        provider_name: str | None = None,
+        route_id: int | None = None,
+        limit: int = 20,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            changes = list_provider_route_change_logs(
+                settings.database_url,
+                profile_name=profile_name,
+                provider_name=provider_name,
+                route_id=route_id,
+                limit=limit,
+            )
+        except InvalidAdminLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "change_count": len(changes),
+                "changes": [admin_log_payload(change) for change in changes],
             }
         )
 
@@ -6819,9 +7029,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
         try:
-            route = upsert_embedding_provider_route(
+            route = upsert_embedding_provider_route_with_audit(
                 settings.database_url,
                 embedding_provider_route_input_from_request(payload),
+                request_path="/api/admin/embedding-provider-routes",
             )
         except InvalidEmbeddingProviderRouteError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -6839,10 +7050,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
         try:
-            route = update_embedding_provider_route(
+            route = update_embedding_provider_route_with_audit(
                 settings.database_url,
                 route_id,
                 embedding_provider_route_input_from_request(payload),
+                request_path=f"/api/admin/embedding-provider-routes/{route_id}",
             )
         except InvalidEmbeddingProviderRouteError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -6865,10 +7077,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
         try:
-            route = set_embedding_provider_route_active(
+            route = set_embedding_provider_route_active_with_audit(
                 settings.database_url,
                 route_id,
                 payload.is_active,
+                request_path=f"/api/admin/embedding-provider-routes/{route_id}/activation",
             )
         except InvalidEmbeddingProviderRouteError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -9974,7 +10187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
-                upsert_embedding_provider_route(
+                upsert_embedding_provider_route_with_audit(
                     settings.database_url,
                     EmbeddingProviderRouteInput(
                         profile_name=profile_name,
@@ -9992,6 +10205,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             auth_header_name=auth_header_name,
                         ),
                     ),
+                    request_path="/admin/embedding-provider-routes",
                 )
                 success_message = "Embedding provider route saved."
             except InvalidEmbeddingProviderRouteError as exc:

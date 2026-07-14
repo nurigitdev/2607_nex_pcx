@@ -1330,6 +1330,45 @@
   </div>
 </section>
 
+<section
+  class="metric-card bg-white p-0 overflow-hidden mb-4"
+  data-provider-route-change-log-panel
+  data-change-logs-api-url="/api/admin/embedding-provider-routes/change-logs?limit=10"
+  data-database-configured="{{ 'true' if database_configured else 'false' }}"
+>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("embedding_routes.change_logs") }}</h2>
+      <div class="text-secondary">{{ t("embedding_routes.change_logs_help") }}</div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="small text-secondary" data-provider-route-change-log-status aria-live="polite"></span>
+      <button class="btn btn-outline-secondary btn-sm" type="button" data-provider-route-change-log-refresh>{{ t("embedding_routes.refresh") }}</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_routes.occurred_at") }}</th>
+          <th scope="col">{{ t("embedding_routes.action") }}</th>
+          <th scope="col">{{ t("embedding_routes.profile") }}</th>
+          <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
+          <th scope="col">{{ t("embedding_routes.changed_fields") }}</th>
+          <th scope="col">{{ t("embedding_routes.message") }}</th>
+        </tr>
+      </thead>
+      <tbody data-provider-route-change-log-table>
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="6">
+            {% if database_configured %}{{ t("embedding_routes.loading_change_logs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden" data-provider-route-management-panel>
   <div class="dashboard-panel-header p-3">
     <div>
@@ -1644,6 +1683,15 @@
     routeActivated: {{ t("embedding_routes.route_activated") | tojson }},
     routeDeactivated: {{ t("embedding_routes.route_deactivated") | tojson }},
     routeActivationFailed: {{ t("embedding_routes.route_activation_failed") | tojson }},
+    loadingChangeLogs: {{ t("embedding_routes.loading_change_logs") | tojson }},
+    noChangeLogs: {{ t("embedding_routes.no_change_logs") | tojson }},
+    changeLogsLoaded: {{ t("embedding_routes.change_logs_loaded") | tojson }},
+    changeLogsFailed: {{ t("embedding_routes.change_logs_failed") | tojson }},
+    routeChangeAction: {
+      created: {{ t("embedding_routes.action_created") | tojson }},
+      updated: {{ t("embedding_routes.action_updated") | tojson }},
+      activation_changed: {{ t("embedding_routes.action_activation_changed") | tojson }},
+    },
     activateRoute: {{ t("embedding_routes.activate_route") | tojson }},
     deactivateRoute: {{ t("embedding_routes.deactivate_route") | tojson }},
     edit: {{ t("embedding_routes.edit") | tojson }},
@@ -1717,6 +1765,10 @@
   const alertLevelFilter = alertsPanel?.querySelector("[data-route-alert-level-filter]");
   const alertAckFilter = alertsPanel?.querySelector("[data-route-alert-ack-filter]");
   const alertRefreshButton = alertsPanel?.querySelector("[data-route-alert-refresh]");
+  const changeLogPanel = document.querySelector("[data-provider-route-change-log-panel]");
+  const changeLogTbody = changeLogPanel?.querySelector("[data-provider-route-change-log-table]");
+  const changeLogRefresh = changeLogPanel?.querySelector("[data-provider-route-change-log-refresh]");
+  const changeLogStatus = changeLogPanel?.querySelector("[data-provider-route-change-log-status]");
   const sampleSetPanel = document.querySelector("[data-contract-sample-set-panel]");
   const sampleSetForm = sampleSetPanel?.querySelector("[data-sample-set-form]");
   const sampleSetTbody = sampleSetPanel?.querySelector("[data-sample-set-table]");
@@ -1917,6 +1969,14 @@
     }
     providerRouteStatus.className = `small ${className}`;
     providerRouteStatus.textContent = message;
+  }
+
+  function setChangeLogStatus(message, className = "text-secondary") {
+    if (!changeLogStatus) {
+      return;
+    }
+    changeLogStatus.className = `small ${className}`;
+    changeLogStatus.textContent = message;
   }
 
   function setProviderRouteEditStatus(form, message, className = "text-secondary") {
@@ -2286,6 +2346,7 @@
       await loadContractHistory();
       await loadPreflightRuns();
       await loadAlerts();
+      await loadChangeLogs();
     } catch (error) {
       setPresetStatus(`${labels.presetRegistrationFailed}: ${error.message}`, "text-danger");
     } finally {
@@ -2437,6 +2498,9 @@
       );
       if (routeExportOutput) {
         routeExportOutput.value = formatRouteBundle(body);
+      }
+      if (!dryRun) {
+        await loadChangeLogs();
       }
     } catch (error) {
       setImportExportStatus(error.message || labels.importFailed, "text-danger");
@@ -3432,6 +3496,96 @@
     }
   }
 
+  function renderChangeLogsEmpty(message) {
+    if (!changeLogTbody) {
+      return;
+    }
+    changeLogTbody.innerHTML = `
+      <tr><td class="text-secondary text-center py-4" colspan="6">${escapeHtml(message)}</td></tr>
+    `;
+  }
+
+  function changeLogAction(change) {
+    const detail = change.detail || {};
+    if (detail.action && labels.routeChangeAction[detail.action]) {
+      return labels.routeChangeAction[detail.action];
+    }
+    const normalized = String(change.event_type || "")
+      .replace("embedding_provider_route_", "")
+      .replaceAll("_", " ");
+    return normalized || labels.none;
+  }
+
+  function appendChangedFieldsCell(row, fields) {
+    const cell = document.createElement("td");
+    const changedFields = Array.isArray(fields) ? fields : [];
+    if (!changedFields.length) {
+      cell.textContent = labels.none;
+    } else {
+      const wrapper = document.createElement("div");
+      wrapper.className = "d-flex flex-wrap gap-1";
+      changedFields.forEach((field) => {
+        const badge = document.createElement("span");
+        badge.className = "badge text-bg-light border";
+        badge.textContent = field;
+        wrapper.appendChild(badge);
+      });
+      cell.appendChild(wrapper);
+    }
+    row.appendChild(cell);
+  }
+
+  function renderChangeLogs(changes) {
+    if (!changeLogTbody) {
+      return;
+    }
+    changeLogTbody.replaceChildren();
+    if (!changes.length) {
+      renderChangeLogsEmpty(labels.noChangeLogs);
+      return;
+    }
+
+    changes.forEach((change) => {
+      const detail = change.detail || {};
+      const row = document.createElement("tr");
+      appendTextCell(row, formatDateTime(change.occurred_at), "text-nowrap");
+      appendTextCell(row, changeLogAction(change));
+      appendTextCell(row, detail.profile_name || labels.none);
+      appendTextCell(row, detail.provider_name || labels.none);
+      appendChangedFieldsCell(row, detail.changed_fields);
+      appendTextCell(row, change.message);
+      changeLogTbody.appendChild(row);
+    });
+  }
+
+  async function loadChangeLogs() {
+    if (!changeLogPanel || !changeLogTbody) {
+      return;
+    }
+    if (changeLogPanel.dataset.databaseConfigured !== "true") {
+      renderChangeLogsEmpty(labels.noDatabase);
+      setChangeLogStatus(labels.noDatabase, "text-warning");
+      return;
+    }
+
+    try {
+      renderChangeLogsEmpty(labels.loadingChangeLogs);
+      setChangeLogStatus(labels.loadingChangeLogs);
+      const response = await fetch(changeLogPanel.dataset.changeLogsApiUrl, {
+        headers: {Accept: "application/json"},
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.changeLogsFailed);
+      }
+      renderChangeLogs(body.changes || []);
+      setChangeLogStatus(labels.changeLogsLoaded, "text-success");
+    } catch (error) {
+      renderChangeLogsEmpty(error.message || labels.changeLogsFailed);
+      setChangeLogStatus(error.message || labels.changeLogsFailed, "text-danger");
+    }
+  }
+
   function alertQueryString() {
     const params = new URLSearchParams();
     params.set("acknowledged", alertAckFilter?.value || "false");
@@ -4118,6 +4272,10 @@
     alertAckFilter?.addEventListener("change", () => loadAlerts());
   }
 
+  function wireChangeLogControls() {
+    changeLogRefresh?.addEventListener("click", () => loadChangeLogs());
+  }
+
   function wireOperationsSummaryControls() {
     operationsRefresh?.addEventListener("click", () => loadOperationsSummary());
   }
@@ -4225,6 +4383,7 @@
   wirePreflightButton();
   wireAvailabilityProfileShortcuts();
   wireAlertFilters();
+  wireChangeLogControls();
   wireOperationsSummaryControls();
   wireReadinessControls();
   wireSampleSetForm();
@@ -4238,6 +4397,7 @@
   loadReadiness();
   loadHealth();
   loadAlerts();
+  loadChangeLogs();
   loadSampleSets();
   loadSchedules();
   loadDueSchedules();

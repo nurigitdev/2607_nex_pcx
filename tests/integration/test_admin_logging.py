@@ -1,9 +1,11 @@
 import pytest
 
 from app.core.admin_logging import (
+    InvalidAdminLogError,
     acknowledge_log,
     count_provider_route_alert_logs,
     list_logs,
+    list_provider_route_change_logs,
     log_event,
 )
 from app.core.database import connect, fetch_one
@@ -158,3 +160,83 @@ def test_provider_route_alert_count_tracks_acknowledgement(
         )
         == acknowledged_before + 1
     )
+
+
+def test_provider_route_change_logs_support_filters(
+    migrated_database_url: str,
+) -> None:
+    correlation_ids = [
+        "integration-provider-route-change-created",
+        "integration-provider-route-change-updated",
+    ]
+    with connect(migrated_database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM app_logs WHERE correlation_id = ANY(%s)",
+                (correlation_ids,),
+            )
+
+    try:
+        created_log_id = log_event(
+            migrated_database_url,
+            level="INFO",
+            event_type="embedding_provider_route_created",
+            source="integration-test",
+            message="provider route created",
+            detail={
+                "action": "created",
+                "route_id": 900001,
+                "profile_name": "integration_profile",
+                "provider_name": "integration_provider",
+                "changed_fields": ["provider_base_url"],
+            },
+            correlation_id=correlation_ids[0],
+        )
+        updated_log_id = log_event(
+            migrated_database_url,
+            level="INFO",
+            event_type="embedding_provider_route_updated",
+            source="integration-test",
+            message="provider route renamed",
+            detail={
+                "action": "updated",
+                "route_id": 900001,
+                "profile_name": "integration_profile",
+                "provider_name": "integration_provider_v2",
+                "previous_profile_name": "integration_profile",
+                "previous_provider_name": "integration_provider",
+                "changed_fields": ["provider_name"],
+            },
+            correlation_id=correlation_ids[1],
+        )
+
+        assert created_log_id is not None
+        assert updated_log_id is not None
+        provider_logs = list_provider_route_change_logs(
+            migrated_database_url,
+            provider_name="integration_provider",
+            limit=10,
+        )
+        route_logs = list_provider_route_change_logs(
+            migrated_database_url,
+            route_id=900001,
+            limit=10,
+        )
+
+        assert {log["log_id"] for log in provider_logs} == {
+            created_log_id,
+            updated_log_id,
+        }
+        assert {log["log_id"] for log in route_logs} == {
+            created_log_id,
+            updated_log_id,
+        }
+        with pytest.raises(InvalidAdminLogError):
+            list_provider_route_change_logs(migrated_database_url, limit=0)
+    finally:
+        with connect(migrated_database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM app_logs WHERE correlation_id = ANY(%s)",
+                    (correlation_ids,),
+                )

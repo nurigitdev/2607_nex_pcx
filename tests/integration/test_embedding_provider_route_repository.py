@@ -517,6 +517,7 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
     api_provider_name = f"gpu-admin-api-{suffix}"
     form_provider_name = f"gpu-admin-form-{suffix}"
     provider_names = [api_provider_name, form_provider_name]
+    audit_correlation_ids: list[str] = []
     app = create_app(Settings(database_url=migrated_database_url))
 
     try:
@@ -540,6 +541,7 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert route["provider_name"] == api_provider_name
             assert route["provider_base_url"] == "http://gpu-admin-api.local"
             assert route["runtime_metadata"] == {"pool": "admin"}
+            audit_correlation_ids.append(f"embedding-provider-route:{route['route_id']}:change")
 
             list_response = client.get(
                 "/api/admin/embedding-provider-routes",
@@ -581,6 +583,37 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             )
             assert activation_response.status_code == 200
             assert activation_response.json()["route"]["is_active"] is True
+
+            change_log_response = client.get(
+                "/api/admin/embedding-provider-routes/change-logs",
+                params={"provider_name": api_provider_name, "limit": "10"},
+            )
+            assert change_log_response.status_code == 200
+            change_logs = change_log_response.json()["changes"]
+            event_types = {change["event_type"] for change in change_logs}
+            assert "embedding_provider_route_created" in event_types
+            assert "embedding_provider_route_updated" in event_types
+            assert "embedding_provider_route_activation_changed" in event_types
+            created_change = next(
+                change
+                for change in change_logs
+                if change["event_type"] == "embedding_provider_route_created"
+            )
+            assert created_change["detail"]["profile_name"] == "kure_v1_1024"
+            assert created_change["detail"]["provider_name"] == api_provider_name
+            assert "provider_base_url" in created_change["detail"]["changed_fields"]
+            updated_change = next(
+                change
+                for change in change_logs
+                if change["event_type"] == "embedding_provider_route_updated"
+            )
+            assert "request_header_names" in updated_change["detail"]["changed_fields"]
+            activation_change = next(
+                change
+                for change in change_logs
+                if change["event_type"] == "embedding_provider_route_activation_changed"
+            )
+            assert activation_change["detail"]["changed_fields"] == ["is_active"]
 
             missing_update_response = client.put(
                 "/api/admin/embedding-provider-routes/999999999",
@@ -659,6 +692,8 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                 in page_response.text
             )
             assert "data-provider-route-management-panel" in page_response.text
+            assert "data-provider-route-change-log-panel" in page_response.text
+            assert "/api/admin/embedding-provider-routes/change-logs?limit=10" in page_response.text
             assert "data-provider-route-edit-button" in page_response.text
             assert "data-provider-route-edit-form" in page_response.text
             assert f"/api/admin/embedding-provider-routes/{route['route_id']}" in page_response.text
@@ -724,7 +759,11 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert form_routes[0]["request_header_names"] == ["X-Tenant"]
             assert form_routes[0]["auth_type"] == "bearer"
             assert form_routes[0]["auth_token_env"] == "NEX_PCX_FORM_PROVIDER_TOKEN"
+            audit_correlation_ids.append(
+                f"embedding-provider-route:{form_routes[0]['route_id']}:change"
+            )
     finally:
+        _cleanup_app_logs(migrated_database_url, audit_correlation_ids)
         _cleanup_routes(migrated_database_url, provider_names)
 
 

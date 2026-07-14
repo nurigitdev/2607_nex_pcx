@@ -195,6 +195,11 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "Preflight 실행" in response.text
     assert "data-route-preflight-button" in response.text
     assert "data-provider-route-management-panel" in response.text
+    assert "Provider Route 변경 이력" in response.text
+    assert "data-provider-route-change-log-panel" in response.text
+    assert "/api/admin/embedding-provider-routes/change-logs?limit=10" in response.text
+    assert "data-provider-route-change-log-refresh" in response.text
+    assert "wireChangeLogControls" in response.text
     assert "wireProviderRouteManagementControls" in response.text
     assert "Preflight 스케줄" in response.text
     assert "data-preflight-schedule-panel" in response.text
@@ -236,6 +241,7 @@ def test_embedding_provider_routes_page_shows_configuration_message_without_data
     assert "/api/admin/embedding-provider-routes/health-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/contract-snapshots?limit=10" in response.text
     assert "/api/admin/embedding-provider-routes/alerts" in response.text
+    assert "/api/admin/embedding-provider-routes/change-logs?limit=10" in response.text
 
 
 def test_embedding_provider_launch_plan_api_works_without_database_url() -> None:
@@ -275,6 +281,7 @@ def test_embedding_provider_route_import_export_api_requires_database_url() -> N
         drilldown_response = client.get(
             "/api/admin/embedding-provider-routes/model-availability/kure_v1_1024"
         )
+        change_log_response = client.get("/api/admin/embedding-provider-routes/change-logs")
         import_response = client.post(
             "/api/admin/embedding-provider-routes/import",
             json={
@@ -293,6 +300,7 @@ def test_embedding_provider_route_import_export_api_requires_database_url() -> N
     assert export_response.status_code == 503
     assert availability_response.status_code == 503
     assert drilldown_response.status_code == 503
+    assert change_log_response.status_code == 503
     assert import_response.status_code == 503
 
 
