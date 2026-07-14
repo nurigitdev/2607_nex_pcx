@@ -239,6 +239,9 @@ After a provider reports healthy, run the request-level smoke runner from the ap
 The runner validates `/v1/embeddings` response shape, provider model ID, provider type,
 input count, row count, and output dimension for each selected profile.
 
+The first passing KURE request smoke result is captured in
+`docs/remote_kure_embedding_request_smoke_result.md`.
+
 ## Register Routes In NeX_PCX
 
 Run this on the NeX_PCX app host, not inside the provider systemd unit:

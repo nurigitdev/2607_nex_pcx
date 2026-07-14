@@ -7,6 +7,9 @@ systemd service, or another managed launch path.
 Use this runner after `/healthz` is healthy to confirm that `/v1/embeddings` returns a
 valid provider contract response.
 
+The first passing KURE request smoke result from the DGX Spark host is captured in
+`docs/remote_kure_embedding_request_smoke_result.md`.
+
 ## Dry Run
 
 Generate the default KURE request plan:
