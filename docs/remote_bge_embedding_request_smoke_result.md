@@ -45,6 +45,12 @@ Observed result:
 - `mismatches`: `[]`
 - `error`: `null`
 
+Embedding vector preview:
+
+| Profile | First 3 values from first vector |
+| --- | --- |
+| `bge_m3_1024` | `[-0.043258894234895706, 0.036100007593631744, -0.005832674913108349]` |
+
 Runtime metadata matched:
 
 - `adapter`: `sentence_transformers`

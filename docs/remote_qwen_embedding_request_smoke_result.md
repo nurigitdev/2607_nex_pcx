@@ -46,6 +46,13 @@ Profile observations:
 | `qwen3_4b_1000` | `1000` | `vector` | `3180 ms` | `3160 ms` | `1` |
 | `qwen3_4b_2560` | `2560` | `halfvec` | `150 ms` | `134 ms` | `1` |
 
+Embedding vector preview:
+
+| Profile | First 3 values from first vector |
+| --- | --- |
+| `qwen3_4b_1000` | `[-0.00022586015984416008, -0.004938103724271059, -0.03558120131492615]` |
+| `qwen3_4b_2560` | `[-0.00013867051166016608, -0.0030318291392177343, -0.021845655515789986]` |
+
 Runtime metadata matched:
 
 - `adapter`: `qwen_embedding`

@@ -45,6 +45,12 @@ Observed result:
 - `mismatches`: `[]`
 - `error`: `null`
 
+Embedding vector preview:
+
+| Profile | First 3 values from first vector |
+| --- | --- |
+| `kure_v1_1024` | `[-0.04624427482485771, 0.043011296540498734, -0.005476752761751413]` |
+
 Runtime metadata matched:
 
 - `adapter`: `sentence_transformers`
