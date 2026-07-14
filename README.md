@@ -286,6 +286,8 @@ The first KURE DGX Spark request smoke result is recorded in
 `docs/remote_kure_embedding_request_smoke_result.md`.
 The first BGE DGX Spark request smoke result is recorded in
 `docs/remote_bge_embedding_request_smoke_result.md`.
+The first Qwen DGX Spark dual-profile request smoke result is recorded in
+`docs/remote_qwen_embedding_request_smoke_result.md`.
 Run `scripts/check_remote_gpu_provider_host.py` from the app host for a read-only
 readiness report against the DGX Spark provider server.
 
