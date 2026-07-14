@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .coverage
+coverage.json
 htmlcov/
 *.egg-info/
 .env

@@ -331,6 +331,22 @@ persistence, and removes the fixture by default:
 The first passing development DB worker E2E smoke is captured in
 `docs/dgx_remote_embedding_worker_e2e_smoke_result.md`.
 
+After the worker E2E smoke passes, run the small corpus ingestion benchmark before
+moving to larger document sets. It creates a temporary multi-chunk corpus, creates
+one embedding job per chunk/profile pair, launches KURE, BGE, and Qwen sequentially,
+and summarizes vector persistence plus provider/worker elapsed metadata:
+
+```bash
+./.venv/bin/python scripts/run_dgx_small_corpus_embedding_benchmark.py \
+  --database-url "$NEX_PCX_DATABASE_URL" \
+  --chunk-count 3 \
+  --json \
+  --markdown-output artifacts/dgx_small_corpus_embedding_benchmark.md
+```
+
+The first passing development DB benchmark is captured in
+`docs/dgx_small_corpus_embedding_benchmark_result.md`.
+
 If providers are already running under systemd or another supervisor, run the standalone
 preflight command instead:
 
