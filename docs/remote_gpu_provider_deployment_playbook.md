@@ -286,6 +286,19 @@ Register KURE and BGE similarly:
   --database-url "$NEX_PCX_DATABASE_URL"
 ```
 
+For the standard DGX Spark development host, verify and upsert all four expected profile
+routes in one command:
+
+```bash
+./.venv/bin/python scripts/verify_dgx_provider_route_registration.py \
+  --database-url "$NEX_PCX_DATABASE_URL" \
+  --apply \
+  --json
+```
+
+The first passing development DB verification result is captured in
+`docs/dgx_provider_route_dev_registration_verification.md`.
+
 ## Preflight And Activation
 
 After registering routes:

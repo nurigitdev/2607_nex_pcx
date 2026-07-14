@@ -352,5 +352,17 @@ Provider launch and route registration helpers are available for local operation
   --database-url "$NEX_PCX_DATABASE_URL"
 ```
 
+Verify and optionally upsert the DGX Spark development route registration:
+
+```bash
+./.venv/bin/python scripts/verify_dgx_provider_route_registration.py \
+  --database-url "$NEX_PCX_DATABASE_URL" \
+  --apply \
+  --json
+```
+
+The first development DB verification result is recorded in
+`docs/dgx_provider_route_dev_registration_verification.md`.
+
 Default local ports are `9101` for KURE, `9102` for BGE-M3, and `9103` for the
 shared Qwen provider.
