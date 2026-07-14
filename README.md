@@ -272,6 +272,10 @@ Remote source sync and `.venv` runtime setup are documented in
 `docs/remote_gpu_provider_source_sync_runtime_guide.md`.
 Remote foreground provider smoke planning is documented in
 `docs/remote_provider_foreground_launch_smoke_plan.md`.
+Run `scripts/run_remote_provider_foreground_smoke.py --provider kure --json` from the
+app host to start KURE over SSH, verify `/healthz`, and stop the foreground process.
+The first KURE DGX Spark smoke result is recorded in
+`docs/remote_kure_foreground_health_smoke_result.md`.
 Run `scripts/check_remote_gpu_provider_host.py` from the app host for a read-only
 readiness report against the DGX Spark provider server.
 

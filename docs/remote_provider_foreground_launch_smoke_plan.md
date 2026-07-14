@@ -1,7 +1,11 @@
-# Remote Provider Foreground Launch Smoke Plan
+# Remote Provider Foreground Launch Smoke And Health Smoke
 
 Slice 195 defines the first safe launch path after the DGX Spark readiness checker reports
 `ready=true`.
+Slice 196 adds an executable foreground smoke that starts the remote provider over SSH,
+polls `/healthz` from the app host, and stops the foreground process after the check.
+The first passing KURE result is captured in
+`docs/remote_kure_foreground_health_smoke_result.md`.
 
 Use a foreground launch before systemd so the operator can see startup logs, model load
 errors, and shutdown behavior directly. Start with `kure` or `bge` before `qwen`; Qwen is
@@ -45,6 +49,33 @@ The helper prints:
 - app-host `/healthz` command
 - Ctrl-C shutdown instruction
 
+## Run The Automated KURE Smoke
+
+After reviewing the generated plan, run the automated smoke from the app host:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_foreground_smoke.py \
+  --provider kure \
+  --json
+```
+
+The runner uses the same launch plan, but removes the interactive SSH pseudo-terminal flag
+so it can manage the foreground process as a child process. It reports:
+
+- the exact non-interactive SSH launch command
+- health attempts, status code, and parsed health payload
+- mismatches against the expected model key, profile names, provider model ID, and device
+- process shutdown result and whether `/healthz` became unreachable after stop
+- stdout/stderr tails for startup failure triage
+
+For slower first model loads, increase the startup timeout:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_foreground_smoke.py \
+  --provider kure \
+  --startup-timeout-seconds 300
+```
+
 ## Foreground Launch Sequence
 
 1. Run the readiness command from the plan.
@@ -80,6 +111,7 @@ The smoke passes when:
 - health response reports the expected `model_key`, `profile_names`, `provider_model_id`,
   `device`, and readiness state
 - Ctrl-C stops the process cleanly
+- the automated runner confirms `/healthz` is no longer reachable after shutdown
 
 ## Failure Triage
 
@@ -90,6 +122,7 @@ The smoke passes when:
 | `/healthz` unreachable | Confirm firewall/routing from app host to `192.168.20.243:<port>`. |
 | Model load error | Confirm `models/<model_key>` directory and model runtime packages. |
 | Slow Qwen startup | Validate KURE/BGE first, then start Qwen with a longer observation window. |
+| Automated smoke passes health but fails stop confirmation | Check for an older provider process already bound to the same port. |
 
 After a successful foreground smoke, move to provider health smoke tests and then systemd
 service generation.

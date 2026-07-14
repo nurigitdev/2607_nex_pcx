@@ -176,6 +176,14 @@ For an operator-ready command sequence, generate a foreground smoke plan from th
 See `docs/remote_provider_foreground_launch_smoke_plan.md` for the full foreground launch,
 health check, and Ctrl-C shutdown sequence.
 
+To run the KURE foreground launch and health smoke as one managed command from the app host:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_foreground_smoke.py \
+  --provider kure \
+  --json
+```
+
 ## Provider Health Smoke Test
 
 From the NeX_PCX app host:
