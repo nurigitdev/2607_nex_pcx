@@ -219,6 +219,26 @@ For Qwen, confirm:
 - `device` is `cuda:0`
 - `profile_names` includes both `qwen3_4b_1000` and `qwen3_4b_2560`
 
+## Provider Embedding Request Smoke Test
+
+After a provider reports healthy, run the request-level smoke runner from the app host:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_embedding_smoke.py \
+  --provider kure \
+  --json
+./.venv/bin/python scripts/run_remote_provider_embedding_smoke.py \
+  --provider bge \
+  --json
+./.venv/bin/python scripts/run_remote_provider_embedding_smoke.py \
+  --provider qwen \
+  --timeout-seconds 300 \
+  --json
+```
+
+The runner validates `/v1/embeddings` response shape, provider model ID, provider type,
+input count, row count, and output dimension for each selected profile.
+
 ## Register Routes In NeX_PCX
 
 Run this on the NeX_PCX app host, not inside the provider systemd unit:

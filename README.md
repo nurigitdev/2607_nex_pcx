@@ -280,6 +280,8 @@ The first BGE DGX Spark smoke result is recorded in
 `docs/remote_bge_foreground_health_smoke_result.md`.
 The first Qwen DGX Spark dual-profile smoke result is recorded in
 `docs/remote_qwen_foreground_health_smoke_result.md`.
+Remote embedding request smoke checks are documented in
+`docs/remote_embedding_request_smoke_runner.md`.
 Run `scripts/check_remote_gpu_provider_host.py` from the app host for a read-only
 readiness report against the DGX Spark provider server.
 
