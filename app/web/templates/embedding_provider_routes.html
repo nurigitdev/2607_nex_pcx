@@ -1356,16 +1356,48 @@
           <th scope="col">{{ t("embedding_routes.provider_name") }}</th>
           <th scope="col">{{ t("embedding_routes.changed_fields") }}</th>
           <th scope="col">{{ t("embedding_routes.message") }}</th>
+          <th scope="col">{{ t("embedding_routes.actions") }}</th>
         </tr>
       </thead>
       <tbody data-provider-route-change-log-table>
         <tr>
-          <td class="text-secondary text-center py-4" colspan="6">
+          <td class="text-secondary text-center py-4" colspan="7">
             {% if database_configured %}{{ t("embedding_routes.loading_change_logs") }}{% else %}{{ t("common.no_database") }}{% endif %}
           </td>
         </tr>
       </tbody>
     </table>
+  </div>
+  <div class="border-top p-3" data-provider-route-change-log-detail-panel>
+    <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+      <div>
+        <h3 class="h6 mb-1" data-provider-route-change-log-detail-title>{{ t("embedding_routes.change_log_detail") }}</h3>
+        <div class="text-secondary small" data-provider-route-change-log-detail-meta>
+          {% if database_configured %}{{ t("embedding_routes.no_change_log_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}
+        </div>
+      </div>
+      <span class="badge text-bg-light border" data-provider-route-change-log-detail-badge>{{ t("embedding_routes.changed_fields") }} 0</span>
+    </div>
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("embedding_routes.field") }}</th>
+            <th scope="col">{{ t("embedding_routes.previous_value") }}</th>
+            <th scope="col">{{ t("embedding_routes.current_value") }}</th>
+            <th scope="col">{{ t("embedding_routes.status") }}</th>
+          </tr>
+        </thead>
+        <tbody data-provider-route-change-log-detail-table>
+          <tr>
+            <td class="text-secondary text-center py-4" colspan="4">
+              {% if database_configured %}{{ t("embedding_routes.no_change_log_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <pre class="preflight-run-json-viewer bg-light border rounded-2 p-3 mb-0 small overflow-auto" data-provider-route-change-log-detail-json>{% if database_configured %}{{ t("embedding_routes.no_change_log_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}</pre>
   </div>
 </section>
 
@@ -1687,6 +1719,13 @@
     noChangeLogs: {{ t("embedding_routes.no_change_logs") | tojson }},
     changeLogsLoaded: {{ t("embedding_routes.change_logs_loaded") | tojson }},
     changeLogsFailed: {{ t("embedding_routes.change_logs_failed") | tojson }},
+    loadingChangeLogDetail: {{ t("embedding_routes.loading_change_log_detail") | tojson }},
+    changeLogDetailLoaded: {{ t("embedding_routes.change_log_detail_loaded") | tojson }},
+    changeLogDetailFailed: {{ t("embedding_routes.change_log_detail_failed") | tojson }},
+    noChangeLogSelected: {{ t("embedding_routes.no_change_log_selected") | tojson }},
+    changedFields: {{ t("embedding_routes.changed_fields") | tojson }},
+    changed: {{ t("embedding_routes.changed") | tojson }},
+    unchanged: {{ t("embedding_routes.unchanged") | tojson }},
     routeChangeAction: {
       created: {{ t("embedding_routes.action_created") | tojson }},
       updated: {{ t("embedding_routes.action_updated") | tojson }},
@@ -1769,6 +1808,24 @@
   const changeLogTbody = changeLogPanel?.querySelector("[data-provider-route-change-log-table]");
   const changeLogRefresh = changeLogPanel?.querySelector("[data-provider-route-change-log-refresh]");
   const changeLogStatus = changeLogPanel?.querySelector("[data-provider-route-change-log-status]");
+  const changeLogDetailPanel = changeLogPanel?.querySelector(
+    "[data-provider-route-change-log-detail-panel]",
+  );
+  const changeLogDetailTitle = changeLogDetailPanel?.querySelector(
+    "[data-provider-route-change-log-detail-title]",
+  );
+  const changeLogDetailMeta = changeLogDetailPanel?.querySelector(
+    "[data-provider-route-change-log-detail-meta]",
+  );
+  const changeLogDetailBadge = changeLogDetailPanel?.querySelector(
+    "[data-provider-route-change-log-detail-badge]",
+  );
+  const changeLogDetailTbody = changeLogDetailPanel?.querySelector(
+    "[data-provider-route-change-log-detail-table]",
+  );
+  const changeLogDetailJson = changeLogDetailPanel?.querySelector(
+    "[data-provider-route-change-log-detail-json]",
+  );
   const sampleSetPanel = document.querySelector("[data-contract-sample-set-panel]");
   const sampleSetForm = sampleSetPanel?.querySelector("[data-sample-set-form]");
   const sampleSetTbody = sampleSetPanel?.querySelector("[data-sample-set-table]");
@@ -3501,7 +3558,7 @@
       return;
     }
     changeLogTbody.innerHTML = `
-      <tr><td class="text-secondary text-center py-4" colspan="6">${escapeHtml(message)}</td></tr>
+      <tr><td class="text-secondary text-center py-4" colspan="7">${escapeHtml(message)}</td></tr>
     `;
   }
 
@@ -3535,6 +3592,103 @@
     row.appendChild(cell);
   }
 
+  function formatChangeLogValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return labels.none;
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    return JSON.stringify(value);
+  }
+
+  function renderChangeLogDetailEmpty(message) {
+    if (changeLogDetailMeta) {
+      changeLogDetailMeta.textContent = message;
+    }
+    if (changeLogDetailBadge) {
+      changeLogDetailBadge.className = "badge text-bg-light border";
+      changeLogDetailBadge.textContent = `${labels.changedFields} 0`;
+    }
+    if (changeLogDetailTbody) {
+      changeLogDetailTbody.innerHTML = `
+        <tr><td class="text-secondary text-center py-4" colspan="4">${escapeHtml(message)}</td></tr>
+      `;
+    }
+    if (changeLogDetailJson) {
+      changeLogDetailJson.textContent = message;
+    }
+  }
+
+  function renderChangeLogDetail(body) {
+    const change = body.change || {};
+    const detail = change.detail || {};
+    const diff = body.diff || {};
+    const fields = diff.fields || [];
+    if (changeLogDetailTitle) {
+      changeLogDetailTitle.textContent = `#${change.log_id ?? labels.none} ${changeLogAction(change)}`;
+    }
+    if (changeLogDetailMeta) {
+      changeLogDetailMeta.textContent = [
+        formatDateTime(change.occurred_at),
+        detail.profile_name || labels.none,
+        detail.provider_name || labels.none,
+      ].join(" · ");
+    }
+    if (changeLogDetailBadge) {
+      changeLogDetailBadge.className = "badge text-bg-primary-subtle text-primary-emphasis border";
+      changeLogDetailBadge.textContent = `${labels.changedFields} ${diff.changed_count ?? 0}/${diff.field_count ?? fields.length}`;
+    }
+    if (changeLogDetailTbody) {
+      changeLogDetailTbody.replaceChildren();
+      if (!fields.length) {
+        renderChangeLogDetailEmpty(labels.noChangeLogSelected);
+      } else {
+        fields.forEach((fieldDiff) => {
+          const row = document.createElement("tr");
+          appendTextCell(row, fieldDiff.field);
+          appendTextCell(row, formatChangeLogValue(fieldDiff.previous_value), "model-path");
+          appendTextCell(row, formatChangeLogValue(fieldDiff.current_value), "model-path");
+          const statusCell = document.createElement("td");
+          const badge = document.createElement("span");
+          badge.className = fieldDiff.changed
+            ? "badge text-bg-warning"
+            : "badge text-bg-light border";
+          badge.textContent = fieldDiff.changed ? labels.changed : labels.unchanged;
+          statusCell.appendChild(badge);
+          row.appendChild(statusCell);
+          changeLogDetailTbody.appendChild(row);
+        });
+      }
+    }
+    if (changeLogDetailJson) {
+      changeLogDetailJson.textContent = JSON.stringify(detail, null, 2);
+    }
+  }
+
+  async function loadChangeLogDetail(logId) {
+    if (!changeLogPanel || changeLogPanel.dataset.databaseConfigured !== "true") {
+      renderChangeLogDetailEmpty(labels.noDatabase);
+      return;
+    }
+    try {
+      renderChangeLogDetailEmpty(labels.loadingChangeLogDetail);
+      const response = await fetch(
+        `/api/admin/embedding-provider-routes/change-logs/${logId}`,
+        {headers: {Accept: "application/json"}},
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || labels.changeLogDetailFailed);
+      }
+      renderChangeLogDetail(body);
+      setChangeLogStatus(labels.changeLogDetailLoaded, "text-success");
+    } catch (error) {
+      renderChangeLogDetailEmpty(error.message || labels.changeLogDetailFailed);
+      setChangeLogStatus(error.message || labels.changeLogDetailFailed, "text-danger");
+    }
+  }
+
   function renderChangeLogs(changes) {
     if (!changeLogTbody) {
       return;
@@ -3554,6 +3708,18 @@
       appendTextCell(row, detail.provider_name || labels.none);
       appendChangedFieldsCell(row, detail.changed_fields);
       appendTextCell(row, change.message);
+      const actionCell = document.createElement("td");
+      const detailButton = document.createElement("button");
+      detailButton.className = "btn btn-outline-primary btn-sm";
+      detailButton.type = "button";
+      detailButton.textContent = labels.preflightRunDetailAction;
+      detailButton.setAttribute(
+        "data-provider-route-change-log-detail-button",
+        String(change.log_id),
+      );
+      detailButton.addEventListener("click", () => loadChangeLogDetail(change.log_id));
+      actionCell.appendChild(detailButton);
+      row.appendChild(actionCell);
       changeLogTbody.appendChild(row);
     });
   }

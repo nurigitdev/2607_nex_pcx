@@ -22,6 +22,7 @@ from app.core.admin_logging import (
     InvalidAdminLogError,
     acknowledge_log,
     count_provider_route_alert_logs,
+    get_provider_route_change_log,
     list_logs,
     list_provider_route_alert_logs,
     list_provider_route_change_logs,
@@ -991,6 +992,34 @@ def admin_log_payload(log: dict[str, object]) -> dict[str, object]:
         "acknowledged_at": _datetime_response(log.get("acknowledged_at")),
         "acknowledged_by": log.get("acknowledged_by"),
         "acknowledgement_note": log.get("acknowledgement_note"),
+    }
+
+
+def provider_route_change_diff_payload(log: dict[str, object]) -> dict[str, object]:
+    detail = dict(log.get("detail") or {})
+    previous = detail.get("previous") if isinstance(detail.get("previous"), dict) else {}
+    current = detail.get("current") if isinstance(detail.get("current"), dict) else {}
+    changed_fields = {
+        str(field) for field in detail.get("changed_fields", []) if isinstance(field, str) and field
+    }
+    field_names = sorted(set(previous) | set(current) | changed_fields)
+    fields = [
+        {
+            "field": field,
+            "previous_value": previous.get(field),
+            "current_value": current.get(field),
+            "changed": field in changed_fields or previous.get(field) != current.get(field),
+        }
+        for field in field_names
+    ]
+    return {
+        "change": admin_log_payload(log),
+        "diff": {
+            "field_count": len(fields),
+            "changed_count": sum(1 for field in fields if field["changed"]),
+            "changed_fields": sorted(changed_fields),
+            "fields": fields,
+        },
     }
 
 
@@ -6591,6 +6620,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "changes": [admin_log_payload(change) for change in changes],
             }
         )
+
+    @app.get("/api/admin/embedding-provider-routes/change-logs/{log_id}")
+    def api_get_embedding_provider_route_change_log(log_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            change = get_provider_route_change_log(settings.database_url, log_id)
+        except InvalidAdminLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if change is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Provider route change log not found.",
+            )
+
+        return JSONResponse(content=provider_route_change_diff_payload(change))
 
     @app.post("/api/admin/embedding-provider-routes/alerts/{log_id}/acknowledge")
     def api_acknowledge_embedding_provider_route_alert(

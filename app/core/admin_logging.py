@@ -265,6 +265,27 @@ def list_provider_route_change_logs(
             return [dict(row) for row in cursor.fetchall()]
 
 
+def get_provider_route_change_log(
+    database_url: str,
+    log_id: int,
+) -> dict[str, Any] | None:
+    if log_id <= 0:
+        raise InvalidAdminLogError("log_id must be greater than 0")
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM app_logs
+                WHERE log_id = %s
+                  AND event_type = ANY(%s)
+                """,
+                (log_id, list(PROVIDER_ROUTE_CHANGE_EVENT_TYPES)),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+
 def count_provider_route_alert_logs(
     database_url: str,
     *,

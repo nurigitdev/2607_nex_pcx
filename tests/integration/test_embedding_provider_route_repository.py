@@ -614,6 +614,25 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
                 if change["event_type"] == "embedding_provider_route_activation_changed"
             )
             assert activation_change["detail"]["changed_fields"] == ["is_active"]
+            detail_response = client.get(
+                f"/api/admin/embedding-provider-routes/change-logs/{updated_change['log_id']}",
+            )
+            assert detail_response.status_code == 200
+            detail_body = detail_response.json()
+            assert detail_body["change"]["log_id"] == updated_change["log_id"]
+            diff_by_field = {field["field"]: field for field in detail_body["diff"]["fields"]}
+            assert diff_by_field["provider_base_url"]["changed"] is True
+            assert (
+                diff_by_field["provider_base_url"]["previous_value"] == "http://gpu-admin-api.local"
+            )
+            assert (
+                diff_by_field["provider_base_url"]["current_value"]
+                == "http://gpu-admin-api-edited.local"
+            )
+            missing_detail_response = client.get(
+                "/api/admin/embedding-provider-routes/change-logs/999999999",
+            )
+            assert missing_detail_response.status_code == 404
 
             missing_update_response = client.put(
                 "/api/admin/embedding-provider-routes/999999999",
@@ -694,6 +713,10 @@ def test_embedding_provider_route_admin_api_and_page_manage_routes(
             assert "data-provider-route-management-panel" in page_response.text
             assert "data-provider-route-change-log-panel" in page_response.text
             assert "/api/admin/embedding-provider-routes/change-logs?limit=10" in page_response.text
+            assert "data-provider-route-change-log-detail-panel" in page_response.text
+            assert "data-provider-route-change-log-detail-table" in page_response.text
+            assert "data-provider-route-change-log-detail-json" in page_response.text
+            assert "data-provider-route-change-log-detail-button" in page_response.text
             assert "data-provider-route-edit-button" in page_response.text
             assert "data-provider-route-edit-form" in page_response.text
             assert f"/api/admin/embedding-provider-routes/{route['route_id']}" in page_response.text

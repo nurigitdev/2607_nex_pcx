@@ -4,6 +4,7 @@ from app.core.admin_logging import (
     InvalidAdminLogError,
     acknowledge_log,
     count_provider_route_alert_logs,
+    get_provider_route_change_log,
     list_logs,
     list_provider_route_change_logs,
     log_event,
@@ -222,6 +223,10 @@ def test_provider_route_change_logs_support_filters(
             route_id=900001,
             limit=10,
         )
+        created_log = get_provider_route_change_log(
+            migrated_database_url,
+            created_log_id,
+        )
 
         assert {log["log_id"] for log in provider_logs} == {
             created_log_id,
@@ -231,8 +236,13 @@ def test_provider_route_change_logs_support_filters(
             created_log_id,
             updated_log_id,
         }
+        assert created_log is not None
+        assert created_log["detail"]["changed_fields"] == ["provider_base_url"]
+        assert get_provider_route_change_log(migrated_database_url, 999999999) is None
         with pytest.raises(InvalidAdminLogError):
             list_provider_route_change_logs(migrated_database_url, limit=0)
+        with pytest.raises(InvalidAdminLogError):
+            get_provider_route_change_log(migrated_database_url, 0)
     finally:
         with connect(migrated_database_url) as connection:
             with connection.cursor() as cursor:
