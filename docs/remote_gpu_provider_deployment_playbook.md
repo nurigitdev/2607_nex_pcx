@@ -82,8 +82,13 @@ Common readiness failures:
 
 - `provider_runtime_import` fails with `No module named 'fastapi'`: install the app
   runtime dependencies in the remote `.venv`.
+- `provider_runtime_import` fails with `No module named 'app'`: sync the current NeX_PCX
+  source tree and install it into the remote `.venv`.
 - `setup_script_exists` or `setup_dry_run_*` fails: update or copy the latest NeX_PCX
   source files to the remote work directory before generating provider service files.
+
+Use `docs/remote_gpu_provider_source_sync_runtime_guide.md` for the source sync and
+runtime dependency setup procedure.
 
 ## Generate Provider Service Files
 
