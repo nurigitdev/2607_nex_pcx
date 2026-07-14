@@ -301,7 +301,23 @@ The first passing development DB verification result is captured in
 
 ## Preflight And Activation
 
-After registering routes:
+After registering routes, use the managed DGX verification runner when providers are not
+already supervised. It launches KURE, BGE, and Qwen sequentially, runs profile-scoped route
+preflight checks against the NeX-PCX database, records health/contract snapshots, and stops
+each foreground provider:
+
+```bash
+./.venv/bin/python scripts/run_dgx_provider_route_preflight_verification.py \
+  --database-url "$NEX_PCX_DATABASE_URL" \
+  --json \
+  --markdown-output artifacts/dgx_provider_route_preflight_verification.md
+```
+
+The first passing development DB run is captured in
+`docs/dgx_provider_route_preflight_verification_result.md`.
+
+If providers are already running under systemd or another supervisor, run the standalone
+preflight command instead:
 
 ```bash
 ./.venv/bin/python scripts/preflight_provider_routes.py \

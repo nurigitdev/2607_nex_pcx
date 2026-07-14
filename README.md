@@ -364,5 +364,18 @@ Verify and optionally upsert the DGX Spark development route registration:
 The first development DB verification result is recorded in
 `docs/dgx_provider_route_dev_registration_verification.md`.
 
+Run the DGX Spark route preflight verification runner to launch KURE, BGE, and the
+shared Qwen provider sequentially, validate the registered profile routes, persist
+health/contract snapshots, and stop each foreground provider:
+
+```bash
+./.venv/bin/python scripts/run_dgx_provider_route_preflight_verification.py \
+  --database-url "$NEX_PCX_DATABASE_URL" \
+  --json
+```
+
+The first passing development DB preflight verification result is recorded in
+`docs/dgx_provider_route_preflight_verification_result.md`.
+
 Default local ports are `9101` for KURE, `9102` for BGE-M3, and `9103` for the
 shared Qwen provider.
