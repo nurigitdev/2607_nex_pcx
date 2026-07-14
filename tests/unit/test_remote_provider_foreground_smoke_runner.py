@@ -47,6 +47,10 @@ def _plan():
     return runner.build_foreground_smoke_plan(get_embedding_provider_preset("kure"))
 
 
+def _qwen_plan():
+    return runner.build_foreground_smoke_plan(get_embedding_provider_preset("qwen"))
+
+
 def _health_payload(**overrides: Any) -> dict[str, Any]:
     return {
         "ready": True,
@@ -56,6 +60,25 @@ def _health_payload(**overrides: Any) -> dict[str, Any]:
         "dimension": 1024,
         "device": "cuda:0",
         "runtime_metadata": {"backend": "sentence_transformers"},
+        **overrides,
+    }
+
+
+def _qwen_health_payload(**overrides: Any) -> dict[str, Any]:
+    return {
+        "ready": True,
+        "provider_model_id": "local-qwen3-embedding-4b",
+        "model_key": "qwen3_embedding_4b",
+        "profile_names": ["qwen3_4b_1000", "qwen3_4b_2560"],
+        "dimension": None,
+        "device": "cuda:0",
+        "runtime_metadata": {
+            "backend": "qwen_embedding",
+            "profile_dimensions": {
+                "qwen3_4b_1000": 1000,
+                "qwen3_4b_2560": 2560,
+            },
+        },
         **overrides,
     }
 
@@ -269,6 +292,31 @@ def test_health_mismatches_validate_expected_kure_payload() -> None:
     assert "provider_model_id: expected 'local-kure-v1', got 'other'" in mismatches
     assert "profile_names: expected ['kure_v1_1024'], got ['other_profile']" in mismatches
     assert "device: expected 'cuda:0', got 'cpu'" in mismatches
+
+
+def test_health_mismatches_validate_expected_qwen_dual_profile_payload() -> None:
+    assert runner._health_mismatches(_qwen_health_payload(), plan=_qwen_plan()) == ()
+
+    mismatches = runner._health_mismatches(
+        _qwen_health_payload(
+            dimension=2560,
+            runtime_metadata={
+                "backend": "qwen_embedding",
+                "profile_dimensions": {
+                    "qwen3_4b_1000": 1024,
+                    "qwen3_4b_2560": 2560,
+                },
+            },
+        ),
+        plan=_qwen_plan(),
+    )
+
+    assert "dimension: expected None for multi-profile provider, got 2560" in mismatches
+    assert (
+        "runtime_metadata.profile_dimensions: expected "
+        "{'qwen3_4b_1000': 1000, 'qwen3_4b_2560': 2560}, "
+        "got {'qwen3_4b_1000': 1024, 'qwen3_4b_2560': 2560}"
+    ) in mismatches
 
 
 def test_run_foreground_smoke_rejects_invalid_timeouts() -> None:

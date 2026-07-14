@@ -192,6 +192,16 @@ Use the same runner for BGE on port `9102`:
   --json
 ```
 
+Use a longer startup timeout for the shared Qwen provider on port `9103`:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_foreground_smoke.py \
+  --provider qwen \
+  --startup-timeout-seconds 900 \
+  --poll-interval-seconds 5 \
+  --json
+```
+
 ## Provider Health Smoke Test
 
 From the NeX_PCX app host:

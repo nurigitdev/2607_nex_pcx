@@ -22,6 +22,7 @@ from app.core.embedding_provider_presets import (  # noqa: E402
     get_embedding_provider_preset,
     list_embedding_provider_presets,
 )
+from app.core.embedding_vectors import get_embedding_vector_table  # noqa: E402
 from scripts.plan_remote_provider_foreground_smoke import (  # noqa: E402
     DEFAULT_DEVICE,
     DEFAULT_GPU_HOST,
@@ -180,6 +181,35 @@ def _health_mismatches(
     expected_profiles = list(plan.profile_names)
     if actual_profiles != expected_profiles:
         mismatches.append(f"profile_names: expected {expected_profiles!r}, got {actual_profiles!r}")
+
+    expected_dimensions = {
+        profile_name: get_embedding_vector_table(profile_name).dimension
+        for profile_name in plan.profile_names
+    }
+    actual_dimension = payload.get("dimension")
+    if len(expected_dimensions) == 1:
+        expected_dimension = next(iter(expected_dimensions.values()))
+        if actual_dimension != expected_dimension:
+            mismatches.append(
+                f"dimension: expected {expected_dimension!r}, got {actual_dimension!r}"
+            )
+    else:
+        if actual_dimension is not None:
+            mismatches.append(
+                "dimension: expected None for multi-profile provider, "
+                + f"got {actual_dimension!r}"
+            )
+        runtime_metadata = payload.get("runtime_metadata")
+        actual_profile_dimensions = (
+            runtime_metadata.get("profile_dimensions")
+            if isinstance(runtime_metadata, dict)
+            else None
+        )
+        if actual_profile_dimensions != expected_dimensions:
+            mismatches.append(
+                "runtime_metadata.profile_dimensions: "
+                f"expected {expected_dimensions!r}, got {actual_profile_dimensions!r}"
+            )
     return tuple(mismatches)
 
 

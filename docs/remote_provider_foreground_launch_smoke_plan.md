@@ -8,6 +8,8 @@ The first passing KURE result is captured in
 `docs/remote_kure_foreground_health_smoke_result.md`.
 The first passing BGE result is captured in
 `docs/remote_bge_foreground_health_smoke_result.md`.
+The first passing Qwen dual-profile result is captured in
+`docs/remote_qwen_foreground_health_smoke_result.md`.
 
 Use a foreground launch before systemd so the operator can see startup logs, model load
 errors, and shutdown behavior directly. Start with `kure` or `bge` before `qwen`; Qwen is
@@ -76,6 +78,16 @@ For slower first model loads, increase the startup timeout:
 ./.venv/bin/python scripts/run_remote_provider_foreground_smoke.py \
   --provider kure \
   --startup-timeout-seconds 300
+```
+
+For Qwen, use a longer startup timeout because the provider loads a larger model and serves
+two output profiles from one process:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_foreground_smoke.py \
+  --provider qwen \
+  --startup-timeout-seconds 900 \
+  --poll-interval-seconds 5
 ```
 
 ## Foreground Launch Sequence
