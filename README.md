@@ -270,6 +270,8 @@ with generated env/systemd files available through
 `scripts/setup_remote_gpu_provider.py`.
 Remote source sync and `.venv` runtime setup are documented in
 `docs/remote_gpu_provider_source_sync_runtime_guide.md`.
+Remote foreground provider smoke planning is documented in
+`docs/remote_provider_foreground_launch_smoke_plan.md`.
 Run `scripts/check_remote_gpu_provider_host.py` from the app host for a read-only
 readiness report against the DGX Spark provider server.
 

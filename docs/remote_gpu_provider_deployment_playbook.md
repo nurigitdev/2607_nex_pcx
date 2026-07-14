@@ -167,6 +167,15 @@ For a quick foreground smoke run without systemd:
   --provider-model-id dgx-spark-qwen3-embedding-4b-2026-07
 ```
 
+For an operator-ready command sequence, generate a foreground smoke plan from the app host:
+
+```bash
+./.venv/bin/python scripts/plan_remote_provider_foreground_smoke.py --provider kure
+```
+
+See `docs/remote_provider_foreground_launch_smoke_plan.md` for the full foreground launch,
+health check, and Ctrl-C shutdown sequence.
+
 ## Provider Health Smoke Test
 
 From the NeX_PCX app host:

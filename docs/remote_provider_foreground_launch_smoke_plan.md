@@ -1,0 +1,95 @@
+# Remote Provider Foreground Launch Smoke Plan
+
+Slice 195 defines the first safe launch path after the DGX Spark readiness checker reports
+`ready=true`.
+
+Use a foreground launch before systemd so the operator can see startup logs, model load
+errors, and shutdown behavior directly. Start with `kure` or `bge` before `qwen`; Qwen is
+larger and serves two profiles from one process.
+
+## Preconditions
+
+From the app host:
+
+```bash
+./.venv/bin/python scripts/check_remote_gpu_provider_host.py --provider kure --json
+```
+
+Expected result:
+
+- `ready` is `true`
+- all required checks pass
+- provider ports may still be empty because no provider is running yet
+
+## Generate A Foreground Plan
+
+Default safe plan, using KURE on port `9101`:
+
+```bash
+./.venv/bin/python scripts/plan_remote_provider_foreground_smoke.py
+./.venv/bin/python scripts/plan_remote_provider_foreground_smoke.py --json
+```
+
+Generate plans for other providers:
+
+```bash
+./.venv/bin/python scripts/plan_remote_provider_foreground_smoke.py --provider bge
+./.venv/bin/python scripts/plan_remote_provider_foreground_smoke.py --provider qwen
+```
+
+The helper prints:
+
+- readiness command to run from the app host
+- foreground SSH launch command
+- remote port listener check
+- app-host `/healthz` command
+- Ctrl-C shutdown instruction
+
+## Foreground Launch Sequence
+
+1. Run the readiness command from the plan.
+2. Open a terminal dedicated to the provider process.
+3. Run the `ssh -t ...` foreground launch command from the plan.
+4. Leave that SSH session open while the provider loads.
+5. From the app host, run the port check and health check commands from the plan.
+6. Stop the provider with Ctrl-C in the foreground SSH session.
+7. Confirm the port listener disappears.
+
+For KURE, the launch command has this shape:
+
+```bash
+ssh -t nexpcx@192.168.20.243 \
+  'cd /home/nexpcx/2607_nex_pcx && NEX_PCX_PROVIDER_BACKEND=sentence_transformers ... \
+  /home/nexpcx/2607_nex_pcx/.venv/bin/python -m uvicorn \
+  app.embedding_provider_service:app --host 0.0.0.0 --port 9101'
+```
+
+Expected health URL:
+
+```bash
+curl -fsS http://192.168.20.243:9101/healthz
+```
+
+## Success Criteria
+
+The smoke passes when:
+
+- the foreground process starts without import errors
+- the configured port is listening
+- `/healthz` returns HTTP 200
+- health response reports the expected `model_key`, `profile_names`, `provider_model_id`,
+  `device`, and readiness state
+- Ctrl-C stops the process cleanly
+
+## Failure Triage
+
+| Symptom | First check |
+| --- | --- |
+| Import error at startup | Re-run `check_remote_gpu_provider_host.py --provider <name> --json`. |
+| Port already in use | Check `ss -ltnH` output and stop the old foreground/systemd process. |
+| `/healthz` unreachable | Confirm firewall/routing from app host to `192.168.20.243:<port>`. |
+| Model load error | Confirm `models/<model_key>` directory and model runtime packages. |
+| Slow Qwen startup | Validate KURE/BGE first, then start Qwen with a longer observation window. |
+
+After a successful foreground smoke, move to provider health smoke tests and then systemd
+service generation.
