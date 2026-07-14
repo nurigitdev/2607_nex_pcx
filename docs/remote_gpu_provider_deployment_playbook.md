@@ -316,6 +316,21 @@ each foreground provider:
 The first passing development DB run is captured in
 `docs/dgx_provider_route_preflight_verification_result.md`.
 
+After route preflight passes, run a worker E2E smoke before larger benchmark ingestion.
+This creates a temporary chunk, creates one embedding job per profile, processes those
+jobs through route-aware workers with the readiness gate enabled, verifies vector table
+persistence, and removes the fixture by default:
+
+```bash
+./.venv/bin/python scripts/run_dgx_remote_embedding_worker_e2e_smoke.py \
+  --database-url "$NEX_PCX_DATABASE_URL" \
+  --json \
+  --markdown-output artifacts/dgx_remote_embedding_worker_e2e_smoke.md
+```
+
+The first passing development DB worker E2E smoke is captured in
+`docs/dgx_remote_embedding_worker_e2e_smoke_result.md`.
+
 If providers are already running under systemd or another supervisor, run the standalone
 preflight command instead:
 

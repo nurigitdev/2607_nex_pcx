@@ -377,5 +377,18 @@ health/contract snapshots, and stop each foreground provider:
 The first passing development DB preflight verification result is recorded in
 `docs/dgx_provider_route_preflight_verification_result.md`.
 
+Run the DGX Spark remote embedding worker E2E smoke to create a temporary chunk,
+process one embedding job per profile through route-aware workers, verify vector
+persistence, and clean up the fixture:
+
+```bash
+./.venv/bin/python scripts/run_dgx_remote_embedding_worker_e2e_smoke.py \
+  --database-url "$NEX_PCX_DATABASE_URL" \
+  --json
+```
+
+The first passing development DB worker E2E smoke result is recorded in
+`docs/dgx_remote_embedding_worker_e2e_smoke_result.md`.
+
 Default local ports are `9101` for KURE, `9102` for BGE-M3, and `9103` for the
 shared Qwen provider.
