@@ -13,6 +13,8 @@ The first passing BGE request smoke result is captured in
 `docs/remote_bge_embedding_request_smoke_result.md`.
 The first passing Qwen dual-profile request smoke result is captured in
 `docs/remote_qwen_embedding_request_smoke_result.md`.
+The first passing sequential suite result is captured in
+`docs/remote_embedding_request_smoke_suite_result.md`.
 
 ## Dry Run
 
@@ -88,3 +90,39 @@ For each profile, the runner validates:
 
 The JSON report includes only a small preview from the first embedding vector, not the full
 embedding payload.
+
+## Run The Full Remote Suite
+
+Slice 203 adds a sequential suite runner that launches each provider, waits for `/healthz`,
+runs the request-level smoke check, and stops the provider before moving to the next one.
+By default it runs KURE, BGE, then the Qwen dual-profile provider:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_embedding_smoke_suite.py \
+  --json
+```
+
+Preview the complete launch/request plan without opening SSH sessions:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_embedding_smoke_suite.py \
+  --dry-run \
+  --json
+```
+
+Write a compact Markdown report with provider outcomes and vector previews:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_embedding_smoke_suite.py \
+  --json \
+  --markdown-output artifacts/remote_embedding_request_smoke_suite.md
+```
+
+Run only one provider when narrowing down a failure:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_embedding_smoke_suite.py \
+  --provider qwen \
+  --qwen-request-timeout-seconds 300 \
+  --json
+```

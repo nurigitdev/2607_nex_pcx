@@ -282,6 +282,10 @@ The first Qwen DGX Spark dual-profile smoke result is recorded in
 `docs/remote_qwen_foreground_health_smoke_result.md`.
 Remote embedding request smoke checks are documented in
 `docs/remote_embedding_request_smoke_runner.md`.
+Run `scripts/run_remote_provider_embedding_smoke_suite.py --json` to launch KURE, BGE,
+and Qwen sequentially, validate real embedding responses, and stop each remote provider.
+The first passing suite result is recorded in
+`docs/remote_embedding_request_smoke_suite_result.md`.
 The first KURE DGX Spark request smoke result is recorded in
 `docs/remote_kure_embedding_request_smoke_result.md`.
 The first BGE DGX Spark request smoke result is recorded in

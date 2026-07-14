@@ -246,6 +246,19 @@ The first passing BGE request smoke result is captured in
 The first passing Qwen dual-profile request smoke result is captured in
 `docs/remote_qwen_embedding_request_smoke_result.md`.
 
+To verify all remote providers in one sequential run, use the suite runner. It launches
+KURE, BGE, and Qwen one at a time, validates real embedding responses, and stops each
+provider before moving on:
+
+```bash
+./.venv/bin/python scripts/run_remote_provider_embedding_smoke_suite.py \
+  --json \
+  --markdown-output artifacts/remote_embedding_request_smoke_suite.md
+```
+
+The first passing suite result is captured in
+`docs/remote_embedding_request_smoke_suite_result.md`.
+
 ## Register Routes In NeX_PCX
 
 Run this on the NeX_PCX app host, not inside the provider systemd unit:
