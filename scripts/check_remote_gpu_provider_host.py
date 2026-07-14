@@ -152,11 +152,8 @@ def build_readiness_plan(
     if not selected_route_host:
         raise ValueError("route_host is required")
 
-    provider_import_code = (
-        "import fastapi, uvicorn; "
-        "import app.embedding_provider_service; "
-        "print('provider_import_ok')"
-    )
+    runtime_dependency_import_code = "import fastapi, uvicorn; print('runtime_import_ok')"
+    provider_import_code = "import app.embedding_provider_service; print('provider_import_ok')"
 
     checks: list[RemoteReadinessCheckPlan] = [
         RemoteReadinessCheckPlan(
@@ -175,8 +172,28 @@ def build_readiness_plan(
             remote_command=f"{_quote(selected_python_bin)} --version",
         ),
         RemoteReadinessCheckPlan(
-            name="provider_runtime_import",
-            description="Confirm provider runtime dependencies can import.",
+            name="runtime_dependency_import",
+            description="Confirm installed provider runtime dependencies can import.",
+            remote_command=(
+                f"cd {_quote(selected_workdir)} && {_quote(selected_python_bin)} -c "
+                f"{_quote(runtime_dependency_import_code)}"
+            ),
+        ),
+        RemoteReadinessCheckPlan(
+            name="source_tree_shape",
+            description="Confirm the remote source tree has the files needed by provider scripts.",
+            remote_command=(
+                f"test -f {_quote(selected_workdir)}/pyproject.toml "
+                f"&& test -f {_quote(selected_workdir)}/app/embedding_provider_service.py "
+                f"&& test -d {_quote(selected_workdir)}/app/core "
+                f"&& test -f {_quote(selected_workdir)}/app/core/config.py "
+                f"&& test -f {_quote(selected_workdir)}/app/core/embedding_provider_presets.py "
+                "&& echo source_tree_ok"
+            ),
+        ),
+        RemoteReadinessCheckPlan(
+            name="provider_service_import",
+            description="Confirm the embedding provider service can import from the source tree.",
             remote_command=(
                 f"cd {_quote(selected_workdir)} && {_quote(selected_python_bin)} -c "
                 f"{_quote(provider_import_code)}"

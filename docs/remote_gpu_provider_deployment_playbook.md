@@ -80,10 +80,12 @@ the setup dry-run for each provider preset.
 
 Common readiness failures:
 
-- `provider_runtime_import` fails with `No module named 'fastapi'`: install the app
+- `runtime_dependency_import` fails with `No module named 'fastapi'`: install the app
   runtime dependencies in the remote `.venv`.
-- `provider_runtime_import` fails with `No module named 'app'`: sync the current NeX_PCX
-  source tree and install it into the remote `.venv`.
+- `source_tree_shape` fails: sync the current NeX_PCX source tree, including
+  `pyproject.toml`, `app/core/`, and provider scripts.
+- `provider_service_import` fails with `No module named 'app.core'`: copy or sync the full
+  `app/core/` package and install the source into the remote `.venv`.
 - `setup_script_exists` or `setup_dry_run_*` fails: update or copy the latest NeX_PCX
   source files to the remote work directory before generating provider service files.
 

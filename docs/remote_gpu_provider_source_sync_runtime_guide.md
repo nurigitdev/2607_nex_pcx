@@ -18,17 +18,19 @@ After installing `fastapi` and `uvicorn`, the read-only readiness check confirms
 - SSH identity works as `nexpcx` on `spark-1856`.
 - The work directory exists.
 - The remote venv Python is `Python 3.12.3`.
+- `runtime_dependency_import` passes, so `fastapi` and `uvicorn` are importable.
 - `nvidia-smi` sees `NVIDIA GB10` with driver `580.159.03`.
+- `setup_script_exists` passes after manually copying the scripts directory.
 - `models/kure_v1`, `models/bge_m3`, and `models/qwen3_embedding_4b` exist.
 
-Remaining failures mean the source tree is behind the app host:
+Remaining failures mean the source tree is still partial:
 
-- `provider_runtime_import`: `ModuleNotFoundError: No module named 'app'`
-- `setup_script_exists`: `scripts/setup_remote_gpu_provider.py` missing
-- `setup_dry_run_*`: cannot run until the latest setup script is present
+- `source_tree_shape`: `pyproject.toml` or `app/core/` is missing
+- `provider_service_import`: `ModuleNotFoundError: No module named 'app.core'`
+- `setup_dry_run_*`: cannot run until `app/core/` and provider preset helpers are present
 
-So the next step is source synchronization, then package installation from the synced
-source.
+So the next step is copying or syncing the full source tree, especially `pyproject.toml`
+and the complete `app/core/` package, then installing the source into the remote `.venv`.
 
 ## Source Sync Rules
 

@@ -34,6 +34,9 @@ def test_remote_gpu_readiness_plan_uses_dgx_spark_defaults() -> None:
 
     check_names = [check.name for check in plan.checks]
     assert "ssh_identity" in check_names
+    assert "runtime_dependency_import" in check_names
+    assert "source_tree_shape" in check_names
+    assert "provider_service_import" in check_names
     assert "nvidia_smi" in check_names
     assert "setup_script_exists" in check_names
     assert "model_dir_kure_v1" in check_names
@@ -145,6 +148,7 @@ def test_remote_gpu_readiness_cli_prints_json_dry_run_plan() -> None:
     assert payload["providers"] == ["qwen"]
     assert payload["ready"] is False
     assert {check["status"] for check in payload["checks"]} == {"planned"}
+    assert "source_tree_shape" in {check["name"] for check in payload["checks"]}
 
 
 def test_remote_gpu_readiness_rejects_invalid_timeout() -> None:
