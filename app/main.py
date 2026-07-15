@@ -5645,6 +5645,17 @@ def extraction_artifact_payload(artifact: ExtractionArtifactRecord) -> dict[str,
     }
 
 
+def extraction_artifact_preview_payload(
+    artifact: ExtractionArtifactRecord,
+) -> dict[str, object]:
+    content_text = artifact.content_text
+    return {
+        **extraction_artifact_payload(artifact),
+        "content_text": content_text,
+        "content_lines": len(content_text.splitlines()) if content_text is not None else None,
+    }
+
+
 def document_block_payload(block: DocumentBlockRecord) -> dict[str, object]:
     return {
         "block_id": block.block_id,
@@ -5666,6 +5677,37 @@ def document_block_payload(block: DocumentBlockRecord) -> dict[str, object]:
         "token_count": block.token_count,
         "metadata": block.metadata,
         "created_at": _datetime_response(block.created_at),
+    }
+
+
+def document_block_summary_payload(
+    blocks: list[DocumentBlockRecord],
+) -> dict[str, object]:
+    block_type_counts: dict[str, int] = {}
+    source_anchor_count = 0
+    page_numbers: set[int] = set()
+    slide_numbers: set[int] = set()
+    sheet_names: set[str] = set()
+
+    for block in blocks:
+        block_type_counts[block.block_type] = block_type_counts.get(block.block_type, 0) + 1
+        if block.source_anchor:
+            source_anchor_count += 1
+        if block.page_no is not None:
+            page_numbers.add(block.page_no)
+        if block.slide_no is not None:
+            slide_numbers.add(block.slide_no)
+        if block.sheet_name:
+            sheet_names.add(block.sheet_name)
+
+    return {
+        "block_count": len(blocks),
+        "block_type_counts": dict(sorted(block_type_counts.items())),
+        "source_anchor_count": source_anchor_count,
+        "page_count": len(page_numbers),
+        "slide_count": len(slide_numbers),
+        "sheet_count": len(sheet_names),
+        "sheet_names": sorted(sheet_names),
     }
 
 
@@ -6416,6 +6458,83 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ],
                 "selected_artifact_id": selected_artifact_id,
                 "blocks": [document_block_payload(block) for block in document_blocks],
+            },
+        )
+
+    @app.get("/api/documents/{document_id}/extraction-preview")
+    def api_get_document_extraction_preview(
+        document_id: int,
+        artifact_id: int | None = None,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            extraction_runs = list_document_extraction_runs(settings.database_url, document_id)
+            extraction_artifacts = list_document_extraction_artifacts(
+                settings.database_url,
+                document_id,
+            )
+            selected_artifact_id = (
+                artifact_id
+                if artifact_id is not None
+                else (extraction_artifacts[0].artifact_id if extraction_artifacts else None)
+            )
+            selected_artifact = (
+                next(
+                    (
+                        artifact
+                        for artifact in extraction_artifacts
+                        if artifact.artifact_id == selected_artifact_id
+                    ),
+                    None,
+                )
+                if selected_artifact_id is not None
+                else None
+            )
+            if selected_artifact_id is not None and selected_artifact is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Extraction artifact not found for document.",
+                )
+            document_blocks = (
+                list_document_blocks(
+                    settings.database_url,
+                    document_id,
+                    artifact_id=selected_artifact_id,
+                )
+                if selected_artifact_id is not None
+                else []
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidIngestionArtifactError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "document": document_inventory_item_payload(document),
+                "extraction_runs": [extraction_run_payload(run) for run in extraction_runs],
+                "artifacts": [
+                    extraction_artifact_payload(artifact) for artifact in extraction_artifacts
+                ],
+                "selected_artifact_id": selected_artifact_id,
+                "selected_artifact": (
+                    extraction_artifact_preview_payload(selected_artifact)
+                    if selected_artifact is not None
+                    else None
+                ),
+                "blocks": [document_block_payload(block) for block in document_blocks],
+                "block_summary": document_block_summary_payload(document_blocks),
             },
         )
 

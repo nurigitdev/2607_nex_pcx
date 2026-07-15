@@ -99,6 +99,15 @@ def test_document_ingestion_artifact_api_and_page(
                 f"/api/documents/{document_id}/ingestion-artifacts",
                 params={"artifact_id": 999_999_999},
             )
+            preview_response = client.get(f"/api/documents/{document_id}/extraction-preview")
+            selected_preview_response = client.get(
+                f"/api/documents/{document_id}/extraction-preview",
+                params={"artifact_id": artifact_id},
+            )
+            missing_preview_artifact_response = client.get(
+                f"/api/documents/{document_id}/extraction-preview",
+                params={"artifact_id": 999_999_999},
+            )
             page_response = client.get(
                 f"/documents/{document_id}/artifacts",
                 params={"lang": "ko", "artifact_id": artifact_id},
@@ -106,6 +115,8 @@ def test_document_ingestion_artifact_api_and_page(
 
         payload = api_response.json()
         selected_payload = selected_response.json()
+        preview_payload = preview_response.json()
+        selected_preview_payload = selected_preview_response.json()
 
         assert api_response.status_code == 200
         assert payload["document"]["document_id"] == document_id
@@ -119,8 +130,63 @@ def test_document_ingestion_artifact_api_and_page(
         ]
         assert selected_payload["selected_artifact_id"] == artifact_id
         assert missing_artifact_response.status_code == 404
+        assert preview_response.status_code == 200
+        assert preview_payload["selected_artifact_id"] == artifact_id
+        assert preview_payload["selected_artifact"]["artifact_id"] == artifact_id
+        assert preview_payload["selected_artifact"]["content_text"].startswith("# Artifact API")
+        assert preview_payload["selected_artifact"]["content_lines"] == 3
+        assert preview_payload["block_summary"] == {
+            "block_count": 2,
+            "block_type_counts": {"heading": 1, "paragraph": 1},
+            "source_anchor_count": 2,
+            "page_count": 0,
+            "slide_count": 0,
+            "sheet_count": 0,
+            "sheet_names": [],
+        }
+        assert selected_preview_payload["selected_artifact"]["artifact_id"] == artifact_id
+        assert missing_preview_artifact_response.status_code == 404
         assert page_response.status_code == 200
         assert "Artifact API" in page_response.text
         assert "Blocks" in page_response.text
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_document_extraction_preview_api_handles_document_without_artifacts(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "slice-228-empty.md"
+    source_path.write_text("Waiting for extraction.", encoding="utf-8")
+    file_id, document_id = _create_document(migrated_database_url, source_path)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(f"/api/documents/{document_id}/extraction-preview")
+            missing_document_response = client.get(
+                f"/api/documents/{document_id + 999_999_999}/extraction-preview"
+            )
+
+        payload = response.json()
+
+        assert response.status_code == 200
+        assert payload["document"]["document_id"] == document_id
+        assert payload["extraction_runs"] == []
+        assert payload["artifacts"] == []
+        assert payload["selected_artifact_id"] is None
+        assert payload["selected_artifact"] is None
+        assert payload["blocks"] == []
+        assert payload["block_summary"] == {
+            "block_count": 0,
+            "block_type_counts": {},
+            "source_anchor_count": 0,
+            "page_count": 0,
+            "slide_count": 0,
+            "sheet_count": 0,
+            "sheet_names": [],
+        }
+        assert missing_document_response.status_code == 404
     finally:
         _cleanup_file(migrated_database_url, file_id)
