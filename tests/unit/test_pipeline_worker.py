@@ -2,9 +2,12 @@ from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
+from app.core.chunks import ChunkInput
+from app.core.extraction_runtime import ExtractionRuntimeArtifact, ExtractionRuntimeResult
 from app.core.file_metadata import FileMetadataRecord
 from app.core.pipeline_jobs import PipelineJobRecord
 from app.core.pipeline_worker import (
@@ -238,6 +241,26 @@ def test_process_next_markdown_pipeline_job_marks_failed_when_completion_disappe
         lambda *args, **k: None,
     )
     monkeypatch.setattr(
+        "app.core.pipeline_worker.run_local_extraction",
+        lambda *args, **k: ExtractionRuntimeResult(
+            status="succeeded",
+            artifacts=(
+                ExtractionRuntimeArtifact(
+                    artifact_type="normalized_markdown",
+                    content_text="# Example",
+                ),
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.persist_extraction_runtime_result_in_connection",
+        lambda *args, **k: SimpleNamespace(blocks=[]),
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.chunk_document_blocks",
+        lambda *args, **k: [ChunkInput(document_id=20, chunk_seq=0, chunk_text="# Example")],
+    )
+    monkeypatch.setattr(
         "app.core.pipeline_worker.replace_document_chunks_in_connection",
         lambda *args, **k: [],
     )
@@ -267,3 +290,59 @@ def test_process_next_markdown_pipeline_job_marks_failed_when_completion_disappe
     assert result.job.status == "failed"
     assert result.job.error_code == ERROR_CODE_MARKDOWN_PIPELINE_ERROR
     assert "disappeared before completion" in result.message
+
+
+def test_process_next_markdown_pipeline_job_fails_when_local_extraction_fails(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    source = tmp_path / "empty.md"
+    source.write_text(" ", encoding="utf-8")
+    job = make_job()
+    patch_claim(monkeypatch, job)
+    patch_failure(monkeypatch, job)
+    persist_calls = {"count": 0}
+
+    def fake_persist(*args, **kwargs):
+        persist_calls["count"] += 1
+        return SimpleNamespace(blocks=[])
+
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.get_file_metadata",
+        lambda *args: make_file(storage_path=str(source)),
+    )
+    monkeypatch.setattr("app.core.pipeline_worker.connect", lambda *args: fake_connection())
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.update_pipeline_progress", lambda *args, **k: None
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.update_pipeline_progress_in_connection",
+        lambda *args, **k: None,
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.mark_file_parse_running_in_connection",
+        lambda *args, **k: None,
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.run_local_extraction",
+        lambda *args, **k: ExtractionRuntimeResult(
+            status="failed",
+            errors=("Source file does not contain extractable text",),
+            runtime_metadata={"error_code": "LOCAL_SOURCE_EMPTY"},
+        ),
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.persist_extraction_runtime_result_in_connection",
+        fake_persist,
+    )
+
+    result = process_next_markdown_pipeline_job(
+        "postgresql://example/db",
+        worker_name="unit-test-worker",
+    )
+
+    assert result.job is not None
+    assert result.job.status == "failed"
+    assert result.job.error_code == "LOCAL_SOURCE_EMPTY"
+    assert "extractable text" in result.message
+    assert persist_calls["count"] == 1

@@ -9,6 +9,11 @@ from app.core.chunks import list_document_chunks
 from app.core.database import connect, fetch_one
 from app.core.embedding_jobs import list_embedding_jobs
 from app.core.file_uploads import store_upload
+from app.core.ingestion_artifacts import (
+    list_document_blocks,
+    list_document_extraction_artifacts,
+    list_document_extraction_runs,
+)
 from app.core.pipeline_jobs import get_pipeline_job, list_pipeline_job_events
 from app.core.pipeline_worker import (
     ERROR_CODE_UNSUPPORTED_FILE_TYPE,
@@ -80,6 +85,20 @@ This section should become another heading-aware chunk.
             migrated_database_url,
             upload_result.file.document_id,
         )
+        extraction_runs = list_document_extraction_runs(
+            migrated_database_url,
+            upload_result.file.document_id,
+        )
+        extraction_artifacts = list_document_extraction_artifacts(
+            migrated_database_url,
+            upload_result.file.document_id,
+            artifact_type="normalized_markdown",
+        )
+        document_blocks = list_document_blocks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            artifact_id=extraction_artifacts[0].artifact_id,
+        )
         embedding_jobs = [
             job
             for chunk in chunks
@@ -107,6 +126,21 @@ This section should become another heading-aware chunk.
         assert [chunk.chunk_seq for chunk in chunks] == [0, 1]
         assert chunks[0].chunk_text.startswith("# Slice 017")
         assert chunks[1].heading_path == ("Slice 017", "Details")
+        assert extraction_runs[0].status == "succeeded"
+        assert extraction_runs[0].extraction_profile_name == "local_markdown_default"
+        assert extraction_artifacts[0].artifact_type == "normalized_markdown"
+        assert [block.block_type for block in document_blocks] == [
+            "heading",
+            "paragraph",
+            "heading",
+            "paragraph",
+        ]
+        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert chunks[0].block_id == document_blocks[0].block_id
+        assert chunks[0].metadata["block_ids"] == [
+            document_blocks[0].block_id,
+            document_blocks[1].block_id,
+        ]
         assert len(embedding_jobs) == 8
         assert {job.profile_name for job in embedding_jobs} == {
             "kure_v1_1024",

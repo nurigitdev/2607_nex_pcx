@@ -3,24 +3,29 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.core.chunking import chunk_parsed_document, get_chunk_policy
+from app.core.chunking import chunk_document_blocks, get_chunk_policy
 from app.core.chunks import DEFAULT_CHUNK_POLICY_NAME, replace_document_chunks_in_connection
 from app.core.database import connect
 from app.core.document_parsers import (
     PARSER_NAME_MARKDOWN,
     PARSER_VERSION_MARKDOWN,
-    MarkdownParser,
 )
 from app.core.embedding_jobs import (
     create_embedding_jobs_for_chunk_in_connection,
     list_active_embedding_profiles_in_connection,
 )
+from app.core.extraction_runtime import ExtractionRuntimeRequest, ExtractionRuntimeResult
 from app.core.file_metadata import (
     FileMetadataRecord,
     get_file_metadata,
     mark_file_parse_failed,
     mark_file_parse_running_in_connection,
     mark_file_parse_succeeded_in_connection,
+)
+from app.core.local_extraction import (
+    LOCAL_MARKDOWN_PROFILE_NAME,
+    persist_extraction_runtime_result_in_connection,
+    run_local_extraction,
 )
 from app.core.pipeline_jobs import (
     DEFAULT_LEASE_SECONDS,
@@ -33,7 +38,7 @@ from app.core.pipeline_jobs import (
     update_pipeline_progress_in_connection,
 )
 
-MARKDOWN_PIPELINE_TOTAL_UNITS = 4
+MARKDOWN_PIPELINE_TOTAL_UNITS = 5
 ERROR_CODE_INVALID_JOB_INPUT = "INVALID_JOB_INPUT"
 ERROR_CODE_STORED_FILE_NOT_FOUND = "STORED_FILE_NOT_FOUND"
 ERROR_CODE_UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
@@ -119,31 +124,87 @@ def process_next_markdown_pipeline_job(
                 current_message="Reading Markdown source file",
             )
 
-        parsed_document = MarkdownParser().parse_path(source_path)
+        extraction_request = ExtractionRuntimeRequest(
+            file_id=file_record.file_id,
+            document_id=file_record.document_id,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_MARKDOWN_PROFILE_NAME,
+            mime_type=file_record.mime_type,
+            detected_file_type=file_record.file_ext.lstrip(".") or None,
+            options={"pipeline_worker": worker_name},
+        )
+        runtime_result = run_local_extraction(extraction_request)
         update_pipeline_progress(
             database_url,
             job.job_id,
             processed_units=1,
             total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
-            stage="parsing",
-            current_message=f"Parsed {len(parsed_document.blocks)} Markdown blocks",
+            stage="text_extraction",
+            current_message=(
+                f"Extracted {len(runtime_result.blocks)} document blocks"
+                if runtime_result.status == "succeeded"
+                else "Markdown extraction failed"
+            ),
         )
-
-        chunk_inputs = chunk_parsed_document(
-            parsed_document,
-            document_id=file_record.document_id,
-            policy=policy,
-        )
-        update_pipeline_progress(
-            database_url,
-            job.job_id,
-            processed_units=2,
-            total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
-            stage="chunking",
-            current_message=f"Prepared {len(chunk_inputs)} chunks",
-        )
+        if runtime_result.status != "succeeded":
+            with connect(database_url) as connection:
+                persist_extraction_runtime_result_in_connection(
+                    connection,
+                    extraction_request,
+                    runtime_result,
+                )
+            error_code = str(
+                runtime_result.runtime_metadata.get(
+                    "error_code",
+                    ERROR_CODE_MARKDOWN_PIPELINE_ERROR,
+                )
+            )
+            message = runtime_result.errors[0] if runtime_result.errors else "Extraction failed"
+            failed_job = _fail_claimed_job(
+                database_url,
+                job,
+                error_code=error_code,
+                error_message=message,
+                parser_name=PARSER_NAME_MARKDOWN,
+                parser_version=PARSER_VERSION_MARKDOWN,
+            )
+            return MarkdownPipelineWorkerResult(
+                processed=True,
+                job=failed_job,
+                message=message,
+            )
 
         with connect(database_url) as connection:
+            persisted_extraction = persist_extraction_runtime_result_in_connection(
+                connection,
+                extraction_request,
+                runtime_result,
+            )
+            update_pipeline_progress_in_connection(
+                connection,
+                job.job_id,
+                processed_units=2,
+                total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
+                stage="parsing",
+                current_message=(
+                    f"Persisted {len(persisted_extraction.blocks)} extracted document blocks"
+                ),
+            )
+            chunk_inputs = chunk_document_blocks(
+                list(persisted_extraction.blocks),
+                document_id=file_record.document_id,
+                policy=policy,
+                parser_name=PARSER_NAME_MARKDOWN,
+                parser_version=PARSER_VERSION_MARKDOWN,
+            )
+            update_pipeline_progress_in_connection(
+                connection,
+                job.job_id,
+                processed_units=3,
+                total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
+                stage="chunking",
+                current_message=f"Prepared {len(chunk_inputs)} chunks",
+            )
             chunks = replace_document_chunks_in_connection(
                 connection,
                 file_record.document_id,
@@ -164,9 +225,9 @@ def process_next_markdown_pipeline_job(
             mark_file_parse_succeeded_in_connection(
                 connection,
                 file_record.file_id,
-                parser_name=parsed_document.parser_name,
-                parser_version=parsed_document.parser_version,
-                extracted_text_size=parsed_document.extracted_text_size,
+                parser_name=PARSER_NAME_MARKDOWN,
+                parser_version=PARSER_VERSION_MARKDOWN,
+                extracted_text_size=_runtime_extracted_text_size(runtime_result),
             )
             update_pipeline_progress_in_connection(
                 connection,
@@ -285,6 +346,10 @@ def _fail_claimed_job(
         error_message=error_message,
     )
     return failed_job or get_pipeline_job(database_url, job.job_id) or job
+
+
+def _runtime_extracted_text_size(runtime_result: ExtractionRuntimeResult) -> int:
+    return sum(len(artifact.content_text or "") for artifact in runtime_result.artifacts)
 
 
 @dataclass(frozen=True)
