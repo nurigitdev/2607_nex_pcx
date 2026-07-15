@@ -5,6 +5,8 @@ from uuid import uuid4
 
 import pytest
 from docx import Document
+from pptx import Presentation
+from pptx.util import Inches
 
 from app.core.chunks import list_document_chunks
 from app.core.database import connect, fetch_one
@@ -98,6 +100,25 @@ def make_sample_docx_bytes(unique_text: str) -> bytes:
     table.cell(1, 0).text = "Quality"
     table.cell(1, 1).text = "Baseline"
     document.save(buffer)
+    return buffer.getvalue()
+
+
+def make_sample_pptx_bytes(unique_text: str) -> bytes:
+    buffer = BytesIO()
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    slide.shapes.title.text = "Slice 224 PPTX"
+
+    textbox = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(8), Inches(1))
+    textbox.text_frame.text = f"PPTX pipeline integration {unique_text}."
+
+    table_shape = slide.shapes.add_table(2, 2, Inches(1), Inches(2.5), Inches(6), Inches(1.2))
+    table = table_shape.table
+    table.cell(0, 0).text = "Metric"
+    table.cell(0, 1).text = "Value"
+    table.cell(1, 0).text = "Quality"
+    table.cell(1, 1).text = "Baseline"
+    presentation.save(buffer)
     return buffer.getvalue()
 
 
@@ -327,6 +348,107 @@ def test_markdown_pipeline_worker_extracts_docx_paragraphs_and_tables(
         cleanup_checksum(migrated_database_url, checksum)
 
 
+def test_markdown_pipeline_worker_extracts_pptx_slides_and_tables(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    unique_text = uuid4().hex
+    content = make_sample_pptx_bytes(unique_text)
+    checksum = sha256(content).hexdigest()
+
+    try:
+        upload_result = store_upload(
+            database_url=migrated_database_url,
+            upload_stream=BytesIO(content),
+            original_file_name="slice-224-worker.pptx",
+            storage_dir=tmp_path,
+            mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            document_group="slice-224",
+            security_level="internal",
+            uploaded_by="integration-test",
+        )
+        assert upload_result.pipeline_job is not None
+        prioritize_job(migrated_database_url, upload_result.pipeline_job.job_id)
+
+        result = process_next_markdown_pipeline_job(
+            migrated_database_url,
+            worker_name="slice-224-test-worker",
+        )
+
+        assert result.processed is True
+        assert result.job is not None
+        assert result.job.job_id == upload_result.pipeline_job.job_id
+        assert result.job.status == "succeeded"
+        assert result.chunk_count == 1
+        assert result.embedding_job_count == 4
+
+        chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+        )
+        extraction_runs = list_document_extraction_runs(
+            migrated_database_url,
+            upload_result.file.document_id,
+        )
+        extraction_artifacts = list_document_extraction_artifacts(
+            migrated_database_url,
+            upload_result.file.document_id,
+            artifact_type="normalized_markdown",
+        )
+        document_blocks = list_document_blocks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            artifact_id=extraction_artifacts[0].artifact_id,
+        )
+        embedding_jobs = [
+            job
+            for chunk in chunks
+            for job in list_embedding_jobs(migrated_database_url, chunk_id=chunk.chunk_id)
+        ]
+        file_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT
+                parser_name,
+                parser_version,
+                parse_status,
+                parse_error_message,
+                extracted_text_size
+            FROM files
+            WHERE file_id = %s
+            """,
+            (upload_result.file.file_id,),
+        )
+
+        assert extraction_runs[0].status == "succeeded"
+        assert extraction_runs[0].extraction_profile_name == "local_pptx_default"
+        assert extraction_runs[0].runtime_metadata["library"] == "python-pptx"
+        assert extraction_artifacts[0].metadata["preserve_slide_boundaries"] is True
+        assert extraction_artifacts[0].metadata["preserve_tables"] is True
+        assert extraction_artifacts[0].metadata["slide_count"] == 1
+        assert extraction_artifacts[0].metadata["table_count"] == 1
+        assert [block.block_type for block in document_blocks] == [
+            "heading",
+            "paragraph",
+            "table",
+        ]
+        assert [block.slide_no for block in document_blocks] == [1, 1, 1]
+        assert document_blocks[0].content_markdown == "# Slice 224 PPTX"
+        assert document_blocks[2].metadata["source"] == "pptx"
+        assert chunks[0].chunk_text.startswith("# Slice 224 PPTX")
+        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert chunks[0].block_id == document_blocks[0].block_id
+        assert len(embedding_jobs) == 4
+        assert {job.status for job in embedding_jobs} == {"pending"}
+        assert file_row["parser_name"] == "local_pptx"
+        assert file_row["parser_version"] == "0.1.0"
+        assert file_row["parse_status"] == "succeeded"
+        assert file_row["parse_error_message"] is None
+        assert file_row["extracted_text_size"] > 0
+    finally:
+        cleanup_checksum(migrated_database_url, checksum)
+
+
 def test_markdown_pipeline_worker_extracts_pdf_text_layer(
     migrated_database_url: str,
     tmp_path: Path,
@@ -430,16 +552,16 @@ def test_markdown_pipeline_worker_fails_unregistered_local_runtime(
     migrated_database_url: str,
     tmp_path: Path,
 ) -> None:
-    content = f"not-really-pptx slice-017 unsupported {uuid4().hex}\n".encode()
+    content = f"not-really-xlsx slice-017 unsupported {uuid4().hex}\n".encode()
     checksum = sha256(content).hexdigest()
 
     try:
         upload_result = store_upload(
             database_url=migrated_database_url,
             upload_stream=BytesIO(content),
-            original_file_name="slice-017-worker.pptx",
+            original_file_name="slice-017-worker.xlsx",
             storage_dir=tmp_path,
-            mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             document_group="slice-017",
             security_level="internal",
             uploaded_by="integration-test",
@@ -478,7 +600,7 @@ def test_markdown_pipeline_worker_fails_unregistered_local_runtime(
         assert stored_job.error_code == ERROR_CODE_UNSUPPORTED_FILE_TYPE
         assert file_row["parse_status"] == "failed"
         assert (
-            "No local extraction runtime is registered for .pptx files"
+            "No local extraction runtime is registered for .xlsx files"
             in file_row["parse_error_message"]
         )
         assert chunks == []

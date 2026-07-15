@@ -1,17 +1,21 @@
 from pathlib import Path
 
 from docx import Document
+from pptx import Presentation
+from pptx.util import Inches
 
 from app.core.extraction_runtime import ExtractionRuntimeRequest
 from app.core.local_extraction import (
     ERROR_CODE_LOCAL_DOCX_EMPTY,
     ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY,
+    ERROR_CODE_LOCAL_PPTX_EMPTY,
     ERROR_CODE_LOCAL_SOURCE_NOT_FOUND,
     ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE,
     LOCAL_DOCX_PROFILE_NAME,
     LOCAL_MARKDOWN_PROFILE_NAME,
     LOCAL_PDF_TEXT_PROFILE_NAME,
     LOCAL_PLAIN_TEXT_PROFILE_NAME,
+    LOCAL_PPTX_PROFILE_NAME,
     SUPPORTED_LOCAL_PROFILE_SUFFIXES,
     get_local_extraction_handler,
     list_local_extraction_handlers,
@@ -82,35 +86,59 @@ def write_sample_docx(path: Path) -> None:
     document.save(path)
 
 
+def write_sample_pptx(path: Path) -> None:
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    slide.shapes.title.text = "PPTX Title"
+
+    textbox = slide.shapes.add_textbox(Inches(1), Inches(1.5), Inches(8), Inches(1))
+    textbox.text_frame.text = "First paragraph from PPTX."
+
+    table_shape = slide.shapes.add_table(2, 2, Inches(1), Inches(2.5), Inches(6), Inches(1.2))
+    table = table_shape.table
+    table.cell(0, 0).text = "Metric"
+    table.cell(0, 1).text = "Value"
+    table.cell(1, 0).text = "Quality"
+    table.cell(1, 1).text = "Baseline"
+    presentation.save(path)
+
+
 def test_local_extraction_registry_selects_implemented_profiles() -> None:
     handlers = {handler.profile_name: handler for handler in list_local_extraction_handlers()}
 
     markdown_handler = get_local_extraction_handler(LOCAL_MARKDOWN_PROFILE_NAME)
     pdf_handler = get_local_extraction_handler(LOCAL_PDF_TEXT_PROFILE_NAME)
     docx_handler = get_local_extraction_handler(LOCAL_DOCX_PROFILE_NAME)
+    pptx_handler = get_local_extraction_handler(LOCAL_PPTX_PROFILE_NAME)
 
     assert set(handlers) == {
         LOCAL_MARKDOWN_PROFILE_NAME,
         LOCAL_PLAIN_TEXT_PROFILE_NAME,
         LOCAL_PDF_TEXT_PROFILE_NAME,
         LOCAL_DOCX_PROFILE_NAME,
+        LOCAL_PPTX_PROFILE_NAME,
     }
     assert markdown_handler is not None
     assert pdf_handler is not None
     assert docx_handler is not None
+    assert pptx_handler is not None
     assert markdown_handler.supports_file_type(".MD")
     assert pdf_handler.supports_file_type(".PDF")
     assert docx_handler.supports_file_type(".DOCX")
+    assert pptx_handler.supports_file_type(".PPTX")
     assert normalize_file_type(".Txt") == "txt"
     assert select_local_extraction_handler("md") == markdown_handler
     assert select_local_extraction_profile_name(".text") == LOCAL_PLAIN_TEXT_PROFILE_NAME
     assert select_local_extraction_profile_name("pdf") == LOCAL_PDF_TEXT_PROFILE_NAME
     assert select_local_extraction_profile_name("docx") == LOCAL_DOCX_PROFILE_NAME
+    assert select_local_extraction_profile_name("pptx") == LOCAL_PPTX_PROFILE_NAME
     assert select_local_extraction_handler("pdf") == pdf_handler
+    assert select_local_extraction_handler("pptx") == pptx_handler
     assert get_local_extraction_handler("missing_profile") is None
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_MARKDOWN_PROFILE_NAME] == {".md"}
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_PDF_TEXT_PROFILE_NAME] == {".pdf"}
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_DOCX_PROFILE_NAME] == {".docx"}
+    assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_PPTX_PROFILE_NAME] == {".pptx"}
 
 
 def test_run_local_markdown_extraction_returns_artifact_and_blocks(tmp_path: Path) -> None:
@@ -342,6 +370,74 @@ def test_run_local_docx_extraction_fails_without_extractable_text(tmp_path: Path
     assert result.status == "failed"
     assert result.runtime_metadata["error_code"] == ERROR_CODE_LOCAL_DOCX_EMPTY
     assert "DOCX does not contain" in result.errors[0]
+
+
+def test_run_local_pptx_extraction_returns_artifact_slide_text_and_table_blocks(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sample.pptx"
+    write_sample_pptx(source_path)
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_PPTX_PROFILE_NAME,
+            mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            detected_file_type="pptx",
+        )
+    )
+
+    assert result.status == "succeeded"
+    assert result.artifacts[0].artifact_type == "normalized_markdown"
+    assert "<!-- slide: 1 -->" in result.artifacts[0].content_text
+    assert "# PPTX Title" in result.artifacts[0].content_text
+    assert "| Metric | Value |" in result.artifacts[0].content_text
+    assert result.artifacts[0].metadata["library"] == "python-pptx"
+    assert result.artifacts[0].metadata["slide_count"] == 1
+    assert result.artifacts[0].metadata["text_shape_count"] == 2
+    assert result.artifacts[0].metadata["table_count"] == 1
+    assert result.artifacts[0].metadata["preserve_slide_boundaries"] is True
+    assert [block.block_type for block in result.blocks] == [
+        "heading",
+        "paragraph",
+        "table",
+    ]
+    assert [block.slide_no for block in result.blocks] == [1, 1, 1]
+    assert result.blocks[0].content_markdown == "# PPTX Title"
+    assert result.blocks[0].heading_path == ("PPTX Title",)
+    assert result.blocks[0].source_anchor["slide_no"] == 1
+    assert result.blocks[1].parent_block_seq == 0
+    assert result.blocks[1].heading_path == ("PPTX Title",)
+    assert result.blocks[2].parent_block_seq == 0
+    assert result.blocks[2].heading_path == ("PPTX Title",)
+    assert result.blocks[2].metadata["source"] == "pptx"
+    assert result.blocks[2].metadata["row_count"] == 2
+    assert result.blocks[2].metadata["column_count"] == 2
+    assert result.blocks[2].metadata["shape_name"].startswith("Table")
+    assert result.blocks[2].source_anchor["table_index"] == 1
+    assert result.runtime_metadata["extractor_name"] == "local_pptx"
+    assert result.runtime_metadata["table_count"] == 1
+
+
+def test_run_local_pptx_extraction_fails_without_extractable_text(tmp_path: Path) -> None:
+    source_path = tmp_path / "empty.pptx"
+    Presentation().save(source_path)
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_PPTX_PROFILE_NAME,
+            detected_file_type="pptx",
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.runtime_metadata["error_code"] == ERROR_CODE_LOCAL_PPTX_EMPTY
+    assert "PPTX does not contain" in result.errors[0]
 
 
 def test_run_local_extraction_returns_failed_for_missing_source(tmp_path: Path) -> None:

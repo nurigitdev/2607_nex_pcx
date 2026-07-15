@@ -44,14 +44,18 @@ LOCAL_MARKDOWN_PROFILE_NAME = "local_markdown_default"
 LOCAL_PLAIN_TEXT_PROFILE_NAME = "local_plain_text_default"
 LOCAL_PDF_TEXT_PROFILE_NAME = "local_pdf_text_default"
 LOCAL_DOCX_PROFILE_NAME = "local_docx_default"
+LOCAL_PPTX_PROFILE_NAME = "local_pptx_default"
 LOCAL_PLAIN_TEXT_EXTRACTOR_NAME = "local_plain_text"
 LOCAL_PLAIN_TEXT_EXTRACTOR_VERSION = "0.1.0"
 LOCAL_PDF_TEXT_EXTRACTOR_NAME = "local_pdf_text"
 LOCAL_PDF_TEXT_EXTRACTOR_VERSION = "0.1.0"
 LOCAL_DOCX_EXTRACTOR_NAME = "local_docx"
 LOCAL_DOCX_EXTRACTOR_VERSION = "0.1.0"
+LOCAL_PPTX_EXTRACTOR_NAME = "local_pptx"
+LOCAL_PPTX_EXTRACTOR_VERSION = "0.1.0"
 PDF_TEXT_LIBRARY_NAME = "pypdf"
 DOCX_LIBRARY_NAME = "python-docx"
+PPTX_LIBRARY_NAME = "python-pptx"
 
 ERROR_CODE_LOCAL_SOURCE_NOT_FOUND = "LOCAL_SOURCE_NOT_FOUND"
 ERROR_CODE_LOCAL_SOURCE_EMPTY = "LOCAL_SOURCE_EMPTY"
@@ -62,6 +66,8 @@ ERROR_CODE_LOCAL_PDF_READ_FAILED = "LOCAL_PDF_READ_FAILED"
 ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY = "LOCAL_PDF_TEXT_LAYER_EMPTY"
 ERROR_CODE_LOCAL_DOCX_READ_FAILED = "LOCAL_DOCX_READ_FAILED"
 ERROR_CODE_LOCAL_DOCX_EMPTY = "LOCAL_DOCX_EMPTY"
+ERROR_CODE_LOCAL_PPTX_READ_FAILED = "LOCAL_PPTX_READ_FAILED"
+ERROR_CODE_LOCAL_PPTX_EMPTY = "LOCAL_PPTX_EMPTY"
 
 
 LocalExtractionCallable = Callable[
@@ -351,6 +357,82 @@ def _extract_docx_source(
     )
 
 
+def _extract_pptx_source(
+    request: ExtractionRuntimeRequest,
+    source_path: Path,
+    started: float,
+) -> ExtractionRuntimeResult:
+    try:
+        from pptx import Presentation
+    except ImportError as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_PPTX_READ_FAILED,
+            f"python-pptx is required for local PPTX extraction: {exc}",
+        )
+
+    try:
+        presentation = Presentation(str(source_path))
+        artifact_text, blocks, counts = _pptx_presentation_to_artifact_and_blocks(presentation)
+    except Exception as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_PPTX_READ_FAILED,
+            f"PPTX content could not be read: {exc}",
+        )
+
+    if not blocks:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_PPTX_EMPTY,
+            "PPTX does not contain extractable slide text or table text",
+        )
+
+    library_version = _package_version(PPTX_LIBRARY_NAME)
+    metadata = {
+        "source_path": str(source_path),
+        "source_file_name": source_path.name,
+        "parser_name": LOCAL_PPTX_EXTRACTOR_NAME,
+        "parser_version": LOCAL_PPTX_EXTRACTOR_VERSION,
+        "library": PPTX_LIBRARY_NAME,
+        "library_version": library_version,
+        "slide_count": counts["slide_count"],
+        "text_shape_count": counts["text_shape_count"],
+        "table_count": counts["table_count"],
+        "block_count": len(blocks),
+        "preserve_slide_boundaries": True,
+        "preserve_tables": True,
+        "options": request.options,
+    }
+    artifact = ExtractionRuntimeArtifact(
+        artifact_type="normalized_markdown",
+        content_text=artifact_text,
+        content_hash=_hash_text(artifact_text),
+        size_bytes=len(artifact_text.encode("utf-8")),
+        metadata=metadata,
+    )
+    return ExtractionRuntimeResult(
+        status="succeeded",
+        artifacts=(artifact,),
+        blocks=blocks,
+        elapsed_ms=_elapsed_ms(started),
+        runtime_metadata={
+            "profile_name": LOCAL_PPTX_PROFILE_NAME,
+            "extractor_name": LOCAL_PPTX_EXTRACTOR_NAME,
+            "extractor_version": LOCAL_PPTX_EXTRACTOR_VERSION,
+            "library": PPTX_LIBRARY_NAME,
+            "library_version": library_version,
+            "source_path": str(source_path),
+            "slide_count": counts["slide_count"],
+            "text_shape_count": counts["text_shape_count"],
+            "table_count": counts["table_count"],
+            "block_count": len(blocks),
+            "preserve_slide_boundaries": True,
+            "preserve_tables": True,
+        },
+    )
+
+
 def _read_utf8_text_source(
     source_path: Path,
     started: float,
@@ -580,6 +662,181 @@ def _docx_document_to_artifact_and_blocks(document: Any) -> tuple[
     return "".join(parts), tuple(blocks), counts
 
 
+def _pptx_presentation_to_artifact_and_blocks(presentation: Any) -> tuple[
+    str,
+    tuple[ExtractionRuntimeBlock, ...],
+    dict[str, int],
+]:
+    parts: list[str] = []
+    blocks: list[ExtractionRuntimeBlock] = []
+    counts = {
+        "slide_count": len(presentation.slides),
+        "text_shape_count": 0,
+        "table_count": 0,
+    }
+    cursor = 0
+    marked_slide_numbers: set[int] = set()
+    text_shape_index = 0
+    table_index = 0
+
+    def ensure_slide_marker(slide_no: int) -> None:
+        nonlocal cursor
+        if slide_no in marked_slide_numbers:
+            return
+        if parts:
+            parts.append("\n\n")
+            cursor += 2
+        slide_marker = f"<!-- slide: {slide_no} -->"
+        parts.append(slide_marker)
+        cursor += len(slide_marker)
+        marked_slide_numbers.add(slide_no)
+
+    def append_block(
+        *,
+        slide_no: int,
+        block_type: str,
+        content_text: str,
+        content_markdown: str,
+        heading_path: tuple[str, ...],
+        source_anchor: dict[str, Any],
+        parent_block_seq: int | None,
+        metadata: dict[str, Any],
+    ) -> None:
+        nonlocal cursor
+        ensure_slide_marker(slide_no)
+        parts.append("\n\n")
+        cursor += 2
+        char_start = cursor
+        parts.append(content_markdown)
+        cursor += len(content_markdown)
+        blocks.append(
+            ExtractionRuntimeBlock(
+                block_seq=len(blocks),
+                block_type=block_type,
+                parent_block_seq=parent_block_seq,
+                content_text=content_text,
+                content_markdown=content_markdown,
+                heading_path=heading_path,
+                source_anchor=source_anchor,
+                slide_no=slide_no,
+                char_start=char_start,
+                char_end=cursor,
+                token_count=count_chunk_tokens(content_markdown),
+                metadata=metadata,
+            )
+        )
+
+    for slide_no, slide in enumerate(presentation.slides, start=1):
+        title_shape = slide.shapes.title
+        title_shape_id = title_shape.shape_id if title_shape is not None else None
+        slide_title = _pptx_shape_text(title_shape) if title_shape is not None else ""
+        slide_heading_path = (slide_title,) if slide_title else (f"Slide {slide_no}",)
+        slide_heading_seq: int | None = None
+        slide_text_shape_index = 0
+        slide_table_index = 0
+
+        for shape_index, shape in enumerate(slide.shapes, start=1):
+            shape_name = getattr(shape, "name", None)
+            if getattr(shape, "has_table", False):
+                rows = _pptx_table_rows(shape.table)
+                if not rows:
+                    continue
+                table_index += 1
+                slide_table_index += 1
+                counts["table_count"] += 1
+                content_text = "\n".join("\t".join(row) for row in rows)
+                append_block(
+                    slide_no=slide_no,
+                    block_type="table",
+                    content_text=content_text,
+                    content_markdown=_format_markdown_table(rows),
+                    heading_path=slide_heading_path,
+                    source_anchor={
+                        "slide_no": slide_no,
+                        "shape_index": shape_index,
+                        "table_index": table_index,
+                        "slide_table_index": slide_table_index,
+                        "shape_name": shape_name,
+                    },
+                    parent_block_seq=slide_heading_seq,
+                    metadata={
+                        "source": "pptx",
+                        "row_count": len(rows),
+                        "column_count": max(len(row) for row in rows),
+                        "shape_name": shape_name,
+                    },
+                )
+                continue
+
+            if not getattr(shape, "has_text_frame", False):
+                continue
+
+            content_text = _pptx_shape_text(shape)
+            if not content_text:
+                continue
+
+            text_shape_index += 1
+            slide_text_shape_index += 1
+            counts["text_shape_count"] += 1
+            is_title = shape.shape_id == title_shape_id
+            if is_title:
+                heading_text = _normalize_docx_text(content_text)
+                block_type = "heading"
+                content_text = heading_text
+                content_markdown = f"# {heading_text}"
+                parent_block_seq = None
+                slide_heading_path = (heading_text,)
+            else:
+                block_type = "paragraph"
+                content_markdown = content_text
+                parent_block_seq = slide_heading_seq
+
+            append_block(
+                slide_no=slide_no,
+                block_type=block_type,
+                content_text=content_text,
+                content_markdown=content_markdown,
+                heading_path=slide_heading_path,
+                source_anchor={
+                    "slide_no": slide_no,
+                    "shape_index": shape_index,
+                    "text_shape_index": text_shape_index,
+                    "slide_text_shape_index": slide_text_shape_index,
+                    "shape_name": shape_name,
+                },
+                parent_block_seq=parent_block_seq,
+                metadata={
+                    "source": "pptx",
+                    "shape_name": shape_name,
+                    "is_title": is_title,
+                },
+            )
+            if is_title:
+                slide_heading_seq = blocks[-1].block_seq
+
+    return "".join(parts), tuple(blocks), counts
+
+
+def _pptx_shape_text(shape: Any) -> str:
+    if shape is None or not getattr(shape, "has_text_frame", False):
+        return ""
+    paragraphs = [
+        _normalize_docx_text(paragraph.text)
+        for paragraph in shape.text_frame.paragraphs
+        if _normalize_docx_text(paragraph.text)
+    ]
+    return "\n".join(paragraphs)
+
+
+def _pptx_table_rows(table: Any) -> tuple[tuple[str, ...], ...]:
+    rows: list[tuple[str, ...]] = []
+    for table_row in table.rows:
+        values = tuple(_normalize_docx_text(cell.text) for cell in table_row.cells)
+        if any(values):
+            rows.append(values)
+    return tuple(rows)
+
+
 def _normalize_docx_text(text: str) -> str:
     return " ".join(text.replace("\r", "\n").split())
 
@@ -665,6 +922,15 @@ LOCAL_EXTRACTION_HANDLERS = (
         extractor_version=LOCAL_DOCX_EXTRACTOR_VERSION,
         supported_file_types=("docx",),
         extract=_extract_docx_source,
+    ),
+    LocalExtractionHandler(
+        profile_name=LOCAL_PPTX_PROFILE_NAME,
+        parser_name=LOCAL_PPTX_EXTRACTOR_NAME,
+        parser_version=LOCAL_PPTX_EXTRACTOR_VERSION,
+        extractor_name=LOCAL_PPTX_EXTRACTOR_NAME,
+        extractor_version=LOCAL_PPTX_EXTRACTOR_VERSION,
+        supported_file_types=("pptx",),
+        extract=_extract_pptx_source,
     ),
 )
 
