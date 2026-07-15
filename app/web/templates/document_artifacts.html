@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set ns = namespace(selected_artifact=None) %}
+{% for artifact in extraction_artifacts %}
+  {% if artifact.artifact_id == selected_artifact_id %}
+    {% set ns.selected_artifact = artifact %}
+  {% endif %}
+{% endfor %}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("ingestion_artifacts.title") }}</h1>
+    <p class="text-secondary mb-0">
+      {% if document %}#{{ document.document_id }} · {{ document.document_title or document.original_file_name }}{% else %}{{ t("ingestion_artifacts.subtitle") }}{% endif %}
+    </p>
+  </div>
+  <div class="d-flex flex-wrap gap-2 justify-content-end">
+    {% if document %}
+    <a class="btn btn-outline-secondary" href="/api/documents/{{ document.document_id }}/ingestion-artifacts">{{ t("common.api") }}</a>
+    <a class="btn btn-outline-secondary" href="/documents/{{ document.document_id }}">{{ t("ingestion_artifacts.back_to_document") }}</a>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="/documents">{{ t("nav.documents") }}</a>
+  </div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if document %}
+<section class="document-detail-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("ingestion_artifacts.runs") }}</div>
+    <div class="metric-value">{{ extraction_runs|length }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("ingestion_artifacts.artifacts") }}</div>
+    <div class="metric-value">{{ extraction_artifacts|length }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("ingestion_artifacts.blocks") }}</div>
+    <div class="metric-value">{{ document_blocks|length }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("ingestion_artifacts.parse_status") }}</div>
+    <div class="mt-3">
+      <span class="badge status-badge status-{{ document.parse_status }}">{{ document.parse_status }}</span>
+    </div>
+  </div>
+</section>
+
+<div class="row g-3">
+  <div class="col-12 col-xl-5">
+    <section class="metric-card bg-white p-0 overflow-hidden mb-3">
+      <div class="dashboard-panel-header p-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("ingestion_artifacts.extraction_runs") }}</h2>
+          <div class="text-secondary">{{ t("ingestion_artifacts.extraction_runs_help") }}</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("ingestion_artifacts.run") }}</th>
+              <th scope="col">{{ t("ingestion_artifacts.profile") }}</th>
+              <th scope="col">{{ t("ingestion_artifacts.status") }}</th>
+              <th scope="col">{{ t("ingestion_artifacts.elapsed") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in extraction_runs %}
+            <tr>
+              <td>#{{ run.extraction_run_id }}</td>
+              <td class="text-break">{{ run.extraction_profile_name or "-" }}</td>
+              <td><span class="badge status-badge status-{{ run.status }}">{{ run.status }}</span></td>
+              <td>{{ run.elapsed_ms if run.elapsed_ms is not none else "-" }} ms</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-4" colspan="4">{{ t("ingestion_artifacts.no_runs") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="metric-card bg-white p-0 overflow-hidden">
+      <div class="dashboard-panel-header p-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("ingestion_artifacts.artifacts") }}</h2>
+          <div class="text-secondary">{{ t("ingestion_artifacts.artifacts_help") }}</div>
+        </div>
+      </div>
+      <div class="list-group list-group-flush">
+        {% for artifact in extraction_artifacts %}
+        <a
+          class="list-group-item list-group-item-action {% if artifact.artifact_id == selected_artifact_id %}active{% endif %}"
+          href="/documents/{{ document.document_id }}/artifacts?artifact_id={{ artifact.artifact_id }}"
+        >
+          <div class="d-flex w-100 justify-content-between gap-2">
+            <strong>#{{ artifact.artifact_id }} · {{ artifact.artifact_type }}</strong>
+            <span>{{ artifact.size_bytes or (artifact.content_text|length if artifact.content_text else 0) }} B</span>
+          </div>
+          <div class="small text-break {% if artifact.artifact_id == selected_artifact_id %}text-white-50{% else %}text-secondary{% endif %}">
+            {{ artifact.content_hash or artifact.storage_path or "-" }}
+          </div>
+        </a>
+        {% else %}
+        <div class="text-secondary text-center py-4">{{ t("ingestion_artifacts.no_artifacts") }}</div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-7">
+    <section class="metric-card bg-white p-3 mb-3">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("ingestion_artifacts.selected_artifact") }}</h2>
+          <div class="text-secondary">
+            {% if ns.selected_artifact %}#{{ ns.selected_artifact.artifact_id }} · {{ ns.selected_artifact.artifact_type }}{% else %}{{ t("ingestion_artifacts.no_artifact_selected") }}{% endif %}
+          </div>
+        </div>
+      </div>
+      {% if ns.selected_artifact %}
+      <dl class="job-detail-list mb-3">
+        <dt>{{ t("ingestion_artifacts.hash") }}</dt>
+        <dd>{{ ns.selected_artifact.content_hash or "-" }}</dd>
+        <dt>{{ t("ingestion_artifacts.storage") }}</dt>
+        <dd>{{ ns.selected_artifact.storage_path or "-" }}</dd>
+        <dt>{{ t("ingestion_artifacts.language") }}</dt>
+        <dd>{{ ns.selected_artifact.language or "-" }}</dd>
+      </dl>
+      <pre class="json-preview mb-0">{{ ns.selected_artifact.metadata | tojson(indent=2) }}</pre>
+      {% else %}
+      <div class="text-secondary py-4">{{ t("ingestion_artifacts.no_artifact_selected") }}</div>
+      {% endif %}
+    </section>
+
+    <section class="metric-card bg-white p-0 overflow-hidden">
+      <div class="dashboard-panel-header p-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("ingestion_artifacts.blocks") }}</h2>
+          <div class="text-secondary">{{ t("ingestion_artifacts.blocks_help") }}</div>
+        </div>
+      </div>
+      <div class="artifact-block-list">
+        {% for block in document_blocks %}
+        <article class="artifact-block-item">
+          <div class="artifact-block-meta">
+            <span class="badge text-bg-light border">#{{ block.block_seq }}</span>
+            <span>{{ block.block_type }}</span>
+            {% if block.heading_path %}
+            <span>{{ block.heading_path|join(" / ") }}</span>
+            {% endif %}
+            <span>{{ block.token_count or 0 }} tokens</span>
+          </div>
+          <pre class="document-chunk-preview mb-0">{{ block.content_markdown or block.content_text or "" }}</pre>
+        </article>
+        {% else %}
+        <div class="text-secondary text-center py-5">{{ t("ingestion_artifacts.no_blocks") }}</div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

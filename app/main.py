@@ -361,6 +361,15 @@ from app.core.i18n import (
     normalize_language,
     resolve_language,
 )
+from app.core.ingestion_artifacts import (
+    DocumentBlockRecord,
+    ExtractionArtifactRecord,
+    ExtractionRunRecord,
+    InvalidIngestionArtifactError,
+    list_document_blocks,
+    list_document_extraction_artifacts,
+    list_document_extraction_runs,
+)
 from app.core.permission_inventory import (
     InvalidPermissionInventoryError,
     PermissionInventory,
@@ -1582,9 +1591,7 @@ def dgx_ingestion_benchmark_compare_payload(
     left: DgxIngestionBenchmarkDetail,
     right: DgxIngestionBenchmarkDetail,
 ) -> dict[str, object]:
-    left_profiles = {
-        (profile.provider, profile.profile_name): profile for profile in left.profiles
-    }
+    left_profiles = {(profile.provider, profile.profile_name): profile for profile in left.profiles}
     right_profiles = {
         (profile.provider, profile.profile_name): profile for profile in right.profiles
     }
@@ -1628,23 +1635,19 @@ def dgx_ingestion_benchmark_compare_payload(
                     ),
                     "avg_provider_elapsed_ms": _dgx_benchmark_metric_comparison(
                         "avg_provider_elapsed_ms",
-                        left_profile.avg_provider_elapsed_ms
-                        if left_profile is not None
-                        else None,
-                        right_profile.avg_provider_elapsed_ms
-                        if right_profile is not None
-                        else None,
+                        left_profile.avg_provider_elapsed_ms if left_profile is not None else None,
+                        (
+                            right_profile.avg_provider_elapsed_ms
+                            if right_profile is not None
+                            else None
+                        ),
                         unit="ms",
                         better_when="lower",
                     ),
                     "avg_worker_elapsed_ms": _dgx_benchmark_metric_comparison(
                         "avg_worker_elapsed_ms",
-                        left_profile.avg_worker_elapsed_ms
-                        if left_profile is not None
-                        else None,
-                        right_profile.avg_worker_elapsed_ms
-                        if right_profile is not None
-                        else None,
+                        left_profile.avg_worker_elapsed_ms if left_profile is not None else None,
+                        right_profile.avg_worker_elapsed_ms if right_profile is not None else None,
                         unit="ms",
                         better_when="lower",
                     ),
@@ -5572,18 +5575,97 @@ def chunk_payload(chunk: ChunkRecord) -> dict[str, object]:
         "chunk_text": chunk.chunk_text,
         "content_hash": chunk.content_hash,
         "chunk_policy_name": chunk.chunk_policy_name,
+        "artifact_id": chunk.artifact_id,
+        "block_id": chunk.block_id,
+        "chunk_type": chunk.chunk_type,
+        "content_markdown": chunk.content_markdown,
         "parser_name": chunk.parser_name,
         "parser_version": chunk.parser_version,
         "heading_path": list(chunk.heading_path),
+        "source_anchor": chunk.source_anchor,
         "page_no": chunk.page_no,
         "slide_no": chunk.slide_no,
         "sheet_name": chunk.sheet_name,
         "cell_range": chunk.cell_range,
+        "source_char_start": chunk.source_char_start,
+        "source_char_end": chunk.source_char_end,
         "token_count": chunk.token_count,
         "char_count": chunk.char_count,
         "prev_chunk_id": chunk.prev_chunk_id,
         "next_chunk_id": chunk.next_chunk_id,
         "metadata": chunk.metadata,
+    }
+
+
+def _text_preview(value: str | None, *, limit: int = 600) -> str | None:
+    if value is None:
+        return None
+    return value if len(value) <= limit else f"{value[:limit]}..."
+
+
+def extraction_run_payload(run: ExtractionRunRecord) -> dict[str, object]:
+    return {
+        "extraction_run_id": run.extraction_run_id,
+        "file_id": run.file_id,
+        "document_id": run.document_id,
+        "extraction_profile_name": run.extraction_profile_name,
+        "status": run.status,
+        "provider_mode": run.provider_mode,
+        "extractor_name": run.extractor_name,
+        "extractor_version": run.extractor_version,
+        "started_at": _datetime_response(run.started_at),
+        "finished_at": _datetime_response(run.finished_at),
+        "elapsed_ms": run.elapsed_ms,
+        "warning_count": run.warning_count,
+        "error_count": run.error_count,
+        "error_code": run.error_code,
+        "error_message": run.error_message,
+        "runtime_metadata": run.runtime_metadata,
+        "created_at": _datetime_response(run.created_at),
+        "updated_at": _datetime_response(run.updated_at),
+    }
+
+
+def extraction_artifact_payload(artifact: ExtractionArtifactRecord) -> dict[str, object]:
+    content_text = artifact.content_text or ""
+    return {
+        "artifact_id": artifact.artifact_id,
+        "extraction_run_id": artifact.extraction_run_id,
+        "file_id": artifact.file_id,
+        "document_id": artifact.document_id,
+        "artifact_type": artifact.artifact_type,
+        "content_preview": _text_preview(artifact.content_text),
+        "content_length": len(content_text) if artifact.content_text is not None else None,
+        "storage_path": artifact.storage_path,
+        "content_hash": artifact.content_hash,
+        "size_bytes": artifact.size_bytes,
+        "language": artifact.language,
+        "metadata": artifact.metadata,
+        "created_at": _datetime_response(artifact.created_at),
+    }
+
+
+def document_block_payload(block: DocumentBlockRecord) -> dict[str, object]:
+    return {
+        "block_id": block.block_id,
+        "artifact_id": block.artifact_id,
+        "document_id": block.document_id,
+        "parent_block_id": block.parent_block_id,
+        "block_seq": block.block_seq,
+        "block_type": block.block_type,
+        "content_preview": _text_preview(block.content_text, limit=300),
+        "content_markdown_preview": _text_preview(block.content_markdown, limit=300),
+        "heading_path": list(block.heading_path),
+        "source_anchor": block.source_anchor,
+        "page_no": block.page_no,
+        "slide_no": block.slide_no,
+        "sheet_name": block.sheet_name,
+        "cell_range": block.cell_range,
+        "char_start": block.char_start,
+        "char_end": block.char_end,
+        "token_count": block.token_count,
+        "metadata": block.metadata,
+        "created_at": _datetime_response(block.created_at),
     }
 
 
@@ -6274,6 +6356,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content={
                 "document": document_inventory_item_payload(document),
                 "chunks": [chunk_payload(chunk) for chunk in chunks],
+            },
+        )
+
+    @app.get("/api/documents/{document_id}/ingestion-artifacts")
+    def api_get_document_ingestion_artifacts(
+        document_id: int,
+        artifact_id: int | None = None,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            extraction_runs = list_document_extraction_runs(settings.database_url, document_id)
+            extraction_artifacts = list_document_extraction_artifacts(
+                settings.database_url,
+                document_id,
+            )
+            artifact_ids = {artifact.artifact_id for artifact in extraction_artifacts}
+            selected_artifact_id = (
+                artifact_id
+                if artifact_id is not None
+                else (extraction_artifacts[0].artifact_id if extraction_artifacts else None)
+            )
+            if selected_artifact_id is not None and selected_artifact_id not in artifact_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Extraction artifact not found for document.",
+                )
+            document_blocks = (
+                list_document_blocks(
+                    settings.database_url,
+                    document_id,
+                    artifact_id=selected_artifact_id,
+                )
+                if selected_artifact_id is not None
+                else []
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidIngestionArtifactError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "document": document_inventory_item_payload(document),
+                "extraction_runs": [extraction_run_payload(run) for run in extraction_runs],
+                "artifacts": [
+                    extraction_artifact_payload(artifact) for artifact in extraction_artifacts
+                ],
+                "selected_artifact_id": selected_artifact_id,
+                "blocks": [document_block_payload(block) for block in document_blocks],
             },
         )
 
@@ -8106,9 +8248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="DGX ingestion benchmark run not found.",
             )
 
-        return JSONResponse(
-            content={"benchmark": dgx_ingestion_benchmark_detail_payload(detail)}
-        )
+        return JSONResponse(content={"benchmark": dgx_ingestion_benchmark_detail_payload(detail)})
 
     @app.post("/api/search/compare")
     def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:
@@ -9919,6 +10059,75 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
         )
 
+    @app.get("/documents/{document_id}/artifacts", response_class=HTMLResponse)
+    def document_ingestion_artifacts_page(
+        request: Request,
+        document_id: int,
+        artifact_id: int | None = None,
+    ) -> HTMLResponse:
+        document: DocumentInventoryItem | None = None
+        extraction_runs: list[ExtractionRunRecord] = []
+        extraction_artifacts: list[ExtractionArtifactRecord] = []
+        document_blocks: list[DocumentBlockRecord] = []
+        selected_artifact_id: int | None = None
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                document = get_document_inventory_item(settings.database_url, document_id)
+                if document is None:
+                    error_message = f"Document not found: {document_id}"
+                else:
+                    extraction_runs = list_document_extraction_runs(
+                        settings.database_url,
+                        document_id,
+                    )
+                    extraction_artifacts = list_document_extraction_artifacts(
+                        settings.database_url,
+                        document_id,
+                    )
+                    artifact_ids = {artifact.artifact_id for artifact in extraction_artifacts}
+                    selected_artifact_id = (
+                        artifact_id
+                        if artifact_id is not None
+                        else (extraction_artifacts[0].artifact_id if extraction_artifacts else None)
+                    )
+                    if (
+                        selected_artifact_id is not None
+                        and selected_artifact_id not in artifact_ids
+                    ):
+                        error_message = (
+                            f"Extraction artifact not found for document: {selected_artifact_id}"
+                        )
+                        selected_artifact_id = None
+                    elif selected_artifact_id is not None:
+                        document_blocks = list_document_blocks(
+                            settings.database_url,
+                            document_id,
+                            artifact_id=selected_artifact_id,
+                        )
+            except (InvalidDocumentInventoryError, InvalidIngestionArtifactError) as exc:
+                error_message = str(exc)
+            except Exception as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "document_artifacts.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                document=document,
+                extraction_runs=extraction_runs,
+                extraction_artifacts=extraction_artifacts,
+                document_blocks=document_blocks,
+                selected_artifact_id=selected_artifact_id,
+                error_message=error_message,
+            ),
+        )
+
     @app.post("/documents/{document_id}/permissions", response_class=HTMLResponse)
     def submit_document_permission_update(
         request: Request,
@@ -10751,11 +10960,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_run_id = (
                     benchmark_run_id
                     if benchmark_run_id is not None
-                    else (
-                        benchmark_runs[0].benchmark_run_id
-                        if benchmark_runs
-                        else None
-                    )
+                    else (benchmark_runs[0].benchmark_run_id if benchmark_runs else None)
                 )
                 if selected_run_id is not None:
                     selected_detail = get_dgx_ingestion_benchmark_detail(

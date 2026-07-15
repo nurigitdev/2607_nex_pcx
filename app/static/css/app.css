@@ -2170,19 +2170,22 @@ main.container-fluid {
   width: 12rem;
 }
 
-.document-chunk-list {
+.document-chunk-list,
+.artifact-block-list {
   display: grid;
   gap: 0.875rem;
 }
 
-.document-chunk-item {
+.document-chunk-item,
+.artifact-block-item {
   border: 1px solid var(--pcx-border);
   border-radius: 8px;
   min-width: 0;
   padding: 0.875rem;
 }
 
-.document-chunk-meta {
+.document-chunk-meta,
+.artifact-block-meta {
   align-items: center;
   color: var(--pcx-muted);
   display: flex;

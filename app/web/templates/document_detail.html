@@ -10,7 +10,12 @@
       {% if document %}#{{ document.document_id }} · {{ document.original_file_name }}{% else %}Chunk preview and metadata{% endif %}
     </p>
   </div>
-  <a class="btn btn-outline-secondary" href="/documents">Documents</a>
+  <div class="d-flex flex-wrap gap-2 justify-content-end">
+    {% if document %}
+    <a class="btn btn-outline-primary" href="/documents/{{ document.document_id }}/artifacts">{{ t("ingestion_artifacts.open") }}</a>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="/documents">Documents</a>
+  </div>
 </div>
 
 {% if error_message %}
