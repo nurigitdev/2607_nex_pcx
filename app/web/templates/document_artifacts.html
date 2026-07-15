@@ -131,6 +131,44 @@
         </div>
       </div>
       {% if selected_artifact %}
+      <div class="artifact-export-panel mb-3">
+        <div>
+          <div class="artifact-preview-heading">{{ t("ingestion_artifacts.export_artifact") }}</div>
+          <div class="text-secondary small">{{ t("ingestion_artifacts.export_artifact_help") }}</div>
+        </div>
+        <div class="artifact-export-actions">
+          <a
+            class="btn btn-sm btn-outline-primary"
+            href="/api/documents/{{ document.document_id }}/extraction-export?artifact_id={{ selected_artifact_id }}&format=markdown"
+          >
+            {{ t("ingestion_artifacts.export_markdown") }}
+          </a>
+          <a
+            class="btn btn-sm btn-outline-secondary"
+            href="/api/documents/{{ document.document_id }}/extraction-export?artifact_id={{ selected_artifact_id }}&format=blocks_json"
+          >
+            {{ t("ingestion_artifacts.export_blocks_json") }}
+          </a>
+          <a
+            class="btn btn-sm btn-outline-secondary"
+            href="/api/documents/{{ document.document_id }}/extraction-export?artifact_id={{ selected_artifact_id }}&format=metadata_json"
+          >
+            {{ t("ingestion_artifacts.export_metadata_json") }}
+          </a>
+          <a
+            class="btn btn-sm btn-outline-secondary"
+            href="/api/documents/{{ document.document_id }}/extraction-export?artifact_id={{ selected_artifact_id }}&format=quality_json"
+          >
+            {{ t("ingestion_artifacts.export_quality_json") }}
+          </a>
+          <a
+            class="btn btn-sm btn-outline-secondary"
+            href="/api/documents/{{ document.document_id }}/extraction-export?artifact_id={{ selected_artifact_id }}&format=bundle_json"
+          >
+            {{ t("ingestion_artifacts.export_bundle_json") }}
+          </a>
+        </div>
+      </div>
       <dl class="job-detail-list mb-3">
         <dt>{{ t("ingestion_artifacts.hash") }}</dt>
         <dd>{{ selected_artifact.content_hash or "-" }}</dd>

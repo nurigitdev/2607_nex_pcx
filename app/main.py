@@ -5878,6 +5878,78 @@ def extraction_quality_check_payload(
     }
 
 
+EXTRACTION_ARTIFACT_EXPORT_FORMATS = {
+    "markdown",
+    "blocks_json",
+    "metadata_json",
+    "quality_json",
+    "bundle_json",
+}
+
+
+def _extraction_artifact_export_filename(
+    *,
+    document_id: int,
+    artifact_id: int,
+    export_format: str,
+) -> str:
+    extension = "md" if export_format == "markdown" else "json"
+    return f"document-{document_id}-artifact-{artifact_id}-{export_format}.{extension}"
+
+
+def _attachment_headers(filename: str) -> dict[str, str]:
+    return {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+
+def extraction_artifact_export_payload(
+    *,
+    document: DocumentInventoryItem,
+    artifact: ExtractionArtifactRecord,
+    blocks: list[DocumentBlockRecord],
+    extraction_runs: list[ExtractionRunRecord],
+    export_format: str,
+) -> dict[str, object]:
+    artifact_payload = extraction_artifact_preview_payload(artifact)
+    block_payloads = [document_block_payload(block) for block in blocks]
+    block_summary = document_block_summary_payload(blocks)
+    quality_check = extraction_quality_check_payload(artifact, blocks, extraction_runs)
+
+    if export_format == "blocks_json":
+        return {
+            "document": document_inventory_item_payload(document),
+            "selected_artifact_id": artifact.artifact_id,
+            "selected_artifact": extraction_artifact_payload(artifact),
+            "block_summary": block_summary,
+            "blocks": block_payloads,
+        }
+    if export_format == "metadata_json":
+        return {
+            "document": document_inventory_item_payload(document),
+            "selected_artifact_id": artifact.artifact_id,
+            "selected_artifact": extraction_artifact_payload(artifact),
+            "metadata": artifact.metadata,
+        }
+    if export_format == "quality_json":
+        return {
+            "document": document_inventory_item_payload(document),
+            "selected_artifact_id": artifact.artifact_id,
+            "selected_artifact": extraction_artifact_payload(artifact),
+            "block_summary": block_summary,
+            "quality_check": quality_check,
+        }
+    if export_format == "bundle_json":
+        return {
+            "document": document_inventory_item_payload(document),
+            "extraction_runs": [extraction_run_payload(run) for run in extraction_runs],
+            "selected_artifact_id": artifact.artifact_id,
+            "selected_artifact": artifact_payload,
+            "block_summary": block_summary,
+            "quality_check": quality_check,
+            "blocks": block_payloads,
+        }
+    raise ValueError(f"Unsupported extraction artifact export format: {export_format}")
+
+
 def chunk_policy_summary_payload(policy: ChunkPolicySummaryRecord) -> dict[str, object]:
     return {
         "chunk_policy_name": policy.chunk_policy_name,
@@ -6780,6 +6852,96 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     extraction_runs,
                 ),
             },
+        )
+
+    @app.get("/api/documents/{document_id}/extraction-export")
+    def api_export_document_extraction_artifact(
+        document_id: int,
+        artifact_id: int | None = None,
+        export_format: str = Query("markdown", alias="format"),
+    ) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        normalized_format = export_format.strip().lower()
+        if normalized_format not in EXTRACTION_ARTIFACT_EXPORT_FORMATS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "format must be markdown, blocks_json, metadata_json, "
+                    "quality_json, or bundle_json."
+                ),
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            extraction_runs = list_document_extraction_runs(settings.database_url, document_id)
+            extraction_artifacts = list_document_extraction_artifacts(
+                settings.database_url,
+                document_id,
+            )
+            selected_artifact_id = (
+                artifact_id
+                if artifact_id is not None
+                else (extraction_artifacts[0].artifact_id if extraction_artifacts else None)
+            )
+            selected_artifact = (
+                next(
+                    (
+                        artifact
+                        for artifact in extraction_artifacts
+                        if artifact.artifact_id == selected_artifact_id
+                    ),
+                    None,
+                )
+                if selected_artifact_id is not None
+                else None
+            )
+            if selected_artifact_id is None or selected_artifact is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Extraction artifact not found for document.",
+                )
+            document_blocks = list_document_blocks(
+                settings.database_url,
+                document_id,
+                artifact_id=selected_artifact_id,
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidIngestionArtifactError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        filename = _extraction_artifact_export_filename(
+            document_id=document_id,
+            artifact_id=selected_artifact_id,
+            export_format=normalized_format,
+        )
+        headers = _attachment_headers(filename)
+        if normalized_format == "markdown":
+            return Response(
+                content=selected_artifact.content_text or "",
+                media_type="text/markdown; charset=utf-8",
+                headers=headers,
+            )
+
+        return JSONResponse(
+            content=extraction_artifact_export_payload(
+                document=document,
+                artifact=selected_artifact,
+                blocks=document_blocks,
+                extraction_runs=extraction_runs,
+                export_format=normalized_format,
+            ),
+            headers=headers,
         )
 
     @app.put("/api/documents/{document_id}/permissions")

@@ -116,6 +116,34 @@ def test_document_ingestion_artifact_api_and_page(
                 f"/api/documents/{document_id}/extraction-quality",
                 params={"artifact_id": 999_999_999},
             )
+            markdown_export_response = client.get(
+                f"/api/documents/{document_id}/extraction-export",
+                params={"artifact_id": artifact_id, "format": "markdown"},
+            )
+            blocks_export_response = client.get(
+                f"/api/documents/{document_id}/extraction-export",
+                params={"artifact_id": artifact_id, "format": "blocks_json"},
+            )
+            metadata_export_response = client.get(
+                f"/api/documents/{document_id}/extraction-export",
+                params={"artifact_id": artifact_id, "format": "metadata_json"},
+            )
+            quality_export_response = client.get(
+                f"/api/documents/{document_id}/extraction-export",
+                params={"artifact_id": artifact_id, "format": "quality_json"},
+            )
+            bundle_export_response = client.get(
+                f"/api/documents/{document_id}/extraction-export",
+                params={"artifact_id": artifact_id, "format": "bundle_json"},
+            )
+            invalid_export_response = client.get(
+                f"/api/documents/{document_id}/extraction-export",
+                params={"artifact_id": artifact_id, "format": "csv"},
+            )
+            missing_export_artifact_response = client.get(
+                f"/api/documents/{document_id}/extraction-export",
+                params={"artifact_id": 999_999_999, "format": "markdown"},
+            )
             page_response = client.get(
                 f"/documents/{document_id}/artifacts",
                 params={"lang": "ko", "artifact_id": artifact_id},
@@ -130,6 +158,10 @@ def test_document_ingestion_artifact_api_and_page(
         preview_payload = preview_response.json()
         selected_preview_payload = selected_preview_response.json()
         quality_payload = quality_response.json()
+        blocks_export_payload = blocks_export_response.json()
+        metadata_export_payload = metadata_export_response.json()
+        quality_export_payload = quality_export_response.json()
+        bundle_export_payload = bundle_export_response.json()
 
         assert api_response.status_code == 200
         assert payload["document"]["document_id"] == document_id
@@ -166,9 +198,39 @@ def test_document_ingestion_artifact_api_and_page(
         assert quality_payload["quality_check"]["issues"][0]["code"] == "short_content_text"
         assert quality_payload["quality_check"]["source_anchor_coverage_percent"] == 100.0
         assert missing_quality_artifact_response.status_code == 404
+        assert markdown_export_response.status_code == 200
+        assert markdown_export_response.headers["content-type"].startswith("text/markdown")
+        assert "document-" in markdown_export_response.headers["content-disposition"]
+        assert markdown_export_response.headers["content-disposition"].endswith(
+            "-markdown.md\""
+        )
+        assert markdown_export_response.text.startswith("# Artifact API")
+        assert blocks_export_response.status_code == 200
+        assert blocks_export_response.headers["content-disposition"].endswith(
+            "-blocks_json.json\""
+        )
+        assert blocks_export_payload["block_summary"]["block_count"] == 2
+        assert [block["block_type"] for block in blocks_export_payload["blocks"]] == [
+            "heading",
+            "paragraph",
+        ]
+        assert metadata_export_response.status_code == 200
+        assert metadata_export_payload["metadata"]["parser_name"]
+        assert metadata_export_payload["metadata"]["block_count"] == 2
+        assert quality_export_response.status_code == 200
+        assert quality_export_payload["quality_check"]["status"] == "warning"
+        assert bundle_export_response.status_code == 200
+        assert bundle_export_payload["selected_artifact"]["content_text"].startswith(
+            "# Artifact API"
+        )
+        assert bundle_export_payload["extraction_runs"][0]["status"] == "succeeded"
+        assert invalid_export_response.status_code == 400
+        assert missing_export_artifact_response.status_code == 404
         assert page_response.status_code == 200
         assert "Artifact API" in page_response.text
         assert "Blocks" in page_response.text
+        assert "Artifact 내보내기" in page_response.text
+        assert "Bundle JSON" in page_response.text
         assert "정규화 텍스트 Preview" in page_response.text
         assert "Block 요약" in page_response.text
         assert "품질 점검" in page_response.text
@@ -197,11 +259,15 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
         with TestClient(app) as client:
             response = client.get(f"/api/documents/{document_id}/extraction-preview")
             quality_response = client.get(f"/api/documents/{document_id}/extraction-quality")
+            export_response = client.get(f"/api/documents/{document_id}/extraction-export")
             missing_document_response = client.get(
                 f"/api/documents/{document_id + 999_999_999}/extraction-preview"
             )
             missing_quality_document_response = client.get(
                 f"/api/documents/{document_id + 999_999_999}/extraction-quality"
+            )
+            missing_export_document_response = client.get(
+                f"/api/documents/{document_id + 999_999_999}/extraction-export"
             )
             page_response = client.get(
                 f"/documents/{document_id}/artifacts",
@@ -230,8 +296,10 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
         assert quality_response.status_code == 200
         assert quality_payload["quality_check"]["status"] == "not_available"
         assert quality_payload["quality_check"]["issues"][0]["code"] == "no_artifact_selected"
+        assert export_response.status_code == 404
         assert missing_document_response.status_code == 404
         assert missing_quality_document_response.status_code == 404
+        assert missing_export_document_response.status_code == 404
         assert page_response.status_code == 200
         assert "선택된 artifact가 없습니다." in page_response.text
         assert "집계할 block 유형이 없습니다." in page_response.text

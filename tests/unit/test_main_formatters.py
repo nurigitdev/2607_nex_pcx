@@ -1,15 +1,18 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from app.core.document_inventory import DocumentInventoryItem
 from app.core.ingestion_artifacts import (
     DocumentBlockRecord,
     ExtractionArtifactRecord,
     ExtractionRunRecord,
 )
 from app.main import (
+    _extraction_artifact_export_filename,
     _percent_label,
     _percent_value,
     document_block_summary_payload,
+    extraction_artifact_export_payload,
     extraction_artifact_preview_payload,
     extraction_quality_check_payload,
 )
@@ -91,6 +94,43 @@ def make_extraction_run(**overrides) -> ExtractionRunRecord:
     return ExtractionRunRecord(**values)
 
 
+def make_document_inventory_item(**overrides) -> DocumentInventoryItem:
+    values = {
+        "document_id": 4,
+        "file_id": 3,
+        "document_title": "Quality Fixture",
+        "original_file_name": "quality.md",
+        "file_ext": ".md",
+        "mime_type": "text/markdown",
+        "file_size_bytes": 120,
+        "document_group": "general",
+        "security_level": "internal",
+        "document_status": "active",
+        "parse_status": "succeeded",
+        "owner_user_id": None,
+        "owner_login_id": None,
+        "owner_display_name": None,
+        "owner_org_unit_id": None,
+        "owner_org_unit_name": None,
+        "access_scope": "personal",
+        "uploaded_by": "tester",
+        "uploaded_by_user_id": None,
+        "uploaded_by_login_id": None,
+        "uploaded_by_display_name": None,
+        "chunk_count": 0,
+        "total_token_count": None,
+        "total_char_count": 0,
+        "latest_pipeline_job_id": None,
+        "latest_pipeline_status": None,
+        "latest_pipeline_stage": None,
+        "latest_pipeline_progress_percent": None,
+        "uploaded_at": NOW,
+        "updated_at": NOW,
+    }
+    values.update(overrides)
+    return DocumentInventoryItem(**values)
+
+
 def test_percent_value_formats_decimal_and_numeric_values_to_two_places() -> None:
     assert _percent_value(Decimal("0E-20")) == "0.00"
     assert _percent_value(Decimal("33.33333333333333333333")) == "33.33"
@@ -111,6 +151,85 @@ def test_extraction_artifact_preview_payload_handles_missing_content_text() -> N
     assert payload["content_lines"] is None
     assert payload["content_preview"] is None
     assert payload["content_length"] is None
+
+
+def test_extraction_artifact_export_filename_uses_expected_extension() -> None:
+    assert (
+        _extraction_artifact_export_filename(
+            document_id=10,
+            artifact_id=20,
+            export_format="markdown",
+        )
+        == "document-10-artifact-20-markdown.md"
+    )
+    assert (
+        _extraction_artifact_export_filename(
+            document_id=10,
+            artifact_id=20,
+            export_format="bundle_json",
+        )
+        == "document-10-artifact-20-bundle_json.json"
+    )
+
+
+def test_extraction_artifact_export_payload_formats_supported_json_exports() -> None:
+    document = make_document_inventory_item()
+    artifact = make_extraction_artifact(metadata={"parser_name": "markdown"})
+    blocks = [make_document_block()]
+    extraction_runs = [make_extraction_run()]
+
+    blocks_payload = extraction_artifact_export_payload(
+        document=document,
+        artifact=artifact,
+        blocks=blocks,
+        extraction_runs=extraction_runs,
+        export_format="blocks_json",
+    )
+    metadata_payload = extraction_artifact_export_payload(
+        document=document,
+        artifact=artifact,
+        blocks=blocks,
+        extraction_runs=extraction_runs,
+        export_format="metadata_json",
+    )
+    quality_payload = extraction_artifact_export_payload(
+        document=document,
+        artifact=artifact,
+        blocks=blocks,
+        extraction_runs=extraction_runs,
+        export_format="quality_json",
+    )
+    bundle_payload = extraction_artifact_export_payload(
+        document=document,
+        artifact=artifact,
+        blocks=blocks,
+        extraction_runs=extraction_runs,
+        export_format="bundle_json",
+    )
+
+    assert blocks_payload["block_summary"]["block_count"] == 1
+    assert blocks_payload["blocks"][0]["block_id"] == 1
+    assert metadata_payload["metadata"] == {"parser_name": "markdown"}
+    assert quality_payload["quality_check"]["status"] == "passed"
+    assert bundle_payload["selected_artifact"]["content_text"].startswith(
+        "# Quality Fixture"
+    )
+    assert bundle_payload["extraction_runs"][0]["status"] == "succeeded"
+
+
+def test_extraction_artifact_export_payload_rejects_unsupported_format() -> None:
+    try:
+        extraction_artifact_export_payload(
+            document=make_document_inventory_item(),
+            artifact=make_extraction_artifact(),
+            blocks=[],
+            extraction_runs=[],
+            export_format="csv",
+        )
+    except ValueError as exc:
+        assert "Unsupported extraction artifact export format" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
 
 
 def test_document_block_summary_payload_counts_source_coordinates() -> None:
