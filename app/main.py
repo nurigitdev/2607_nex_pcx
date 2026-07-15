@@ -10188,6 +10188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         extraction_runs: list[ExtractionRunRecord] = []
         extraction_artifacts: list[ExtractionArtifactRecord] = []
         document_blocks: list[DocumentBlockRecord] = []
+        selected_artifact: ExtractionArtifactRecord | None = None
         selected_artifact_id: int | None = None
         error_message = None
 
@@ -10222,6 +10223,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         )
                         selected_artifact_id = None
                     elif selected_artifact_id is not None:
+                        selected_artifact = next(
+                            (
+                                artifact
+                                for artifact in extraction_artifacts
+                                if artifact.artifact_id == selected_artifact_id
+                            ),
+                            None,
+                        )
                         document_blocks = list_document_blocks(
                             settings.database_url,
                             document_id,
@@ -10242,6 +10251,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 extraction_runs=extraction_runs,
                 extraction_artifacts=extraction_artifacts,
                 document_blocks=document_blocks,
+                document_block_summary=document_block_summary_payload(document_blocks),
+                selected_artifact=selected_artifact,
+                selected_artifact_preview=(
+                    extraction_artifact_preview_payload(selected_artifact)
+                    if selected_artifact is not None
+                    else None
+                ),
                 selected_artifact_id=selected_artifact_id,
                 error_message=error_message,
             ),

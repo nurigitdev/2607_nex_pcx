@@ -112,6 +112,10 @@ def test_document_ingestion_artifact_api_and_page(
                 f"/documents/{document_id}/artifacts",
                 params={"lang": "ko", "artifact_id": artifact_id},
             )
+            missing_artifact_page_response = client.get(
+                f"/documents/{document_id}/artifacts",
+                params={"lang": "ko", "artifact_id": 999_999_999},
+            )
 
         payload = api_response.json()
         selected_payload = selected_response.json()
@@ -149,6 +153,14 @@ def test_document_ingestion_artifact_api_and_page(
         assert page_response.status_code == 200
         assert "Artifact API" in page_response.text
         assert "Blocks" in page_response.text
+        assert "정규화 텍스트 Preview" in page_response.text
+        assert "Block 요약" in page_response.text
+        assert "Source Anchor" in page_response.text
+        assert "heading 1" in page_response.text
+        assert "paragraph 1" in page_response.text
+        assert missing_artifact_page_response.status_code == 200
+        assert "Extraction artifact not found for document" in missing_artifact_page_response.text
+        assert "선택된 artifact가 없습니다." in missing_artifact_page_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)
 
@@ -167,6 +179,10 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
             response = client.get(f"/api/documents/{document_id}/extraction-preview")
             missing_document_response = client.get(
                 f"/api/documents/{document_id + 999_999_999}/extraction-preview"
+            )
+            page_response = client.get(
+                f"/documents/{document_id}/artifacts",
+                params={"lang": "ko"},
             )
 
         payload = response.json()
@@ -188,5 +204,8 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
             "sheet_names": [],
         }
         assert missing_document_response.status_code == 404
+        assert page_response.status_code == 200
+        assert "선택된 artifact가 없습니다." in page_response.text
+        assert "집계할 block 유형이 없습니다." in page_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)
