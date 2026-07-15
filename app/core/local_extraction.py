@@ -1563,11 +1563,15 @@ def persist_extraction_runtime_result_in_connection(
     if result.blocks and not artifacts:
         raise InvalidIngestionArtifactError("runtime blocks require a persisted artifact")
 
-    block_records = _persist_blocks(
-        connection,
-        request.document_id,
-        artifacts[0],
-        result.blocks,
+    block_records = (
+        _persist_blocks(
+            connection,
+            request.document_id,
+            artifacts[0],
+            result.blocks,
+        )
+        if result.blocks
+        else ()
     )
     return PersistedExtractionRuntimeResult(
         run=run,

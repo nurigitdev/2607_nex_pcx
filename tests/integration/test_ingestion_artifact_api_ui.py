@@ -219,6 +219,13 @@ def test_document_ingestion_artifact_api_and_page(
                 f"/api/documents/{document_id}/extraction-export",
                 params={"artifact_id": 999_999_999, "format": "markdown"},
             )
+            rerun_response = client.post(
+                f"/api/documents/{document_id}/extraction-rerun",
+                json={
+                    "requested_by": "api-test",
+                    "options": {"reason": "slice-235"},
+                },
+            )
             page_response = client.get(
                 f"/documents/{document_id}/artifacts",
                 params={"lang": "ko", "artifact_id": artifact_id},
@@ -243,6 +250,7 @@ def test_document_ingestion_artifact_api_and_page(
         metadata_export_payload = metadata_export_response.json()
         quality_export_payload = quality_export_response.json()
         bundle_export_payload = bundle_export_response.json()
+        rerun_payload = rerun_response.json()
 
         assert api_response.status_code == 200
         assert payload["document"]["document_id"] == document_id
@@ -340,6 +348,19 @@ def test_document_ingestion_artifact_api_and_page(
         assert bundle_export_payload["extraction_runs"][0]["status"] == "succeeded"
         assert invalid_export_response.status_code == 400
         assert missing_export_artifact_response.status_code == 404
+        assert rerun_response.status_code == 201
+        assert rerun_payload["extraction_request"]["extraction_profile_name"] == (
+            LOCAL_MARKDOWN_PROFILE_NAME
+        )
+        assert rerun_payload["extraction_request"]["provider_mode"] == "local"
+        assert rerun_payload["extraction_request"]["options"]["reason"] == "slice-235"
+        assert rerun_payload["extraction_request"]["options"]["rerun_request"][
+            "requested_by"
+        ] == "api-test"
+        assert rerun_payload["run"]["status"] == "succeeded"
+        assert rerun_payload["artifact_count"] == 1
+        assert rerun_payload["block_count"] == 2
+        assert rerun_payload["artifacts"][0]["content_preview"].startswith("# Artifact API")
         assert page_response.status_code == 200
         assert "Artifact API" in page_response.text
         assert "Blocks" in page_response.text
@@ -360,6 +381,48 @@ def test_document_ingestion_artifact_api_and_page(
         assert missing_artifact_page_response.status_code == 200
         assert "Extraction artifact not found for document" in missing_artifact_page_response.text
         assert "선택된 artifact가 없습니다." in missing_artifact_page_response.text
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_document_extraction_rerun_api_persists_failed_run_for_missing_source(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "slice-235-missing.md"
+    source_path.write_text("# Missing Source\n\nThis file will be removed.", encoding="utf-8")
+    file_id, document_id = _create_document(migrated_database_url, source_path)
+    source_path.unlink()
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            blank_profile_response = client.post(
+                f"/api/documents/{document_id}/extraction-rerun",
+                json={"extraction_profile_name": " "},
+            )
+            missing_document_response = client.post(
+                f"/api/documents/{document_id + 999_999_999}/extraction-rerun",
+                json={},
+            )
+            rerun_response = client.post(
+                f"/api/documents/{document_id}/extraction-rerun",
+                json={"requested_by": "missing-source-test"},
+            )
+
+        payload = rerun_response.json()
+
+        assert blank_profile_response.status_code == 400
+        assert missing_document_response.status_code == 404
+        assert rerun_response.status_code == 201
+        assert payload["run"]["status"] == "failed"
+        assert payload["run"]["error_code"] == "LOCAL_SOURCE_NOT_FOUND"
+        assert payload["run"]["error_count"] == 1
+        assert payload["artifact_count"] == 0
+        assert payload["block_count"] == 0
+        assert payload["extraction_request"]["options"]["rerun_request"][
+            "requested_by"
+        ] == "missing-source-test"
     finally:
         _cleanup_file(migrated_database_url, file_id)
 

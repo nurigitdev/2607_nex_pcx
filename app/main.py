@@ -278,11 +278,14 @@ from app.core.evaluation_runs import (
     list_evaluation_results,
     list_evaluation_runs,
 )
+from app.core.extraction_runtime import ExtractionRuntimeRequest
 from app.core.file_metadata import (
     DOCUMENT_ACCESS_SCOPES,
     SUPPORTED_FILE_EXTENSIONS,
+    FileMetadataRecord,
     InvalidFileMetadataError,
     UnsupportedFileExtensionError,
+    get_file_metadata,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
 from app.core.golden_batch_metric_snapshots import (
@@ -375,6 +378,12 @@ from app.core.ingestion_artifacts import (
     list_document_extraction_artifacts,
     list_document_extraction_runs,
     list_extraction_quality_snapshots,
+)
+from app.core.local_extraction import (
+    PersistedExtractionRuntimeResult,
+    persist_extraction_runtime_result,
+    run_local_extraction,
+    select_local_extraction_profile_name,
 )
 from app.core.permission_inventory import (
     InvalidPermissionInventoryError,
@@ -610,6 +619,12 @@ class ExtractionQualitySnapshotCreateRequest(BaseModel):
     artifact_id: int | None = Field(default=None, ge=1)
     created_by: str | None = Field(default="extraction-quality-api", max_length=120)
     created_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class ExtractionRerunRequest(BaseModel):
+    extraction_profile_name: str | None = Field(default=None, max_length=120)
+    requested_by: str | None = Field(default="extraction-rerun-api", max_length=120)
+    options: dict[str, object] = Field(default_factory=dict)
 
 
 class EmbeddingProviderRouteRequest(BaseModel):
@@ -5696,6 +5711,87 @@ def extraction_run_payload(run: ExtractionRunRecord) -> dict[str, object]:
     }
 
 
+def _resolve_extraction_rerun_profile_name(
+    file_record: FileMetadataRecord,
+    requested_profile_name: str | None,
+) -> str:
+    if requested_profile_name is not None:
+        profile_name = requested_profile_name.strip()
+        if not profile_name:
+            raise InvalidIngestionArtifactError("extraction_profile_name must not be blank")
+        return profile_name
+
+    profile_name = select_local_extraction_profile_name(file_record.file_ext)
+    if profile_name is None:
+        file_type = file_record.file_ext or "(none)"
+        raise InvalidIngestionArtifactError(
+            f"No local extraction profile supports file type: {file_type}"
+        )
+    return profile_name
+
+
+def build_extraction_rerun_request(
+    *,
+    document: DocumentInventoryItem,
+    file_record: FileMetadataRecord,
+    payload: ExtractionRerunRequest,
+) -> ExtractionRuntimeRequest:
+    requested_by = (payload.requested_by or "").strip() or "extraction-rerun-api"
+    profile_name = _resolve_extraction_rerun_profile_name(
+        file_record,
+        payload.extraction_profile_name,
+    )
+    options = dict(payload.options)
+    options["rerun_request"] = {
+        "source": "extraction_rerun_api",
+        "requested_by": requested_by,
+        "document_id": document.document_id,
+        "file_id": file_record.file_id,
+    }
+    return ExtractionRuntimeRequest(
+        file_id=file_record.file_id,
+        document_id=document.document_id,
+        storage_path=file_record.storage_path,
+        extraction_profile_name=profile_name,
+        mime_type=file_record.mime_type,
+        detected_file_type=file_record.file_ext.lstrip(".") or None,
+        options=options,
+        trace_id=f"extraction-rerun-{document.document_id}-{datetime.now(UTC).isoformat()}",
+    )
+
+
+def extraction_rerun_response_payload(
+    *,
+    document: DocumentInventoryItem,
+    file_record: FileMetadataRecord,
+    request: ExtractionRuntimeRequest,
+    persisted: PersistedExtractionRuntimeResult,
+) -> dict[str, object]:
+    return {
+        "document": document_inventory_item_payload(document),
+        "source_file": {
+            "file_id": file_record.file_id,
+            "original_file_name": file_record.original_file_name,
+            "file_ext": file_record.file_ext,
+            "mime_type": file_record.mime_type,
+            "storage_path": file_record.storage_path,
+        },
+        "extraction_request": {
+            "extraction_profile_name": request.extraction_profile_name,
+            "provider_mode": "local",
+            "detected_file_type": request.detected_file_type,
+            "mime_type": request.mime_type,
+            "trace_id": request.trace_id,
+            "options": request.options,
+        },
+        "run": extraction_run_payload(persisted.run),
+        "artifacts": [extraction_artifact_payload(artifact) for artifact in persisted.artifacts],
+        "blocks": [document_block_payload(block) for block in persisted.blocks],
+        "artifact_count": len(persisted.artifacts),
+        "block_count": len(persisted.blocks),
+    }
+
+
 def extraction_artifact_payload(artifact: ExtractionArtifactRecord) -> dict[str, object]:
     content_text = artifact.content_text or ""
     return {
@@ -7360,6 +7456,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 export_format=normalized_format,
             ),
             headers=headers,
+        )
+
+    @app.post(
+        "/api/documents/{document_id}/extraction-rerun",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def api_rerun_document_extraction(
+        document_id: int,
+        payload: ExtractionRerunRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            file_record = get_file_metadata(settings.database_url, document.file_id)
+            if file_record is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="File metadata not found for document.",
+                )
+            extraction_request = build_extraction_rerun_request(
+                document=document,
+                file_record=file_record,
+                payload=payload,
+            )
+            runtime_result = run_local_extraction(extraction_request)
+            persisted = persist_extraction_runtime_result(
+                settings.database_url,
+                extraction_request,
+                runtime_result,
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except (InvalidFileMetadataError, InvalidIngestionArtifactError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content=extraction_rerun_response_payload(
+                document=document,
+                file_record=file_record,
+                request=extraction_request,
+                persisted=persisted,
+            ),
         )
 
     @app.put("/api/documents/{document_id}/permissions")

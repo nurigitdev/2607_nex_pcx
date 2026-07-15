@@ -1,20 +1,27 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from app.core.document_inventory import DocumentInventoryItem
+import pytest
+
 from app.core.chunks import ChunkRecord
+from app.core.document_inventory import DocumentInventoryItem
+from app.core.file_metadata import FileMetadataRecord
 from app.core.ingestion_artifacts import (
     DocumentBlockRecord,
     ExtractionArtifactRecord,
     ExtractionQualitySnapshotRecord,
     ExtractionQualitySnapshotSummary,
     ExtractionRunRecord,
+    InvalidIngestionArtifactError,
 )
 from app.main import (
     _extraction_artifact_export_filename,
     _chunks_for_source_trace,
     _percent_label,
     _percent_value,
+    _resolve_extraction_rerun_profile_name,
+    ExtractionRerunRequest,
+    build_extraction_rerun_request,
     chunk_source_trace_preview_payload,
     document_block_summary_payload,
     extraction_artifact_export_payload,
@@ -199,6 +206,75 @@ def make_document_inventory_item(**overrides) -> DocumentInventoryItem:
     }
     values.update(overrides)
     return DocumentInventoryItem(**values)
+
+
+def make_file_metadata_record(**overrides) -> FileMetadataRecord:
+    values = {
+        "file_id": 3,
+        "document_id": 4,
+        "original_file_name": "quality.md",
+        "stored_file_name": "quality-stored.md",
+        "file_ext": ".md",
+        "mime_type": "text/markdown",
+        "file_size_bytes": 120,
+        "sha256_checksum": "checksum",
+        "storage_path": "/tmp/quality.md",
+        "document_group": "general",
+        "security_level": "internal",
+        "parse_status": "succeeded",
+        "uploaded_by_user_id": None,
+        "owner_user_id": None,
+        "owner_org_unit_id": None,
+        "access_scope": "personal",
+    }
+    values.update(overrides)
+    return FileMetadataRecord(**values)
+
+
+def test_build_extraction_rerun_request_defaults_profile_and_metadata() -> None:
+    request = build_extraction_rerun_request(
+        document=make_document_inventory_item(),
+        file_record=make_file_metadata_record(),
+        payload=ExtractionRerunRequest(
+            requested_by="unit-test",
+            options={"reason": "quality-review"},
+        ),
+    )
+
+    assert request.file_id == 3
+    assert request.document_id == 4
+    assert request.storage_path == "/tmp/quality.md"
+    assert request.extraction_profile_name == "local_markdown_default"
+    assert request.detected_file_type == "md"
+    assert request.options["reason"] == "quality-review"
+    assert request.options["rerun_request"] == {
+        "source": "extraction_rerun_api",
+        "requested_by": "unit-test",
+        "document_id": 4,
+        "file_id": 3,
+    }
+    assert request.trace_id is not None
+    assert request.trace_id.startswith("extraction-rerun-4-")
+
+
+def test_resolve_extraction_rerun_profile_name_uses_explicit_profile() -> None:
+    profile_name = _resolve_extraction_rerun_profile_name(
+        make_file_metadata_record(file_ext=".pdf"),
+        " local_pdf_text_default ",
+    )
+
+    assert profile_name == "local_pdf_text_default"
+
+
+def test_resolve_extraction_rerun_profile_name_rejects_invalid_values() -> None:
+    with pytest.raises(InvalidIngestionArtifactError, match="must not be blank"):
+        _resolve_extraction_rerun_profile_name(make_file_metadata_record(), " ")
+
+    with pytest.raises(InvalidIngestionArtifactError, match="No local extraction profile"):
+        _resolve_extraction_rerun_profile_name(
+            make_file_metadata_record(file_ext=".zip"),
+            None,
+        )
 
 
 def test_percent_value_formats_decimal_and_numeric_values_to_two_places() -> None:
