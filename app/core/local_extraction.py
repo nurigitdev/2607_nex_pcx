@@ -45,6 +45,7 @@ LOCAL_PLAIN_TEXT_PROFILE_NAME = "local_plain_text_default"
 LOCAL_PDF_TEXT_PROFILE_NAME = "local_pdf_text_default"
 LOCAL_DOCX_PROFILE_NAME = "local_docx_default"
 LOCAL_PPTX_PROFILE_NAME = "local_pptx_default"
+LOCAL_XLSX_PROFILE_NAME = "local_xlsx_default"
 LOCAL_PLAIN_TEXT_EXTRACTOR_NAME = "local_plain_text"
 LOCAL_PLAIN_TEXT_EXTRACTOR_VERSION = "0.1.0"
 LOCAL_PDF_TEXT_EXTRACTOR_NAME = "local_pdf_text"
@@ -53,9 +54,12 @@ LOCAL_DOCX_EXTRACTOR_NAME = "local_docx"
 LOCAL_DOCX_EXTRACTOR_VERSION = "0.1.0"
 LOCAL_PPTX_EXTRACTOR_NAME = "local_pptx"
 LOCAL_PPTX_EXTRACTOR_VERSION = "0.1.0"
+LOCAL_XLSX_EXTRACTOR_NAME = "local_xlsx"
+LOCAL_XLSX_EXTRACTOR_VERSION = "0.1.0"
 PDF_TEXT_LIBRARY_NAME = "pypdf"
 DOCX_LIBRARY_NAME = "python-docx"
 PPTX_LIBRARY_NAME = "python-pptx"
+XLSX_LIBRARY_NAME = "openpyxl"
 
 ERROR_CODE_LOCAL_SOURCE_NOT_FOUND = "LOCAL_SOURCE_NOT_FOUND"
 ERROR_CODE_LOCAL_SOURCE_EMPTY = "LOCAL_SOURCE_EMPTY"
@@ -68,6 +72,8 @@ ERROR_CODE_LOCAL_DOCX_READ_FAILED = "LOCAL_DOCX_READ_FAILED"
 ERROR_CODE_LOCAL_DOCX_EMPTY = "LOCAL_DOCX_EMPTY"
 ERROR_CODE_LOCAL_PPTX_READ_FAILED = "LOCAL_PPTX_READ_FAILED"
 ERROR_CODE_LOCAL_PPTX_EMPTY = "LOCAL_PPTX_EMPTY"
+ERROR_CODE_LOCAL_XLSX_READ_FAILED = "LOCAL_XLSX_READ_FAILED"
+ERROR_CODE_LOCAL_XLSX_EMPTY = "LOCAL_XLSX_EMPTY"
 
 
 LocalExtractionCallable = Callable[
@@ -429,6 +435,90 @@ def _extract_pptx_source(
             "block_count": len(blocks),
             "preserve_slide_boundaries": True,
             "preserve_tables": True,
+        },
+    )
+
+
+def _extract_xlsx_source(
+    request: ExtractionRuntimeRequest,
+    source_path: Path,
+    started: float,
+) -> ExtractionRuntimeResult:
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_XLSX_READ_FAILED,
+            f"openpyxl is required for local XLSX extraction: {exc}",
+        )
+
+    try:
+        workbook = load_workbook(
+            filename=str(source_path),
+            read_only=True,
+            data_only=True,
+        )
+        artifact_text, blocks, counts = _xlsx_workbook_to_artifact_and_blocks(workbook)
+        workbook.close()
+    except Exception as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_XLSX_READ_FAILED,
+            f"XLSX content could not be read: {exc}",
+        )
+
+    if not blocks:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_XLSX_EMPTY,
+            "XLSX does not contain extractable worksheet cell values",
+        )
+
+    library_version = _package_version(XLSX_LIBRARY_NAME)
+    metadata = {
+        "source_path": str(source_path),
+        "source_file_name": source_path.name,
+        "parser_name": LOCAL_XLSX_EXTRACTOR_NAME,
+        "parser_version": LOCAL_XLSX_EXTRACTOR_VERSION,
+        "library": XLSX_LIBRARY_NAME,
+        "library_version": library_version,
+        "sheet_count": counts["sheet_count"],
+        "extracted_sheet_count": counts["extracted_sheet_count"],
+        "table_count": counts["table_count"],
+        "cell_count": counts["cell_count"],
+        "block_count": len(blocks),
+        "preserve_sheet_boundaries": True,
+        "emit_markdown_tables": True,
+        "formulas_resolved_from_cached_values": True,
+        "options": request.options,
+    }
+    artifact = ExtractionRuntimeArtifact(
+        artifact_type="normalized_markdown",
+        content_text=artifact_text,
+        content_hash=_hash_text(artifact_text),
+        size_bytes=len(artifact_text.encode("utf-8")),
+        metadata=metadata,
+    )
+    return ExtractionRuntimeResult(
+        status="succeeded",
+        artifacts=(artifact,),
+        blocks=blocks,
+        elapsed_ms=_elapsed_ms(started),
+        runtime_metadata={
+            "profile_name": LOCAL_XLSX_PROFILE_NAME,
+            "extractor_name": LOCAL_XLSX_EXTRACTOR_NAME,
+            "extractor_version": LOCAL_XLSX_EXTRACTOR_VERSION,
+            "library": XLSX_LIBRARY_NAME,
+            "library_version": library_version,
+            "source_path": str(source_path),
+            "sheet_count": counts["sheet_count"],
+            "extracted_sheet_count": counts["extracted_sheet_count"],
+            "table_count": counts["table_count"],
+            "cell_count": counts["cell_count"],
+            "block_count": len(blocks),
+            "preserve_sheet_boundaries": True,
+            "emit_markdown_tables": True,
         },
     )
 
@@ -837,6 +927,167 @@ def _pptx_table_rows(table: Any) -> tuple[tuple[str, ...], ...]:
     return tuple(rows)
 
 
+def _xlsx_workbook_to_artifact_and_blocks(workbook: Any) -> tuple[
+    str,
+    tuple[ExtractionRuntimeBlock, ...],
+    dict[str, int],
+]:
+    from openpyxl.utils import get_column_letter
+
+    parts: list[str] = []
+    blocks: list[ExtractionRuntimeBlock] = []
+    counts = {
+        "sheet_count": len(workbook.worksheets),
+        "extracted_sheet_count": 0,
+        "table_count": 0,
+        "cell_count": 0,
+    }
+    cursor = 0
+
+    def append_block(
+        *,
+        block_type: str,
+        content_text: str,
+        content_markdown: str,
+        heading_path: tuple[str, ...],
+        source_anchor: dict[str, Any],
+        parent_block_seq: int | None,
+        metadata: dict[str, Any],
+        sheet_name: str,
+        cell_range: str | None = None,
+    ) -> None:
+        nonlocal cursor
+        if parts:
+            parts.append("\n\n")
+            cursor += 2
+        char_start = cursor
+        parts.append(content_markdown)
+        cursor += len(content_markdown)
+        blocks.append(
+            ExtractionRuntimeBlock(
+                block_seq=len(blocks),
+                block_type=block_type,
+                parent_block_seq=parent_block_seq,
+                content_text=content_text,
+                content_markdown=content_markdown,
+                heading_path=heading_path,
+                source_anchor=source_anchor,
+                sheet_name=sheet_name,
+                cell_range=cell_range,
+                char_start=char_start,
+                char_end=cursor,
+                token_count=count_chunk_tokens(content_markdown),
+                metadata=metadata,
+            )
+        )
+
+    for sheet_index, worksheet in enumerate(workbook.worksheets, start=1):
+        rows, bounds, cell_count = _xlsx_non_empty_rows(worksheet)
+        if not rows or bounds is None:
+            continue
+
+        counts["extracted_sheet_count"] += 1
+        counts["table_count"] += 1
+        counts["cell_count"] += cell_count
+        min_row, min_column, max_row, max_column = bounds
+        cell_range = (
+            f"{get_column_letter(min_column)}{min_row}:" f"{get_column_letter(max_column)}{max_row}"
+        )
+        sheet_marker = f"<!-- sheet: {worksheet.title} -->"
+        if parts:
+            parts.append("\n\n")
+            cursor += 2
+        parts.append(sheet_marker)
+        cursor += len(sheet_marker)
+
+        heading_text = worksheet.title
+        heading_markdown = f"# {heading_text}"
+        append_block(
+            block_type="heading",
+            content_text=heading_text,
+            content_markdown=heading_markdown,
+            heading_path=(heading_text,),
+            source_anchor={
+                "sheet_index": sheet_index,
+                "sheet_name": worksheet.title,
+            },
+            parent_block_seq=None,
+            metadata={
+                "source": "xlsx",
+                "sheet_index": sheet_index,
+            },
+            sheet_name=worksheet.title,
+        )
+        append_block(
+            block_type="table",
+            content_text="\n".join("\t".join(row) for row in rows),
+            content_markdown=_format_markdown_table(rows),
+            heading_path=(heading_text,),
+            source_anchor={
+                "sheet_index": sheet_index,
+                "sheet_name": worksheet.title,
+                "cell_range": cell_range,
+                "table_index": counts["table_count"],
+            },
+            parent_block_seq=blocks[-1].block_seq,
+            metadata={
+                "source": "xlsx",
+                "row_count": len(rows),
+                "column_count": max(len(row) for row in rows),
+                "cell_count": cell_count,
+            },
+            sheet_name=worksheet.title,
+            cell_range=cell_range,
+        )
+
+    return "".join(parts), tuple(blocks), counts
+
+
+def _xlsx_non_empty_rows(worksheet: Any) -> tuple[
+    tuple[tuple[str, ...], ...],
+    tuple[int, int, int, int] | None,
+    int,
+]:
+    rows: list[tuple[int, tuple[str, ...]]] = []
+    min_row: int | None = None
+    max_row: int | None = None
+    min_column: int | None = None
+    max_column: int | None = None
+    cell_count = 0
+
+    for row_index, row in enumerate(worksheet.iter_rows(), start=1):
+        values = tuple(_normalize_xlsx_cell_value(cell.value) for cell in row)
+        non_empty_positions = [
+            column_index for column_index, value in enumerate(values, start=1) if value
+        ]
+        if not non_empty_positions:
+            continue
+
+        rows.append((row_index, values))
+        cell_count += len(non_empty_positions)
+        row_min_column = min(non_empty_positions)
+        row_max_column = max(non_empty_positions)
+        min_row = row_index if min_row is None else min(min_row, row_index)
+        max_row = row_index if max_row is None else max(max_row, row_index)
+        min_column = row_min_column if min_column is None else min(min_column, row_min_column)
+        max_column = row_max_column if max_column is None else max(max_column, row_max_column)
+
+    if min_row is None or min_column is None or max_row is None or max_column is None:
+        return (), None, 0
+
+    normalized_rows = tuple(
+        tuple(values[column_index - 1] for column_index in range(min_column, max_column + 1))
+        for _, values in rows
+    )
+    return normalized_rows, (min_row, min_column, max_row, max_column), cell_count
+
+
+def _normalize_xlsx_cell_value(value: Any) -> str:
+    if value is None:
+        return ""
+    return _normalize_docx_text(str(value))
+
+
 def _normalize_docx_text(text: str) -> str:
     return " ".join(text.replace("\r", "\n").split())
 
@@ -931,6 +1182,15 @@ LOCAL_EXTRACTION_HANDLERS = (
         extractor_version=LOCAL_PPTX_EXTRACTOR_VERSION,
         supported_file_types=("pptx",),
         extract=_extract_pptx_source,
+    ),
+    LocalExtractionHandler(
+        profile_name=LOCAL_XLSX_PROFILE_NAME,
+        parser_name=LOCAL_XLSX_EXTRACTOR_NAME,
+        parser_version=LOCAL_XLSX_EXTRACTOR_VERSION,
+        extractor_name=LOCAL_XLSX_EXTRACTOR_NAME,
+        extractor_version=LOCAL_XLSX_EXTRACTOR_VERSION,
+        supported_file_types=("xlsx",),
+        extract=_extract_xlsx_source,
     ),
 )
 
