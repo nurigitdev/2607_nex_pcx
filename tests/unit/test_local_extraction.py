@@ -6,8 +6,33 @@ from app.core.local_extraction import (
     ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE,
     LOCAL_MARKDOWN_PROFILE_NAME,
     LOCAL_PLAIN_TEXT_PROFILE_NAME,
+    SUPPORTED_LOCAL_PROFILE_SUFFIXES,
+    get_local_extraction_handler,
+    list_local_extraction_handlers,
+    normalize_file_type,
     run_local_extraction,
+    select_local_extraction_handler,
+    select_local_extraction_profile_name,
 )
+
+
+def test_local_extraction_registry_selects_implemented_profiles() -> None:
+    handlers = {handler.profile_name: handler for handler in list_local_extraction_handlers()}
+
+    markdown_handler = get_local_extraction_handler(LOCAL_MARKDOWN_PROFILE_NAME)
+
+    assert set(handlers) == {
+        LOCAL_MARKDOWN_PROFILE_NAME,
+        LOCAL_PLAIN_TEXT_PROFILE_NAME,
+    }
+    assert markdown_handler is not None
+    assert markdown_handler.supports_file_type(".MD")
+    assert normalize_file_type(".Txt") == "txt"
+    assert select_local_extraction_handler("md") == markdown_handler
+    assert select_local_extraction_profile_name(".text") == LOCAL_PLAIN_TEXT_PROFILE_NAME
+    assert select_local_extraction_handler("pdf") is None
+    assert get_local_extraction_handler("missing_profile") is None
+    assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_MARKDOWN_PROFILE_NAME] == {".md"}
 
 
 def test_run_local_markdown_extraction_returns_artifact_and_blocks(tmp_path: Path) -> None:
@@ -58,6 +83,27 @@ def test_run_local_markdown_extraction_returns_artifact_and_blocks(tmp_path: Pat
     }
     assert result.blocks[4].metadata == {"language": "python"}
     assert result.runtime_metadata["block_count"] == 5
+
+
+def test_run_local_extraction_uses_detected_file_type_when_suffix_is_missing(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "stored-file"
+    source_path.write_text("# Title\n\nBody.", encoding="utf-8")
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_MARKDOWN_PROFILE_NAME,
+            detected_file_type="md",
+        )
+    )
+
+    assert result.status == "succeeded"
+    assert result.artifacts[0].artifact_type == "normalized_markdown"
+    assert result.blocks[0].block_type == "heading"
 
 
 def test_run_local_plain_text_extraction_splits_paragraphs(tmp_path: Path) -> None:

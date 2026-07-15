@@ -1,4 +1,4 @@
-"""Pipeline worker MVP for Markdown document ingestion."""
+"""Pipeline worker MVP for local document ingestion."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,10 +6,6 @@ from pathlib import Path
 from app.core.chunking import chunk_document_blocks, get_chunk_policy
 from app.core.chunks import DEFAULT_CHUNK_POLICY_NAME, replace_document_chunks_in_connection
 from app.core.database import connect
-from app.core.document_parsers import (
-    PARSER_NAME_MARKDOWN,
-    PARSER_VERSION_MARKDOWN,
-)
 from app.core.embedding_jobs import (
     create_embedding_jobs_for_chunk_in_connection,
     list_active_embedding_profiles_in_connection,
@@ -23,9 +19,10 @@ from app.core.file_metadata import (
     mark_file_parse_succeeded_in_connection,
 )
 from app.core.local_extraction import (
-    LOCAL_MARKDOWN_PROFILE_NAME,
+    LocalExtractionHandler,
     persist_extraction_runtime_result_in_connection,
     run_local_extraction,
+    select_local_extraction_handler,
 )
 from app.core.pipeline_jobs import (
     DEFAULT_LEASE_SECONDS,
@@ -62,7 +59,7 @@ def process_next_markdown_pipeline_job(
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
     chunk_policy_name: str = DEFAULT_CHUNK_POLICY_NAME,
 ) -> MarkdownPipelineWorkerResult:
-    """Claim and process one queued Markdown ingestion job."""
+    """Claim and process one queued local document ingestion job."""
 
     policy = get_chunk_policy(chunk_policy_name)
     job = claim_next_pipeline_job(database_url, worker_name, lease_seconds=lease_seconds)
@@ -73,17 +70,17 @@ def process_next_markdown_pipeline_job(
             message="No queued pipeline job is available",
         )
 
+    handler: LocalExtractionHandler | None = None
     try:
         file_record = _load_claimed_job_file(database_url, job)
-        if file_record.file_ext != ".md":
-            message = f"Markdown worker cannot process {file_record.file_ext} files"
+        handler = select_local_extraction_handler(file_record.file_ext)
+        if handler is None:
+            message = f"No local extraction runtime is registered for {file_record.file_ext} files"
             failed_job = _fail_claimed_job(
                 database_url,
                 job,
                 error_code=ERROR_CODE_UNSUPPORTED_FILE_TYPE,
                 error_message=message,
-                parser_name=PARSER_NAME_MARKDOWN,
-                parser_version=PARSER_VERSION_MARKDOWN,
             )
             return MarkdownPipelineWorkerResult(
                 processed=True,
@@ -99,8 +96,8 @@ def process_next_markdown_pipeline_job(
                 job,
                 error_code=ERROR_CODE_STORED_FILE_NOT_FOUND,
                 error_message=message,
-                parser_name=PARSER_NAME_MARKDOWN,
-                parser_version=PARSER_VERSION_MARKDOWN,
+                parser_name=handler.parser_name,
+                parser_version=handler.parser_version,
             )
             return MarkdownPipelineWorkerResult(
                 processed=True,
@@ -112,8 +109,8 @@ def process_next_markdown_pipeline_job(
             mark_file_parse_running_in_connection(
                 connection,
                 file_record.file_id,
-                parser_name=PARSER_NAME_MARKDOWN,
-                parser_version=PARSER_VERSION_MARKDOWN,
+                parser_name=handler.parser_name,
+                parser_version=handler.parser_version,
             )
             update_pipeline_progress_in_connection(
                 connection,
@@ -121,14 +118,14 @@ def process_next_markdown_pipeline_job(
                 processed_units=0,
                 total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
                 stage="text_extraction",
-                current_message="Reading Markdown source file",
+                current_message="Reading source file",
             )
 
         extraction_request = ExtractionRuntimeRequest(
             file_id=file_record.file_id,
             document_id=file_record.document_id,
             storage_path=str(source_path),
-            extraction_profile_name=LOCAL_MARKDOWN_PROFILE_NAME,
+            extraction_profile_name=handler.profile_name,
             mime_type=file_record.mime_type,
             detected_file_type=file_record.file_ext.lstrip(".") or None,
             options={"pipeline_worker": worker_name},
@@ -143,7 +140,7 @@ def process_next_markdown_pipeline_job(
             current_message=(
                 f"Extracted {len(runtime_result.blocks)} document blocks"
                 if runtime_result.status == "succeeded"
-                else "Markdown extraction failed"
+                else "Text extraction failed"
             ),
         )
         if runtime_result.status != "succeeded":
@@ -165,8 +162,8 @@ def process_next_markdown_pipeline_job(
                 job,
                 error_code=error_code,
                 error_message=message,
-                parser_name=PARSER_NAME_MARKDOWN,
-                parser_version=PARSER_VERSION_MARKDOWN,
+                parser_name=handler.parser_name,
+                parser_version=handler.parser_version,
             )
             return MarkdownPipelineWorkerResult(
                 processed=True,
@@ -194,8 +191,8 @@ def process_next_markdown_pipeline_job(
                 list(persisted_extraction.blocks),
                 document_id=file_record.document_id,
                 policy=policy,
-                parser_name=PARSER_NAME_MARKDOWN,
-                parser_version=PARSER_VERSION_MARKDOWN,
+                parser_name=handler.parser_name,
+                parser_version=handler.parser_version,
             )
             update_pipeline_progress_in_connection(
                 connection,
@@ -225,8 +222,8 @@ def process_next_markdown_pipeline_job(
             mark_file_parse_succeeded_in_connection(
                 connection,
                 file_record.file_id,
-                parser_name=PARSER_NAME_MARKDOWN,
-                parser_version=PARSER_VERSION_MARKDOWN,
+                parser_name=handler.parser_name,
+                parser_version=handler.parser_version,
                 extracted_text_size=_runtime_extracted_text_size(runtime_result),
             )
             update_pipeline_progress_in_connection(
@@ -244,7 +241,7 @@ def process_next_markdown_pipeline_job(
                 connection,
                 job.job_id,
                 message=(
-                    f"Markdown ingestion completed with {len(chunks)} chunks "
+                    f"Document ingestion completed with {len(chunks)} chunks "
                     f"and {len(embedding_job_results)} embedding jobs"
                 ),
             )
@@ -258,7 +255,7 @@ def process_next_markdown_pipeline_job(
             job=final_job,
             chunk_count=len(chunks),
             embedding_job_count=len(embedding_job_results),
-            message="Markdown ingestion completed",
+            message="Document ingestion completed",
         )
     except _FailClaimedJob as exc:
         failed_job = _fail_claimed_job(
@@ -278,8 +275,8 @@ def process_next_markdown_pipeline_job(
             job,
             error_code=ERROR_CODE_MARKDOWN_PIPELINE_ERROR,
             error_message=str(exc),
-            parser_name=PARSER_NAME_MARKDOWN,
-            parser_version=PARSER_VERSION_MARKDOWN,
+            parser_name=handler.parser_name if handler else None,
+            parser_version=handler.parser_version if handler else None,
         )
         return MarkdownPipelineWorkerResult(
             processed=True,
@@ -293,7 +290,7 @@ def _load_claimed_job_file(
     job: PipelineJobRecord,
 ) -> FileMetadataRecord:
     if job.job_type != "document_ingestion":
-        message = f"Markdown worker cannot process {job.job_type} jobs"
+        message = f"Local ingestion worker cannot process {job.job_type} jobs"
         raise _FailClaimedJob(ERROR_CODE_UNSUPPORTED_JOB_TYPE, message)
     if job.file_id is None:
         raise _FailClaimedJob(ERROR_CODE_INVALID_JOB_INPUT, "Pipeline job is missing file_id")

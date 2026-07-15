@@ -215,7 +215,10 @@ def test_markdown_pipeline_worker_fails_unsupported_file_type(
         assert stored_job.status == "failed"
         assert stored_job.error_code == ERROR_CODE_UNSUPPORTED_FILE_TYPE
         assert file_row["parse_status"] == "failed"
-        assert "cannot process .pdf files" in file_row["parse_error_message"]
+        assert (
+            "No local extraction runtime is registered for .pdf files"
+            in file_row["parse_error_message"]
+        )
         assert chunks == []
     finally:
         cleanup_checksum(migrated_database_url, checksum)

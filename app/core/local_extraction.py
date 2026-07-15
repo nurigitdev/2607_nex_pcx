@@ -1,5 +1,6 @@
-"""Local extraction runtime for Markdown and plain text sources."""
+"""Local extraction runtime registry for local document sources."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -49,10 +50,26 @@ ERROR_CODE_LOCAL_UNSUPPORTED_PROFILE = "LOCAL_UNSUPPORTED_PROFILE"
 ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE = "LOCAL_UNSUPPORTED_FILE_TYPE"
 ERROR_CODE_LOCAL_TEXT_DECODE_FAILED = "LOCAL_TEXT_DECODE_FAILED"
 
-SUPPORTED_LOCAL_PROFILE_SUFFIXES = {
-    LOCAL_MARKDOWN_PROFILE_NAME: {".md"},
-    LOCAL_PLAIN_TEXT_PROFILE_NAME: {".txt", ".text"},
-}
+
+LocalExtractionCallable = Callable[
+    [ExtractionRuntimeRequest, Path, float],
+    ExtractionRuntimeResult,
+]
+
+
+@dataclass(frozen=True)
+class LocalExtractionHandler:
+    profile_name: str
+    parser_name: str
+    parser_version: str
+    extractor_name: str
+    extractor_version: str
+    supported_file_types: tuple[str, ...]
+    extract: LocalExtractionCallable
+
+    def supports_file_type(self, file_type: str | None) -> bool:
+        normalized = normalize_file_type(file_type)
+        return bool(normalized) and normalized in self.supported_file_types
 
 
 @dataclass(frozen=True)
@@ -63,12 +80,15 @@ class PersistedExtractionRuntimeResult:
 
 
 def run_local_extraction(request: ExtractionRuntimeRequest) -> ExtractionRuntimeResult:
-    """Run the local extraction profile and return a terminal runtime result."""
+    """Run the registered local extraction profile and return a terminal runtime result."""
 
     validate_runtime_request(request)
     started = perf_counter()
     source_path = Path(request.storage_path)
     profile_name = request.extraction_profile_name.strip()
+    file_type = normalize_file_type(request.detected_file_type) or normalize_file_type(
+        source_path.suffix
+    )
 
     if not source_path.is_file():
         return _failed_result(
@@ -77,42 +97,128 @@ def run_local_extraction(request: ExtractionRuntimeRequest) -> ExtractionRuntime
             f"Source file was not found: {source_path}",
         )
 
-    if profile_name not in SUPPORTED_LOCAL_PROFILE_SUFFIXES:
+    handler = get_local_extraction_handler(profile_name)
+    if handler is None:
         return _failed_result(
             started,
             ERROR_CODE_LOCAL_UNSUPPORTED_PROFILE,
             f"Unsupported local extraction profile: {profile_name}",
         )
 
-    if source_path.suffix.lower() not in SUPPORTED_LOCAL_PROFILE_SUFFIXES[profile_name]:
+    if not handler.supports_file_type(file_type):
         return _failed_result(
             started,
             ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE,
             f"{profile_name} cannot process {source_path.suffix or '(none)'} files",
         )
 
+    result = handler.extract(request, source_path, started)
+    validate_runtime_result(result)
+    return result
+
+
+def normalize_file_type(file_type: str | None) -> str:
+    return (file_type or "").strip().lower().removeprefix(".")
+
+
+def list_local_extraction_handlers() -> tuple[LocalExtractionHandler, ...]:
+    return LOCAL_EXTRACTION_HANDLERS
+
+
+def get_local_extraction_handler(profile_name: str | None) -> LocalExtractionHandler | None:
+    normalized = (profile_name or "").strip()
+    return LOCAL_EXTRACTION_HANDLER_BY_PROFILE.get(normalized)
+
+
+def select_local_extraction_handler(
+    file_type: str | None,
+) -> LocalExtractionHandler | None:
+    normalized = normalize_file_type(file_type)
+    for handler in LOCAL_EXTRACTION_HANDLERS:
+        if handler.supports_file_type(normalized):
+            return handler
+    return None
+
+
+def select_local_extraction_profile_name(file_type: str | None) -> str | None:
+    handler = select_local_extraction_handler(file_type)
+    return handler.profile_name if handler else None
+
+
+def _extract_markdown_source(
+    request: ExtractionRuntimeRequest,
+    source_path: Path,
+    started: float,
+) -> ExtractionRuntimeResult:
+    source_text, failed_result = _read_utf8_text_source(source_path, started)
+    if failed_result is not None:
+        return failed_result
+    return _extract_markdown(request, source_text, source_path, started)
+
+
+def _extract_plain_text_source(
+    request: ExtractionRuntimeRequest,
+    source_path: Path,
+    started: float,
+) -> ExtractionRuntimeResult:
+    source_text, failed_result = _read_utf8_text_source(source_path, started)
+    if failed_result is not None:
+        return failed_result
+    return _extract_plain_text(request, source_text, source_path, started)
+
+
+def _read_utf8_text_source(
+    source_path: Path,
+    started: float,
+) -> tuple[str, ExtractionRuntimeResult | None]:
     try:
         source_text = _normalize_line_endings(source_path.read_text(encoding="utf-8"))
     except UnicodeDecodeError as exc:
-        return _failed_result(
+        return "", _failed_result(
             started,
             ERROR_CODE_LOCAL_TEXT_DECODE_FAILED,
             f"Source file could not be decoded as UTF-8: {exc}",
         )
 
     if not source_text.strip():
-        return _failed_result(
+        return "", _failed_result(
             started,
             ERROR_CODE_LOCAL_SOURCE_EMPTY,
             "Source file does not contain extractable text",
         )
 
-    if profile_name == LOCAL_MARKDOWN_PROFILE_NAME:
-        result = _extract_markdown(request, source_text, source_path, started)
-    else:
-        result = _extract_plain_text(request, source_text, source_path, started)
-    validate_runtime_result(result)
-    return result
+    return source_text, None
+
+
+LOCAL_EXTRACTION_HANDLERS = (
+    LocalExtractionHandler(
+        profile_name=LOCAL_MARKDOWN_PROFILE_NAME,
+        parser_name=PARSER_NAME_MARKDOWN,
+        parser_version=PARSER_VERSION_MARKDOWN,
+        extractor_name="local_markdown",
+        extractor_version=PARSER_VERSION_MARKDOWN,
+        supported_file_types=("md",),
+        extract=_extract_markdown_source,
+    ),
+    LocalExtractionHandler(
+        profile_name=LOCAL_PLAIN_TEXT_PROFILE_NAME,
+        parser_name=LOCAL_PLAIN_TEXT_EXTRACTOR_NAME,
+        parser_version=LOCAL_PLAIN_TEXT_EXTRACTOR_VERSION,
+        extractor_name=LOCAL_PLAIN_TEXT_EXTRACTOR_NAME,
+        extractor_version=LOCAL_PLAIN_TEXT_EXTRACTOR_VERSION,
+        supported_file_types=("txt", "text"),
+        extract=_extract_plain_text_source,
+    ),
+)
+
+LOCAL_EXTRACTION_HANDLER_BY_PROFILE = {
+    handler.profile_name: handler for handler in LOCAL_EXTRACTION_HANDLERS
+}
+
+SUPPORTED_LOCAL_PROFILE_SUFFIXES = {
+    handler.profile_name: {f".{file_type}" for file_type in handler.supported_file_types}
+    for handler in LOCAL_EXTRACTION_HANDLERS
+}
 
 
 def persist_extraction_runtime_result(
