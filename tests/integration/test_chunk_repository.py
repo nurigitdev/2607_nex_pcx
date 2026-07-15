@@ -12,6 +12,12 @@ from app.core.chunks import (
     replace_document_chunks_in_connection,
 )
 from app.core.database import connect
+from app.core.ingestion_artifacts import (
+    DocumentBlockInput,
+    ExtractionArtifactInput,
+    create_document_block,
+    create_extraction_artifact,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -82,6 +88,65 @@ def test_create_and_list_document_chunks(migrated_database_url: str) -> None:
         assert chunk.char_count == len("First markdown chunk")
         assert chunk.heading_path == ("Overview",)
         assert chunk.metadata == {"block_type": "paragraph"}
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_create_chunk_persists_source_contract_fields(migrated_database_url: str) -> None:
+    file_id, document_id = _create_document(migrated_database_url)
+    try:
+        artifact = create_extraction_artifact(
+            migrated_database_url,
+            ExtractionArtifactInput(
+                file_id=file_id,
+                document_id=document_id,
+                artifact_type="normalized_markdown",
+                content_text="# Title\n\n| A | B |",
+                content_hash="chunk-source-artifact",
+            ),
+        )
+        block = create_document_block(
+            migrated_database_url,
+            DocumentBlockInput(
+                artifact_id=artifact.artifact_id,
+                document_id=document_id,
+                block_seq=0,
+                block_type="table",
+                content_text="A B",
+                content_markdown="| A | B |",
+                heading_path=("Title",),
+                source_anchor={"page_no": 1, "table_index": 0},
+                char_start=8,
+                char_end=17,
+            ),
+        )
+        created = create_chunk(
+            migrated_database_url,
+            ChunkInput(
+                document_id=document_id,
+                artifact_id=artifact.artifact_id,
+                block_id=block.block_id,
+                chunk_seq=0,
+                chunk_type="table",
+                chunk_text="A B",
+                content_markdown="| A | B |",
+                heading_path=("Title",),
+                source_anchor={"page_no": 1, "table_index": 0},
+                source_char_start=8,
+                source_char_end=17,
+                metadata={"table_artifact_id": 123},
+            ),
+        )
+        listed = list_document_chunks(migrated_database_url, document_id)
+
+        assert created.artifact_id == artifact.artifact_id
+        assert created.block_id == block.block_id
+        assert created.chunk_type == "table"
+        assert created.content_markdown == "| A | B |"
+        assert created.source_anchor == {"page_no": 1, "table_index": 0}
+        assert created.source_char_start == 8
+        assert created.source_char_end == 17
+        assert listed == [created]
     finally:
         _cleanup_file(migrated_database_url, file_id)
 

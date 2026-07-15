@@ -33,12 +33,18 @@ def test_validate_chunk_input_computes_hash_when_missing() -> None:
     ("overrides", "message"),
     [
         ({"document_id": 0}, "document_id"),
+        ({"artifact_id": 0}, "artifact_id"),
+        ({"block_id": -1}, "block_id"),
         ({"chunk_seq": -1}, "chunk_seq"),
+        ({"chunk_type": "unknown"}, "chunk_type"),
         ({"chunk_text": " "}, "chunk_text"),
         ({"chunk_policy_name": " "}, "chunk_policy_name"),
         ({"page_no": 0}, "page_no"),
         ({"slide_no": -1}, "slide_no"),
         ({"token_count": -1}, "token_count"),
+        ({"source_char_start": -1}, "source_char_start"),
+        ({"source_char_end": -1}, "source_char_end"),
+        ({"source_char_start": 10, "source_char_end": 3}, "source_char_end"),
         ({"content_hash": " "}, "content_hash"),
     ],
 )
