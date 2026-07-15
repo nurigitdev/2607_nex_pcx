@@ -84,6 +84,15 @@ from app.core.dashboard_throughput import (
     validate_lookback_hours,
 )
 from app.core.database import connect
+from app.core.dgx_ingestion_benchmarks import (
+    DgxIngestionBenchmarkDetail,
+    DgxIngestionBenchmarkJobRecord,
+    DgxIngestionBenchmarkProfileRecord,
+    DgxIngestionBenchmarkRunRecord,
+    InvalidDgxIngestionBenchmarkError,
+    get_dgx_ingestion_benchmark_detail,
+    list_dgx_ingestion_benchmark_runs,
+)
 from app.core.document_inventory import (
     DocumentInventoryItem,
     DocumentPermissionUpdateInput,
@@ -1375,6 +1384,140 @@ def embedding_worker_batch_run_throughput_summary(
     return {
         "overall": metrics_for_runs(batch_runs),
         "groups": groups,
+    }
+
+
+def dgx_ingestion_benchmark_run_payload(
+    run: DgxIngestionBenchmarkRunRecord,
+) -> dict[str, object]:
+    return {
+        "benchmark_run_id": run.benchmark_run_id,
+        "benchmark_run_key": run.benchmark_run_key,
+        "script_name": run.script_name,
+        "provider_names": list(run.provider_names),
+        "profile_names": list(run.profile_names),
+        "chunk_count": run.chunk_count,
+        "expected_job_count": run.expected_job_count,
+        "processed_count": run.processed_count,
+        "succeeded_count": run.succeeded_count,
+        "failed_count": run.failed_count,
+        "vector_count": run.vector_count,
+        "passed": run.passed,
+        "preflight_before_worker": run.preflight_before_worker,
+        "active_only_preflight": run.active_only_preflight,
+        "cleanup_attempted": run.cleanup_attempted,
+        "cleanup_confirmed": run.cleanup_confirmed,
+        "total_elapsed_seconds": run.total_elapsed_seconds,
+        "total_provider_elapsed_ms": run.total_provider_elapsed_ms,
+        "total_worker_elapsed_ms": run.total_worker_elapsed_ms,
+        "fixture_file_id": run.fixture_file_id,
+        "fixture_document_id": run.fixture_document_id,
+        "fixture_chunk_ids": list(run.fixture_chunk_ids),
+        "plan_payload": _json_safe_dashboard_raw_value(run.plan_payload),
+        "fixture_payload": _json_safe_dashboard_raw_value(run.fixture_payload),
+        "report_payload": _json_safe_dashboard_raw_value(run.report_payload),
+        "created_by": run.created_by,
+        "created_by_user_id": run.created_by_user_id,
+        "created_at": _datetime_response(run.created_at),
+    }
+
+
+def dgx_ingestion_benchmark_profile_payload(
+    profile: DgxIngestionBenchmarkProfileRecord,
+) -> dict[str, object]:
+    return {
+        "benchmark_profile_id": profile.benchmark_profile_id,
+        "benchmark_run_id": profile.benchmark_run_id,
+        "provider": profile.provider,
+        "profile_name": profile.profile_name,
+        "expected_job_count": profile.expected_job_count,
+        "processed_count": profile.processed_count,
+        "succeeded_count": profile.succeeded_count,
+        "failed_count": profile.failed_count,
+        "vector_count": profile.vector_count,
+        "passed": profile.passed,
+        "vector_table_name": profile.vector_table_name,
+        "vector_dimension": profile.vector_dimension,
+        "vector_storage_type": profile.vector_storage_type,
+        "provider_route_id": profile.provider_route_id,
+        "provider_route_name": profile.provider_route_name,
+        "provider_runtime_base_url": profile.provider_runtime_base_url,
+        "provider_model_id": profile.provider_model_id,
+        "provider_type": profile.provider_type,
+        "readiness_status": profile.readiness_status,
+        "readiness_health_snapshot_id": profile.readiness_health_snapshot_id,
+        "readiness_contract_snapshot_id": profile.readiness_contract_snapshot_id,
+        "total_provider_elapsed_ms": profile.total_provider_elapsed_ms,
+        "avg_provider_elapsed_ms": profile.avg_provider_elapsed_ms,
+        "max_provider_elapsed_ms": profile.max_provider_elapsed_ms,
+        "total_worker_elapsed_ms": profile.total_worker_elapsed_ms,
+        "avg_worker_elapsed_ms": profile.avg_worker_elapsed_ms,
+        "max_worker_elapsed_ms": profile.max_worker_elapsed_ms,
+        "errors": list(profile.errors),
+        "created_at": _datetime_response(profile.created_at),
+    }
+
+
+def dgx_ingestion_benchmark_job_payload(
+    job: DgxIngestionBenchmarkJobRecord,
+) -> dict[str, object]:
+    return {
+        "benchmark_job_result_id": job.benchmark_job_result_id,
+        "benchmark_run_id": job.benchmark_run_id,
+        "benchmark_profile_id": job.benchmark_profile_id,
+        "provider": job.provider,
+        "profile_name": job.profile_name,
+        "source_job_id": job.source_job_id,
+        "source_chunk_id": job.source_chunk_id,
+        "processed": job.processed,
+        "job_status": job.job_status,
+        "vector_table_name": job.vector_table_name,
+        "vector_dimension": job.vector_dimension,
+        "vector_storage_type": job.vector_storage_type,
+        "provider_route_id": job.provider_route_id,
+        "provider_route_name": job.provider_route_name,
+        "provider_runtime_base_url": job.provider_runtime_base_url,
+        "provider_model_id": job.provider_model_id,
+        "provider_type": job.provider_type,
+        "provider_elapsed_ms": job.provider_elapsed_ms,
+        "worker_elapsed_ms": job.worker_elapsed_ms,
+        "readiness_status": job.readiness_status,
+        "readiness_health_snapshot_id": job.readiness_health_snapshot_id,
+        "readiness_contract_snapshot_id": job.readiness_contract_snapshot_id,
+        "message": job.message,
+        "error": job.error,
+        "passed": job.passed,
+        "created_at": _datetime_response(job.created_at),
+    }
+
+
+def dgx_ingestion_benchmark_detail_payload(
+    detail: DgxIngestionBenchmarkDetail,
+) -> dict[str, object]:
+    return {
+        "run": dgx_ingestion_benchmark_run_payload(detail.run),
+        "profiles": [
+            dgx_ingestion_benchmark_profile_payload(profile) for profile in detail.profiles
+        ],
+        "jobs": [dgx_ingestion_benchmark_job_payload(job) for job in detail.jobs],
+    }
+
+
+def dgx_ingestion_benchmark_summary(
+    runs: list[DgxIngestionBenchmarkRunRecord],
+) -> dict[str, object]:
+    elapsed_values = [run.total_elapsed_seconds for run in runs if run.total_elapsed_seconds]
+    passed_count = sum(1 for run in runs if run.passed)
+    return {
+        "run_count": len(runs),
+        "passed_count": passed_count,
+        "failed_count": len(runs) - passed_count,
+        "expected_job_count": sum(run.expected_job_count for run in runs),
+        "processed_count": sum(run.processed_count for run in runs),
+        "vector_count": sum(run.vector_count for run in runs),
+        "avg_elapsed_seconds": (
+            round(sum(elapsed_values) / len(elapsed_values), 2) if elapsed_values else 0
+        ),
     }
 
 
@@ -7507,6 +7650,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=retry_result)
 
+    @app.get("/api/admin/dgx-ingestion-benchmarks")
+    def api_list_dgx_ingestion_benchmarks(
+        provider: str | None = None,
+        profile_name: str | None = None,
+        passed: bool | None = None,
+        limit: int = 50,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            benchmark_runs = list_dgx_ingestion_benchmark_runs(
+                settings.database_url,
+                provider=provider or None,
+                profile_name=profile_name or None,
+                passed=passed,
+                limit=limit,
+            )
+        except InvalidDgxIngestionBenchmarkError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "benchmark_run_count": len(benchmark_runs),
+                "summary": dgx_ingestion_benchmark_summary(benchmark_runs),
+                "benchmark_runs": [
+                    dgx_ingestion_benchmark_run_payload(run) for run in benchmark_runs
+                ],
+            }
+        )
+
+    @app.get("/api/admin/dgx-ingestion-benchmarks/{benchmark_run_id}")
+    def api_get_dgx_ingestion_benchmark(benchmark_run_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_dgx_ingestion_benchmark_detail(
+                settings.database_url,
+                benchmark_run_id,
+            )
+        except InvalidDgxIngestionBenchmarkError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="DGX ingestion benchmark run not found.",
+            )
+
+        return JSONResponse(
+            content={"benchmark": dgx_ingestion_benchmark_detail_payload(detail)}
+        )
+
     @app.post("/api/search/compare")
     def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:
         if not settings.database_url:
@@ -10105,6 +10307,92 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_stopped_reason=stopped_reason or "",
                 selected_limit=limit,
                 selected_batch_run_id=batch_run_id,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/dgx-ingestion-benchmarks", response_class=HTMLResponse)
+    def dgx_ingestion_benchmarks_page(
+        request: Request,
+        provider: str | None = None,
+        profile_name: str | None = None,
+        passed: str | None = None,
+        limit: int = 50,
+        benchmark_run_id: int | None = None,
+    ) -> HTMLResponse:
+        benchmark_runs: list[DgxIngestionBenchmarkRunRecord] = []
+        selected_detail: DgxIngestionBenchmarkDetail | None = None
+        error_message = None
+        selected_passed = (passed or "").strip().lower()
+        passed_filter: bool | None = None
+        if selected_passed:
+            if selected_passed in {"true", "1", "yes"}:
+                passed_filter = True
+                selected_passed = "true"
+            elif selected_passed in {"false", "0", "no"}:
+                passed_filter = False
+                selected_passed = "false"
+            else:
+                error_message = f"Unsupported passed filter: {passed}"
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        elif error_message is None:
+            try:
+                benchmark_runs = list_dgx_ingestion_benchmark_runs(
+                    settings.database_url,
+                    provider=provider or None,
+                    profile_name=profile_name or None,
+                    passed=passed_filter,
+                    limit=limit,
+                )
+                selected_run_id = (
+                    benchmark_run_id
+                    if benchmark_run_id is not None
+                    else (
+                        benchmark_runs[0].benchmark_run_id
+                        if benchmark_runs
+                        else None
+                    )
+                )
+                if selected_run_id is not None:
+                    selected_detail = get_dgx_ingestion_benchmark_detail(
+                        settings.database_url,
+                        selected_run_id,
+                    )
+                    if selected_detail is None:
+                        error_message = f"DGX ingestion benchmark run not found: {selected_run_id}"
+            except InvalidDgxIngestionBenchmarkError as exc:
+                error_message = str(exc)
+
+        selected_payload = (
+            dgx_ingestion_benchmark_detail_payload(selected_detail)
+            if selected_detail is not None
+            else None
+        )
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "dgx_ingestion_benchmarks.html",
+            template_context(
+                request,
+                benchmark_runs=benchmark_runs,
+                benchmark_summary=dgx_ingestion_benchmark_summary(benchmark_runs),
+                selected_detail=selected_detail,
+                selected_detail_payload=selected_payload,
+                selected_detail_json=(
+                    json.dumps(selected_payload, ensure_ascii=False, indent=2)
+                    if selected_payload is not None
+                    else ""
+                ),
+                selected_provider=provider or "",
+                selected_profile_name=profile_name or "",
+                selected_passed=selected_passed,
+                selected_limit=limit,
+                selected_benchmark_run_id=(
+                    selected_detail.run.benchmark_run_id if selected_detail else benchmark_run_id
+                ),
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

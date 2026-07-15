@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div
+  class="job-monitor-header d-flex align-items-center justify-content-between mb-4"
+  data-dgx-ingestion-benchmarks-page
+  data-benchmarks-api-url="/api/admin/dgx-ingestion-benchmarks"
+  data-benchmark-detail-api-url="/api/admin/dgx-ingestion-benchmarks"
+>
+  <div>
+    <h1 class="h3 mb-1">{{ t("dgx_benchmarks.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("dgx_benchmarks.subtitle") }}</p>
+  </div>
+  <a
+    class="btn btn-outline-secondary"
+    href="/api/admin/dgx-ingestion-benchmarks?limit={{ selected_limit }}{% if selected_provider %}&provider={{ selected_provider|urlencode }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name|urlencode }}{% endif %}{% if selected_passed %}&passed={{ selected_passed }}{% endif %}"
+  >
+    {{ t("common.api") }}
+  </a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form class="dgx-benchmark-filter-form metric-card bg-white p-3 mb-4" method="get">
+  <div class="row g-3 align-items-end">
+    <div class="col-12 col-lg-3">
+      <label class="form-label" for="provider">{{ t("dgx_benchmarks.provider") }}</label>
+      <input
+        class="form-control"
+        id="provider"
+        name="provider"
+        type="text"
+        value="{{ selected_provider }}"
+        placeholder="{{ t("dgx_benchmarks.provider_placeholder") }}"
+      >
+    </div>
+    <div class="col-12 col-lg-3">
+      <label class="form-label" for="profile_name">{{ t("dgx_benchmarks.profile") }}</label>
+      <input
+        class="form-control"
+        id="profile_name"
+        name="profile_name"
+        type="text"
+        value="{{ selected_profile_name }}"
+        placeholder="{{ t("dgx_benchmarks.profile_placeholder") }}"
+      >
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label" for="passed">{{ t("dgx_benchmarks.result") }}</label>
+      <select class="form-select" id="passed" name="passed">
+        <option value="" {% if not selected_passed %}selected{% endif %}>{{ t("dgx_benchmarks.all_results") }}</option>
+        <option value="true" {% if selected_passed == "true" %}selected{% endif %}>{{ t("dgx_benchmarks.passed") }}</option>
+        <option value="false" {% if selected_passed == "false" %}selected{% endif %}>{{ t("dgx_benchmarks.failed") }}</option>
+      </select>
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label" for="limit">{{ t("dgx_benchmarks.limit") }}</label>
+      <select class="form-select" id="limit" name="limit">
+        {% for option in [20, 50, 100, 200] %}
+        <option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-2">
+      <button class="btn btn-primary w-100" type="submit">{{ t("dgx_benchmarks.apply") }}</button>
+    </div>
+  </div>
+</form>
+
+<section class="dgx-benchmark-summary-grid mb-4" aria-label="{{ t("dgx_benchmarks.summary") }}">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("dgx_benchmarks.runs") }}</div>
+    <div class="metric-value fs-4">{{ benchmark_summary.run_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("dgx_benchmarks.passed") }}</div>
+    <div class="metric-value fs-4">{{ benchmark_summary.passed_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("dgx_benchmarks.vectors") }}</div>
+    <div class="metric-value fs-4">{{ benchmark_summary.vector_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("dgx_benchmarks.avg_elapsed") }}</div>
+    <div class="metric-value fs-4">{{ benchmark_summary.avg_elapsed_seconds }} s</div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dgx_benchmarks.history") }}</h2>
+      <div class="text-secondary">{{ t("dgx_benchmarks.history_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 dgx-benchmark-run-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("dgx_benchmarks.run") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.created_at") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.result") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.providers") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.profiles") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.counts") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.elapsed") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.created_by") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in benchmark_runs %}
+        <tr class="{% if selected_benchmark_run_id == run.benchmark_run_id %}table-active{% endif %}">
+          <td>
+            <a
+              class="job-link"
+              href="/admin/dgx-ingestion-benchmarks?benchmark_run_id={{ run.benchmark_run_id }}&limit={{ selected_limit }}{% if selected_provider %}&provider={{ selected_provider|urlencode }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name|urlencode }}{% endif %}{% if selected_passed %}&passed={{ selected_passed }}{% endif %}"
+            >
+              #{{ run.benchmark_run_id }}
+            </a>
+          </td>
+          <td>{{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+          <td>
+            {% if run.passed %}
+            <span class="badge text-bg-success">{{ t("dgx_benchmarks.passed") }}</span>
+            {% else %}
+            <span class="badge text-bg-danger">{{ t("dgx_benchmarks.failed") }}</span>
+            {% endif %}
+          </td>
+          <td class="text-break">{{ run.provider_names|join(", ") }}</td>
+          <td class="text-break">{{ run.profile_names|join(", ") }}</td>
+          <td class="text-nowrap">
+            {{ t("dgx_benchmarks.expected_short") }} {{ run.expected_job_count }}
+            · {{ t("dgx_benchmarks.processed_short") }} {{ run.processed_count }}
+            · {{ t("dgx_benchmarks.vector_short") }} {{ run.vector_count }}
+          </td>
+          <td>{{ run.total_elapsed_seconds }} s</td>
+          <td class="text-break">{{ run.created_by or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="8">
+            {% if database_configured %}{{ t("dgx_benchmarks.no_runs") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if selected_detail %}
+<div class="row g-3">
+  <div class="col-12 col-xl-5">
+    <section class="metric-card bg-white p-3">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h2 class="h5 mb-0">{{ t("dgx_benchmarks.detail_title") }} #{{ selected_detail.run.benchmark_run_id }}</h2>
+        {% if selected_detail.run.passed %}
+        <span class="badge text-bg-success">{{ t("dgx_benchmarks.passed") }}</span>
+        {% else %}
+        <span class="badge text-bg-danger">{{ t("dgx_benchmarks.failed") }}</span>
+        {% endif %}
+      </div>
+      <dl class="job-detail-list mb-0">
+        <dt>{{ t("dgx_benchmarks.run_key") }}</dt>
+        <dd>{{ selected_detail.run.benchmark_run_key }}</dd>
+        <dt>{{ t("dgx_benchmarks.script") }}</dt>
+        <dd>{{ selected_detail.run.script_name }}</dd>
+        <dt>{{ t("dgx_benchmarks.providers") }}</dt>
+        <dd>{{ selected_detail.run.provider_names|join(", ") }}</dd>
+        <dt>{{ t("dgx_benchmarks.profiles") }}</dt>
+        <dd>{{ selected_detail.run.profile_names|join(", ") }}</dd>
+        <dt>{{ t("dgx_benchmarks.created_at") }}</dt>
+        <dd>{{ selected_detail.run.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</dd>
+        <dt>{{ t("dgx_benchmarks.preflight") }}</dt>
+        <dd>
+          {% if selected_detail.run.preflight_before_worker %}
+          {{ t("common.yes") }}{% if selected_detail.run.active_only_preflight %} · {{ t("dgx_benchmarks.active_only") }}{% endif %}
+          {% else %}
+          {{ t("common.no") }}
+          {% endif %}
+        </dd>
+        <dt>{{ t("dgx_benchmarks.cleanup") }}</dt>
+        <dd>
+          {% if selected_detail.run.cleanup_attempted %}
+          {{ t("common.yes") }}{% if selected_detail.run.cleanup_confirmed %} · {{ t("dgx_benchmarks.confirmed") }}{% endif %}
+          {% else %}
+          {{ t("common.no") }}
+          {% endif %}
+        </dd>
+      </dl>
+    </section>
+  </div>
+  <div class="col-12 col-xl-7">
+    <section class="metric-card bg-white p-3">
+      <h2 class="h5 mb-3">{{ t("dgx_benchmarks.counts") }}</h2>
+      <div class="dgx-benchmark-count-grid">
+        <div>
+          <span class="metric-label">{{ t("dgx_benchmarks.chunks") }}</span>
+          <strong>{{ selected_detail.run.chunk_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("dgx_benchmarks.expected_jobs") }}</span>
+          <strong>{{ selected_detail.run.expected_job_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("dgx_benchmarks.processed") }}</span>
+          <strong>{{ selected_detail.run.processed_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("dgx_benchmarks.succeeded") }}</span>
+          <strong>{{ selected_detail.run.succeeded_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("dgx_benchmarks.failed") }}</span>
+          <strong>{{ selected_detail.run.failed_count }}</strong>
+        </div>
+        <div>
+          <span class="metric-label">{{ t("dgx_benchmarks.vectors") }}</span>
+          <strong>{{ selected_detail.run.vector_count }}</strong>
+        </div>
+      </div>
+      <div class="border-top mt-3 pt-3">
+        <div class="row g-3">
+          <div class="col-12 col-md-4">
+            <span class="metric-label">{{ t("dgx_benchmarks.elapsed") }}</span>
+            <div class="fw-semibold">{{ selected_detail.run.total_elapsed_seconds }} s</div>
+          </div>
+          <div class="col-12 col-md-4">
+            <span class="metric-label">{{ t("dgx_benchmarks.provider_elapsed") }}</span>
+            <div class="fw-semibold">{{ selected_detail.run.total_provider_elapsed_ms or 0 }} ms</div>
+          </div>
+          <div class="col-12 col-md-4">
+            <span class="metric-label">{{ t("dgx_benchmarks.worker_elapsed") }}</span>
+            <div class="fw-semibold">{{ selected_detail.run.total_worker_elapsed_ms or 0 }} ms</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div class="col-12">
+    <section class="metric-card bg-white p-0 overflow-hidden">
+      <div class="dashboard-panel-header p-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("dgx_benchmarks.profile_results") }}</h2>
+          <div class="text-secondary">{{ t("dgx_benchmarks.profile_results_help") }}</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dgx-benchmark-profile-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("dgx_benchmarks.provider") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.profile") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.result") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.counts") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.vector") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.latency") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.route") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.readiness") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for profile in selected_detail.profiles %}
+            <tr>
+              <td>{{ profile.provider }}</td>
+              <td class="text-break">{{ profile.profile_name }}</td>
+              <td>
+                {% if profile.passed %}
+                <span class="badge text-bg-success">{{ t("dgx_benchmarks.passed") }}</span>
+                {% else %}
+                <span class="badge text-bg-danger">{{ t("dgx_benchmarks.failed") }}</span>
+                {% endif %}
+              </td>
+              <td class="text-nowrap">
+                {{ t("dgx_benchmarks.expected_short") }} {{ profile.expected_job_count }}
+                · {{ t("dgx_benchmarks.succeeded_short") }} {{ profile.succeeded_count }}
+                · {{ t("dgx_benchmarks.failed_short") }} {{ profile.failed_count }}
+              </td>
+              <td>
+                <div>{{ profile.vector_count }} / {{ profile.vector_dimension or "-" }}</div>
+                <div class="text-secondary small text-break">{{ profile.vector_table_name or "-" }}</div>
+              </td>
+              <td class="text-nowrap">
+                {{ t("dgx_benchmarks.avg_short") }} {{ profile.avg_provider_elapsed_ms or 0 }} ms
+                · {{ t("dgx_benchmarks.max_short") }} {{ profile.max_provider_elapsed_ms or 0 }} ms
+              </td>
+              <td class="text-break">
+                {{ profile.provider_route_name or "-" }}
+                {% if profile.provider_runtime_base_url %}
+                <div class="text-secondary small">{{ profile.provider_runtime_base_url }}</div>
+                {% endif %}
+              </td>
+              <td>{{ profile.readiness_status or "-" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-5" colspan="8">{{ t("dgx_benchmarks.no_profile_results") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  <div class="col-12">
+    <section class="metric-card bg-white p-0 overflow-hidden">
+      <div class="dashboard-panel-header p-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("dgx_benchmarks.job_results") }}</h2>
+          <div class="text-secondary">{{ t("dgx_benchmarks.job_results_help") }}</div>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 dgx-benchmark-job-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ t("dgx_benchmarks.job") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.chunk") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.profile") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.status") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.vector") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.provider_elapsed") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.worker_elapsed") }}</th>
+              <th scope="col">{{ t("dgx_benchmarks.message") }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in selected_detail.jobs %}
+            <tr>
+              <td>
+                {% if job.source_job_id %}
+                <a class="job-link" href="/admin/embedding-jobs?job_id={{ job.source_job_id }}">#{{ job.source_job_id }}</a>
+                {% else %}
+                -
+                {% endif %}
+              </td>
+              <td>{% if job.source_chunk_id %}#{{ job.source_chunk_id }}{% else %}-{% endif %}</td>
+              <td class="text-break">{{ job.profile_name }}</td>
+              <td>
+                {% if job.passed %}
+                <span class="badge text-bg-success">{{ job.job_status or t("dgx_benchmarks.passed") }}</span>
+                {% else %}
+                <span class="badge text-bg-danger">{{ job.job_status or t("dgx_benchmarks.failed") }}</span>
+                {% endif %}
+              </td>
+              <td>{{ job.vector_dimension or "-" }} / {{ job.vector_storage_type or "-" }}</td>
+              <td>{% if job.provider_elapsed_ms is not none %}{{ job.provider_elapsed_ms }} ms{% else %}-{% endif %}</td>
+              <td>{% if job.worker_elapsed_ms is not none %}{{ job.worker_elapsed_ms }} ms{% else %}-{% endif %}</td>
+              <td class="text-break">{{ job.message or job.error or "" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td class="text-secondary text-center py-5" colspan="8">{{ t("dgx_benchmarks.no_job_results") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="border-top p-3">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h3 class="h6 mb-0">{{ t("dgx_benchmarks.raw_json") }}</h3>
+          <span class="text-secondary small">{{ t("dgx_benchmarks.raw_json_help") }}</span>
+        </div>
+        <pre class="dgx-benchmark-json-viewer bg-light border rounded-2 p-3 mb-0 small overflow-auto">{{ selected_detail_json }}</pre>
+      </div>
+    </section>
+  </div>
+</div>
+{% else %}
+<section class="metric-card bg-white p-3">
+  <div class="text-secondary text-center py-4">
+    {% if database_configured %}{{ t("dgx_benchmarks.no_run_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -806,6 +806,85 @@ main.container-fluid {
   white-space: pre-wrap;
 }
 
+.dgx-benchmark-filter-form .form-control,
+.dgx-benchmark-filter-form .form-select {
+  min-width: 0;
+}
+
+.dgx-benchmark-summary-grid,
+.dgx-benchmark-count-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.dgx-benchmark-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dgx-benchmark-count-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dgx-benchmark-count-grid > div {
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+}
+
+.dgx-benchmark-count-grid strong {
+  font-size: 1.25rem;
+}
+
+.dgx-benchmark-run-table th,
+.dgx-benchmark-run-table td,
+.dgx-benchmark-profile-table th,
+.dgx-benchmark-profile-table td,
+.dgx-benchmark-job-table th,
+.dgx-benchmark-job-table td {
+  font-size: 0.925rem;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
+
+.dgx-benchmark-run-table td:nth-child(1),
+.dgx-benchmark-run-table td:nth-child(2),
+.dgx-benchmark-run-table td:nth-child(3),
+.dgx-benchmark-run-table td:nth-child(6),
+.dgx-benchmark-run-table td:nth-child(7),
+.dgx-benchmark-profile-table td:nth-child(1),
+.dgx-benchmark-profile-table td:nth-child(3),
+.dgx-benchmark-profile-table td:nth-child(4),
+.dgx-benchmark-profile-table td:nth-child(6),
+.dgx-benchmark-profile-table td:nth-child(8),
+.dgx-benchmark-job-table td:nth-child(1),
+.dgx-benchmark-job-table td:nth-child(2),
+.dgx-benchmark-job-table td:nth-child(4),
+.dgx-benchmark-job-table td:nth-child(5),
+.dgx-benchmark-job-table td:nth-child(6),
+.dgx-benchmark-job-table td:nth-child(7) {
+  white-space: nowrap;
+}
+
+.dgx-benchmark-run-table td:nth-child(4),
+.dgx-benchmark-run-table td:nth-child(5),
+.dgx-benchmark-run-table td:nth-child(8),
+.dgx-benchmark-profile-table td:nth-child(2),
+.dgx-benchmark-profile-table td:nth-child(5),
+.dgx-benchmark-profile-table td:nth-child(7),
+.dgx-benchmark-job-table td:nth-child(3),
+.dgx-benchmark-job-table td:nth-child(8) {
+  min-width: 12rem;
+}
+
+.dgx-benchmark-json-viewer {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .job-detail-list {
   display: grid;
   gap: 0.625rem 1rem;
@@ -3384,6 +3463,8 @@ main.container-fluid {
   .design-doc-grid,
   .design-principle-grid,
   .design-token-layout,
+  .dgx-benchmark-count-grid,
+  .dgx-benchmark-summary-grid,
   .document-detail-grid,
   .embedding-backlog-summary-grid,
   .embedding-coverage-summary-grid,
@@ -3460,6 +3541,11 @@ main.container-fluid {
   }
 
   .golden-search-experiment-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dgx-benchmark-count-grid,
+  .dgx-benchmark-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
