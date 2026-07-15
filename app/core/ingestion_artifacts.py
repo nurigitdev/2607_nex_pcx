@@ -280,6 +280,17 @@ class ExtractionQualitySnapshotRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class ExtractionQualitySnapshotSummary:
+    document_id: int
+    artifact_id: int | None
+    snapshot_count: int
+    passed_count: int
+    warning_count: int
+    failed_count: int
+    latest_snapshot: ExtractionQualitySnapshotRecord | None
+
+
 class InvalidIngestionArtifactError(ValueError):
     """Raised when ingestion artifact metadata is invalid before reaching the DB."""
 
@@ -1392,3 +1403,50 @@ def list_extraction_quality_snapshots(
             )
             rows = cursor.fetchall()
     return [_row_to_extraction_quality_snapshot_record(dict(row)) for row in rows]
+
+
+def get_extraction_quality_snapshot_summary(
+    database_url: str,
+    document_id: int,
+    *,
+    artifact_id: int | None = None,
+) -> ExtractionQualitySnapshotSummary:
+    _require_positive_id(document_id, "document_id")
+    _require_positive_id(artifact_id, "artifact_id")
+    where_artifact = ""
+    params: tuple[object, ...] = (document_id,)
+    if artifact_id is not None:
+        where_artifact = "AND artifact_id = %s"
+        params = (document_id, artifact_id)
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    count(*) AS snapshot_count,
+                    count(*) FILTER (WHERE status = 'passed') AS passed_count,
+                    count(*) FILTER (WHERE status = 'warning') AS warning_count,
+                    count(*) FILTER (WHERE status = 'failed') AS failed_count
+                FROM extraction_quality_snapshots
+                WHERE document_id = %s
+                  {where_artifact}
+                """,
+                params,
+            )
+            summary_row = dict(cursor.fetchone())
+    latest_snapshots = list_extraction_quality_snapshots(
+        database_url,
+        document_id,
+        artifact_id=artifact_id,
+        limit=1,
+    )
+    return ExtractionQualitySnapshotSummary(
+        document_id=document_id,
+        artifact_id=artifact_id,
+        snapshot_count=int(summary_row["snapshot_count"]),
+        passed_count=int(summary_row["passed_count"]),
+        warning_count=int(summary_row["warning_count"]),
+        failed_count=int(summary_row["failed_count"]),
+        latest_snapshot=latest_snapshots[0] if latest_snapshots else None,
+    )

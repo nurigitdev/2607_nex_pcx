@@ -6,6 +6,7 @@ from app.core.ingestion_artifacts import (
     DocumentBlockRecord,
     ExtractionArtifactRecord,
     ExtractionQualitySnapshotRecord,
+    ExtractionQualitySnapshotSummary,
     ExtractionRunRecord,
 )
 from app.main import (
@@ -18,6 +19,7 @@ from app.main import (
     extraction_quality_check_payload,
     extraction_quality_snapshot_input_from_context,
     extraction_quality_snapshot_payload,
+    extraction_quality_snapshot_summary_payload,
 )
 
 NOW = datetime(2026, 7, 15, tzinfo=UTC)
@@ -272,6 +274,41 @@ def test_extraction_quality_snapshot_payload_formats_datetime_and_percent() -> N
     assert payload["source_anchor_coverage_label"] == "100.00%"
     assert payload["created_at"] == "2026-07-15T00:00:00+00:00"
     assert payload["quality_payload"] == {"status": "passed", "issues": []}
+
+
+def test_extraction_quality_snapshot_summary_payload_handles_latest_snapshot() -> None:
+    snapshot = make_extraction_quality_snapshot()
+    payload = extraction_quality_snapshot_summary_payload(
+        ExtractionQualitySnapshotSummary(
+            document_id=4,
+            artifact_id=1,
+            snapshot_count=1,
+            passed_count=1,
+            warning_count=0,
+            failed_count=0,
+            latest_snapshot=snapshot,
+        )
+    )
+
+    assert payload["snapshot_count"] == 1
+    assert payload["latest_snapshot"]["snapshot_id"] == snapshot.snapshot_id
+
+
+def test_extraction_quality_snapshot_summary_payload_handles_empty_summary() -> None:
+    payload = extraction_quality_snapshot_summary_payload(
+        ExtractionQualitySnapshotSummary(
+            document_id=4,
+            artifact_id=None,
+            snapshot_count=0,
+            passed_count=0,
+            warning_count=0,
+            failed_count=0,
+            latest_snapshot=None,
+        )
+    )
+
+    assert payload["snapshot_count"] == 0
+    assert payload["latest_snapshot"] is None
 
 
 def test_extraction_quality_snapshot_input_from_context_uses_selected_run_metadata() -> None:

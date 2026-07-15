@@ -366,9 +366,11 @@ from app.core.ingestion_artifacts import (
     ExtractionArtifactRecord,
     ExtractionQualitySnapshotInput,
     ExtractionQualitySnapshotRecord,
+    ExtractionQualitySnapshotSummary,
     ExtractionRunRecord,
     InvalidIngestionArtifactError,
     create_extraction_quality_snapshot,
+    get_extraction_quality_snapshot_summary,
     list_document_blocks,
     list_document_extraction_artifacts,
     list_document_extraction_runs,
@@ -5922,6 +5924,24 @@ def extraction_quality_snapshot_payload(
     }
 
 
+def extraction_quality_snapshot_summary_payload(
+    summary: ExtractionQualitySnapshotSummary,
+) -> dict[str, object]:
+    return {
+        "document_id": summary.document_id,
+        "artifact_id": summary.artifact_id,
+        "snapshot_count": summary.snapshot_count,
+        "passed_count": summary.passed_count,
+        "warning_count": summary.warning_count,
+        "failed_count": summary.failed_count,
+        "latest_snapshot": (
+            extraction_quality_snapshot_payload(summary.latest_snapshot)
+            if summary.latest_snapshot is not None
+            else None
+        ),
+    }
+
+
 def extraction_quality_snapshot_input_from_context(
     *,
     document: DocumentInventoryItem,
@@ -6989,6 +7009,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "snapshots": [
                     extraction_quality_snapshot_payload(snapshot) for snapshot in snapshots
                 ],
+            },
+        )
+
+    @app.get("/api/documents/{document_id}/extraction-quality-summary")
+    def api_get_document_extraction_quality_snapshot_summary(
+        document_id: int,
+        artifact_id: int | None = None,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            summary = get_extraction_quality_snapshot_summary(
+                settings.database_url,
+                document_id,
+                artifact_id=artifact_id,
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidIngestionArtifactError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "document": document_inventory_item_payload(document),
+                "summary": extraction_quality_snapshot_summary_payload(summary),
             },
         )
 
@@ -10811,6 +10866,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         document_blocks: list[DocumentBlockRecord] = []
         selected_artifact: ExtractionArtifactRecord | None = None
         selected_artifact_id: int | None = None
+        extraction_quality_snapshot_summary: ExtractionQualitySnapshotSummary | None = None
         error_message = None
 
         if not settings.database_url:
@@ -10857,6 +10913,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             document_id,
                             artifact_id=selected_artifact_id,
                         )
+                    extraction_quality_snapshot_summary = (
+                        get_extraction_quality_snapshot_summary(
+                            settings.database_url,
+                            document_id,
+                            artifact_id=selected_artifact_id,
+                        )
+                    )
             except (InvalidDocumentInventoryError, InvalidIngestionArtifactError) as exc:
                 error_message = str(exc)
             except Exception as exc:
@@ -10883,6 +10946,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     selected_artifact,
                     document_blocks,
                     extraction_runs,
+                ),
+                extraction_quality_snapshot_summary=(
+                    extraction_quality_snapshot_summary_payload(
+                        extraction_quality_snapshot_summary,
+                    )
+                    if extraction_quality_snapshot_summary is not None
+                    else None
                 ),
                 selected_artifact_id=selected_artifact_id,
                 error_message=error_message,

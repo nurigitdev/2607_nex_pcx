@@ -23,6 +23,12 @@
     >
       {{ t("ingestion_artifacts.quality_api") }}
     </a>
+    <a
+      class="btn btn-outline-secondary"
+      href="/api/documents/{{ document.document_id }}/extraction-quality-summary{% if selected_artifact_id %}?artifact_id={{ selected_artifact_id }}{% endif %}"
+    >
+      {{ t("ingestion_artifacts.quality_summary_api") }}
+    </a>
     <a class="btn btn-outline-secondary" href="/documents/{{ document.document_id }}">{{ t("ingestion_artifacts.back_to_document") }}</a>
     {% endif %}
     <a class="btn btn-outline-secondary" href="/documents">{{ t("nav.documents") }}</a>
@@ -246,6 +252,55 @@
         <div class="text-secondary">{{ t("ingestion_artifacts.no_quality_issues") }}</div>
         {% endfor %}
       </div>
+    </section>
+
+    <section class="metric-card bg-white p-3 mb-3">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("ingestion_artifacts.quality_snapshot_summary") }}</h2>
+          <div class="text-secondary">{{ t("ingestion_artifacts.quality_snapshot_summary_help") }}</div>
+        </div>
+      </div>
+      {% if extraction_quality_snapshot_summary %}
+      <dl class="artifact-summary-grid extraction-quality-grid mb-3">
+        <div>
+          <dt>{{ t("ingestion_artifacts.snapshot_count") }}</dt>
+          <dd>{{ extraction_quality_snapshot_summary.snapshot_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.quality_status_passed") }}</dt>
+          <dd>{{ extraction_quality_snapshot_summary.passed_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.quality_status_warning") }}</dt>
+          <dd>{{ extraction_quality_snapshot_summary.warning_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.quality_status_failed") }}</dt>
+          <dd>{{ extraction_quality_snapshot_summary.failed_count }}</dd>
+        </div>
+      </dl>
+      {% if extraction_quality_snapshot_summary.latest_snapshot %}
+      {% set latest_snapshot = extraction_quality_snapshot_summary.latest_snapshot %}
+      {% set latest_snapshot_badge_class = "text-bg-success" if latest_snapshot.status == "passed" else "text-bg-danger" if latest_snapshot.status == "failed" else "text-bg-warning" %}
+      <div class="extraction-quality-issue extraction-quality-issue-{{ latest_snapshot.status }}">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+          <span class="badge {{ latest_snapshot_badge_class }}">{{ t("ingestion_artifacts.quality_status_" ~ latest_snapshot.status) }}</span>
+          <strong>#{{ latest_snapshot.snapshot_id }}</strong>
+          <span class="text-secondary">{{ latest_snapshot.created_at_label }}</span>
+        </div>
+        <div class="text-secondary">
+          {{ t("ingestion_artifacts.latest_snapshot") }}
+          · {{ t("ingestion_artifacts.issue_count") }} {{ latest_snapshot.issue_count }}
+          · {{ t("ingestion_artifacts.source_anchor_coverage") }} {{ latest_snapshot.source_anchor_coverage_label }}
+        </div>
+      </div>
+      {% else %}
+      <div class="text-secondary">{{ t("ingestion_artifacts.no_quality_snapshots") }}</div>
+      {% endif %}
+      {% else %}
+      <div class="text-secondary">{{ t("ingestion_artifacts.no_quality_snapshots") }}</div>
+      {% endif %}
     </section>
 
     <section class="metric-card bg-white p-3 mb-3">

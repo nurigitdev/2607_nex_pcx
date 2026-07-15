@@ -2324,6 +2324,10 @@ main.container-fluid {
   border-left-color: #94a3b8;
 }
 
+.extraction-quality-issue-passed {
+  border-left-color: #16a34a;
+}
+
 .extraction-quality-issue-warning {
   border-left-color: #f59e0b;
 }

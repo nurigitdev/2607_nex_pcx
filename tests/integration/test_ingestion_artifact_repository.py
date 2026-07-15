@@ -18,6 +18,7 @@ from app.core.ingestion_artifacts import (
     create_extraction_run,
     create_image_artifact,
     create_table_artifact,
+    get_extraction_quality_snapshot_summary,
     get_extraction_artifact,
     get_extraction_profile,
     get_extraction_run,
@@ -263,6 +264,11 @@ def test_ingestion_artifact_repository_round_trip(migrated_database_url: str) ->
             document_id,
             artifact_id=artifact.artifact_id,
         )
+        summary = get_extraction_quality_snapshot_summary(
+            migrated_database_url,
+            document_id,
+            artifact_id=artifact.artifact_id,
+        )
 
         assert stored_run == run
         assert run.status == "succeeded"
@@ -282,6 +288,9 @@ def test_ingestion_artifact_repository_round_trip(migrated_database_url: str) ->
         assert snapshot.status == "warning"
         assert snapshot.source_anchor_coverage_percent == 100.0
         assert snapshot.quality_payload["issues"] == [{"code": "fixture"}]
+        assert summary.snapshot_count == 1
+        assert summary.warning_count == 1
+        assert summary.latest_snapshot == snapshot
     finally:
         _cleanup_file(migrated_database_url, file_id)
 
@@ -296,6 +305,9 @@ def test_repository_returns_none_or_empty_lists_for_missing_records(
     assert list_document_extraction_artifacts(migrated_database_url, 999_999_999) == []
     assert list_document_blocks(migrated_database_url, 999_999_999) == []
     assert list_extraction_quality_snapshots(migrated_database_url, 999_999_999) == []
+    summary = get_extraction_quality_snapshot_summary(migrated_database_url, 999_999_999)
+    assert summary.snapshot_count == 0
+    assert summary.latest_snapshot is None
 
 
 def test_extraction_quality_snapshot_validates_inputs(
@@ -305,6 +317,8 @@ def test_extraction_quality_snapshot_validates_inputs(
         list_extraction_quality_snapshots(migrated_database_url, 1, limit=0)
     with pytest.raises(InvalidIngestionArtifactError, match="artifact_id"):
         list_extraction_quality_snapshots(migrated_database_url, 1, artifact_id=0)
+    with pytest.raises(InvalidIngestionArtifactError, match="artifact_id"):
+        get_extraction_quality_snapshot_summary(migrated_database_url, 1, artifact_id=0)
     with pytest.raises(
         InvalidIngestionArtifactError,
         match="Unsupported extraction quality status",

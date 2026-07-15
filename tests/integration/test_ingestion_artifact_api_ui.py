@@ -120,6 +120,10 @@ def test_document_ingestion_artifact_api_and_page(
                 f"/api/documents/{document_id}/extraction-quality-snapshots",
                 params={"artifact_id": artifact_id},
             )
+            initial_snapshot_summary_response = client.get(
+                f"/api/documents/{document_id}/extraction-quality-summary",
+                params={"artifact_id": artifact_id},
+            )
             snapshot_create_response = client.post(
                 f"/api/documents/{document_id}/extraction-quality-snapshots",
                 json={"artifact_id": artifact_id, "created_by": "api-test"},
@@ -127,6 +131,10 @@ def test_document_ingestion_artifact_api_and_page(
             snapshots_response = client.get(
                 f"/api/documents/{document_id}/extraction-quality-snapshots",
                 params={"artifact_id": artifact_id, "limit": 5},
+            )
+            snapshot_summary_response = client.get(
+                f"/api/documents/{document_id}/extraction-quality-summary",
+                params={"artifact_id": artifact_id},
             )
             invalid_snapshot_limit_response = client.get(
                 f"/api/documents/{document_id}/extraction-quality-snapshots",
@@ -179,8 +187,10 @@ def test_document_ingestion_artifact_api_and_page(
         selected_preview_payload = selected_preview_response.json()
         quality_payload = quality_response.json()
         initial_snapshots_payload = initial_snapshots_response.json()
+        initial_snapshot_summary_payload = initial_snapshot_summary_response.json()
         snapshot_create_payload = snapshot_create_response.json()
         snapshots_payload = snapshots_response.json()
+        snapshot_summary_payload = snapshot_summary_response.json()
         blocks_export_payload = blocks_export_response.json()
         metadata_export_payload = metadata_export_response.json()
         quality_export_payload = quality_export_response.json()
@@ -223,6 +233,9 @@ def test_document_ingestion_artifact_api_and_page(
         assert missing_quality_artifact_response.status_code == 404
         assert initial_snapshots_response.status_code == 200
         assert initial_snapshots_payload["snapshots"] == []
+        assert initial_snapshot_summary_response.status_code == 200
+        assert initial_snapshot_summary_payload["summary"]["snapshot_count"] == 0
+        assert initial_snapshot_summary_payload["summary"]["latest_snapshot"] is None
         assert snapshot_create_response.status_code == 201
         assert snapshot_create_payload["snapshot"]["artifact_id"] == artifact_id
         assert snapshot_create_payload["snapshot"]["status"] == "warning"
@@ -233,6 +246,12 @@ def test_document_ingestion_artifact_api_and_page(
         assert snapshots_payload["snapshot_count"] == 1
         created_snapshot_id = snapshot_create_payload["snapshot"]["snapshot_id"]
         assert snapshots_payload["snapshots"][0]["snapshot_id"] == created_snapshot_id
+        assert snapshot_summary_response.status_code == 200
+        assert snapshot_summary_payload["summary"]["snapshot_count"] == 1
+        assert snapshot_summary_payload["summary"]["warning_count"] == 1
+        assert snapshot_summary_payload["summary"]["latest_snapshot"]["snapshot_id"] == (
+            created_snapshot_id
+        )
         assert invalid_snapshot_limit_response.status_code == 422
         assert missing_snapshot_artifact_response.status_code == 404
         assert markdown_export_response.status_code == 200
@@ -271,6 +290,8 @@ def test_document_ingestion_artifact_api_and_page(
         assert "정규화 텍스트 Preview" in page_response.text
         assert "Block 요약" in page_response.text
         assert "품질 점검" in page_response.text
+        assert "품질 Snapshot 요약" in page_response.text
+        assert "최신 Snapshot" in page_response.text
         assert "short_content_text" in page_response.text
         assert "100.00%" in page_response.text
         assert "Source Anchor" in page_response.text
@@ -298,6 +319,9 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
             quality_response = client.get(f"/api/documents/{document_id}/extraction-quality")
             snapshots_response = client.get(
                 f"/api/documents/{document_id}/extraction-quality-snapshots"
+            )
+            snapshot_summary_response = client.get(
+                f"/api/documents/{document_id}/extraction-quality-summary"
             )
             snapshot_create_response = client.post(
                 f"/api/documents/{document_id}/extraction-quality-snapshots",
@@ -342,6 +366,8 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
         assert quality_payload["quality_check"]["issues"][0]["code"] == "no_artifact_selected"
         assert snapshots_response.status_code == 200
         assert snapshots_response.json()["snapshots"] == []
+        assert snapshot_summary_response.status_code == 200
+        assert snapshot_summary_response.json()["summary"]["snapshot_count"] == 0
         assert snapshot_create_response.status_code == 404
         assert export_response.status_code == 404
         assert missing_document_response.status_code == 404
@@ -351,5 +377,6 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
         assert "선택된 artifact가 없습니다." in page_response.text
         assert "집계할 block 유형이 없습니다." in page_response.text
         assert "확인 불가" in page_response.text
+        assert "저장된 품질 snapshot이 없습니다." in page_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)
