@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -41,14 +42,20 @@ from app.core.ingestion_artifacts import (
 
 LOCAL_MARKDOWN_PROFILE_NAME = "local_markdown_default"
 LOCAL_PLAIN_TEXT_PROFILE_NAME = "local_plain_text_default"
+LOCAL_PDF_TEXT_PROFILE_NAME = "local_pdf_text_default"
 LOCAL_PLAIN_TEXT_EXTRACTOR_NAME = "local_plain_text"
 LOCAL_PLAIN_TEXT_EXTRACTOR_VERSION = "0.1.0"
+LOCAL_PDF_TEXT_EXTRACTOR_NAME = "local_pdf_text"
+LOCAL_PDF_TEXT_EXTRACTOR_VERSION = "0.1.0"
+PDF_TEXT_LIBRARY_NAME = "pypdf"
 
 ERROR_CODE_LOCAL_SOURCE_NOT_FOUND = "LOCAL_SOURCE_NOT_FOUND"
 ERROR_CODE_LOCAL_SOURCE_EMPTY = "LOCAL_SOURCE_EMPTY"
 ERROR_CODE_LOCAL_UNSUPPORTED_PROFILE = "LOCAL_UNSUPPORTED_PROFILE"
 ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE = "LOCAL_UNSUPPORTED_FILE_TYPE"
 ERROR_CODE_LOCAL_TEXT_DECODE_FAILED = "LOCAL_TEXT_DECODE_FAILED"
+ERROR_CODE_LOCAL_PDF_READ_FAILED = "LOCAL_PDF_READ_FAILED"
+ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY = "LOCAL_PDF_TEXT_LAYER_EMPTY"
 
 
 LocalExtractionCallable = Callable[
@@ -167,6 +174,101 @@ def _extract_plain_text_source(
     return _extract_plain_text(request, source_text, source_path, started)
 
 
+def _extract_pdf_text_source(
+    request: ExtractionRuntimeRequest,
+    source_path: Path,
+    started: float,
+) -> ExtractionRuntimeResult:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_PDF_READ_FAILED,
+            f"pypdf is required for local PDF text extraction: {exc}",
+        )
+
+    try:
+        reader = PdfReader(str(source_path))
+        if reader.is_encrypted and not reader.decrypt(""):
+            return _failed_result(
+                started,
+                ERROR_CODE_LOCAL_PDF_READ_FAILED,
+                "Encrypted PDF could not be decrypted with an empty password",
+            )
+        page_count = len(reader.pages)
+        page_texts = tuple(
+            (page_no, _normalize_line_endings(page.extract_text() or "").strip())
+            for page_no, page in enumerate(reader.pages, start=1)
+        )
+    except Exception as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_PDF_READ_FAILED,
+            f"PDF text layer could not be read: {exc}",
+        )
+
+    extracted_page_texts = tuple(
+        (page_no, page_text) for page_no, page_text in page_texts if page_text
+    )
+    if not extracted_page_texts:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY,
+            "PDF does not contain extractable text layer content",
+        )
+
+    artifact_text, blocks = _pdf_page_texts_to_artifact_and_blocks(extracted_page_texts)
+    skipped_page_count = page_count - len(extracted_page_texts)
+    library_version = _package_version(PDF_TEXT_LIBRARY_NAME)
+    warnings = (
+        (f"Skipped {skipped_page_count} PDF pages without extractable text",)
+        if skipped_page_count
+        else ()
+    )
+    metadata = {
+        "source_path": str(source_path),
+        "source_file_name": source_path.name,
+        "parser_name": LOCAL_PDF_TEXT_EXTRACTOR_NAME,
+        "parser_version": LOCAL_PDF_TEXT_EXTRACTOR_VERSION,
+        "library": PDF_TEXT_LIBRARY_NAME,
+        "library_version": library_version,
+        "page_count": page_count,
+        "extracted_page_count": len(extracted_page_texts),
+        "block_count": len(blocks),
+        "text_layer_only": True,
+        "ocr_enabled": False,
+        "options": request.options,
+    }
+    artifact = ExtractionRuntimeArtifact(
+        artifact_type="normalized_markdown",
+        content_text=artifact_text,
+        content_hash=_hash_text(artifact_text),
+        size_bytes=len(artifact_text.encode("utf-8")),
+        metadata=metadata,
+    )
+    return ExtractionRuntimeResult(
+        status="succeeded",
+        artifacts=(artifact,),
+        blocks=blocks,
+        warnings=warnings,
+        elapsed_ms=_elapsed_ms(started),
+        runtime_metadata={
+            "profile_name": LOCAL_PDF_TEXT_PROFILE_NAME,
+            "extractor_name": LOCAL_PDF_TEXT_EXTRACTOR_NAME,
+            "extractor_version": LOCAL_PDF_TEXT_EXTRACTOR_VERSION,
+            "library": PDF_TEXT_LIBRARY_NAME,
+            "library_version": library_version,
+            "source_path": str(source_path),
+            "page_count": page_count,
+            "extracted_page_count": len(extracted_page_texts),
+            "block_count": len(blocks),
+            "text_layer_only": True,
+            "ocr_enabled": False,
+        },
+    )
+
+
 def _read_utf8_text_source(
     source_path: Path,
     started: float,
@@ -190,6 +292,69 @@ def _read_utf8_text_source(
     return source_text, None
 
 
+def _pdf_page_texts_to_artifact_and_blocks(
+    page_texts: tuple[tuple[int, str], ...],
+) -> tuple[str, tuple[ExtractionRuntimeBlock, ...]]:
+    parts: list[str] = []
+    blocks: list[ExtractionRuntimeBlock] = []
+    cursor = 0
+
+    for page_no, page_text in page_texts:
+        if parts:
+            parts.append("\n\n")
+            cursor += 2
+        page_marker = f"<!-- page: {page_no} -->"
+        parts.append(page_marker)
+        cursor += len(page_marker)
+
+        for paragraph_index, paragraph in enumerate(_split_pdf_paragraphs(page_text), start=1):
+            parts.append("\n\n")
+            cursor += 2
+            char_start = cursor
+            parts.append(paragraph)
+            cursor += len(paragraph)
+            blocks.append(
+                ExtractionRuntimeBlock(
+                    block_seq=len(blocks),
+                    block_type="paragraph",
+                    content_text=paragraph,
+                    content_markdown=paragraph,
+                    heading_path=(f"Page {page_no}",),
+                    source_anchor={
+                        "page_no": page_no,
+                        "paragraph_index": paragraph_index,
+                    },
+                    page_no=page_no,
+                    char_start=char_start,
+                    char_end=cursor,
+                    token_count=count_chunk_tokens(paragraph),
+                    metadata={
+                        "source": "pdf_text_layer",
+                        "library": PDF_TEXT_LIBRARY_NAME,
+                    },
+                )
+            )
+
+    return "".join(parts), tuple(blocks)
+
+
+def _split_pdf_paragraphs(page_text: str) -> tuple[str, ...]:
+    paragraphs: list[str] = []
+    current_lines: list[str] = []
+
+    for line in page_text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            current_lines.append(stripped)
+        elif current_lines:
+            paragraphs.append(" ".join(current_lines))
+            current_lines = []
+
+    if current_lines:
+        paragraphs.append(" ".join(current_lines))
+    return tuple(paragraphs)
+
+
 LOCAL_EXTRACTION_HANDLERS = (
     LocalExtractionHandler(
         profile_name=LOCAL_MARKDOWN_PROFILE_NAME,
@@ -208,6 +373,15 @@ LOCAL_EXTRACTION_HANDLERS = (
         extractor_version=LOCAL_PLAIN_TEXT_EXTRACTOR_VERSION,
         supported_file_types=("txt", "text"),
         extract=_extract_plain_text_source,
+    ),
+    LocalExtractionHandler(
+        profile_name=LOCAL_PDF_TEXT_PROFILE_NAME,
+        parser_name=LOCAL_PDF_TEXT_EXTRACTOR_NAME,
+        parser_version=LOCAL_PDF_TEXT_EXTRACTOR_VERSION,
+        extractor_name=LOCAL_PDF_TEXT_EXTRACTOR_NAME,
+        extractor_version=LOCAL_PDF_TEXT_EXTRACTOR_VERSION,
+        supported_file_types=("pdf",),
+        extract=_extract_pdf_text_source,
     ),
 )
 
@@ -611,6 +785,13 @@ def _normalize_line_endings(text: str) -> str:
 
 def _hash_text(text: str) -> str:
     return sha256(text.encode("utf-8")).hexdigest()
+
+
+def _package_version(package_name: str) -> str:
+    try:
+        return version(package_name)
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def _elapsed_ms(started: float) -> int:

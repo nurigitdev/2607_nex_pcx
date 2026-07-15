@@ -2,9 +2,11 @@ from pathlib import Path
 
 from app.core.extraction_runtime import ExtractionRuntimeRequest
 from app.core.local_extraction import (
+    ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY,
     ERROR_CODE_LOCAL_SOURCE_NOT_FOUND,
     ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE,
     LOCAL_MARKDOWN_PROFILE_NAME,
+    LOCAL_PDF_TEXT_PROFILE_NAME,
     LOCAL_PLAIN_TEXT_PROFILE_NAME,
     SUPPORTED_LOCAL_PROFILE_SUFFIXES,
     get_local_extraction_handler,
@@ -16,23 +18,76 @@ from app.core.local_extraction import (
 )
 
 
+def make_minimal_pdf(lines: list[str] | None = None) -> bytes:
+    text_operations: list[str] = []
+    y_position = 760
+    for line in lines or []:
+        escaped = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        text_operations.append(f"BT /F1 12 Tf 72 {y_position} Td ({escaped}) Tj ET")
+        y_position -= 18
+
+    stream = "\n".join(text_operations).encode("ascii")
+    objects = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        (
+            b"3 0 obj\n"
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\n"
+            b"endobj\n"
+        ),
+        b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+        (
+            b"5 0 obj\n<< /Length "
+            + str(len(stream)).encode("ascii")
+            + b" >>\nstream\n"
+            + stream
+            + b"\nendstream\nendobj\n"
+        ),
+    ]
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for pdf_object in objects:
+        offsets.append(len(output))
+        output.extend(pdf_object)
+
+    xref_offset = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    output.extend(
+        (
+            f"trailer\n<< /Root 1 0 R /Size {len(objects) + 1} >>\n"
+            f"startxref\n{xref_offset}\n%%EOF\n"
+        ).encode("ascii")
+    )
+    return bytes(output)
+
+
 def test_local_extraction_registry_selects_implemented_profiles() -> None:
     handlers = {handler.profile_name: handler for handler in list_local_extraction_handlers()}
 
     markdown_handler = get_local_extraction_handler(LOCAL_MARKDOWN_PROFILE_NAME)
+    pdf_handler = get_local_extraction_handler(LOCAL_PDF_TEXT_PROFILE_NAME)
 
     assert set(handlers) == {
         LOCAL_MARKDOWN_PROFILE_NAME,
         LOCAL_PLAIN_TEXT_PROFILE_NAME,
+        LOCAL_PDF_TEXT_PROFILE_NAME,
     }
     assert markdown_handler is not None
+    assert pdf_handler is not None
     assert markdown_handler.supports_file_type(".MD")
+    assert pdf_handler.supports_file_type(".PDF")
     assert normalize_file_type(".Txt") == "txt"
     assert select_local_extraction_handler("md") == markdown_handler
     assert select_local_extraction_profile_name(".text") == LOCAL_PLAIN_TEXT_PROFILE_NAME
-    assert select_local_extraction_handler("pdf") is None
+    assert select_local_extraction_profile_name("pdf") == LOCAL_PDF_TEXT_PROFILE_NAME
+    assert select_local_extraction_handler("pdf") == pdf_handler
     assert get_local_extraction_handler("missing_profile") is None
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_MARKDOWN_PROFILE_NAME] == {".md"}
+    assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_PDF_TEXT_PROFILE_NAME] == {".pdf"}
 
 
 def test_run_local_markdown_extraction_returns_artifact_and_blocks(tmp_path: Path) -> None:
@@ -129,6 +184,71 @@ def test_run_local_plain_text_extraction_splits_paragraphs(tmp_path: Path) -> No
     assert result.blocks[0].source_anchor == {"start_line": 1, "end_line": 2}
     assert result.blocks[1].content_text == "Second paragraph."
     assert result.runtime_metadata["extractor_name"] == "local_plain_text"
+
+
+def test_run_local_pdf_text_extraction_returns_artifact_and_page_blocks(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sample.pdf"
+    source_path.write_bytes(
+        make_minimal_pdf(
+            [
+                "PDF Title",
+                "",
+                "First paragraph from the text layer.",
+                "Second paragraph continues.",
+            ]
+        )
+    )
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_PDF_TEXT_PROFILE_NAME,
+            mime_type="application/pdf",
+            detected_file_type="pdf",
+        )
+    )
+
+    assert result.status == "succeeded"
+    assert result.artifacts[0].artifact_type == "normalized_markdown"
+    assert "<!-- page: 1 -->" in result.artifacts[0].content_text
+    assert result.artifacts[0].metadata["library"] == "pypdf"
+    assert result.artifacts[0].metadata["page_count"] == 1
+    assert result.artifacts[0].metadata["text_layer_only"] is True
+    assert result.artifacts[0].metadata["ocr_enabled"] is False
+    assert [block.page_no for block in result.blocks] == [1]
+    assert result.blocks[0].content_text.startswith("PDF Title")
+    assert result.blocks[0].heading_path == ("Page 1",)
+    assert result.blocks[0].source_anchor == {"page_no": 1, "paragraph_index": 1}
+    assert result.blocks[0].metadata == {
+        "source": "pdf_text_layer",
+        "library": "pypdf",
+    }
+    assert result.runtime_metadata["extractor_name"] == "local_pdf_text"
+    assert result.runtime_metadata["page_count"] == 1
+
+
+def test_run_local_pdf_text_extraction_fails_without_text_layer(tmp_path: Path) -> None:
+    source_path = tmp_path / "empty.pdf"
+    source_path.write_bytes(make_minimal_pdf())
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_PDF_TEXT_PROFILE_NAME,
+            mime_type="application/pdf",
+            detected_file_type="pdf",
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.runtime_metadata["error_code"] == ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY
+    assert "text layer" in result.errors[0]
 
 
 def test_run_local_extraction_returns_failed_for_missing_source(tmp_path: Path) -> None:

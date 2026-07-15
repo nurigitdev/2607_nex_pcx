@@ -38,6 +38,53 @@ def prioritize_job(database_url: str, job_id: int) -> None:
             )
 
 
+def make_minimal_pdf(lines: list[str]) -> bytes:
+    text_operations: list[str] = []
+    y_position = 760
+    for line in lines:
+        escaped = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        text_operations.append(f"BT /F1 12 Tf 72 {y_position} Td ({escaped}) Tj ET")
+        y_position -= 18
+
+    stream = "\n".join(text_operations).encode("ascii")
+    objects = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        (
+            b"3 0 obj\n"
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\n"
+            b"endobj\n"
+        ),
+        b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+        (
+            b"5 0 obj\n<< /Length "
+            + str(len(stream)).encode("ascii")
+            + b" >>\nstream\n"
+            + stream
+            + b"\nendstream\nendobj\n"
+        ),
+    ]
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for pdf_object in objects:
+        offsets.append(len(output))
+        output.extend(pdf_object)
+
+    xref_offset = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    output.extend(
+        (
+            f"trailer\n<< /Root 1 0 R /Size {len(objects) + 1} >>\n"
+            f"startxref\n{xref_offset}\n%%EOF\n"
+        ).encode("ascii")
+    )
+    return bytes(output)
+
+
 def test_markdown_pipeline_worker_parses_and_stores_chunks(
     migrated_database_url: str,
     tmp_path: Path,
@@ -164,20 +211,119 @@ This section should become another heading-aware chunk.
         cleanup_checksum(migrated_database_url, checksum)
 
 
-def test_markdown_pipeline_worker_fails_unsupported_file_type(
+def test_markdown_pipeline_worker_extracts_pdf_text_layer(
     migrated_database_url: str,
     tmp_path: Path,
 ) -> None:
-    content = f"%PDF-1.7\nslice-017 unsupported {uuid4().hex}\n".encode()
+    content = make_minimal_pdf(
+        [
+            "Slice 222 PDF",
+            "",
+            f"PDF text layer integration {uuid4().hex}.",
+            "This content should become a PDF document block.",
+        ]
+    )
     checksum = sha256(content).hexdigest()
 
     try:
         upload_result = store_upload(
             database_url=migrated_database_url,
             upload_stream=BytesIO(content),
-            original_file_name="slice-017-worker.pdf",
+            original_file_name="slice-222-worker.pdf",
             storage_dir=tmp_path,
             mime_type="application/pdf",
+            document_group="slice-222",
+            security_level="internal",
+            uploaded_by="integration-test",
+        )
+        assert upload_result.pipeline_job is not None
+        prioritize_job(migrated_database_url, upload_result.pipeline_job.job_id)
+
+        result = process_next_markdown_pipeline_job(
+            migrated_database_url,
+            worker_name="slice-222-test-worker",
+        )
+
+        assert result.processed is True
+        assert result.job is not None
+        assert result.job.job_id == upload_result.pipeline_job.job_id
+        assert result.job.status == "succeeded"
+        assert result.chunk_count == 1
+        assert result.embedding_job_count == 4
+
+        chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+        )
+        extraction_runs = list_document_extraction_runs(
+            migrated_database_url,
+            upload_result.file.document_id,
+        )
+        extraction_artifacts = list_document_extraction_artifacts(
+            migrated_database_url,
+            upload_result.file.document_id,
+            artifact_type="normalized_markdown",
+        )
+        document_blocks = list_document_blocks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            artifact_id=extraction_artifacts[0].artifact_id,
+        )
+        embedding_jobs = [
+            job
+            for chunk in chunks
+            for job in list_embedding_jobs(migrated_database_url, chunk_id=chunk.chunk_id)
+        ]
+        file_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT
+                parser_name,
+                parser_version,
+                parse_status,
+                parse_error_message,
+                extracted_text_size
+            FROM files
+            WHERE file_id = %s
+            """,
+            (upload_result.file.file_id,),
+        )
+
+        assert extraction_runs[0].status == "succeeded"
+        assert extraction_runs[0].extraction_profile_name == "local_pdf_text_default"
+        assert extraction_runs[0].runtime_metadata["library"] == "pypdf"
+        assert extraction_artifacts[0].metadata["text_layer_only"] is True
+        assert extraction_artifacts[0].metadata["ocr_enabled"] is False
+        assert [block.page_no for block in document_blocks] == [1]
+        assert document_blocks[0].metadata["source"] == "pdf_text_layer"
+        assert chunks[0].chunk_text.startswith("Slice 222 PDF")
+        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert chunks[0].block_id == document_blocks[0].block_id
+        assert len(embedding_jobs) == 4
+        assert {job.status for job in embedding_jobs} == {"pending"}
+        assert file_row["parser_name"] == "local_pdf_text"
+        assert file_row["parser_version"] == "0.1.0"
+        assert file_row["parse_status"] == "succeeded"
+        assert file_row["parse_error_message"] is None
+        assert file_row["extracted_text_size"] > 0
+    finally:
+        cleanup_checksum(migrated_database_url, checksum)
+
+
+def test_markdown_pipeline_worker_fails_unregistered_local_runtime(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    content = f"not-really-docx slice-017 unsupported {uuid4().hex}\n".encode()
+    checksum = sha256(content).hexdigest()
+
+    try:
+        upload_result = store_upload(
+            database_url=migrated_database_url,
+            upload_stream=BytesIO(content),
+            original_file_name="slice-017-worker.docx",
+            storage_dir=tmp_path,
+            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             document_group="slice-017",
             security_level="internal",
             uploaded_by="integration-test",
@@ -216,7 +362,7 @@ def test_markdown_pipeline_worker_fails_unsupported_file_type(
         assert stored_job.error_code == ERROR_CODE_UNSUPPORTED_FILE_TYPE
         assert file_row["parse_status"] == "failed"
         assert (
-            "No local extraction runtime is registered for .pdf files"
+            "No local extraction runtime is registered for .docx files"
             in file_row["parse_error_message"]
         )
         assert chunks == []
