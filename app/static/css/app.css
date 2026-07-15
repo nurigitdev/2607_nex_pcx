@@ -922,6 +922,47 @@ main.container-fluid {
   min-width: 12rem;
 }
 
+.dgx-benchmark-trend-form .form-control,
+.dgx-benchmark-trend-form .form-select {
+  min-width: 0;
+}
+
+.dgx-benchmark-trend-summary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dgx-benchmark-trend-table th,
+.dgx-benchmark-trend-table td,
+.dgx-benchmark-trend-point-table th,
+.dgx-benchmark-trend-point-table td {
+  font-size: 0.925rem;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
+
+.dgx-benchmark-trend-table td:nth-child(2),
+.dgx-benchmark-trend-table td:nth-child(3),
+.dgx-benchmark-trend-table td:nth-child(4),
+.dgx-benchmark-trend-table td:nth-child(5),
+.dgx-benchmark-trend-table td:nth-child(6),
+.dgx-benchmark-trend-table td:nth-child(7),
+.dgx-benchmark-trend-point-table td:nth-child(2),
+.dgx-benchmark-trend-point-table td:nth-child(3),
+.dgx-benchmark-trend-point-table td:nth-child(4),
+.dgx-benchmark-trend-point-table td:nth-child(5),
+.dgx-benchmark-trend-point-table td:nth-child(6),
+.dgx-benchmark-trend-point-table td:nth-child(7) {
+  white-space: nowrap;
+}
+
+.dgx-benchmark-trend-table td:nth-child(1),
+.dgx-benchmark-trend-table td:nth-child(8),
+.dgx-benchmark-trend-point-table td:nth-child(1) {
+  min-width: 12rem;
+}
+
 .job-detail-list {
   display: grid;
   gap: 0.625rem 1rem;
@@ -3503,6 +3544,7 @@ main.container-fluid {
   .dgx-benchmark-count-grid,
   .dgx-benchmark-compare-run-grid,
   .dgx-benchmark-summary-grid,
+  .dgx-benchmark-trend-summary-grid,
   .document-detail-grid,
   .embedding-backlog-summary-grid,
   .embedding-coverage-summary-grid,

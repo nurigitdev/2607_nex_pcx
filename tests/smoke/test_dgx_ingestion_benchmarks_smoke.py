@@ -21,8 +21,19 @@ def test_dgx_ingestion_benchmark_compare_page_without_database(client) -> None:
     assert "NEX_PCX_DATABASE_URL is not configured." in response.text
 
 
+def test_dgx_ingestion_benchmark_trends_page_without_database(client) -> None:
+    response = client.get("/admin/dgx-ingestion-benchmarks/trends")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert "DGX Benchmark Trend 요약" in response.text
+    assert "data-dgx-benchmark-trends-page" in response.text
+    assert "/api/admin/dgx-ingestion-benchmarks/trend-summary" in response.text
+    assert "NEX_PCX_DATABASE_URL is not configured." in response.text
+
+
 def test_dgx_ingestion_benchmark_apis_require_database(client) -> None:
     list_response = client.get("/api/admin/dgx-ingestion-benchmarks")
+    trend_response = client.get("/api/admin/dgx-ingestion-benchmarks/trend-summary")
     compare_response = client.get(
         "/api/admin/dgx-ingestion-benchmarks/compare",
         params={"left_run_id": 1, "right_run_id": 2},
@@ -30,6 +41,7 @@ def test_dgx_ingestion_benchmark_apis_require_database(client) -> None:
     detail_response = client.get("/api/admin/dgx-ingestion-benchmarks/1")
 
     assert list_response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert trend_response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert compare_response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert detail_response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert list_response.json()["detail"] == "NEX_PCX_DATABASE_URL is not configured."

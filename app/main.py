@@ -1716,6 +1716,131 @@ def dgx_ingestion_benchmark_compare_payload(
     }
 
 
+def dgx_ingestion_benchmark_trend_summary_payload(
+    details: list[DgxIngestionBenchmarkDetail],
+) -> dict[str, object]:
+    sorted_details = sorted(
+        details,
+        key=lambda detail: (
+            detail.run.created_at,
+            detail.run.benchmark_run_id,
+        ),
+    )
+    points_by_profile: dict[
+        tuple[str, str],
+        list[dict[str, object]],
+    ] = {}
+    for detail in sorted_details:
+        for profile in detail.profiles:
+            point = {
+                "benchmark_run_id": detail.run.benchmark_run_id,
+                "benchmark_run_key": detail.run.benchmark_run_key,
+                "created_at": _datetime_response(detail.run.created_at),
+                "created_at_label": _datetime_label(detail.run.created_at),
+                "passed": profile.passed,
+                "expected_job_count": profile.expected_job_count,
+                "processed_count": profile.processed_count,
+                "succeeded_count": profile.succeeded_count,
+                "failed_count": profile.failed_count,
+                "vector_count": profile.vector_count,
+                "avg_provider_elapsed_ms": profile.avg_provider_elapsed_ms,
+                "avg_worker_elapsed_ms": profile.avg_worker_elapsed_ms,
+                "provider_route_name": profile.provider_route_name,
+                "readiness_status": profile.readiness_status,
+            }
+            points_by_profile.setdefault((profile.provider, profile.profile_name), []).append(point)
+
+    profile_trends = []
+    for (provider, profile_name), points in sorted(points_by_profile.items()):
+        oldest = points[0]
+        latest = points[-1]
+        passed_count = sum(1 for point in points if point["passed"])
+        vector_values = [int(point["vector_count"]) for point in points]
+        provider_latency_values = [
+            float(point["avg_provider_elapsed_ms"])
+            for point in points
+            if point["avg_provider_elapsed_ms"] is not None
+        ]
+        worker_latency_values = [
+            float(point["avg_worker_elapsed_ms"])
+            for point in points
+            if point["avg_worker_elapsed_ms"] is not None
+        ]
+        profile_trends.append(
+            {
+                "provider": provider,
+                "profile_name": profile_name,
+                "run_count": len(points),
+                "passed_count": passed_count,
+                "failed_run_count": len(points) - passed_count,
+                "total_vectors": sum(vector_values),
+                "avg_vectors": (
+                    round(sum(vector_values) / len(vector_values), 2) if vector_values else 0
+                ),
+                "avg_provider_elapsed_ms": (
+                    round(sum(provider_latency_values) / len(provider_latency_values), 2)
+                    if provider_latency_values
+                    else None
+                ),
+                "avg_worker_elapsed_ms": (
+                    round(sum(worker_latency_values) / len(worker_latency_values), 2)
+                    if worker_latency_values
+                    else None
+                ),
+                "oldest_point": oldest,
+                "latest_point": latest,
+                "deltas": {
+                    "vector_count": _dgx_benchmark_metric_comparison(
+                        "vector_count",
+                        int(oldest["vector_count"]),
+                        int(latest["vector_count"]),
+                        better_when="higher",
+                    ),
+                    "failed_count": _dgx_benchmark_metric_comparison(
+                        "failed_count",
+                        int(oldest["failed_count"]),
+                        int(latest["failed_count"]),
+                        better_when="lower",
+                    ),
+                    "avg_provider_elapsed_ms": _dgx_benchmark_metric_comparison(
+                        "avg_provider_elapsed_ms",
+                        oldest["avg_provider_elapsed_ms"],
+                        latest["avg_provider_elapsed_ms"],
+                        unit="ms",
+                        better_when="lower",
+                    ),
+                    "avg_worker_elapsed_ms": _dgx_benchmark_metric_comparison(
+                        "avg_worker_elapsed_ms",
+                        oldest["avg_worker_elapsed_ms"],
+                        latest["avg_worker_elapsed_ms"],
+                        unit="ms",
+                        better_when="lower",
+                    ),
+                },
+                "points": points,
+            }
+        )
+
+    profile_trends.sort(
+        key=lambda trend: (
+            -int(trend["run_count"]),
+            str(trend["provider"]),
+            str(trend["profile_name"]),
+        )
+    )
+    return {
+        "run_count": len(sorted_details),
+        "profile_count": len(profile_trends),
+        "latest_created_at": (
+            _datetime_response(sorted_details[-1].run.created_at) if sorted_details else None
+        ),
+        "latest_created_at_label": (
+            _datetime_label(sorted_details[-1].run.created_at) if sorted_details else "-"
+        ),
+        "profiles": profile_trends,
+    }
+
+
 def embedding_worker_batch_run_failed_job_ids(
     batch_run: EmbeddingWorkerBatchRunRecord,
 ) -> list[int]:
@@ -7879,6 +8004,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/admin/dgx-ingestion-benchmarks/trend-summary")
+    def api_get_dgx_ingestion_benchmark_trend_summary(
+        provider: str | None = None,
+        profile_name: str | None = None,
+        limit: int = 50,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            benchmark_runs = list_dgx_ingestion_benchmark_runs(
+                settings.database_url,
+                provider=provider or None,
+                profile_name=profile_name or None,
+                limit=limit,
+            )
+            details = [
+                detail
+                for run in benchmark_runs
+                if (
+                    detail := get_dgx_ingestion_benchmark_detail(
+                        settings.database_url,
+                        run.benchmark_run_id,
+                    )
+                )
+                is not None
+            ]
+        except InvalidDgxIngestionBenchmarkError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "trend": dgx_ingestion_benchmark_trend_summary_payload(details),
+            }
+        )
+
     @app.get("/api/admin/dgx-ingestion-benchmarks/compare")
     def api_compare_dgx_ingestion_benchmarks(
         left_run_id: int,
@@ -10693,6 +10857,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 selected_left_run_id=left_run_id,
                 selected_right_run_id=right_run_id,
+                selected_limit=limit,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/dgx-ingestion-benchmarks/trends", response_class=HTMLResponse)
+    def dgx_ingestion_benchmark_trends_page(
+        request: Request,
+        provider: str | None = None,
+        profile_name: str | None = None,
+        limit: int = 50,
+    ) -> HTMLResponse:
+        trend_payload = dgx_ingestion_benchmark_trend_summary_payload([])
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                benchmark_runs = list_dgx_ingestion_benchmark_runs(
+                    settings.database_url,
+                    provider=provider or None,
+                    profile_name=profile_name or None,
+                    limit=limit,
+                )
+                details = [
+                    detail
+                    for run in benchmark_runs
+                    if (
+                        detail := get_dgx_ingestion_benchmark_detail(
+                            settings.database_url,
+                            run.benchmark_run_id,
+                        )
+                    )
+                    is not None
+                ]
+                trend_payload = dgx_ingestion_benchmark_trend_summary_payload(details)
+            except InvalidDgxIngestionBenchmarkError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "dgx_ingestion_benchmark_trends.html",
+            template_context(
+                request,
+                trend=trend_payload,
+                trend_json=json.dumps(trend_payload, ensure_ascii=False, indent=2),
+                selected_provider=provider or "",
+                selected_profile_name=profile_name or "",
                 selected_limit=limit,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),

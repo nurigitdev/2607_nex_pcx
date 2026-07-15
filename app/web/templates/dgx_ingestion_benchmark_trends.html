@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% macro trend_badge(status_name) -%}
+  {% if status_name == "better" %}
+  <span class="badge text-bg-success">{{ t("dgx_benchmarks.better") }}</span>
+  {% elif status_name == "worse" %}
+  <span class="badge text-bg-danger">{{ t("dgx_benchmarks.worse") }}</span>
+  {% elif status_name == "same" %}
+  <span class="badge text-bg-secondary">{{ t("dgx_benchmarks.same") }}</span>
+  {% elif status_name == "changed" %}
+  <span class="badge text-bg-info">{{ t("dgx_benchmarks.changed") }}</span>
+  {% else %}
+  <span class="badge text-bg-light border">{{ status_name }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{% block content %}
+<div
+  class="job-monitor-header d-flex align-items-center justify-content-between mb-4"
+  data-dgx-benchmark-trends-page
+  data-benchmark-trends-api-url="/api/admin/dgx-ingestion-benchmarks/trend-summary"
+>
+  <div>
+    <h1 class="h3 mb-1">{{ t("dgx_benchmarks.trend_title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("dgx_benchmarks.trend_subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="/admin/dgx-ingestion-benchmarks">
+      {{ t("dgx_benchmarks.history") }}
+    </a>
+    <a
+      class="btn btn-outline-secondary"
+      href="/api/admin/dgx-ingestion-benchmarks/trend-summary?limit={{ selected_limit }}{% if selected_provider %}&provider={{ selected_provider|urlencode }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name|urlencode }}{% endif %}"
+    >
+      {{ t("common.api") }}
+    </a>
+  </div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form class="dgx-benchmark-trend-form metric-card bg-white p-3 mb-4" method="get">
+  <div class="row g-3 align-items-end">
+    <div class="col-12 col-lg-4">
+      <label class="form-label" for="provider">{{ t("dgx_benchmarks.provider") }}</label>
+      <input
+        class="form-control"
+        id="provider"
+        name="provider"
+        type="text"
+        value="{{ selected_provider }}"
+        placeholder="{{ t("dgx_benchmarks.provider_placeholder") }}"
+      >
+    </div>
+    <div class="col-12 col-lg-4">
+      <label class="form-label" for="profile_name">{{ t("dgx_benchmarks.profile") }}</label>
+      <input
+        class="form-control"
+        id="profile_name"
+        name="profile_name"
+        type="text"
+        value="{{ selected_profile_name }}"
+        placeholder="{{ t("dgx_benchmarks.profile_placeholder") }}"
+      >
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label" for="limit">{{ t("dgx_benchmarks.limit") }}</label>
+      <select class="form-select" id="limit" name="limit">
+        {% for option in [20, 50, 100, 200] %}
+        <option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-2">
+      <button class="btn btn-primary w-100" type="submit">{{ t("dgx_benchmarks.apply") }}</button>
+    </div>
+  </div>
+</form>
+
+<section class="dgx-benchmark-trend-summary-grid mb-4" aria-label="{{ t("dgx_benchmarks.trend_summary") }}">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("dgx_benchmarks.runs") }}</div>
+    <div class="metric-value fs-4">{{ trend.run_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("dgx_benchmarks.profiles") }}</div>
+    <div class="metric-value fs-4">{{ trend.profile_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("dgx_benchmarks.latest_run") }}</div>
+    <div class="metric-value fs-6">{{ trend.latest_created_at_label }}</div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dgx_benchmarks.profile_trends") }}</h2>
+      <div class="text-secondary">{{ t("dgx_benchmarks.profile_trends_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 dgx-benchmark-trend-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("dgx_benchmarks.profile") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.runs") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.latest_run") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.vector_delta") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.failed_delta") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.avg_provider_delta") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.avg_worker_delta") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.latest_route") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for profile in trend.profiles %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ profile.provider }}</div>
+            <div class="text-secondary small text-break">{{ profile.profile_name }}</div>
+          </td>
+          <td class="text-nowrap">
+            {{ profile.run_count }}
+            <span class="text-secondary small">
+              ({{ profile.passed_count }} / {{ profile.failed_run_count }})
+            </span>
+          </td>
+          <td class="text-nowrap">
+            <a class="job-link" href="/admin/dgx-ingestion-benchmarks?benchmark_run_id={{ profile.latest_point.benchmark_run_id }}">
+              #{{ profile.latest_point.benchmark_run_id }}
+            </a>
+            <div class="text-secondary small">{{ profile.latest_point.created_at_label }}</div>
+          </td>
+          <td>
+            {{ profile.deltas.vector_count.delta_label }}
+            <div>{{ trend_badge(profile.deltas.vector_count.status) }}</div>
+          </td>
+          <td>
+            {{ profile.deltas.failed_count.delta_label }}
+            <div>{{ trend_badge(profile.deltas.failed_count.status) }}</div>
+          </td>
+          <td>
+            {{ profile.deltas.avg_provider_elapsed_ms.delta_label }}
+            <div>{{ trend_badge(profile.deltas.avg_provider_elapsed_ms.status) }}</div>
+          </td>
+          <td>
+            {{ profile.deltas.avg_worker_elapsed_ms.delta_label }}
+            <div>{{ trend_badge(profile.deltas.avg_worker_elapsed_ms.status) }}</div>
+          </td>
+          <td class="text-break">
+            {{ profile.latest_point.provider_route_name or "-" }}
+            <div class="text-secondary small">{{ profile.latest_point.readiness_status or "-" }}</div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="8">
+            {% if database_configured %}{{ t("dgx_benchmarks.no_trends") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dgx_benchmarks.trend_points") }}</h2>
+      <div class="text-secondary">{{ t("dgx_benchmarks.trend_points_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 dgx-benchmark-trend-point-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("dgx_benchmarks.profile") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.run") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.created_at") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.result") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.counts") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.provider_elapsed") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.worker_elapsed") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for profile in trend.profiles %}
+          {% for point in profile.points|reverse %}
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ profile.provider }}</div>
+              <div class="text-secondary small text-break">{{ profile.profile_name }}</div>
+            </td>
+            <td>
+              <a class="job-link" href="/admin/dgx-ingestion-benchmarks?benchmark_run_id={{ point.benchmark_run_id }}">
+                #{{ point.benchmark_run_id }}
+              </a>
+            </td>
+            <td>{{ point.created_at_label }}</td>
+            <td>
+              {% if point.passed %}
+              <span class="badge text-bg-success">{{ t("dgx_benchmarks.passed") }}</span>
+              {% else %}
+              <span class="badge text-bg-danger">{{ t("dgx_benchmarks.failed") }}</span>
+              {% endif %}
+            </td>
+            <td class="text-nowrap">
+              {{ t("dgx_benchmarks.succeeded_short") }} {{ point.succeeded_count }}
+              · {{ t("dgx_benchmarks.failed_short") }} {{ point.failed_count }}
+              · {{ t("dgx_benchmarks.vector_short") }} {{ point.vector_count }}
+            </td>
+            <td>{% if point.avg_provider_elapsed_ms is not none %}{{ "%.2f"|format(point.avg_provider_elapsed_ms) }} ms{% else %}-{% endif %}</td>
+            <td>{% if point.avg_worker_elapsed_ms is not none %}{{ "%.2f"|format(point.avg_worker_elapsed_ms) }} ms{% else %}-{% endif %}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="7">
+            {% if database_configured %}{{ t("dgx_benchmarks.no_trends") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="border-top p-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h3 class="h6 mb-0">{{ t("dgx_benchmarks.raw_json") }}</h3>
+      <span class="text-secondary small">{{ t("dgx_benchmarks.raw_json_help") }}</span>
+    </div>
+    <pre class="dgx-benchmark-json-viewer bg-light border rounded-2 p-3 mb-0 small overflow-auto">{{ trend_json }}</pre>
+  </div>
+</section>
+{% endblock %}
