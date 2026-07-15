@@ -53,7 +53,7 @@ def test_dgx_ingestion_benchmark_history_api_and_ui(
                 active_only_preflight=True,
                 cleanup_attempted=True,
                 cleanup_confirmed=True,
-                total_elapsed_seconds=3.75,
+                total_elapsed_seconds=3.7567,
                 total_provider_elapsed_ms=125,
                 total_worker_elapsed_ms=180,
                 fixture_file_id=9001,
@@ -172,6 +172,7 @@ def test_dgx_ingestion_benchmark_history_api_and_ui(
         assert matching_runs[0]["created_at"]
         assert detail_response.status_code == 200
         assert detail_payload["benchmark"]["run"]["benchmark_run_key"] == run_key
+        assert detail_payload["benchmark"]["run"]["total_elapsed_seconds"] == 3.7567
         assert detail_payload["benchmark"]["profiles"][0]["provider_route_name"] == "bge-dgx-primary"
         assert detail_payload["benchmark"]["jobs"][0]["message"] == "Remote BGE embedding stored"
         assert page_response.status_code == 200
@@ -180,6 +181,8 @@ def test_dgx_ingestion_benchmark_history_api_and_ui(
         assert run_key in page_response.text
         assert "bge-dgx-primary" in page_response.text
         assert "Remote BGE embedding stored" in page_response.text
+        assert ">3.76 s</td>" in page_response.text
+        assert ">3.76 s</div>" in page_response.text
         assert "dgx-benchmark-json-viewer" in page_response.text
         assert english_page_response.status_code == 200
         assert "DGX Ingestion Benchmark History" in english_page_response.text
