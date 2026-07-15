@@ -364,11 +364,15 @@ from app.core.i18n import (
 from app.core.ingestion_artifacts import (
     DocumentBlockRecord,
     ExtractionArtifactRecord,
+    ExtractionQualitySnapshotInput,
+    ExtractionQualitySnapshotRecord,
     ExtractionRunRecord,
     InvalidIngestionArtifactError,
+    create_extraction_quality_snapshot,
     list_document_blocks,
     list_document_extraction_artifacts,
     list_document_extraction_runs,
+    list_extraction_quality_snapshots,
 )
 from app.core.permission_inventory import (
     InvalidPermissionInventoryError,
@@ -598,6 +602,12 @@ class DocumentPermissionUpdateRequest(BaseModel):
     owner_org_unit_id: int | None = Field(default=None, ge=1)
     access_scope: str = "personal"
     updated_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class ExtractionQualitySnapshotCreateRequest(BaseModel):
+    artifact_id: int | None = Field(default=None, ge=1)
+    created_by: str | None = Field(default="extraction-quality-api", max_length=120)
+    created_by_user_id: int | None = Field(default=None, ge=1)
 
 
 class EmbeddingProviderRouteRequest(BaseModel):
@@ -5878,6 +5888,94 @@ def extraction_quality_check_payload(
     }
 
 
+def extraction_quality_snapshot_payload(
+    snapshot: ExtractionQualitySnapshotRecord,
+) -> dict[str, object]:
+    return {
+        "snapshot_id": snapshot.snapshot_id,
+        "document_id": snapshot.document_id,
+        "file_id": snapshot.file_id,
+        "artifact_id": snapshot.artifact_id,
+        "extraction_run_id": snapshot.extraction_run_id,
+        "artifact_type": snapshot.artifact_type,
+        "extraction_profile_name": snapshot.extraction_profile_name,
+        "extractor_name": snapshot.extractor_name,
+        "extractor_version": snapshot.extractor_version,
+        "status": snapshot.status,
+        "content_length": snapshot.content_length,
+        "content_lines": snapshot.content_lines,
+        "block_count": snapshot.block_count,
+        "source_anchor_count": snapshot.source_anchor_count,
+        "source_anchor_coverage_percent": snapshot.source_anchor_coverage_percent,
+        "source_anchor_coverage_label": _percent_label(
+            snapshot.source_anchor_coverage_percent,
+        ),
+        "issue_count": snapshot.issue_count,
+        "warning_count": snapshot.warning_count,
+        "failed_count": snapshot.failed_count,
+        "block_summary": snapshot.block_summary,
+        "quality_payload": snapshot.quality_payload,
+        "created_by": snapshot.created_by,
+        "created_by_user_id": snapshot.created_by_user_id,
+        "created_at": _datetime_response(snapshot.created_at),
+        "created_at_label": _datetime_label(snapshot.created_at),
+    }
+
+
+def extraction_quality_snapshot_input_from_context(
+    *,
+    document: DocumentInventoryItem,
+    artifact: ExtractionArtifactRecord,
+    blocks: list[DocumentBlockRecord],
+    extraction_runs: list[ExtractionRunRecord],
+    created_by: str | None,
+    created_by_user_id: int | None,
+) -> ExtractionQualitySnapshotInput:
+    block_summary = document_block_summary_payload(blocks)
+    quality_check = extraction_quality_check_payload(artifact, blocks, extraction_runs)
+    selected_run = next(
+        (
+            run
+            for run in extraction_runs
+            if run.extraction_run_id == artifact.extraction_run_id
+        ),
+        None,
+    )
+    return ExtractionQualitySnapshotInput(
+        document_id=document.document_id,
+        file_id=artifact.file_id,
+        artifact_id=artifact.artifact_id,
+        extraction_run_id=artifact.extraction_run_id,
+        artifact_type=artifact.artifact_type,
+        extraction_profile_name=(
+            selected_run.extraction_profile_name if selected_run is not None else None
+        ),
+        extractor_name=selected_run.extractor_name if selected_run is not None else None,
+        extractor_version=selected_run.extractor_version if selected_run is not None else None,
+        status=str(quality_check["status"]),
+        content_length=(
+            int(quality_check["content_length"])
+            if quality_check["content_length"] is not None
+            else None
+        ),
+        content_lines=(
+            int(quality_check["content_lines"])
+            if quality_check["content_lines"] is not None
+            else None
+        ),
+        block_count=int(quality_check["block_count"]),
+        source_anchor_count=int(quality_check["source_anchor_count"]),
+        source_anchor_coverage_percent=quality_check["source_anchor_coverage_percent"],
+        issue_count=int(quality_check["issue_count"]),
+        warning_count=int(quality_check["warning_count"]),
+        failed_count=int(quality_check["failed_count"]),
+        block_summary=block_summary,
+        quality_payload=quality_check,
+        created_by=created_by,
+        created_by_user_id=created_by_user_id,
+    )
+
+
 EXTRACTION_ARTIFACT_EXPORT_FORMATS = {
     "markdown",
     "blocks_json",
@@ -6851,6 +6949,123 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     document_blocks,
                     extraction_runs,
                 ),
+            },
+        )
+
+    @app.get("/api/documents/{document_id}/extraction-quality-snapshots")
+    def api_list_document_extraction_quality_snapshots(
+        document_id: int,
+        artifact_id: int | None = None,
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            snapshots = list_extraction_quality_snapshots(
+                settings.database_url,
+                document_id,
+                artifact_id=artifact_id,
+                limit=limit,
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidIngestionArtifactError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "document": document_inventory_item_payload(document),
+                "snapshot_count": len(snapshots),
+                "snapshots": [
+                    extraction_quality_snapshot_payload(snapshot) for snapshot in snapshots
+                ],
+            },
+        )
+
+    @app.post(
+        "/api/documents/{document_id}/extraction-quality-snapshots",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def api_create_document_extraction_quality_snapshot(
+        document_id: int,
+        payload: ExtractionQualitySnapshotCreateRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            extraction_runs = list_document_extraction_runs(settings.database_url, document_id)
+            extraction_artifacts = list_document_extraction_artifacts(
+                settings.database_url,
+                document_id,
+            )
+            selected_artifact_id = (
+                payload.artifact_id
+                if payload.artifact_id is not None
+                else (extraction_artifacts[0].artifact_id if extraction_artifacts else None)
+            )
+            selected_artifact = (
+                next(
+                    (
+                        artifact
+                        for artifact in extraction_artifacts
+                        if artifact.artifact_id == selected_artifact_id
+                    ),
+                    None,
+                )
+                if selected_artifact_id is not None
+                else None
+            )
+            if selected_artifact_id is None or selected_artifact is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Extraction artifact not found for document.",
+                )
+            document_blocks = list_document_blocks(
+                settings.database_url,
+                document_id,
+                artifact_id=selected_artifact_id,
+            )
+            snapshot = create_extraction_quality_snapshot(
+                settings.database_url,
+                extraction_quality_snapshot_input_from_context(
+                    document=document,
+                    artifact=selected_artifact,
+                    blocks=document_blocks,
+                    extraction_runs=extraction_runs,
+                    created_by=payload.created_by,
+                    created_by_user_id=payload.created_by_user_id,
+                ),
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidIngestionArtifactError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={
+                "document": document_inventory_item_payload(document),
+                "snapshot": extraction_quality_snapshot_payload(snapshot),
             },
         )
 

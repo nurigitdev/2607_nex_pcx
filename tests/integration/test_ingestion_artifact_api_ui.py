@@ -116,6 +116,26 @@ def test_document_ingestion_artifact_api_and_page(
                 f"/api/documents/{document_id}/extraction-quality",
                 params={"artifact_id": 999_999_999},
             )
+            initial_snapshots_response = client.get(
+                f"/api/documents/{document_id}/extraction-quality-snapshots",
+                params={"artifact_id": artifact_id},
+            )
+            snapshot_create_response = client.post(
+                f"/api/documents/{document_id}/extraction-quality-snapshots",
+                json={"artifact_id": artifact_id, "created_by": "api-test"},
+            )
+            snapshots_response = client.get(
+                f"/api/documents/{document_id}/extraction-quality-snapshots",
+                params={"artifact_id": artifact_id, "limit": 5},
+            )
+            invalid_snapshot_limit_response = client.get(
+                f"/api/documents/{document_id}/extraction-quality-snapshots",
+                params={"limit": 0},
+            )
+            missing_snapshot_artifact_response = client.post(
+                f"/api/documents/{document_id}/extraction-quality-snapshots",
+                json={"artifact_id": 999_999_999},
+            )
             markdown_export_response = client.get(
                 f"/api/documents/{document_id}/extraction-export",
                 params={"artifact_id": artifact_id, "format": "markdown"},
@@ -158,6 +178,9 @@ def test_document_ingestion_artifact_api_and_page(
         preview_payload = preview_response.json()
         selected_preview_payload = selected_preview_response.json()
         quality_payload = quality_response.json()
+        initial_snapshots_payload = initial_snapshots_response.json()
+        snapshot_create_payload = snapshot_create_response.json()
+        snapshots_payload = snapshots_response.json()
         blocks_export_payload = blocks_export_response.json()
         metadata_export_payload = metadata_export_response.json()
         quality_export_payload = quality_export_response.json()
@@ -198,6 +221,20 @@ def test_document_ingestion_artifact_api_and_page(
         assert quality_payload["quality_check"]["issues"][0]["code"] == "short_content_text"
         assert quality_payload["quality_check"]["source_anchor_coverage_percent"] == 100.0
         assert missing_quality_artifact_response.status_code == 404
+        assert initial_snapshots_response.status_code == 200
+        assert initial_snapshots_payload["snapshots"] == []
+        assert snapshot_create_response.status_code == 201
+        assert snapshot_create_payload["snapshot"]["artifact_id"] == artifact_id
+        assert snapshot_create_payload["snapshot"]["status"] == "warning"
+        assert snapshot_create_payload["snapshot"]["created_by"] == "api-test"
+        assert snapshot_create_payload["snapshot"]["quality_payload"]["issue_count"] == 1
+        assert snapshot_create_payload["snapshot"]["source_anchor_coverage_label"] == "100.00%"
+        assert snapshots_response.status_code == 200
+        assert snapshots_payload["snapshot_count"] == 1
+        created_snapshot_id = snapshot_create_payload["snapshot"]["snapshot_id"]
+        assert snapshots_payload["snapshots"][0]["snapshot_id"] == created_snapshot_id
+        assert invalid_snapshot_limit_response.status_code == 422
+        assert missing_snapshot_artifact_response.status_code == 404
         assert markdown_export_response.status_code == 200
         assert markdown_export_response.headers["content-type"].startswith("text/markdown")
         assert "document-" in markdown_export_response.headers["content-disposition"]
@@ -259,6 +296,13 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
         with TestClient(app) as client:
             response = client.get(f"/api/documents/{document_id}/extraction-preview")
             quality_response = client.get(f"/api/documents/{document_id}/extraction-quality")
+            snapshots_response = client.get(
+                f"/api/documents/{document_id}/extraction-quality-snapshots"
+            )
+            snapshot_create_response = client.post(
+                f"/api/documents/{document_id}/extraction-quality-snapshots",
+                json={"created_by": "api-test"},
+            )
             export_response = client.get(f"/api/documents/{document_id}/extraction-export")
             missing_document_response = client.get(
                 f"/api/documents/{document_id + 999_999_999}/extraction-preview"
@@ -296,6 +340,9 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
         assert quality_response.status_code == 200
         assert quality_payload["quality_check"]["status"] == "not_available"
         assert quality_payload["quality_check"]["issues"][0]["code"] == "no_artifact_selected"
+        assert snapshots_response.status_code == 200
+        assert snapshots_response.json()["snapshots"] == []
+        assert snapshot_create_response.status_code == 404
         assert export_response.status_code == 404
         assert missing_document_response.status_code == 404
         assert missing_quality_document_response.status_code == 404

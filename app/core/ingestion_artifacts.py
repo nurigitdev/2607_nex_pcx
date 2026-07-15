@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from psycopg import Connection
@@ -31,6 +32,7 @@ DOCUMENT_BLOCK_TYPES = {
     "slide",
     "sheet",
 }
+EXTRACTION_QUALITY_SNAPSHOT_STATUSES = {"passed", "warning", "failed"}
 
 
 @dataclass(frozen=True)
@@ -226,11 +228,68 @@ class ImageArtifactRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class ExtractionQualitySnapshotInput:
+    document_id: int
+    file_id: int
+    artifact_id: int
+    artifact_type: str
+    status: str
+    block_count: int
+    source_anchor_count: int
+    issue_count: int
+    warning_count: int
+    failed_count: int
+    block_summary: dict[str, Any]
+    quality_payload: dict[str, Any]
+    extraction_run_id: int | None = None
+    extraction_profile_name: str | None = None
+    extractor_name: str | None = None
+    extractor_version: str | None = None
+    content_length: int | None = None
+    content_lines: int | None = None
+    source_anchor_coverage_percent: float | Decimal | None = None
+    created_by: str | None = None
+    created_by_user_id: int | None = None
+
+
+@dataclass(frozen=True)
+class ExtractionQualitySnapshotRecord:
+    snapshot_id: int
+    document_id: int
+    file_id: int
+    artifact_id: int
+    extraction_run_id: int | None
+    artifact_type: str
+    extraction_profile_name: str | None
+    extractor_name: str | None
+    extractor_version: str | None
+    status: str
+    content_length: int | None
+    content_lines: int | None
+    block_count: int
+    source_anchor_count: int
+    source_anchor_coverage_percent: float | None
+    issue_count: int
+    warning_count: int
+    failed_count: int
+    block_summary: dict[str, Any]
+    quality_payload: dict[str, Any]
+    created_by: str | None
+    created_by_user_id: int | None
+    created_at: datetime
+
+
 class InvalidIngestionArtifactError(ValueError):
     """Raised when ingestion artifact metadata is invalid before reaching the DB."""
 
 
 def _require_positive_id(value: int | None, field_name: str) -> None:
+    if value is not None and value <= 0:
+        raise InvalidIngestionArtifactError(f"{field_name} must be greater than 0")
+
+
+def _validate_optional_positive_id(value: int | None, field_name: str) -> None:
     if value is not None and value <= 0:
         raise InvalidIngestionArtifactError(f"{field_name} must be greater than 0")
 
@@ -272,11 +331,34 @@ def _validate_block_type(block_type: str) -> None:
         raise InvalidIngestionArtifactError(f"Unsupported block_type: {block_type}")
 
 
+def _validate_quality_snapshot_status(status: str) -> None:
+    if status not in EXTRACTION_QUALITY_SNAPSHOT_STATUSES:
+        raise InvalidIngestionArtifactError(f"Unsupported extraction quality status: {status}")
+
+
 def _validate_char_range(start: int | None, end: int | None) -> None:
     _validate_non_negative(start, "char_start")
     _validate_non_negative(end, "char_end")
     if start is not None and end is not None and end < start:
         raise InvalidIngestionArtifactError("char_end must be greater than or equal to char_start")
+
+
+def _validate_percent(value: float | Decimal | None, field_name: str) -> None:
+    if value is None:
+        return
+    if value < 0 or value > 100:
+        raise InvalidIngestionArtifactError(f"{field_name} must be between 0 and 100")
+
+
+def _validate_json_object(value: dict[str, Any], field_name: str) -> None:
+    if not isinstance(value, dict):
+        raise InvalidIngestionArtifactError(f"{field_name} must be an object")
+
+
+def _validate_optional_nonblank(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _require_non_blank(value, field_name)
 
 
 def validate_extraction_profile_input(profile_input: ExtractionProfileInput) -> None:
@@ -354,6 +436,38 @@ def validate_image_artifact_input(image_input: ImageArtifactInput) -> None:
     _require_non_blank(image_input.storage_path, "storage_path")
     _validate_positive(image_input.width_px, "width_px")
     _validate_positive(image_input.height_px, "height_px")
+
+
+def validate_extraction_quality_snapshot_input(
+    snapshot_input: ExtractionQualitySnapshotInput,
+) -> None:
+    _require_positive_id(snapshot_input.document_id, "document_id")
+    _require_positive_id(snapshot_input.file_id, "file_id")
+    _require_positive_id(snapshot_input.artifact_id, "artifact_id")
+    _require_positive_id(snapshot_input.extraction_run_id, "extraction_run_id")
+    _validate_optional_positive_id(snapshot_input.created_by_user_id, "created_by_user_id")
+    _require_non_blank(snapshot_input.artifact_type, "artifact_type")
+    _validate_quality_snapshot_status(snapshot_input.status)
+    _validate_non_negative(snapshot_input.content_length, "content_length")
+    _validate_non_negative(snapshot_input.content_lines, "content_lines")
+    _validate_non_negative(snapshot_input.block_count, "block_count")
+    _validate_non_negative(snapshot_input.source_anchor_count, "source_anchor_count")
+    _validate_percent(
+        snapshot_input.source_anchor_coverage_percent,
+        "source_anchor_coverage_percent",
+    )
+    _validate_non_negative(snapshot_input.issue_count, "issue_count")
+    _validate_non_negative(snapshot_input.warning_count, "warning_count")
+    _validate_non_negative(snapshot_input.failed_count, "failed_count")
+    _validate_json_object(snapshot_input.block_summary, "block_summary")
+    _validate_json_object(snapshot_input.quality_payload, "quality_payload")
+    _validate_optional_nonblank(
+        snapshot_input.extraction_profile_name,
+        "extraction_profile_name",
+    )
+    _validate_optional_nonblank(snapshot_input.extractor_name, "extractor_name")
+    _validate_optional_nonblank(snapshot_input.extractor_version, "extractor_version")
+    _validate_optional_nonblank(snapshot_input.created_by, "created_by")
 
 
 def _row_to_extraction_profile_record(row: dict[str, Any]) -> ExtractionProfileRecord:
@@ -470,6 +584,43 @@ def _row_to_image_artifact_record(row: dict[str, Any]) -> ImageArtifactRecord:
     )
 
 
+def _row_to_extraction_quality_snapshot_record(
+    row: dict[str, Any],
+) -> ExtractionQualitySnapshotRecord:
+    coverage = row.get("source_anchor_coverage_percent")
+    return ExtractionQualitySnapshotRecord(
+        snapshot_id=int(row["snapshot_id"]),
+        document_id=int(row["document_id"]),
+        file_id=int(row["file_id"]),
+        artifact_id=int(row["artifact_id"]),
+        extraction_run_id=(
+            int(row["extraction_run_id"]) if row.get("extraction_run_id") is not None else None
+        ),
+        artifact_type=str(row["artifact_type"]),
+        extraction_profile_name=row["extraction_profile_name"],
+        extractor_name=row["extractor_name"],
+        extractor_version=row["extractor_version"],
+        status=str(row["status"]),
+        content_length=(
+            int(row["content_length"]) if row.get("content_length") is not None else None
+        ),
+        content_lines=int(row["content_lines"]) if row.get("content_lines") is not None else None,
+        block_count=int(row["block_count"]),
+        source_anchor_count=int(row["source_anchor_count"]),
+        source_anchor_coverage_percent=float(coverage) if coverage is not None else None,
+        issue_count=int(row["issue_count"]),
+        warning_count=int(row["warning_count"]),
+        failed_count=int(row["failed_count"]),
+        block_summary=dict(row["block_summary"] or {}),
+        quality_payload=dict(row["quality_payload"] or {}),
+        created_by=row["created_by"],
+        created_by_user_id=(
+            int(row["created_by_user_id"]) if row.get("created_by_user_id") is not None else None
+        ),
+        created_at=row["created_at"],
+    )
+
+
 def _select_extraction_profile_columns(alias: str = "extraction_profiles") -> str:
     return f"""
         {alias}.extraction_profile_name,
@@ -576,6 +727,36 @@ def _select_image_artifact_columns(alias: str = "image_artifacts") -> str:
         {alias}.surrounding_text,
         {alias}.source_anchor,
         {alias}.metadata,
+        {alias}.created_at
+    """
+
+
+def _select_extraction_quality_snapshot_columns(
+    alias: str = "extraction_quality_snapshots",
+) -> str:
+    return f"""
+        {alias}.snapshot_id,
+        {alias}.document_id,
+        {alias}.file_id,
+        {alias}.artifact_id,
+        {alias}.extraction_run_id,
+        {alias}.artifact_type,
+        {alias}.extraction_profile_name,
+        {alias}.extractor_name,
+        {alias}.extractor_version,
+        {alias}.status,
+        {alias}.content_length,
+        {alias}.content_lines,
+        {alias}.block_count,
+        {alias}.source_anchor_count,
+        {alias}.source_anchor_coverage_percent,
+        {alias}.issue_count,
+        {alias}.warning_count,
+        {alias}.failed_count,
+        {alias}.block_summary,
+        {alias}.quality_payload,
+        {alias}.created_by,
+        {alias}.created_by_user_id,
         {alias}.created_at
     """
 
@@ -1089,3 +1270,125 @@ def create_image_artifact(
 ) -> ImageArtifactRecord:
     with connect(database_url) as connection:
         return create_image_artifact_in_connection(connection, image_input)
+
+
+def create_extraction_quality_snapshot_in_connection(
+    connection: Connection,
+    snapshot_input: ExtractionQualitySnapshotInput,
+) -> ExtractionQualitySnapshotRecord:
+    validate_extraction_quality_snapshot_input(snapshot_input)
+    created_by = _validate_optional_nonblank(snapshot_input.created_by, "created_by")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            INSERT INTO extraction_quality_snapshots (
+                document_id,
+                file_id,
+                artifact_id,
+                extraction_run_id,
+                artifact_type,
+                extraction_profile_name,
+                extractor_name,
+                extractor_version,
+                status,
+                content_length,
+                content_lines,
+                block_count,
+                source_anchor_count,
+                source_anchor_coverage_percent,
+                issue_count,
+                warning_count,
+                failed_count,
+                block_summary,
+                quality_payload,
+                created_by,
+                created_by_user_id
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s
+            )
+            RETURNING {_select_extraction_quality_snapshot_columns()}
+            """,
+            (
+                snapshot_input.document_id,
+                snapshot_input.file_id,
+                snapshot_input.artifact_id,
+                snapshot_input.extraction_run_id,
+                snapshot_input.artifact_type.strip(),
+                (
+                    snapshot_input.extraction_profile_name.strip()
+                    if snapshot_input.extraction_profile_name is not None
+                    else None
+                ),
+                (
+                    snapshot_input.extractor_name.strip()
+                    if snapshot_input.extractor_name is not None
+                    else None
+                ),
+                (
+                    snapshot_input.extractor_version.strip()
+                    if snapshot_input.extractor_version is not None
+                    else None
+                ),
+                snapshot_input.status,
+                snapshot_input.content_length,
+                snapshot_input.content_lines,
+                snapshot_input.block_count,
+                snapshot_input.source_anchor_count,
+                snapshot_input.source_anchor_coverage_percent,
+                snapshot_input.issue_count,
+                snapshot_input.warning_count,
+                snapshot_input.failed_count,
+                Json(snapshot_input.block_summary),
+                Json(snapshot_input.quality_payload),
+                created_by,
+                snapshot_input.created_by_user_id,
+            ),
+        )
+        return _row_to_extraction_quality_snapshot_record(dict(cursor.fetchone()))
+
+
+def create_extraction_quality_snapshot(
+    database_url: str,
+    snapshot_input: ExtractionQualitySnapshotInput,
+) -> ExtractionQualitySnapshotRecord:
+    with connect(database_url) as connection:
+        return create_extraction_quality_snapshot_in_connection(connection, snapshot_input)
+
+
+def list_extraction_quality_snapshots(
+    database_url: str,
+    document_id: int,
+    *,
+    artifact_id: int | None = None,
+    limit: int = 20,
+) -> list[ExtractionQualitySnapshotRecord]:
+    _require_positive_id(document_id, "document_id")
+    _require_positive_id(artifact_id, "artifact_id")
+    if limit <= 0:
+        raise InvalidIngestionArtifactError("limit must be greater than 0")
+    if limit > 100:
+        raise InvalidIngestionArtifactError("limit must be less than or equal to 100")
+
+    where_artifact = ""
+    params: tuple[object, ...] = (document_id, limit)
+    if artifact_id is not None:
+        where_artifact = "AND artifact_id = %s"
+        params = (document_id, artifact_id, limit)
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT {_select_extraction_quality_snapshot_columns()}
+                FROM extraction_quality_snapshots
+                WHERE document_id = %s
+                  {where_artifact}
+                ORDER BY created_at DESC, snapshot_id DESC
+                LIMIT %s
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+    return [_row_to_extraction_quality_snapshot_record(dict(row)) for row in rows]

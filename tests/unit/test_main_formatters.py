@@ -5,6 +5,7 @@ from app.core.document_inventory import DocumentInventoryItem
 from app.core.ingestion_artifacts import (
     DocumentBlockRecord,
     ExtractionArtifactRecord,
+    ExtractionQualitySnapshotRecord,
     ExtractionRunRecord,
 )
 from app.main import (
@@ -15,6 +16,8 @@ from app.main import (
     extraction_artifact_export_payload,
     extraction_artifact_preview_payload,
     extraction_quality_check_payload,
+    extraction_quality_snapshot_input_from_context,
+    extraction_quality_snapshot_payload,
 )
 
 NOW = datetime(2026, 7, 15, tzinfo=UTC)
@@ -92,6 +95,36 @@ def make_extraction_run(**overrides) -> ExtractionRunRecord:
     }
     values.update(overrides)
     return ExtractionRunRecord(**values)
+
+
+def make_extraction_quality_snapshot(**overrides) -> ExtractionQualitySnapshotRecord:
+    values = {
+        "snapshot_id": 1,
+        "document_id": 4,
+        "file_id": 3,
+        "artifact_id": 1,
+        "extraction_run_id": 2,
+        "artifact_type": "normalized_markdown",
+        "extraction_profile_name": "local_markdown_default",
+        "extractor_name": "markdown",
+        "extractor_version": "0.1.0",
+        "status": "passed",
+        "content_length": 100,
+        "content_lines": 3,
+        "block_count": 2,
+        "source_anchor_count": 2,
+        "source_anchor_coverage_percent": 100.0,
+        "issue_count": 0,
+        "warning_count": 0,
+        "failed_count": 0,
+        "block_summary": {"block_count": 2},
+        "quality_payload": {"status": "passed", "issues": []},
+        "created_by": "unit-test",
+        "created_by_user_id": None,
+        "created_at": NOW,
+    }
+    values.update(overrides)
+    return ExtractionQualitySnapshotRecord(**values)
 
 
 def make_document_inventory_item(**overrides) -> DocumentInventoryItem:
@@ -230,6 +263,62 @@ def test_extraction_artifact_export_payload_rejects_unsupported_format() -> None
         assert "Unsupported extraction artifact export format" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_extraction_quality_snapshot_payload_formats_datetime_and_percent() -> None:
+    payload = extraction_quality_snapshot_payload(make_extraction_quality_snapshot())
+
+    assert payload["snapshot_id"] == 1
+    assert payload["source_anchor_coverage_label"] == "100.00%"
+    assert payload["created_at"] == "2026-07-15T00:00:00+00:00"
+    assert payload["quality_payload"] == {"status": "passed", "issues": []}
+
+
+def test_extraction_quality_snapshot_input_from_context_uses_selected_run_metadata() -> None:
+    document = make_document_inventory_item()
+    artifact = make_extraction_artifact()
+    blocks = [
+        make_document_block(),
+        make_document_block(
+            block_id=2,
+            block_seq=1,
+            block_type="paragraph",
+            content_text="Enough paragraph text.",
+            content_markdown="Enough paragraph text.",
+            heading_path=("Quality Fixture",),
+            source_anchor={"block_seq": 1},
+        ),
+    ]
+
+    snapshot_input = extraction_quality_snapshot_input_from_context(
+        document=document,
+        artifact=artifact,
+        blocks=blocks,
+        extraction_runs=[make_extraction_run()],
+        created_by="unit-test",
+        created_by_user_id=None,
+    )
+
+    assert snapshot_input.document_id == document.document_id
+    assert snapshot_input.extraction_profile_name == "local_markdown_default"
+    assert snapshot_input.status == "passed"
+    assert snapshot_input.block_summary["block_count"] == 2
+    assert snapshot_input.quality_payload["issue_count"] == 0
+
+
+def test_extraction_quality_snapshot_input_from_context_allows_missing_run() -> None:
+    snapshot_input = extraction_quality_snapshot_input_from_context(
+        document=make_document_inventory_item(),
+        artifact=make_extraction_artifact(extraction_run_id=999),
+        blocks=[],
+        extraction_runs=[],
+        created_by=None,
+        created_by_user_id=None,
+    )
+
+    assert snapshot_input.extraction_profile_name is None
+    assert snapshot_input.status == "failed"
+    assert snapshot_input.failed_count == 1
 
 
 def test_document_block_summary_payload_counts_source_coordinates() -> None:

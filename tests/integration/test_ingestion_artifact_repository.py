@@ -7,11 +7,14 @@ from app.core.ingestion_artifacts import (
     DocumentBlockInput,
     ExtractionArtifactInput,
     ExtractionProfileInput,
+    ExtractionQualitySnapshotInput,
     ExtractionRunInput,
     ImageArtifactInput,
+    InvalidIngestionArtifactError,
     TableArtifactInput,
     create_document_block,
     create_extraction_artifact,
+    create_extraction_quality_snapshot,
     create_extraction_run,
     create_image_artifact,
     create_table_artifact,
@@ -21,6 +24,7 @@ from app.core.ingestion_artifacts import (
     list_document_blocks,
     list_document_extraction_artifacts,
     list_document_extraction_runs,
+    list_extraction_quality_snapshots,
     list_extraction_profiles,
     upsert_extraction_profile,
 )
@@ -229,6 +233,36 @@ def test_ingestion_artifact_repository_round_trip(migrated_database_url: str) ->
             document_id,
             artifact_id=artifact.artifact_id,
         )
+        snapshot = create_extraction_quality_snapshot(
+            migrated_database_url,
+            ExtractionQualitySnapshotInput(
+                document_id=document_id,
+                file_id=file_id,
+                artifact_id=artifact.artifact_id,
+                extraction_run_id=run.extraction_run_id,
+                artifact_type=artifact.artifact_type,
+                extraction_profile_name=profile_name,
+                extractor_name="markdown",
+                extractor_version="0.1.0",
+                status="warning",
+                content_length=20,
+                content_lines=3,
+                block_count=3,
+                source_anchor_count=3,
+                source_anchor_coverage_percent=100.0,
+                issue_count=1,
+                warning_count=1,
+                failed_count=0,
+                block_summary={"block_count": 3},
+                quality_payload={"status": "warning", "issues": [{"code": "fixture"}]},
+                created_by="repository-test",
+            ),
+        )
+        snapshots = list_extraction_quality_snapshots(
+            migrated_database_url,
+            document_id,
+            artifact_id=artifact.artifact_id,
+        )
 
         assert stored_run == run
         assert run.status == "succeeded"
@@ -244,6 +278,10 @@ def test_ingestion_artifact_repository_round_trip(migrated_database_url: str) ->
         assert table.content_json == {"rows": [["A", "B"]]}
         assert image.storage_path == "/tmp/figure.png"
         assert image.caption_text == "figure caption"
+        assert snapshots[0] == snapshot
+        assert snapshot.status == "warning"
+        assert snapshot.source_anchor_coverage_percent == 100.0
+        assert snapshot.quality_payload["issues"] == [{"code": "fixture"}]
     finally:
         _cleanup_file(migrated_database_url, file_id)
 
@@ -257,6 +295,37 @@ def test_repository_returns_none_or_empty_lists_for_missing_records(
     assert list_document_extraction_runs(migrated_database_url, 999_999_999) == []
     assert list_document_extraction_artifacts(migrated_database_url, 999_999_999) == []
     assert list_document_blocks(migrated_database_url, 999_999_999) == []
+    assert list_extraction_quality_snapshots(migrated_database_url, 999_999_999) == []
+
+
+def test_extraction_quality_snapshot_validates_inputs(
+    migrated_database_url: str,
+) -> None:
+    with pytest.raises(InvalidIngestionArtifactError, match="limit"):
+        list_extraction_quality_snapshots(migrated_database_url, 1, limit=0)
+    with pytest.raises(InvalidIngestionArtifactError, match="artifact_id"):
+        list_extraction_quality_snapshots(migrated_database_url, 1, artifact_id=0)
+    with pytest.raises(
+        InvalidIngestionArtifactError,
+        match="Unsupported extraction quality status",
+    ):
+        create_extraction_quality_snapshot(
+            migrated_database_url,
+            ExtractionQualitySnapshotInput(
+                document_id=1,
+                file_id=1,
+                artifact_id=1,
+                artifact_type="normalized_markdown",
+                status="not_available",
+                block_count=0,
+                source_anchor_count=0,
+                issue_count=0,
+                warning_count=0,
+                failed_count=0,
+                block_summary={},
+                quality_payload={},
+            ),
+        )
 
 
 def test_create_extraction_run_running_sets_started_at(
