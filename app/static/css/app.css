@@ -2195,6 +2195,12 @@ main.container-fluid {
   margin-bottom: 0.75rem;
 }
 
+.chunk-trace-item {
+  border-top: 1px solid var(--pcx-border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
 .document-chunk-preview {
   background: #f8fafc;
   border: 1px solid var(--pcx-border);

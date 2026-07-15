@@ -29,6 +29,12 @@
     >
       {{ t("ingestion_artifacts.quality_summary_api") }}
     </a>
+    <a
+      class="btn btn-outline-secondary"
+      href="/api/documents/{{ document.document_id }}/chunk-source-trace{% if selected_artifact_id %}?artifact_id={{ selected_artifact_id }}{% endif %}"
+    >
+      {{ t("ingestion_artifacts.chunk_source_trace_api") }}
+    </a>
     <a class="btn btn-outline-secondary" href="/documents/{{ document.document_id }}">{{ t("ingestion_artifacts.back_to_document") }}</a>
     {% endif %}
     <a class="btn btn-outline-secondary" href="/documents">{{ t("nav.documents") }}</a>
@@ -96,6 +102,82 @@
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section class="metric-card bg-white p-3 mb-3">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("ingestion_artifacts.chunk_source_trace") }}</h2>
+          <div class="text-secondary">{{ t("ingestion_artifacts.chunk_source_trace_help") }}</div>
+        </div>
+      </div>
+      {% if chunk_source_trace_preview %}
+      <dl class="artifact-summary-grid extraction-quality-grid mb-3">
+        <div>
+          <dt>{{ t("ingestion_artifacts.blocks") }}</dt>
+          <dd>{{ chunk_source_trace_preview.summary.block_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.chunks") }}</dt>
+          <dd>{{ chunk_source_trace_preview.summary.chunk_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.traced_blocks") }}</dt>
+          <dd>{{ chunk_source_trace_preview.summary.traced_block_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.unlinked_chunks") }}</dt>
+          <dd>{{ chunk_source_trace_preview.summary.unlinked_chunk_count }}</dd>
+        </div>
+      </dl>
+      {% if chunk_source_trace_preview.summary.chunk_policy_names %}
+      <div class="artifact-type-badges mb-3">
+        {% for policy_name in chunk_source_trace_preview.summary.chunk_policy_names %}
+        <span class="badge text-bg-light border">{{ policy_name }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="artifact-block-list">
+        {% for trace in chunk_source_trace_preview.block_traces %}
+        <article class="artifact-block-item">
+          <div class="artifact-block-meta">
+            <span class="badge text-bg-light border">#{{ trace.block.block_seq }}</span>
+            <span>{{ trace.block.block_type }}</span>
+            <span>{{ trace.chunk_count }} {{ t("ingestion_artifacts.chunks") }}</span>
+            {% if trace.block.source_anchor %}
+            <span>{{ t("ingestion_artifacts.source_anchor") }}</span>
+            {% endif %}
+          </div>
+          {% for chunk in trace.chunks %}
+          <div class="chunk-trace-item">
+            <div class="artifact-block-meta mb-2">
+              <span class="badge text-bg-light border">chunk #{{ chunk.chunk_seq }}</span>
+              <span>{{ chunk.chunk_policy_name }}</span>
+              <span>{{ chunk.token_count or 0 }} tokens</span>
+              {% if chunk.prev_chunk_id %}<span>prev #{{ chunk.prev_chunk_id }}</span>{% endif %}
+              {% if chunk.next_chunk_id %}<span>next #{{ chunk.next_chunk_id }}</span>{% endif %}
+            </div>
+            <pre class="document-chunk-preview mb-0">{{ chunk.content_markdown or chunk.chunk_text }}</pre>
+          </div>
+          {% else %}
+          <div class="text-secondary">{{ t("ingestion_artifacts.no_trace_chunks_for_block") }}</div>
+          {% endfor %}
+        </article>
+        {% else %}
+        <div class="text-secondary">{{ t("ingestion_artifacts.no_chunk_source_trace") }}</div>
+        {% endfor %}
+      </div>
+      {% if chunk_source_trace_preview.unlinked_chunks %}
+      <div class="artifact-preview-section">
+        <div class="artifact-preview-heading">{{ t("ingestion_artifacts.unlinked_chunks") }}</div>
+        {% for chunk in chunk_source_trace_preview.unlinked_chunks %}
+        <pre class="document-chunk-preview mb-2">{{ chunk.content_markdown or chunk.chunk_text }}</pre>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="text-secondary">{{ t("ingestion_artifacts.no_chunk_source_trace") }}</div>
+      {% endif %}
     </section>
 
     <section class="metric-card bg-white p-0 overflow-hidden">

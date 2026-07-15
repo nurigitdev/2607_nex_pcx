@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from app.core.document_inventory import DocumentInventoryItem
+from app.core.chunks import ChunkRecord
 from app.core.ingestion_artifacts import (
     DocumentBlockRecord,
     ExtractionArtifactRecord,
@@ -11,8 +12,10 @@ from app.core.ingestion_artifacts import (
 )
 from app.main import (
     _extraction_artifact_export_filename,
+    _chunks_for_source_trace,
     _percent_label,
     _percent_value,
+    chunk_source_trace_preview_payload,
     document_block_summary_payload,
     extraction_artifact_export_payload,
     extraction_artifact_preview_payload,
@@ -72,6 +75,38 @@ def make_document_block(**overrides) -> DocumentBlockRecord:
     }
     values.update(overrides)
     return DocumentBlockRecord(**values)
+
+
+def make_chunk(**overrides) -> ChunkRecord:
+    values = {
+        "chunk_id": 1,
+        "document_id": 4,
+        "chunk_seq": 0,
+        "chunk_text": "Quality chunk",
+        "content_hash": "chunk-hash",
+        "chunk_policy_name": "heading_512_64",
+        "artifact_id": 1,
+        "block_id": 1,
+        "chunk_type": "text",
+        "content_markdown": "Quality chunk",
+        "parser_name": "markdown",
+        "parser_version": "0.1.0",
+        "heading_path": ("Quality Fixture",),
+        "source_anchor": {"block_seq": 0},
+        "page_no": None,
+        "slide_no": None,
+        "sheet_name": None,
+        "cell_range": None,
+        "source_char_start": 0,
+        "source_char_end": 13,
+        "token_count": 2,
+        "char_count": 13,
+        "prev_chunk_id": None,
+        "next_chunk_id": None,
+        "metadata": {},
+    }
+    values.update(overrides)
+    return ChunkRecord(**values)
 
 
 def make_extraction_run(**overrides) -> ExtractionRunRecord:
@@ -265,6 +300,56 @@ def test_extraction_artifact_export_payload_rejects_unsupported_format() -> None
         assert "Unsupported extraction artifact export format" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_chunk_source_trace_preview_payload_groups_chunks_by_block() -> None:
+    artifact = make_extraction_artifact()
+    block = make_document_block()
+    linked_chunk = make_chunk()
+    unlinked_chunk = make_chunk(
+        chunk_id=2,
+        chunk_seq=1,
+        block_id=None,
+        chunk_text="Artifact level chunk",
+        content_markdown="Artifact level chunk",
+    )
+
+    payload = chunk_source_trace_preview_payload(
+        artifact,
+        [block],
+        [linked_chunk, unlinked_chunk],
+    )
+
+    assert payload["summary"] == {
+        "block_count": 1,
+        "chunk_count": 2,
+        "traced_block_count": 1,
+        "unlinked_chunk_count": 1,
+        "chunk_policy_names": ["heading_512_64"],
+    }
+    assert payload["block_traces"][0]["chunk_count"] == 1
+    assert payload["block_traces"][0]["chunks"][0]["chunk_id"] == linked_chunk.chunk_id
+    assert payload["unlinked_chunks"][0]["chunk_id"] == unlinked_chunk.chunk_id
+
+
+def test_chunk_source_trace_preview_payload_handles_no_artifact() -> None:
+    payload = chunk_source_trace_preview_payload(None, [], [])
+
+    assert payload["selected_artifact_id"] is None
+    assert payload["selected_artifact"] is None
+    assert payload["summary"]["chunk_count"] == 0
+
+
+def test_chunks_for_source_trace_filters_by_artifact_or_block() -> None:
+    chunks = [
+        make_chunk(chunk_id=1, artifact_id=10, block_id=None),
+        make_chunk(chunk_id=2, artifact_id=None, block_id=20),
+        make_chunk(chunk_id=3, artifact_id=99, block_id=99),
+    ]
+
+    filtered = _chunks_for_source_trace(chunks, artifact_id=10, block_ids={20})
+
+    assert [chunk.chunk_id for chunk in filtered] == [1, 2]
 
 
 def test_extraction_quality_snapshot_payload_formats_datetime_and_percent() -> None:

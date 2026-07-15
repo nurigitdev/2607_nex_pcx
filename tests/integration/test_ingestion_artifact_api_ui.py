@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.chunks import ChunkInput, create_chunk
 from app.core.config import Settings
 from app.core.database import connect
 from app.core.extraction_runtime import ExtractionRuntimeRequest
@@ -88,6 +89,40 @@ def test_document_ingestion_artifact_api_and_page(
             runtime_result,
         )
         artifact_id = persisted.artifacts[0].artifact_id
+        first_block = persisted.blocks[0]
+        second_block = persisted.blocks[1]
+        create_chunk(
+            migrated_database_url,
+            ChunkInput(
+                document_id=document_id,
+                artifact_id=artifact_id,
+                block_id=first_block.block_id,
+                chunk_seq=0,
+                chunk_text=first_block.content_markdown or first_block.content_text or "heading",
+                content_markdown=first_block.content_markdown,
+                heading_path=first_block.heading_path,
+                source_anchor=first_block.source_anchor,
+                token_count=first_block.token_count,
+            ),
+        )
+        create_chunk(
+            migrated_database_url,
+            ChunkInput(
+                document_id=document_id,
+                artifact_id=artifact_id,
+                block_id=second_block.block_id,
+                chunk_seq=1,
+                chunk_text=(
+                    second_block.content_markdown
+                    or second_block.content_text
+                    or "paragraph"
+                ),
+                content_markdown=second_block.content_markdown,
+                heading_path=second_block.heading_path,
+                source_anchor=second_block.source_anchor,
+                token_count=second_block.token_count,
+            ),
+        )
 
         with TestClient(app) as client:
             api_response = client.get(f"/api/documents/{document_id}/ingestion-artifacts")
@@ -107,6 +142,18 @@ def test_document_ingestion_artifact_api_and_page(
             missing_preview_artifact_response = client.get(
                 f"/api/documents/{document_id}/extraction-preview",
                 params={"artifact_id": 999_999_999},
+            )
+            chunk_source_trace_response = client.get(
+                f"/api/documents/{document_id}/chunk-source-trace",
+                params={"artifact_id": artifact_id},
+            )
+            missing_chunk_source_trace_response = client.get(
+                f"/api/documents/{document_id}/chunk-source-trace",
+                params={"artifact_id": 999_999_999},
+            )
+            invalid_chunk_source_trace_response = client.get(
+                f"/api/documents/{document_id}/chunk-source-trace",
+                params={"artifact_id": artifact_id, "chunk_policy_name": " "},
             )
             quality_response = client.get(
                 f"/api/documents/{document_id}/extraction-quality",
@@ -185,6 +232,7 @@ def test_document_ingestion_artifact_api_and_page(
         selected_payload = selected_response.json()
         preview_payload = preview_response.json()
         selected_preview_payload = selected_preview_response.json()
+        chunk_source_trace_payload = chunk_source_trace_response.json()
         quality_payload = quality_response.json()
         initial_snapshots_payload = initial_snapshots_response.json()
         initial_snapshot_summary_payload = initial_snapshot_summary_response.json()
@@ -224,6 +272,16 @@ def test_document_ingestion_artifact_api_and_page(
         }
         assert selected_preview_payload["selected_artifact"]["artifact_id"] == artifact_id
         assert missing_preview_artifact_response.status_code == 404
+        assert chunk_source_trace_response.status_code == 200
+        assert chunk_source_trace_payload["trace"]["selected_artifact_id"] == artifact_id
+        assert chunk_source_trace_payload["trace"]["summary"]["block_count"] == 2
+        assert chunk_source_trace_payload["trace"]["summary"]["chunk_count"] >= 1
+        assert chunk_source_trace_payload["trace"]["summary"]["traced_block_count"] >= 1
+        assert chunk_source_trace_payload["trace"]["block_traces"][0]["block"][
+            "block_type"
+        ] == "heading"
+        assert missing_chunk_source_trace_response.status_code == 404
+        assert invalid_chunk_source_trace_response.status_code == 400
         assert quality_response.status_code == 200
         assert quality_payload["selected_artifact_id"] == artifact_id
         assert quality_payload["quality_check"]["status"] == "warning"
@@ -292,6 +350,8 @@ def test_document_ingestion_artifact_api_and_page(
         assert "품질 점검" in page_response.text
         assert "품질 Snapshot 요약" in page_response.text
         assert "최신 Snapshot" in page_response.text
+        assert "Chunk Source Trace" in page_response.text
+        assert "Trace Block" in page_response.text
         assert "short_content_text" in page_response.text
         assert "100.00%" in page_response.text
         assert "Source Anchor" in page_response.text
@@ -316,6 +376,9 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
     try:
         with TestClient(app) as client:
             response = client.get(f"/api/documents/{document_id}/extraction-preview")
+            chunk_source_trace_response = client.get(
+                f"/api/documents/{document_id}/chunk-source-trace"
+            )
             quality_response = client.get(f"/api/documents/{document_id}/extraction-quality")
             snapshots_response = client.get(
                 f"/api/documents/{document_id}/extraction-quality-snapshots"
@@ -361,6 +424,8 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
             "sheet_count": 0,
             "sheet_names": [],
         }
+        assert chunk_source_trace_response.status_code == 200
+        assert chunk_source_trace_response.json()["trace"]["summary"]["chunk_count"] == 0
         assert quality_response.status_code == 200
         assert quality_payload["quality_check"]["status"] == "not_available"
         assert quality_payload["quality_check"]["issues"][0]["code"] == "no_artifact_selected"
@@ -378,5 +443,6 @@ def test_document_extraction_preview_api_handles_document_without_artifacts(
         assert "집계할 block 유형이 없습니다." in page_response.text
         assert "확인 불가" in page_response.text
         assert "저장된 품질 snapshot이 없습니다." in page_response.text
+        assert "표시할 chunk source trace가 없습니다." in page_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)

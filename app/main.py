@@ -5609,6 +5609,64 @@ def chunk_payload(chunk: ChunkRecord) -> dict[str, object]:
     }
 
 
+def _chunks_for_source_trace(
+    chunks: list[ChunkRecord],
+    *,
+    artifact_id: int,
+    block_ids: set[int],
+) -> list[ChunkRecord]:
+    return [
+        chunk
+        for chunk in chunks
+        if chunk.artifact_id == artifact_id
+        or (chunk.block_id is not None and chunk.block_id in block_ids)
+    ]
+
+
+def chunk_source_trace_preview_payload(
+    artifact: ExtractionArtifactRecord | None,
+    blocks: list[DocumentBlockRecord],
+    chunks: list[ChunkRecord],
+) -> dict[str, object]:
+    block_ids = {block.block_id for block in blocks}
+    chunks_by_block_id: dict[int, list[ChunkRecord]] = {block_id: [] for block_id in block_ids}
+    unlinked_chunks: list[ChunkRecord] = []
+    for chunk in chunks:
+        if chunk.block_id is not None and chunk.block_id in chunks_by_block_id:
+            chunks_by_block_id[chunk.block_id].append(chunk)
+        else:
+            unlinked_chunks.append(chunk)
+
+    traced_block_count = sum(
+        1 for block in blocks if chunks_by_block_id.get(block.block_id)
+    )
+    policy_names = sorted({chunk.chunk_policy_name for chunk in chunks})
+    return {
+        "selected_artifact_id": artifact.artifact_id if artifact is not None else None,
+        "selected_artifact": (
+            extraction_artifact_payload(artifact) if artifact is not None else None
+        ),
+        "summary": {
+            "block_count": len(blocks),
+            "chunk_count": len(chunks),
+            "traced_block_count": traced_block_count,
+            "unlinked_chunk_count": len(unlinked_chunks),
+            "chunk_policy_names": policy_names,
+        },
+        "block_traces": [
+            {
+                "block": document_block_payload(block),
+                "chunk_count": len(chunks_by_block_id[block.block_id]),
+                "chunks": [
+                    chunk_payload(chunk) for chunk in chunks_by_block_id[block.block_id]
+                ],
+            }
+            for block in blocks
+        ],
+        "unlinked_chunks": [chunk_payload(chunk) for chunk in unlinked_chunks],
+    }
+
+
 def _text_preview(value: str | None, *, limit: int = 600) -> str | None:
     if value is None:
         return None
@@ -6892,6 +6950,96 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 "blocks": [document_block_payload(block) for block in document_blocks],
                 "block_summary": document_block_summary_payload(document_blocks),
+            },
+        )
+
+    @app.get("/api/documents/{document_id}/chunk-source-trace")
+    def api_get_document_chunk_source_trace(
+        document_id: int,
+        artifact_id: int | None = None,
+        chunk_policy_name: str | None = None,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            extraction_artifacts = list_document_extraction_artifacts(
+                settings.database_url,
+                document_id,
+            )
+            selected_artifact_id = (
+                artifact_id
+                if artifact_id is not None
+                else (extraction_artifacts[0].artifact_id if extraction_artifacts else None)
+            )
+            selected_artifact = (
+                next(
+                    (
+                        artifact
+                        for artifact in extraction_artifacts
+                        if artifact.artifact_id == selected_artifact_id
+                    ),
+                    None,
+                )
+                if selected_artifact_id is not None
+                else None
+            )
+            if selected_artifact_id is not None and selected_artifact is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Extraction artifact not found for document.",
+                )
+            document_blocks = (
+                list_document_blocks(
+                    settings.database_url,
+                    document_id,
+                    artifact_id=selected_artifact_id,
+                )
+                if selected_artifact_id is not None
+                else []
+            )
+            document_chunks = (
+                list_document_chunks(
+                    settings.database_url,
+                    document_id,
+                    chunk_policy_name=chunk_policy_name,
+                )
+                if selected_artifact_id is not None
+                else []
+            )
+            trace_chunks = (
+                _chunks_for_source_trace(
+                    document_chunks,
+                    artifact_id=selected_artifact_id,
+                    block_ids={block.block_id for block in document_blocks},
+                )
+                if selected_artifact_id is not None
+                else []
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidIngestionArtifactError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidChunkError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "document": document_inventory_item_payload(document),
+                "trace": chunk_source_trace_preview_payload(
+                    selected_artifact,
+                    document_blocks,
+                    trace_chunks,
+                ),
             },
         )
 
@@ -10867,6 +11015,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected_artifact: ExtractionArtifactRecord | None = None
         selected_artifact_id: int | None = None
         extraction_quality_snapshot_summary: ExtractionQualitySnapshotSummary | None = None
+        source_trace_chunks: list[ChunkRecord] = []
         error_message = None
 
         if not settings.database_url:
@@ -10913,6 +11062,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             document_id,
                             artifact_id=selected_artifact_id,
                         )
+                        document_chunks = list_document_chunks(
+                            settings.database_url,
+                            document_id,
+                        )
+                        source_trace_chunks = _chunks_for_source_trace(
+                            document_chunks,
+                            artifact_id=selected_artifact_id,
+                            block_ids={block.block_id for block in document_blocks},
+                        )
                     extraction_quality_snapshot_summary = (
                         get_extraction_quality_snapshot_summary(
                             settings.database_url,
@@ -10920,7 +11078,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             artifact_id=selected_artifact_id,
                         )
                     )
-            except (InvalidDocumentInventoryError, InvalidIngestionArtifactError) as exc:
+            except (
+                InvalidDocumentInventoryError,
+                InvalidIngestionArtifactError,
+                InvalidChunkError,
+            ) as exc:
                 error_message = str(exc)
             except Exception as exc:
                 error_message = str(exc)
@@ -10953,6 +11115,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     if extraction_quality_snapshot_summary is not None
                     else None
+                ),
+                chunk_source_trace_preview=chunk_source_trace_preview_payload(
+                    selected_artifact,
+                    document_blocks,
+                    source_trace_chunks,
                 ),
                 selected_artifact_id=selected_artifact_id,
                 error_message=error_message,
