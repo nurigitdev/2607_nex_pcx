@@ -885,6 +885,43 @@ main.container-fluid {
   white-space: pre-wrap;
 }
 
+.dgx-benchmark-compare-form .form-select {
+  min-width: 0;
+}
+
+.dgx-benchmark-compare-run-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dgx-benchmark-compare-table th,
+.dgx-benchmark-compare-table td,
+.dgx-benchmark-profile-compare-table th,
+.dgx-benchmark-profile-compare-table td {
+  font-size: 0.925rem;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
+
+.dgx-benchmark-compare-table td:nth-child(2),
+.dgx-benchmark-compare-table td:nth-child(3),
+.dgx-benchmark-compare-table td:nth-child(4),
+.dgx-benchmark-compare-table td:nth-child(5),
+.dgx-benchmark-profile-compare-table td:nth-child(2),
+.dgx-benchmark-profile-compare-table td:nth-child(3),
+.dgx-benchmark-profile-compare-table td:nth-child(4),
+.dgx-benchmark-profile-compare-table td:nth-child(5),
+.dgx-benchmark-profile-compare-table td:nth-child(6),
+.dgx-benchmark-profile-compare-table td:nth-child(8) {
+  white-space: nowrap;
+}
+
+.dgx-benchmark-profile-compare-table td:nth-child(1),
+.dgx-benchmark-profile-compare-table td:nth-child(7) {
+  min-width: 12rem;
+}
+
 .job-detail-list {
   display: grid;
   gap: 0.625rem 1rem;
@@ -3464,6 +3501,7 @@ main.container-fluid {
   .design-principle-grid,
   .design-token-layout,
   .dgx-benchmark-count-grid,
+  .dgx-benchmark-compare-run-grid,
   .dgx-benchmark-summary-grid,
   .document-detail-grid,
   .embedding-backlog-summary-grid,

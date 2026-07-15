@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set compare_href = "/admin/dgx-ingestion-benchmarks/compare" %}
+{% if benchmark_runs|length >= 2 %}
+{% set compare_href = "/admin/dgx-ingestion-benchmarks/compare?left_run_id=" ~ benchmark_runs[1].benchmark_run_id ~ "&right_run_id=" ~ benchmark_runs[0].benchmark_run_id %}
+{% endif %}
 <div
   class="job-monitor-header d-flex align-items-center justify-content-between mb-4"
   data-dgx-ingestion-benchmarks-page
@@ -11,12 +15,17 @@
     <h1 class="h3 mb-1">{{ t("dgx_benchmarks.title") }}</h1>
     <p class="text-secondary mb-0">{{ t("dgx_benchmarks.subtitle") }}</p>
   </div>
-  <a
-    class="btn btn-outline-secondary"
-    href="/api/admin/dgx-ingestion-benchmarks?limit={{ selected_limit }}{% if selected_provider %}&provider={{ selected_provider|urlencode }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name|urlencode }}{% endif %}{% if selected_passed %}&passed={{ selected_passed }}{% endif %}"
-  >
-    {{ t("common.api") }}
-  </a>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-primary" href="{{ compare_href }}">
+      {{ t("dgx_benchmarks.compare") }}
+    </a>
+    <a
+      class="btn btn-outline-secondary"
+      href="/api/admin/dgx-ingestion-benchmarks?limit={{ selected_limit }}{% if selected_provider %}&provider={{ selected_provider|urlencode }}{% endif %}{% if selected_profile_name %}&profile_name={{ selected_profile_name|urlencode }}{% endif %}{% if selected_passed %}&passed={{ selected_passed }}{% endif %}"
+    >
+      {{ t("common.api") }}
+    </a>
+  </div>
 </div>
 
 {% if error_message %}

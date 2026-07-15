@@ -1419,6 +1419,7 @@ def dgx_ingestion_benchmark_run_payload(
         "created_by": run.created_by,
         "created_by_user_id": run.created_by_user_id,
         "created_at": _datetime_response(run.created_at),
+        "created_at_label": _datetime_label(run.created_at),
     }
 
 
@@ -1518,6 +1519,200 @@ def dgx_ingestion_benchmark_summary(
         "avg_elapsed_seconds": (
             round(sum(elapsed_values) / len(elapsed_values), 2) if elapsed_values else 0
         ),
+    }
+
+
+def _format_dgx_benchmark_metric_value(
+    value: object,
+    unit: str | None = None,
+    *,
+    signed: bool = False,
+) -> str:
+    if value is None:
+        return "-"
+    sign = ""
+    if signed:
+        try:
+            sign = "+" if float(value) > 0 else ""
+        except (TypeError, ValueError):
+            sign = ""
+    if unit == "s":
+        return f"{sign}{float(value):.2f} s"
+    if unit == "ms":
+        return f"{sign}{float(value):.2f} ms"
+    if isinstance(value, float) and not value.is_integer():
+        return f"{sign}{value:.2f}"
+    return f"{sign}{value}"
+
+
+def _dgx_benchmark_metric_comparison(
+    metric_key: str,
+    left_value: int | float | None,
+    right_value: int | float | None,
+    *,
+    unit: str | None = None,
+    better_when: str = "neutral",
+) -> dict[str, object]:
+    delta_value = None
+    status_name = "missing"
+    if left_value is not None and right_value is not None:
+        delta_value = right_value - left_value
+        if abs(delta_value) < 0.000001:
+            status_name = "same"
+        elif better_when == "higher":
+            status_name = "better" if delta_value > 0 else "worse"
+        elif better_when == "lower":
+            status_name = "better" if delta_value < 0 else "worse"
+        else:
+            status_name = "changed"
+    return {
+        "metric_key": metric_key,
+        "left_value": left_value,
+        "right_value": right_value,
+        "delta_value": delta_value,
+        "unit": unit,
+        "status": status_name,
+        "left_label": _format_dgx_benchmark_metric_value(left_value, unit),
+        "right_label": _format_dgx_benchmark_metric_value(right_value, unit),
+        "delta_label": _format_dgx_benchmark_metric_value(delta_value, unit, signed=True),
+    }
+
+
+def dgx_ingestion_benchmark_compare_payload(
+    left: DgxIngestionBenchmarkDetail,
+    right: DgxIngestionBenchmarkDetail,
+) -> dict[str, object]:
+    left_profiles = {
+        (profile.provider, profile.profile_name): profile for profile in left.profiles
+    }
+    right_profiles = {
+        (profile.provider, profile.profile_name): profile for profile in right.profiles
+    }
+    profile_comparisons = []
+    for provider, profile_name in sorted(set(left_profiles) | set(right_profiles)):
+        left_profile = left_profiles.get((provider, profile_name))
+        right_profile = right_profiles.get((provider, profile_name))
+        if left_profile is None:
+            profile_status = "added"
+        elif right_profile is None:
+            profile_status = "removed"
+        else:
+            profile_status = "common"
+        profile_comparisons.append(
+            {
+                "provider": provider,
+                "profile_name": profile_name,
+                "status": profile_status,
+                "left": (
+                    dgx_ingestion_benchmark_profile_payload(left_profile)
+                    if left_profile is not None
+                    else None
+                ),
+                "right": (
+                    dgx_ingestion_benchmark_profile_payload(right_profile)
+                    if right_profile is not None
+                    else None
+                ),
+                "metrics": {
+                    "vector_count": _dgx_benchmark_metric_comparison(
+                        "vector_count",
+                        left_profile.vector_count if left_profile is not None else None,
+                        right_profile.vector_count if right_profile is not None else None,
+                        better_when="higher",
+                    ),
+                    "failed_count": _dgx_benchmark_metric_comparison(
+                        "failed_count",
+                        left_profile.failed_count if left_profile is not None else None,
+                        right_profile.failed_count if right_profile is not None else None,
+                        better_when="lower",
+                    ),
+                    "avg_provider_elapsed_ms": _dgx_benchmark_metric_comparison(
+                        "avg_provider_elapsed_ms",
+                        left_profile.avg_provider_elapsed_ms
+                        if left_profile is not None
+                        else None,
+                        right_profile.avg_provider_elapsed_ms
+                        if right_profile is not None
+                        else None,
+                        unit="ms",
+                        better_when="lower",
+                    ),
+                    "avg_worker_elapsed_ms": _dgx_benchmark_metric_comparison(
+                        "avg_worker_elapsed_ms",
+                        left_profile.avg_worker_elapsed_ms
+                        if left_profile is not None
+                        else None,
+                        right_profile.avg_worker_elapsed_ms
+                        if right_profile is not None
+                        else None,
+                        unit="ms",
+                        better_when="lower",
+                    ),
+                },
+            }
+        )
+
+    return {
+        "left": dgx_ingestion_benchmark_detail_payload(left),
+        "right": dgx_ingestion_benchmark_detail_payload(right),
+        "run_metrics": [
+            _dgx_benchmark_metric_comparison(
+                "chunk_count",
+                left.run.chunk_count,
+                right.run.chunk_count,
+            ),
+            _dgx_benchmark_metric_comparison(
+                "expected_job_count",
+                left.run.expected_job_count,
+                right.run.expected_job_count,
+            ),
+            _dgx_benchmark_metric_comparison(
+                "processed_count",
+                left.run.processed_count,
+                right.run.processed_count,
+                better_when="higher",
+            ),
+            _dgx_benchmark_metric_comparison(
+                "succeeded_count",
+                left.run.succeeded_count,
+                right.run.succeeded_count,
+                better_when="higher",
+            ),
+            _dgx_benchmark_metric_comparison(
+                "failed_count",
+                left.run.failed_count,
+                right.run.failed_count,
+                better_when="lower",
+            ),
+            _dgx_benchmark_metric_comparison(
+                "vector_count",
+                left.run.vector_count,
+                right.run.vector_count,
+                better_when="higher",
+            ),
+            _dgx_benchmark_metric_comparison(
+                "total_elapsed_seconds",
+                left.run.total_elapsed_seconds,
+                right.run.total_elapsed_seconds,
+                unit="s",
+                better_when="lower",
+            ),
+            _dgx_benchmark_metric_comparison(
+                "total_provider_elapsed_ms",
+                left.run.total_provider_elapsed_ms,
+                right.run.total_provider_elapsed_ms,
+                unit="ms",
+                better_when="lower",
+            ),
+            _dgx_benchmark_metric_comparison(
+                "total_worker_elapsed_ms",
+                left.run.total_worker_elapsed_ms,
+                right.run.total_worker_elapsed_ms,
+                unit="ms",
+                better_when="lower",
+            ),
+        ],
+        "profile_comparisons": profile_comparisons,
     }
 
 
@@ -7684,6 +7879,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/admin/dgx-ingestion-benchmarks/compare")
+    def api_compare_dgx_ingestion_benchmarks(
+        left_run_id: int,
+        right_run_id: int,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        if left_run_id == right_run_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Choose two different DGX ingestion benchmark runs.",
+            )
+
+        try:
+            left_detail = get_dgx_ingestion_benchmark_detail(
+                settings.database_url,
+                left_run_id,
+            )
+            right_detail = get_dgx_ingestion_benchmark_detail(
+                settings.database_url,
+                right_run_id,
+            )
+        except InvalidDgxIngestionBenchmarkError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if left_detail is None or right_detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="DGX ingestion benchmark run not found.",
+            )
+
+        return JSONResponse(
+            content={
+                "comparison": dgx_ingestion_benchmark_compare_payload(
+                    left_detail,
+                    right_detail,
+                )
+            }
+        )
+
     @app.get("/api/admin/dgx-ingestion-benchmarks/{benchmark_run_id}")
     def api_get_dgx_ingestion_benchmark(benchmark_run_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -10393,6 +10630,70 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_benchmark_run_id=(
                     selected_detail.run.benchmark_run_id if selected_detail else benchmark_run_id
                 ),
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/dgx-ingestion-benchmarks/compare", response_class=HTMLResponse)
+    def dgx_ingestion_benchmark_compare_page(
+        request: Request,
+        left_run_id: int | None = None,
+        right_run_id: int | None = None,
+        limit: int = 50,
+    ) -> HTMLResponse:
+        benchmark_runs: list[DgxIngestionBenchmarkRunRecord] = []
+        comparison_payload = None
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                benchmark_runs = list_dgx_ingestion_benchmark_runs(
+                    settings.database_url,
+                    limit=limit,
+                )
+                if left_run_id is None and right_run_id is None and len(benchmark_runs) >= 2:
+                    right_run_id = benchmark_runs[0].benchmark_run_id
+                    left_run_id = benchmark_runs[1].benchmark_run_id
+                if left_run_id is not None and right_run_id is not None:
+                    if left_run_id == right_run_id:
+                        error_message = "Choose two different DGX ingestion benchmark runs."
+                    else:
+                        left_detail = get_dgx_ingestion_benchmark_detail(
+                            settings.database_url,
+                            left_run_id,
+                        )
+                        right_detail = get_dgx_ingestion_benchmark_detail(
+                            settings.database_url,
+                            right_run_id,
+                        )
+                        if left_detail is None or right_detail is None:
+                            error_message = "DGX ingestion benchmark run not found."
+                        else:
+                            comparison_payload = dgx_ingestion_benchmark_compare_payload(
+                                left_detail,
+                                right_detail,
+                            )
+            except InvalidDgxIngestionBenchmarkError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "dgx_ingestion_benchmark_compare.html",
+            template_context(
+                request,
+                benchmark_runs=benchmark_runs,
+                comparison=comparison_payload,
+                comparison_json=(
+                    json.dumps(comparison_payload, ensure_ascii=False, indent=2)
+                    if comparison_payload is not None
+                    else ""
+                ),
+                selected_left_run_id=left_run_id,
+                selected_right_run_id=right_run_id,
+                selected_limit=limit,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% macro comparison_badge(status_name) -%}
+  {% if status_name == "better" %}
+  <span class="badge text-bg-success">{{ t("dgx_benchmarks.better") }}</span>
+  {% elif status_name == "worse" %}
+  <span class="badge text-bg-danger">{{ t("dgx_benchmarks.worse") }}</span>
+  {% elif status_name == "same" %}
+  <span class="badge text-bg-secondary">{{ t("dgx_benchmarks.same") }}</span>
+  {% elif status_name == "common" %}
+  <span class="badge text-bg-secondary">{{ t("comparison_status.common") }}</span>
+  {% elif status_name == "changed" %}
+  <span class="badge text-bg-info">{{ t("dgx_benchmarks.changed") }}</span>
+  {% elif status_name == "added" %}
+  <span class="badge text-bg-info">{{ t("dgx_benchmarks.added") }}</span>
+  {% elif status_name == "removed" %}
+  <span class="badge text-bg-warning">{{ t("dgx_benchmarks.removed") }}</span>
+  {% else %}
+  <span class="badge text-bg-light border">{{ status_name }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{% block content %}
+<div
+  class="job-monitor-header d-flex align-items-center justify-content-between mb-4"
+  data-dgx-benchmark-compare-page
+  data-benchmark-compare-api-url="/api/admin/dgx-ingestion-benchmarks/compare"
+>
+  <div>
+    <h1 class="h3 mb-1">{{ t("dgx_benchmarks.compare_title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("dgx_benchmarks.compare_subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="/admin/dgx-ingestion-benchmarks">
+      {{ t("dgx_benchmarks.history") }}
+    </a>
+    {% if selected_left_run_id and selected_right_run_id %}
+    <a
+      class="btn btn-outline-secondary"
+      href="/api/admin/dgx-ingestion-benchmarks/compare?left_run_id={{ selected_left_run_id }}&right_run_id={{ selected_right_run_id }}"
+    >
+      {{ t("common.api") }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form class="dgx-benchmark-compare-form metric-card bg-white p-3 mb-4" method="get">
+  <div class="row g-3 align-items-end">
+    <div class="col-12 col-lg-5">
+      <label class="form-label" for="left_run_id">{{ t("dgx_benchmarks.left_run") }}</label>
+      <select class="form-select" id="left_run_id" name="left_run_id">
+        <option value="">{{ t("dgx_benchmarks.select_run") }}</option>
+        {% for run in benchmark_runs %}
+        <option value="{{ run.benchmark_run_id }}" {% if selected_left_run_id == run.benchmark_run_id %}selected{% endif %}>
+          #{{ run.benchmark_run_id }} · {{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }} · {{ run.profile_names|join(", ") }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-5">
+      <label class="form-label" for="right_run_id">{{ t("dgx_benchmarks.right_run") }}</label>
+      <select class="form-select" id="right_run_id" name="right_run_id">
+        <option value="">{{ t("dgx_benchmarks.select_run") }}</option>
+        {% for run in benchmark_runs %}
+        <option value="{{ run.benchmark_run_id }}" {% if selected_right_run_id == run.benchmark_run_id %}selected{% endif %}>
+          #{{ run.benchmark_run_id }} · {{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }} · {{ run.profile_names|join(", ") }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-1">
+      <label class="form-label" for="limit">{{ t("dgx_benchmarks.limit") }}</label>
+      <select class="form-select" id="limit" name="limit">
+        {% for option in [20, 50, 100, 200] %}
+        <option value="{{ option }}" {% if selected_limit == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-1">
+      <button class="btn btn-primary w-100" type="submit">{{ t("dgx_benchmarks.compare") }}</button>
+    </div>
+  </div>
+</form>
+
+{% if comparison %}
+<section class="dgx-benchmark-compare-run-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h2 class="h5 mb-0">{{ t("dgx_benchmarks.left") }} #{{ comparison.left.run.benchmark_run_id }}</h2>
+      {% if comparison.left.run.passed %}
+      <span class="badge text-bg-success">{{ t("dgx_benchmarks.passed") }}</span>
+      {% else %}
+      <span class="badge text-bg-danger">{{ t("dgx_benchmarks.failed") }}</span>
+      {% endif %}
+    </div>
+    <dl class="job-detail-list mb-0">
+      <dt>{{ t("dgx_benchmarks.run_key") }}</dt>
+      <dd>{{ comparison.left.run.benchmark_run_key }}</dd>
+      <dt>{{ t("dgx_benchmarks.created_at") }}</dt>
+      <dd>{{ comparison.left.run.created_at_label }}</dd>
+      <dt>{{ t("dgx_benchmarks.profiles") }}</dt>
+      <dd>{{ comparison.left.run.profile_names|join(", ") }}</dd>
+      <dt>{{ t("dgx_benchmarks.created_by") }}</dt>
+      <dd>{{ comparison.left.run.created_by or "-" }}</dd>
+    </dl>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h2 class="h5 mb-0">{{ t("dgx_benchmarks.right") }} #{{ comparison.right.run.benchmark_run_id }}</h2>
+      {% if comparison.right.run.passed %}
+      <span class="badge text-bg-success">{{ t("dgx_benchmarks.passed") }}</span>
+      {% else %}
+      <span class="badge text-bg-danger">{{ t("dgx_benchmarks.failed") }}</span>
+      {% endif %}
+    </div>
+    <dl class="job-detail-list mb-0">
+      <dt>{{ t("dgx_benchmarks.run_key") }}</dt>
+      <dd>{{ comparison.right.run.benchmark_run_key }}</dd>
+      <dt>{{ t("dgx_benchmarks.created_at") }}</dt>
+      <dd>{{ comparison.right.run.created_at_label }}</dd>
+      <dt>{{ t("dgx_benchmarks.profiles") }}</dt>
+      <dd>{{ comparison.right.run.profile_names|join(", ") }}</dd>
+      <dt>{{ t("dgx_benchmarks.created_by") }}</dt>
+      <dd>{{ comparison.right.run.created_by or "-" }}</dd>
+    </dl>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dgx_benchmarks.run_comparison") }}</h2>
+      <div class="text-secondary">{{ t("dgx_benchmarks.run_comparison_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 dgx-benchmark-compare-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("dgx_benchmarks.metric") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.left") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.right") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.delta") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.change") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for metric in comparison.run_metrics %}
+        <tr>
+          <td>{{ t("dgx_benchmarks.metric_" ~ metric.metric_key) }}</td>
+          <td>{{ metric.left_label }}</td>
+          <td>{{ metric.right_label }}</td>
+          <td>{{ metric.delta_label }}</td>
+          <td>{{ comparison_badge(metric.status) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("dgx_benchmarks.profile_comparison") }}</h2>
+      <div class="text-secondary">{{ t("dgx_benchmarks.profile_comparison_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 dgx-benchmark-profile-compare-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("dgx_benchmarks.profile") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.change") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.left_counts") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.right_counts") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.vector_delta") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.avg_provider_delta") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.route") }}</th>
+          <th scope="col">{{ t("dgx_benchmarks.readiness") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for profile in comparison.profile_comparisons %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ profile.provider }}</div>
+            <div class="text-secondary small text-break">{{ profile.profile_name }}</div>
+          </td>
+          <td>{{ comparison_badge(profile.status) }}</td>
+          <td class="text-nowrap">
+            {% if profile.left %}
+            {{ t("dgx_benchmarks.succeeded_short") }} {{ profile.left.succeeded_count }}
+            · {{ t("dgx_benchmarks.failed_short") }} {{ profile.left.failed_count }}
+            · {{ t("dgx_benchmarks.vector_short") }} {{ profile.left.vector_count }}
+            {% else %}
+            -
+            {% endif %}
+          </td>
+          <td class="text-nowrap">
+            {% if profile.right %}
+            {{ t("dgx_benchmarks.succeeded_short") }} {{ profile.right.succeeded_count }}
+            · {{ t("dgx_benchmarks.failed_short") }} {{ profile.right.failed_count }}
+            · {{ t("dgx_benchmarks.vector_short") }} {{ profile.right.vector_count }}
+            {% else %}
+            -
+            {% endif %}
+          </td>
+          <td>
+            {{ profile.metrics.vector_count.delta_label }}
+            <div>{{ comparison_badge(profile.metrics.vector_count.status) }}</div>
+          </td>
+          <td>
+            {{ profile.metrics.avg_provider_elapsed_ms.delta_label }}
+            <div>{{ comparison_badge(profile.metrics.avg_provider_elapsed_ms.status) }}</div>
+          </td>
+          <td class="text-break">
+            <div>{{ t("dgx_benchmarks.left") }}: {% if profile.left %}{{ profile.left.provider_route_name or "-" }}{% else %}-{% endif %}</div>
+            <div>{{ t("dgx_benchmarks.right") }}: {% if profile.right %}{{ profile.right.provider_route_name or "-" }}{% else %}-{% endif %}</div>
+          </td>
+          <td>
+            <div>{{ t("dgx_benchmarks.left") }}: {% if profile.left %}{{ profile.left.readiness_status or "-" }}{% else %}-{% endif %}</div>
+            <div>{{ t("dgx_benchmarks.right") }}: {% if profile.right %}{{ profile.right.readiness_status or "-" }}{% else %}-{% endif %}</div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="8">{{ t("dgx_benchmarks.no_profile_results") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="border-top p-3">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h3 class="h6 mb-0">{{ t("dgx_benchmarks.raw_json") }}</h3>
+      <span class="text-secondary small">{{ t("dgx_benchmarks.raw_json_help") }}</span>
+    </div>
+    <pre class="dgx-benchmark-json-viewer bg-light border rounded-2 p-3 mb-0 small overflow-auto">{{ comparison_json }}</pre>
+  </div>
+</section>
+{% else %}
+<section class="metric-card bg-white p-3">
+  <div class="text-secondary text-center py-4">
+    {% if database_configured %}{{ t("dgx_benchmarks.no_compare_selected") }}{% else %}{{ t("common.no_database") }}{% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
