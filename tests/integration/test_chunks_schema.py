@@ -94,6 +94,27 @@ def test_chunks_constraints_and_document_cascade(migrated_database_url: str) -> 
                     (document_id,),
                 )
                 chunk_id = cursor.fetchone()["chunk_id"]
+                cursor.execute(
+                    """
+                    INSERT INTO chunks (
+                        document_id,
+                        chunk_seq,
+                        chunk_text,
+                        content_hash,
+                        chunk_policy_name,
+                        char_count
+                    )
+                    VALUES (
+                        %s,
+                        0,
+                        'Same seq alternate policy',
+                        'hash-one-policy-two',
+                        'heading_1000_200',
+                        25
+                    )
+                    """,
+                    (document_id,),
+                )
 
         with connect(migrated_database_url) as connection:
             with connection.cursor() as cursor:
@@ -113,6 +134,17 @@ def test_chunks_constraints_and_document_cascade(migrated_database_url: str) -> 
                         (document_id,),
                     )
                 connection.rollback()
+
+        policy_scoped_count = fetch_one(
+            migrated_database_url,
+            """
+            SELECT count(*) AS count
+            FROM chunks
+            WHERE document_id = %s
+              AND chunk_seq = 0
+            """,
+            (document_id,),
+        )
 
         with connect(migrated_database_url) as connection:
             with connection.cursor() as cursor:
@@ -142,6 +174,7 @@ def test_chunks_constraints_and_document_cascade(migrated_database_url: str) -> 
                 )
                 row = cursor.fetchone()
 
+        assert policy_scoped_count["count"] == 2
         assert row["count"] == 0
         file_id = 0
     finally:
