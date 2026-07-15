@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.3**
+**Software Requirements Specification v1.7**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.3  
+문서 상태: Draft v1.7
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.3 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.7 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.3 |
+| 문서 버전 | v1.7 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -31,6 +31,7 @@
 | 1.4 | 2026-07-06 | chunk size/overlap 실험 정책, 기본 운영 정책과 문서 구조 보존 원칙 보강 |
 | 1.5 | 2026-07-10 | embedding model 사전 다운로드, models bundle, 오프라인/고객사 설치 배포 정책 보강 |
 | 1.6 | 2026-07-10 | GPU embedding provider API 분리, local smoke adapter, provider runtime metadata 요구사항 보강 |
+| 1.7 | 2026-07-15 | ingestion metadata, normalized markdown artifact, document block, table/image artifact, chunk source contract 요구사항 보강 |
 
 # 목차
 
@@ -127,6 +128,12 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | Pipeline Job | 업로드 후 텍스트 추출, parsing, chunking, embedding, vector indexing 단계를 추적하는 비동기 작업 단위 |
 | Pipeline Job Event | pipeline job의 상태 변경, 진행률 변경, 오류, 재시도 이력을 append-only로 기록한 이벤트 |
 | Worker Lease | 여러 worker가 같은 job을 중복 처리하지 않도록 일정 시간 동안 job 점유권을 부여하는 방식 |
+| Extraction Provider | PDF/DOCX/HWPX/PPTX/XLSX/MD 등 원본 파일에서 텍스트, 구조, 표, 그림 metadata를 추출하는 실행 단위. 초기에는 local runtime으로 시작하되 remote provider로 분리 가능한 contract를 가진다. |
+| Extraction Artifact | 원본 파일에서 추출된 normalized markdown, plain text, parser metadata, warning/error report 등 재처리와 재현성에 필요한 산출물 |
+| Normalized Markdown Artifact | 파일 형식과 무관하게 검색/검토/재처리에 사용할 수 있도록 정규화한 Markdown 또는 Markdown-like text 산출물 |
+| Document Block | normalized artifact 안의 heading, paragraph, table, image, figure, list, code, page, slide, sheet 등 chunk 생성 이전의 구조 단위 |
+| Source Anchor | block 또는 chunk가 원본 파일의 어느 위치에서 왔는지 나타내는 page/slide/sheet/cell/char range/geometry metadata |
+| Chunk Source Contract | chunk가 어떤 extraction artifact와 document block에서 생성되었고, 앞/뒤 chunk와 어떻게 연결되는지 정의하는 공통 저장 계약 |
 
 # 2. 전체 시스템 설명
 
@@ -186,6 +193,14 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 
 - NeX_PCX의 권한 기능은 운영 인증 체계가 아니라 NeX-CX 적용성 검증을 위한 permission simulation layer로 구현한다.
 
+- 문서 추출 기능은 embedding provider와 유사하게 provider contract를 먼저 정의하되, MVP에서는 local/in-process extraction runtime으로 시작한다.
+
+- OCR, layout-aware PDF, table structure recognition, image captioning처럼 무거운 추출 기능은 향후 remote extraction provider로 분리할 수 있어야 한다.
+
+- 모든 파일 형식의 추출 결과는 normalized markdown artifact를 생성하고, chunk는 이 artifact와 document block/source anchor를 기준으로 생성한다.
+
+- 파일 metadata는 확장자와 무관한 공통 metadata와 PDF/DOCX/HWPX/PPTX/XLSX/MD별 format-specific metadata를 분리하여 저장한다.
+
 # 3. 시스템 아키텍처
 
 ## 3.1 논리 아키텍처
@@ -202,7 +217,9 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 ├─ Upload API
 ├─ Identity / Permission API
 ├─ Pipeline Job API
+├─ Ingestion Artifact API
 ├─ Document Parsing Service
+├─ Extraction Provider Client
 ├─ Chunking Service
 ├─ Embedding Job API
 ├─ Search API
@@ -216,9 +233,15 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 │
 ▼
 [Background Worker Runners]
-├─ text extraction / parsing worker
+├─ text extraction / artifact worker
+├─ parsing / document block worker
 ├─ chunking worker
 └─ embedding worker / provider client
+│
+▼
+[Extraction Provider Layer]
+├─ local extraction runtime: md/plain text/pdf/docx/pptx/xlsx/hwpx
+└─ future remote extraction provider: OCR / layout / table / image captioning
 │
 ▼
 [Embedding Provider Layer]
@@ -230,7 +253,8 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 ▼
 [PostgreSQL + pgvector]
 ├─ app_users / org_units / memberships
-├─ files / documents / chunks
+├─ files / documents / extraction_artifacts / document_blocks / chunks
+├─ table_artifacts / image_artifacts
 ├─ pipeline_jobs / pipeline_job_events
 ├─ embedding profile tables
 ├─ search_logs / feedback
@@ -247,8 +271,10 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Identity/Permission Service | 테스트 계정, 조직 계층, 역할, 문서 접근 범위, 검색 scope 계산 |
 | Pipeline Job Service | 업로드 이후 텍스트 추출, parsing, chunking, embedding, vector indexing 작업 생성과 상태 전이 관리 |
 | PostgreSQL Job Queue | pipeline_jobs를 기반으로 queued job, lease, retry, progress, worker heartbeat를 관리 |
-| Parser Service | 파일 타입별 텍스트/메타데이터 추출 |
-| Chunking Service | 문서 구조와 정책에 따라 chunk 생성 및 prev/next 연결 |
+| Extraction Provider Contract | 원본 파일 입력, normalized markdown artifact 출력, source anchor, warning/error metadata를 local/remote 동일 contract로 정의 |
+| Parser Service | 파일 타입별 텍스트/구조/메타데이터 추출 및 document block 생성 |
+| Ingestion Artifact Repository | normalized markdown, parser metadata, warning/error report, table/image artifact 위치를 저장하고 재처리 기준을 제공 |
+| Chunking Service | document block과 chunk policy에 따라 chunk 생성, source anchor, prev/next 연결을 저장 |
 | Worker Runners | stage별 job 점유, 처리, heartbeat, 실패/재시도, 처리 시간/오류 기록 |
 | Embedding Worker | embedding job을 점유하고 provider를 호출한 뒤 vector 저장, job 상태, runtime metadata를 기록 |
 | Embedding Provider Client | local adapter 또는 remote GPU provider API를 동일한 request/response contract로 호출 |
@@ -324,6 +350,14 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-035 | Embedding provider 선택 | profile별 embedding 실행을 local adapter 또는 remote GPU provider로 선택할 수 있어야 한다. | MUST |
 | FR-036 | Remote provider health check | provider URL, model key, dimension, device, ready 상태를 embedding 실행 전 점검할 수 있어야 한다. | MUST |
 | FR-037 | Provider runtime metadata 저장 | embedding job과 search log에 provider type, endpoint, model source, dimension, device, elapsed_ms를 저장한다. | MUST |
+| FR-038 | Extraction provider contract | 파일 추출 기능은 local runtime과 future remote provider가 공유하는 request/response contract를 가져야 한다. | MUST |
+| FR-039 | Normalized markdown artifact 저장 | 원본 파일별 추출 결과를 Markdown 또는 Markdown-like text artifact로 저장한다. | MUST |
+| FR-040 | 공통/형식별 metadata 분리 | 파일 확장자와 무관한 공통 metadata와 파일 형식별 metadata를 분리하여 저장한다. | MUST |
+| FR-041 | Document block 저장 | heading, paragraph, table, image, figure, list, code, page, slide, sheet 등 chunk 생성 이전의 구조 block을 저장한다. | MUST |
+| FR-042 | Chunk source contract 저장 | chunk는 artifact_id, block_id, chunk_type, source_anchor, prev/next chunk 연결을 통해 원본 근거를 추적할 수 있어야 한다. | MUST |
+| FR-043 | Table artifact 보존 | 표는 검색용 텍스트 표현과 별도로 markdown/json/csv 중 하나 이상의 구조 artifact를 보존할 수 있어야 한다. | SHOULD |
+| FR-044 | Image artifact 보존 | 그림은 파일 위치, page/slide 위치, OCR text, caption, 주변 텍스트 metadata를 저장할 수 있어야 한다. | SHOULD |
+| FR-045 | 추출 결과 재처리 | extractor version, profile, artifact hash를 기준으로 원본 파일 재추출과 chunk 재생성이 가능해야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 
@@ -353,6 +387,20 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - 파일 업로드 직후 사용자는 Job Monitor 또는 Document Detail 화면에서 처리 진행 상태를 확인할 수 있어야 한다.
 
+- 파일 metadata는 original_file_name, file_ext, mime_type, file_size_bytes, sha256_checksum, storage_path, uploaded_by, uploaded_at 같은 공통 metadata와 page_count, slide_count, sheet_names, document_properties, detected_language, encrypted/password-protected 여부 같은 format-specific metadata를 분리하여 저장한다.
+
+- parser/extractor는 확장자만 신뢰하지 않고 MIME type, 파일 signature, 내부 manifest를 함께 확인하여 detected_file_type과 file_type_confidence를 기록한다.
+
+- 모든 추출 작업은 extraction profile 또는 extractor runtime metadata를 남겨야 하며, extractor_name, extractor_version, provider_mode(local/remote), options, elapsed_ms, warning_count, error_count를 기록한다.
+
+- 모든 파일 형식은 1차 추출 결과로 normalized markdown artifact를 생성한다. 원본 파일이 Markdown인 경우에도 normalized markdown artifact를 별도로 저장하여 parser version과 normalization rule 변경을 추적한다.
+
+- normalized markdown artifact는 검색용 chunk 생성의 기준 입력이며, 원본 파일 재처리 없이 chunk policy만 바꾸는 실험에 재사용할 수 있어야 한다.
+
+- PDF/DOCX/HWPX/PPTX/XLSX에서 추출된 table과 image는 당장 독립 검색 대상으로 사용하지 않더라도 document block과 source anchor를 통해 추적 가능해야 한다.
+
+- text가 없는 PDF page, password-protected file, 깨진 archive, 추출 누락 table/image 등은 parsing 실패 또는 warning artifact로 보존한다.
+
 ## 4.5 검색 요구사항
 
 - 검색 화면은 기본적으로 4개 embedding profile 전체 비교 모드로 동작한다.
@@ -380,6 +428,18 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Markdown code block과 table, DOCX/HWPX/PPTX/XLSX table은 가능한 한 하나의 chunk 안에서 보존한다. token size는 구조 경계를 무시하는 절대 길이가 아니라 구조 보존 후 분할 여부를 결정하는 상한선으로 사용한다. target size를 크게 초과하는 table은 row group 단위로 분할한다.
 
 - 각 chunk는 chunk_policy_name, parser_name, parser_version, token_count, char_count, content_hash를 저장하여 regression test와 검색 재현성에 사용할 수 있어야 한다.
+
+- chunk는 text/table/image/figure/code/list/heading 등 chunk_type을 가져야 한다. MVP 검색은 text embedding 중심으로 수행하되, table/image 기반 chunk도 검색용 텍스트 표현을 가진 공통 chunk contract를 따른다.
+
+- chunk는 artifact_id와 block_id를 저장하여 어떤 normalized markdown artifact와 document block에서 생성되었는지 역추적할 수 있어야 한다.
+
+- chunk는 source_anchor JSON을 저장하여 page_no, slide_no, sheet_name, cell_range, char_start/end, row_range, geometry 등 원본 위치를 표현할 수 있어야 한다.
+
+- prev_chunk_id와 next_chunk_id는 같은 document_id와 chunk_policy_name 범위 안에서 연결한다. 검색 결과에서 주변 문맥을 확장할 때 권한 필터를 통과한 같은 문서의 앞/뒤 chunk만 사용할 수 있다.
+
+- table block에서 생성된 chunk는 table_artifact_id 또는 metadata reference를 통해 원본 table 구조를 찾을 수 있어야 하며, target size 초과 시 row group 단위로 분할한다.
+
+- image block에서 생성된 chunk는 OCR text, caption text, surrounding text 중 하나 이상의 검색용 텍스트를 사용할 수 있어야 한다. 이미지 embedding은 MVP 범위 밖이지만 source artifact는 보존한다.
 
 ## 4.7 Embedding job lifecycle 요구사항
 
@@ -487,6 +547,10 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - 원본 파일은 파일 시스템 또는 object storage에 저장하고, DB에는 storage_path와 checksum을 저장한다.
 
+- 추출된 normalized markdown, parser metadata, warning/error report, table/image 산출물은 파일 시스템 또는 object storage에 저장하고, DB에는 artifact metadata와 storage_path 또는 content hash를 저장한다.
+
+- chunk는 원본 파일을 직접 참조하기보다 documents, extraction_artifacts, document_blocks를 통해 원본 위치와 추출 경로를 추적한다.
+
 - Embedding은 pgvector의 vector 또는 halfvec type으로 저장한다.
 
 - KURE-v1 1024, bge-m3 1024, Qwen3 1000 profile은 vector type을 사용한다.
@@ -510,6 +574,12 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | user_org_memberships | 사용자-조직 소속과 역할 |
 | files | 업로드 원본 파일 metadata 및 parsing 상태 |
 | documents | 논리 문서 단위 정보 |
+| extraction_profiles | extractor/provider 이름, 버전, option, local/remote 실행 정책 |
+| extraction_runs | 파일별 추출 실행 이력, 상태, runtime metadata, warning/error 요약 |
+| extraction_artifacts | normalized markdown, plain text, parser metadata, warning/error report 등 추출 산출물 |
+| document_blocks | chunk 생성 이전의 heading/paragraph/table/image/list/code/page/slide/sheet 구조 block |
+| table_artifacts | table block의 markdown/json/csv 구조 산출물 |
+| image_artifacts | image/figure block의 파일 위치, OCR/caption, source 위치 metadata |
 | chunks | 검색 단위 chunk와 구조 metadata |
 | chunk_policies | chunk size, overlap, split strategy 등 chunk 생성 정책 |
 | pipeline_jobs | 문서 처리 파이프라인의 상위 job, stage, status, lease, 진행률 |
@@ -574,6 +644,8 @@ original_file_name TEXT NOT NULL,
 stored_file_name TEXT NOT NULL,
 file_ext TEXT,
 mime_type TEXT,
+detected_file_type TEXT,
+file_type_confidence NUMERIC(5, 2),
 file_size_bytes BIGINT,
 sha256_checksum TEXT UNIQUE,
 storage_path TEXT NOT NULL,
@@ -591,12 +663,130 @@ page_count INT,
 slide_count INT,
 sheet_count INT,
 extracted_text_size BIGINT,
+common_metadata JSONB DEFAULT '{}'::jsonb,
+format_metadata JSONB DEFAULT '{}'::jsonb,
 created_at TIMESTAMP DEFAULT now(),
 updated_at TIMESTAMP DEFAULT now()
 );
 ```
 
-## 5.5 documents/chunks/chunk_policies 테이블 요구사항
+files.common_metadata는 확장자와 무관한 업로드/보안/소유/저장소 metadata를 보조 저장하는 영역이며, files.format_metadata는 PDF page labels, DOCX core properties, PPTX slide layout, XLSX sheet names/used ranges, HWPX section metadata처럼 파일 형식에 밀접한 metadata를 저장한다. MVP에서는 JSONB로 시작하되, dashboard/filter/search pre-filter에 자주 쓰이는 값은 후속 migration에서 정규화된 컬럼으로 승격한다.
+
+## 5.5 ingestion artifact 및 chunk source contract 테이블 요구사항
+
+```sql
+CREATE TABLE extraction_profiles (
+extraction_profile_name TEXT PRIMARY KEY,
+extractor_name TEXT NOT NULL,
+extractor_version TEXT NOT NULL,
+provider_mode TEXT NOT NULL DEFAULT 'local'
+    CHECK (provider_mode IN ('local', 'remote')),
+supported_file_types TEXT[] NOT NULL,
+default_options JSONB DEFAULT '{}'::jsonb,
+is_active BOOLEAN DEFAULT true,
+created_at TIMESTAMP DEFAULT now(),
+updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE extraction_runs (
+extraction_run_id BIGSERIAL PRIMARY KEY,
+file_id BIGINT NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+document_id BIGINT REFERENCES documents(document_id) ON DELETE CASCADE,
+extraction_profile_name TEXT REFERENCES extraction_profiles(extraction_profile_name),
+status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'running', 'succeeded', 'failed', 'skipped')),
+provider_mode TEXT NOT NULL DEFAULT 'local'
+    CHECK (provider_mode IN ('local', 'remote')),
+extractor_name TEXT,
+extractor_version TEXT,
+started_at TIMESTAMP,
+finished_at TIMESTAMP,
+elapsed_ms INT,
+warning_count INT DEFAULT 0,
+error_count INT DEFAULT 0,
+error_code TEXT,
+error_message TEXT,
+runtime_metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now(),
+updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE extraction_artifacts (
+artifact_id BIGSERIAL PRIMARY KEY,
+extraction_run_id BIGINT REFERENCES extraction_runs(extraction_run_id) ON DELETE CASCADE,
+file_id BIGINT NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+document_id BIGINT REFERENCES documents(document_id) ON DELETE CASCADE,
+artifact_type TEXT NOT NULL
+    CHECK (artifact_type IN ('normalized_markdown', 'plain_text', 'parser_metadata', 'warning_report', 'source_snapshot')),
+content_text TEXT,
+storage_path TEXT,
+content_hash TEXT,
+size_bytes BIGINT,
+language TEXT,
+metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE document_blocks (
+block_id BIGSERIAL PRIMARY KEY,
+artifact_id BIGINT NOT NULL REFERENCES extraction_artifacts(artifact_id) ON DELETE CASCADE,
+document_id BIGINT NOT NULL REFERENCES documents(document_id) ON DELETE CASCADE,
+parent_block_id BIGINT REFERENCES document_blocks(block_id) ON DELETE CASCADE,
+block_seq INT NOT NULL,
+block_type TEXT NOT NULL
+    CHECK (block_type IN ('document', 'heading', 'paragraph', 'table', 'image', 'figure', 'list', 'code', 'page', 'slide', 'sheet')),
+content_text TEXT,
+content_markdown TEXT,
+heading_path TEXT[],
+source_anchor JSONB DEFAULT '{}'::jsonb,
+page_no INT,
+slide_no INT,
+sheet_name TEXT,
+cell_range TEXT,
+char_start INT,
+char_end INT,
+token_count INT,
+metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now(),
+UNIQUE (artifact_id, block_seq)
+);
+
+CREATE TABLE table_artifacts (
+table_artifact_id BIGSERIAL PRIMARY KEY,
+block_id BIGINT NOT NULL REFERENCES document_blocks(block_id) ON DELETE CASCADE,
+content_markdown TEXT,
+content_json JSONB,
+storage_path TEXT,
+row_count INT,
+column_count INT,
+source_anchor JSONB DEFAULT '{}'::jsonb,
+metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE image_artifacts (
+image_artifact_id BIGSERIAL PRIMARY KEY,
+block_id BIGINT NOT NULL REFERENCES document_blocks(block_id) ON DELETE CASCADE,
+storage_path TEXT NOT NULL,
+mime_type TEXT,
+width_px INT,
+height_px INT,
+ocr_text TEXT,
+caption_text TEXT,
+surrounding_text TEXT,
+source_anchor JSONB DEFAULT '{}'::jsonb,
+metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now()
+);
+```
+
+Extraction provider request는 file_id, storage_path, mime_type, detected_file_type, extraction_profile_name, options, trace_id를 포함한다. response는 normalized markdown, document block list, artifact manifest, warning/error list, source anchor metadata, elapsed_ms, extractor runtime metadata를 포함한다.
+
+실제 migration 생성 순서는 files → documents → extraction_profiles/extraction_runs/extraction_artifacts/document_blocks → chunk_policies/chunks 순서를 따른다. 위 SQL은 ingestion artifact contract를 설명하기 위한 논리 정의이다.
+
+Normalized markdown artifact는 사람이 검토할 수 있는 형태를 우선하며, chunk 재생성, parser regression, 검색 결과 근거 확인의 기준 산출물로 사용한다. table/image는 검색용 text representation을 chunk로 제공하되, 원본 구조와 파일 위치는 table_artifacts/image_artifacts에 별도로 보존한다.
+
+## 5.6 documents/chunks/chunk_policies 테이블 요구사항
 
 ```sql
 CREATE TABLE documents (
@@ -631,29 +821,37 @@ created_at TIMESTAMP DEFAULT now()
 CREATE TABLE chunks (
 chunk_id BIGSERIAL PRIMARY KEY,
 document_id BIGINT NOT NULL REFERENCES documents(document_id) ON DELETE CASCADE,
+artifact_id BIGINT REFERENCES extraction_artifacts(artifact_id) ON DELETE SET NULL,
+block_id BIGINT REFERENCES document_blocks(block_id) ON DELETE SET NULL,
 chunk_seq INT NOT NULL,
+chunk_type TEXT NOT NULL DEFAULT 'text'
+    CHECK (chunk_type IN ('text', 'table', 'image', 'figure', 'code', 'list', 'heading')),
 chunk_text TEXT NOT NULL,
+content_markdown TEXT,
 content_hash TEXT NOT NULL,
 chunk_policy_name TEXT NOT NULL REFERENCES chunk_policies(chunk_policy_name),
 parser_name TEXT,
 parser_version TEXT,
 heading_path TEXT[],
+source_anchor JSONB DEFAULT '{}'::jsonb,
 page_no INT,
 slide_no INT,
 sheet_name TEXT,
 cell_range TEXT,
+source_char_start INT,
+source_char_end INT,
 token_count INT,
 char_count INT,
 prev_chunk_id BIGINT REFERENCES chunks(chunk_id),
 next_chunk_id BIGINT REFERENCES chunks(chunk_id),
 metadata JSONB DEFAULT '{}'::jsonb,
 created_at TIMESTAMP DEFAULT now(),
-UNIQUE (document_id, chunk_seq),
+UNIQUE (document_id, chunk_policy_name, chunk_seq),
 UNIQUE (document_id, content_hash, chunk_policy_name)
 );
 ```
 
-chunks는 별도 owner/access 컬럼을 중복 저장하지 않고 documents의 owner_user_id, owner_org_unit_id, access_scope를 상속한다. 검색 SQL은 chunks → documents → files 순서로 join하여 permission pre-filter를 적용한다.
+chunks는 별도 owner/access 컬럼을 중복 저장하지 않고 documents의 owner_user_id, owner_org_unit_id, access_scope를 상속한다. 검색 SQL은 chunks → documents → files 순서로 join하여 permission pre-filter를 적용하고, 근거 추적이 필요할 때 chunks → document_blocks → extraction_artifacts → files 순서로 source artifact를 조회한다.
 
 초기 chunk policy는 다음 값을 기본값으로 한다.
 
@@ -663,7 +861,7 @@ chunks는 별도 owner/access 컬럼을 중복 저장하지 않고 documents의 
 | heading_1000_200 | 1000 | 200 | heading-aware | 실무 기본 후보, 문맥/비용 균형 비교 |
 | heading_1500_200 | 1500 | 200 | heading-aware | 긴 문맥 문서 후보, 저장량 대비 recall 비교 |
 
-## 5.6 pipeline job queue 테이블 요구사항
+## 5.7 pipeline job queue 테이블 요구사항
 
 ```sql
 CREATE TABLE pipeline_jobs (
@@ -736,7 +934,7 @@ LIMIT 1;
 
 claim 성공 후 같은 transaction에서 status, lease_owner, lease_expires_at, heartbeat_at을 갱신하고 pipeline_job_events에 claimed event를 기록한다.
 
-## 5.7 embedding profile 및 job 테이블 요구사항
+## 5.8 embedding profile 및 job 테이블 요구사항
 
 ```sql
 CREATE TABLE embedding_profiles (
@@ -786,7 +984,7 @@ embedding profile 초기 데이터는 다음과 같다.
 | qwen3_4b_1000 | Qwen/Qwen3-Embedding-4B | 1000 | vector | 32768 | 8192 | true | query-side instruction 사용 여부를 profile metadata에 기록 | Qwen 저용량 profile |
 | qwen3_4b_2560 | Qwen/Qwen3-Embedding-4B | 2560 | halfvec | 32768 | 8192 | true | query-side instruction 사용 여부를 profile metadata에 기록 | Qwen 최대 차원 profile |
 
-## 5.8 profile별 embedding table
+## 5.9 profile별 embedding table
 
 ```sql
 CREATE TABLE chunk_embeddings_kure_v1_1024 (
@@ -818,7 +1016,7 @@ created_at TIMESTAMP DEFAULT now()
 );
 ```
 
-## 5.9 search log 및 feedback 테이블 요구사항
+## 5.10 search log 및 feedback 테이블 요구사항
 
 ```sql
 CREATE TABLE search_logs (
@@ -869,7 +1067,7 @@ created_at TIMESTAMP DEFAULT now()
 
 permission_filter_metadata에는 actor의 primary org, managed org subtree, 포함된 access_scope 목록, company 문서 포함 여부, filter SQL/parameter fingerprint를 저장한다.
 
-## 5.10 저장용량 산정
+## 5.11 저장용량 산정
 
 저장 타입 기준 embedding 원시 저장용량은 vector profile은 chunk 수 × dimension × 4 bytes, halfvec profile은 chunk 수 × dimension × 2 bytes로 산정한다. 실제 운영 용량은 PostgreSQL row overhead, pgvector index, chunk text, metadata, 원본 파일, 추출 산출물 용량을 추가로 고려해야 한다.
 
@@ -879,7 +1077,7 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | 1,000,000 | 3.9 GB | 3.9 GB | 3.8 GB | 4.9 GB | 약 16.5 GB |
 | 10,000,000 | 39 GB | 39 GB | 38 GB | 49 GB | 약 165 GB |
 
-## 5.11 index 요구사항
+## 5.12 index 요구사항
 
 - MVP 초기에는 exact search를 기준 결과로 남긴다.
 
@@ -909,6 +1107,7 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | Search Compare | 검색어, actor, 검색 scope, 필터, top-k, 4-column 결과 비교, 피드백 버튼 |
 | Document Detail | 원본 metadata, owner, access scope, pipeline timeline, parsing 결과, chunk 목록, embedding 상태 |
 | Job Monitor | pipeline job queue, stage/status/progress, 완료/실패/재처리 상태, worker lease 상태 |
+| Ingestion Artifact Preview | normalized markdown, extraction warning/error, document block, chunk source anchor, table/image artifact metadata |
 
 ## 6.3 검색 비교 화면 레이아웃
 
@@ -1002,6 +1201,10 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 
 - 검색 로그는 chunk_policy_name, parser_name, parser_version, similarity_metric, top_k, index_type, index_parameters를 저장해야 한다.
 
+- 검색 결과는 chunk_id만 저장하지 않고, 결과 chunk의 artifact_id, block_id, chunk_type, source_anchor snapshot을 조회 가능해야 한다.
+
+- normalized markdown artifact hash, extraction profile, extractor version, chunk source contract가 달라지면 같은 query라도 별도 검색 실험으로 간주한다.
+
 - 검색 로그는 actor_user_id, requested_search_scope, effective_search_scope, permission_filter_metadata를 저장해야 한다.
 
 - 검색 결과는 profile별 rank, chunk_id, distance, score, profile_elapsed_ms를 개별 row로 저장한다.
@@ -1026,6 +1229,9 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | NFR-012 | 운영성 | 오래 걸리는 ingestion pipeline은 API request thread를 점유하지 않고 queue와 worker에서 처리한다. |
 | NFR-013 | 신뢰성 | worker 중단, lease 만료, 일시적 DB 오류가 발생해도 job은 재시도 가능하고 중복 저장을 방지해야 한다. |
 | NFR-014 | 관측성 | pipeline job의 stage 전환, 진행률, worker heartbeat, 실패 원인, 재시도 이력을 UI와 로그로 추적할 수 있어야 한다. |
+| NFR-015 | 재현성 | 원본 파일, extraction artifact, document block, chunk, embedding, search result 사이의 lineage를 역추적할 수 있어야 한다. |
+| NFR-016 | 확장성 | 추출 기능은 local runtime으로 시작하되 OCR/layout/table/image captioning을 remote extraction provider로 분리할 수 있어야 한다. |
+| NFR-017 | 데이터 보존 | table/image는 MVP 검색 대상이 아니더라도 source artifact와 검색용 text representation을 보존하여 후속 실험에 사용할 수 있어야 한다. |
 
 # 9. 소프트웨어 품질관리 및 테스트 요구사항
 
@@ -1052,6 +1258,9 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | QA-013 | pipeline job queue schema, claim query, lease 만료, retry, progress update를 integration test에 포함한다. |
 | QA-014 | 동시 worker claim 상황에서 같은 job이 중복 점유되지 않는지 concurrency regression test를 포함한다. |
 | QA-015 | 업로드 API는 heavy processing을 기다리지 않고 queued job id를 반환하는 smoke test를 포함한다. |
+| QA-016 | extraction artifact, document block, chunk source anchor schema는 migration/integration test에 포함한다. |
+| QA-017 | 동일 normalized markdown artifact에서 chunk policy만 바꿔 chunk를 재생성하는 regression test를 포함한다. |
+| QA-018 | PDF/DOCX/PPTX/XLSX/HWPX/MD fixture는 최소 하나 이상의 source anchor와 warning/error case를 포함한다. |
 
 ## 9.2 테스트 계층
 
@@ -1100,6 +1309,8 @@ tests/
 │ ├─ test_parsers_hwpx.py
 │ ├─ test_parsers_pptx.py
 │ ├─ test_parsers_xlsx.py
+│ ├─ test_extraction_artifacts.py
+│ ├─ test_document_blocks.py
 │ ├─ test_chunker.py
 │ ├─ test_chunk_policies.py
 │ ├─ test_embedding_profiles.py
@@ -1112,6 +1323,8 @@ tests/
 │ ├─ test_document_repository.py
 │ ├─ test_permission_repository.py
 │ ├─ test_pipeline_job_repository.py
+│ ├─ test_extraction_artifact_repository.py
+│ ├─ test_chunk_source_contract_schema.py
 │ ├─ test_embedding_repository.py
 │ ├─ test_embedding_job_repository.py
 │ └─ test_vector_search_profiles.py
@@ -1126,6 +1339,7 @@ tests/
 │ ├─ test_pipeline_job_regression.py
 │ ├─ test_permission_scope_regression.py
 │ ├─ test_chunking_regression.py
+│ ├─ test_extraction_artifact_regression.py
 │ ├─ test_search_ranking_regression.py
 │ └─ test_search_reproducibility_regression.py
 ├─ smoke/
@@ -1142,6 +1356,8 @@ tests/
 │ ├─ files/
 │ ├─ permissions/
 │ ├─ expected_chunks/
+│ ├─ expected_artifacts/
+│ ├─ expected_blocks/
 │ └─ expected_search_results/
 └─ conftest.py
 ```
@@ -1180,7 +1396,8 @@ pytest tests/e2e
 | Phase 2 | 파일 업로드 + metadata 저장 | 업로드 API/UI, files/documents 테이블, checksum 중복 검출, 문서 그룹/보안 등급 metadata | 지원 확장자 업로드와 metadata 저장 test 통과 |
 | Phase 2.5 | Identity + Permission Metadata | 테스트 계정, 조직 계층, document access scope, permission-aware search metadata | actor/scope별 접근 가능 문서 fixture와 permission pre-filter test 통과 |
 | Phase 2.6 | Pipeline Queue + Worker Foundation | pipeline_jobs/pipeline_job_events, PostgreSQL queue claim, worker lease, 진행 상태 API/UI | 업로드 후 queued job 생성, worker claim/retry/progress integration test 통과 |
-| Phase 3 | Parsing + Chunking | 파일별 parser, heading-aware chunker, chunk_policies/chunks 저장 | fixture 문서별 chunk 생성 결과와 chunk policy regression test 통과 |
+| Phase 2.7 | Ingestion Source Contract | extraction_profiles/runs/artifacts, document_blocks, table/image artifact placeholder, chunk source contract | normalized markdown artifact와 block/source anchor를 기준으로 chunk lineage test 통과 |
+| Phase 3 | Parsing + Chunking | 파일별 extractor/parser, heading-aware chunker, chunk_policies/chunks 저장 | fixture 문서별 artifact/block/chunk 생성 결과와 chunk policy regression test 통과 |
 | Phase 4 | 4개 Embedding Profile 처리 | profile별 worker/table, embedding_jobs 상태 관리, Qwen 2560 halfvec 저장 | 동일 chunk에 대해 4개 profile embedding 저장 및 job status transition 검증 |
 | Phase 5 | 검색 비교 UI | 4-column 검색 화면, search_logs/search_log_results/feedback 저장 | 동일 query에 대한 4개 profile top-k 결과 표시, 재현성 metadata 기록, 피드백 저장 |
 | Phase 6 | 평가 자동화 | golden question set, Recall@k/MRR/nDCG 리포트 | 질문셋 기반 profile별 평가 리포트 생성 |
@@ -1196,6 +1413,10 @@ pytest tests/e2e
 - 사용자는 업로드한 문서의 pipeline stage, status, progress, 실패 원인을 화면에서 확인할 수 있어야 한다.
 
 - 파일별 parser가 최소 fixture 문서에 대해 정상적으로 text를 추출한다.
+
+- 모든 업로드 문서는 normalized markdown artifact를 생성하고, chunk는 artifact_id/block_id/source_anchor를 통해 원본 근거를 역추적할 수 있어야 한다.
+
+- table/image는 MVP에서 직접 vector embedding하지 않더라도 검색용 text representation과 source artifact metadata를 보존해야 한다.
 
 - 동일 chunk를 4개 embedding profile로 변환하여 pgvector에 저장한다.
 
@@ -1224,6 +1445,11 @@ pytest tests/e2e
 | Remote embedding provider 장애 | embedding job 대기/실패 증가 | provider health check, timeout, retry/backoff, provider runtime metadata, failed job retry 제공 |
 | Qwen 2560 vector 저장 타입 오류 | migration 실패 또는 검색 index 생성 실패 | qwen3_4b_2560은 halfvec(2560)으로 고정하고 pgvector halfvec integration test 추가 |
 | HWPX parsing 품질 부족 | 국내 문서 검색 품질 저하 | 초기 XML text 추출 후 fixture 확대, parser regression test 강화 |
+| 파일 확장자와 실제 내용 불일치 | 잘못된 parser 선택, 추출 실패 또는 보안 위험 | MIME type, 파일 signature, 내부 manifest를 함께 검사하고 detected_file_type/file_type_confidence를 저장 |
+| 추출 산출물 미보존 | chunk 정책 변경, parser 개선, 검색 결과 재현이 어려움 | normalized markdown artifact와 artifact hash를 저장하고 chunk 재생성 기준으로 사용 |
+| Table 구조 손실 | 표 기반 질문의 검색 정확도 저하 | table block은 검색용 text와 별도 table_artifacts markdown/json/csv 구조를 보존 |
+| Image/OCR 정보 손실 | 그림/스캔 PDF 기반 질문을 후속 실험으로 확장하기 어려움 | image_artifacts에 source 위치, OCR text, caption, surrounding text metadata를 보존 |
+| Chunk source anchor 누락 | 검색 결과 근거 화면과 환각 분석이 어려움 | chunk마다 artifact_id, block_id, chunk_type, source_anchor, prev/next link를 저장 |
 | Chunk 정책 부적절 | 검색 recall 저하 또는 중복 검색 증가 | chunk_policy를 DB에 저장하고 정책별 평가 자동화 |
 | Score 비교 오해 | 모델 성능 오판 | score 절대값이 아닌 rank/top-k/피드백 기준으로 비교 |
 | Query instruction 미기록 | Qwen 계열 검색 결과 재현 불가 | profile metadata와 search log에 query instruction 사용 여부와 instruction text 저장 |
