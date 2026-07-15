@@ -17,6 +17,12 @@
     >
       {{ t("ingestion_artifacts.preview_api") }}
     </a>
+    <a
+      class="btn btn-outline-secondary"
+      href="/api/documents/{{ document.document_id }}/extraction-quality{% if selected_artifact_id %}?artifact_id={{ selected_artifact_id }}{% endif %}"
+    >
+      {{ t("ingestion_artifacts.quality_api") }}
+    </a>
     <a class="btn btn-outline-secondary" href="/documents/{{ document.document_id }}">{{ t("ingestion_artifacts.back_to_document") }}</a>
     {% endif %}
     <a class="btn btn-outline-secondary" href="/documents">{{ t("nav.documents") }}</a>
@@ -148,6 +154,60 @@
       {% else %}
       <div class="text-secondary py-4">{{ t("ingestion_artifacts.no_artifact_selected") }}</div>
       {% endif %}
+    </section>
+
+    <section class="metric-card bg-white p-3 mb-3">
+      {% set quality_status_class = "text-bg-success" if extraction_quality_check.status == "passed" else "text-bg-danger" if extraction_quality_check.status == "failed" else "text-bg-warning" if extraction_quality_check.status == "warning" else "text-bg-secondary" %}
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("ingestion_artifacts.quality_check") }}</h2>
+          <div class="text-secondary">{{ t("ingestion_artifacts.quality_check_help") }}</div>
+        </div>
+        <span class="badge {{ quality_status_class }}">
+          {{ t("ingestion_artifacts.quality_status_" ~ extraction_quality_check.status) }}
+        </span>
+      </div>
+      <dl class="artifact-summary-grid extraction-quality-grid mb-3">
+        <div>
+          <dt>{{ t("ingestion_artifacts.issue_count") }}</dt>
+          <dd>{{ extraction_quality_check.issue_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.warning_count") }}</dt>
+          <dd>{{ extraction_quality_check.warning_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.failed_count") }}</dt>
+          <dd>{{ extraction_quality_check.failed_count }}</dd>
+        </div>
+        <div>
+          <dt>{{ t("ingestion_artifacts.source_anchor_coverage") }}</dt>
+          <dd>
+            {% if extraction_quality_check.source_anchor_coverage_percent is not none %}
+            {{ "%.2f"|format(extraction_quality_check.source_anchor_coverage_percent) }}%
+            {% else %}
+            -
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+      <div class="extraction-quality-issues">
+        {% for issue in extraction_quality_check.issues %}
+        {% set issue_badge_class = "text-bg-danger" if issue.severity == "failed" else "text-bg-warning" if issue.severity == "warning" else "text-bg-secondary" %}
+        <article class="extraction-quality-issue extraction-quality-issue-{{ issue.severity }}">
+          <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+            <span class="badge {{ issue_badge_class }}">{{ t("ingestion_artifacts.quality_severity_" ~ issue.severity) }}</span>
+            <strong>{{ issue.code }}</strong>
+            {% if issue.metric is not none %}
+            <span class="text-secondary">{{ issue.metric }}</span>
+            {% endif %}
+          </div>
+          <div class="text-secondary">{{ issue.message }}</div>
+        </article>
+        {% else %}
+        <div class="text-secondary">{{ t("ingestion_artifacts.no_quality_issues") }}</div>
+        {% endfor %}
+      </div>
     </section>
 
     <section class="metric-card bg-white p-3 mb-3">

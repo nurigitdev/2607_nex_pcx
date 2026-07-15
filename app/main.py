@@ -5711,6 +5711,173 @@ def document_block_summary_payload(
     }
 
 
+EXTRACTION_QUALITY_MIN_TEXT_LENGTH = 80
+EXTRACTION_QUALITY_MIN_SOURCE_ANCHOR_COVERAGE_PERCENT = 80.0
+
+
+def _extraction_quality_issue(
+    *,
+    code: str,
+    severity: str,
+    message: str,
+    metric: object | None = None,
+) -> dict[str, object]:
+    return {
+        "code": code,
+        "severity": severity,
+        "message": message,
+        "metric": metric,
+    }
+
+
+def extraction_quality_check_payload(
+    artifact: ExtractionArtifactRecord | None,
+    blocks: list[DocumentBlockRecord],
+    extraction_runs: list[ExtractionRunRecord],
+) -> dict[str, object]:
+    block_summary = document_block_summary_payload(blocks)
+    block_count = int(block_summary["block_count"])
+    source_anchor_count = int(block_summary["source_anchor_count"])
+    source_anchor_coverage_percent = (
+        round(source_anchor_count / block_count * 100, 2) if block_count else None
+    )
+    block_type_counts = block_summary["block_type_counts"]
+    issues: list[dict[str, object]] = []
+
+    if artifact is None:
+        issues.append(
+            _extraction_quality_issue(
+                code="no_artifact_selected",
+                severity="info",
+                message="No extraction artifact is selected.",
+            )
+        )
+        return {
+            "status": "not_available",
+            "content_length": None,
+            "content_lines": None,
+            "block_count": block_count,
+            "source_anchor_count": source_anchor_count,
+            "source_anchor_coverage_percent": source_anchor_coverage_percent,
+            "issue_count": len(issues),
+            "warning_count": 0,
+            "failed_count": 0,
+            "issues": issues,
+        }
+
+    content_text = artifact.content_text or ""
+    stripped_text = content_text.strip()
+    content_length = len(content_text) if artifact.content_text is not None else None
+    content_lines = len(content_text.splitlines()) if artifact.content_text is not None else None
+
+    if not stripped_text:
+        issues.append(
+            _extraction_quality_issue(
+                code="missing_content_text",
+                severity="failed",
+                message="The selected artifact has no extracted text.",
+                metric=content_length,
+            )
+        )
+    elif len(stripped_text) < EXTRACTION_QUALITY_MIN_TEXT_LENGTH:
+        issues.append(
+            _extraction_quality_issue(
+                code="short_content_text",
+                severity="warning",
+                message=(
+                    "The selected artifact text is shorter than the baseline review threshold."
+                ),
+                metric=len(stripped_text),
+            )
+        )
+
+    if block_count == 0:
+        issues.append(
+            _extraction_quality_issue(
+                code="missing_blocks",
+                severity="failed",
+                message="No document blocks were created from the selected artifact.",
+                metric=block_count,
+            )
+        )
+    else:
+        if source_anchor_count == 0:
+            issues.append(
+                _extraction_quality_issue(
+                    code="missing_source_anchors",
+                    severity="warning",
+                    message="Document blocks have no source anchors.",
+                    metric=source_anchor_count,
+                )
+            )
+        elif (
+            source_anchor_coverage_percent is not None
+            and source_anchor_coverage_percent
+            < EXTRACTION_QUALITY_MIN_SOURCE_ANCHOR_COVERAGE_PERCENT
+        ):
+            issues.append(
+                _extraction_quality_issue(
+                    code="low_source_anchor_coverage",
+                    severity="warning",
+                    message="Source anchor coverage is below the baseline review threshold.",
+                    metric=source_anchor_coverage_percent,
+                )
+            )
+        if "heading" not in block_type_counts:
+            issues.append(
+                _extraction_quality_issue(
+                    code="missing_heading_blocks",
+                    severity="warning",
+                    message="No heading blocks were detected in the selected artifact.",
+                )
+            )
+
+    selected_run = next(
+        (
+            run
+            for run in extraction_runs
+            if run.extraction_run_id == artifact.extraction_run_id
+        ),
+        None,
+    )
+    if selected_run is not None:
+        if selected_run.status == "failed" or selected_run.error_count > 0:
+            issues.append(
+                _extraction_quality_issue(
+                    code="extraction_run_errors",
+                    severity="failed",
+                    message="The extraction run has errors.",
+                    metric=selected_run.error_count,
+                )
+            )
+        elif selected_run.warning_count > 0:
+            issues.append(
+                _extraction_quality_issue(
+                    code="extraction_run_warnings",
+                    severity="warning",
+                    message="The extraction run completed with warnings.",
+                    metric=selected_run.warning_count,
+                )
+            )
+
+    warning_count = sum(1 for issue in issues if issue["severity"] == "warning")
+    failed_count = sum(1 for issue in issues if issue["severity"] == "failed")
+    status_value = "failed" if failed_count else "warning" if warning_count else "passed"
+
+    return {
+        "status": status_value,
+        "content_length": content_length,
+        "content_lines": content_lines,
+        "block_count": block_count,
+        "source_anchor_count": source_anchor_count,
+        "source_anchor_coverage_percent": source_anchor_coverage_percent,
+        "issue_count": len(issues),
+        "warning_count": warning_count,
+        "failed_count": failed_count,
+        "issues": issues,
+    }
+
+
 def chunk_policy_summary_payload(policy: ChunkPolicySummaryRecord) -> dict[str, object]:
     return {
         "chunk_policy_name": policy.chunk_policy_name,
@@ -6535,6 +6702,83 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 "blocks": [document_block_payload(block) for block in document_blocks],
                 "block_summary": document_block_summary_payload(document_blocks),
+            },
+        )
+
+    @app.get("/api/documents/{document_id}/extraction-quality")
+    def api_get_document_extraction_quality(
+        document_id: int,
+        artifact_id: int | None = None,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            extraction_runs = list_document_extraction_runs(settings.database_url, document_id)
+            extraction_artifacts = list_document_extraction_artifacts(
+                settings.database_url,
+                document_id,
+            )
+            selected_artifact_id = (
+                artifact_id
+                if artifact_id is not None
+                else (extraction_artifacts[0].artifact_id if extraction_artifacts else None)
+            )
+            selected_artifact = (
+                next(
+                    (
+                        artifact
+                        for artifact in extraction_artifacts
+                        if artifact.artifact_id == selected_artifact_id
+                    ),
+                    None,
+                )
+                if selected_artifact_id is not None
+                else None
+            )
+            if selected_artifact_id is not None and selected_artifact is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Extraction artifact not found for document.",
+                )
+            document_blocks = (
+                list_document_blocks(
+                    settings.database_url,
+                    document_id,
+                    artifact_id=selected_artifact_id,
+                )
+                if selected_artifact_id is not None
+                else []
+            )
+        except InvalidDocumentInventoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidIngestionArtifactError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "document": document_inventory_item_payload(document),
+                "selected_artifact_id": selected_artifact_id,
+                "selected_artifact": (
+                    extraction_artifact_payload(selected_artifact)
+                    if selected_artifact is not None
+                    else None
+                ),
+                "block_summary": document_block_summary_payload(document_blocks),
+                "quality_check": extraction_quality_check_payload(
+                    selected_artifact,
+                    document_blocks,
+                    extraction_runs,
+                ),
             },
         )
 
@@ -10257,6 +10501,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     extraction_artifact_preview_payload(selected_artifact)
                     if selected_artifact is not None
                     else None
+                ),
+                extraction_quality_check=extraction_quality_check_payload(
+                    selected_artifact,
+                    document_blocks,
+                    extraction_runs,
                 ),
                 selected_artifact_id=selected_artifact_id,
                 error_message=error_message,

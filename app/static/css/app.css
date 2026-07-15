@@ -2286,6 +2286,34 @@ main.container-fluid {
   gap: 0.375rem;
 }
 
+.extraction-quality-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.extraction-quality-issues {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.extraction-quality-issue {
+  border: 1px solid var(--pcx-border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.extraction-quality-issue-info {
+  border-left-color: #94a3b8;
+}
+
+.extraction-quality-issue-warning {
+  border-left-color: #f59e0b;
+}
+
+.extraction-quality-issue-failed {
+  border-left-color: #ef4444;
+}
+
 .preflight-run-json-viewer {
   max-height: 24rem;
   overflow: auto;
