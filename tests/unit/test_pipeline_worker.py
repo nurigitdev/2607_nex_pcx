@@ -14,6 +14,7 @@ from app.core.pipeline_worker import (
     ERROR_CODE_INVALID_JOB_INPUT,
     ERROR_CODE_MARKDOWN_PIPELINE_ERROR,
     ERROR_CODE_STORED_FILE_NOT_FOUND,
+    ERROR_CODE_UNSUPPORTED_FILE_TYPE,
     ERROR_CODE_UNSUPPORTED_JOB_TYPE,
     process_next_markdown_pipeline_job,
 )
@@ -186,6 +187,29 @@ def test_process_next_markdown_pipeline_job_fails_invalid_file_metadata(
     assert result.job.status == "failed"
     assert result.job.error_code == ERROR_CODE_INVALID_JOB_INPUT
     assert message in result.message
+
+
+def test_process_next_markdown_pipeline_job_fails_unregistered_local_runtime(
+    monkeypatch,
+) -> None:
+    job = make_job()
+    patch_claim(monkeypatch, job)
+    calls = patch_failure(monkeypatch, job)
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.get_file_metadata",
+        lambda *args: make_file(file_ext=".unknown"),
+    )
+
+    result = process_next_markdown_pipeline_job(
+        "postgresql://example/db",
+        worker_name="unit-test-worker",
+    )
+
+    assert result.job is not None
+    assert result.job.status == "failed"
+    assert result.job.error_code == ERROR_CODE_UNSUPPORTED_FILE_TYPE
+    assert "No local extraction runtime is registered for .unknown files" in result.message
+    assert calls["file_failed"] == 1
 
 
 def test_process_next_markdown_pipeline_job_fails_when_stored_file_is_missing(

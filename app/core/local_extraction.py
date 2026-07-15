@@ -46,6 +46,7 @@ LOCAL_PDF_TEXT_PROFILE_NAME = "local_pdf_text_default"
 LOCAL_DOCX_PROFILE_NAME = "local_docx_default"
 LOCAL_PPTX_PROFILE_NAME = "local_pptx_default"
 LOCAL_XLSX_PROFILE_NAME = "local_xlsx_default"
+LOCAL_HWPX_PROFILE_NAME = "local_hwpx_default"
 LOCAL_PLAIN_TEXT_EXTRACTOR_NAME = "local_plain_text"
 LOCAL_PLAIN_TEXT_EXTRACTOR_VERSION = "0.1.0"
 LOCAL_PDF_TEXT_EXTRACTOR_NAME = "local_pdf_text"
@@ -56,10 +57,13 @@ LOCAL_PPTX_EXTRACTOR_NAME = "local_pptx"
 LOCAL_PPTX_EXTRACTOR_VERSION = "0.1.0"
 LOCAL_XLSX_EXTRACTOR_NAME = "local_xlsx"
 LOCAL_XLSX_EXTRACTOR_VERSION = "0.1.0"
+LOCAL_HWPX_EXTRACTOR_NAME = "local_hwpx"
+LOCAL_HWPX_EXTRACTOR_VERSION = "0.1.0"
 PDF_TEXT_LIBRARY_NAME = "pypdf"
 DOCX_LIBRARY_NAME = "python-docx"
 PPTX_LIBRARY_NAME = "python-pptx"
 XLSX_LIBRARY_NAME = "openpyxl"
+HWPX_CONTAINER_FORMAT = "hwpx_zip_xml"
 
 ERROR_CODE_LOCAL_SOURCE_NOT_FOUND = "LOCAL_SOURCE_NOT_FOUND"
 ERROR_CODE_LOCAL_SOURCE_EMPTY = "LOCAL_SOURCE_EMPTY"
@@ -74,6 +78,8 @@ ERROR_CODE_LOCAL_PPTX_READ_FAILED = "LOCAL_PPTX_READ_FAILED"
 ERROR_CODE_LOCAL_PPTX_EMPTY = "LOCAL_PPTX_EMPTY"
 ERROR_CODE_LOCAL_XLSX_READ_FAILED = "LOCAL_XLSX_READ_FAILED"
 ERROR_CODE_LOCAL_XLSX_EMPTY = "LOCAL_XLSX_EMPTY"
+ERROR_CODE_LOCAL_HWPX_READ_FAILED = "LOCAL_HWPX_READ_FAILED"
+ERROR_CODE_LOCAL_HWPX_EMPTY = "LOCAL_HWPX_EMPTY"
 
 
 LocalExtractionCallable = Callable[
@@ -519,6 +525,72 @@ def _extract_xlsx_source(
             "block_count": len(blocks),
             "preserve_sheet_boundaries": True,
             "emit_markdown_tables": True,
+        },
+    )
+
+
+def _extract_hwpx_source(
+    request: ExtractionRuntimeRequest,
+    source_path: Path,
+    started: float,
+) -> ExtractionRuntimeResult:
+    try:
+        section_documents = _read_hwpx_section_documents(source_path)
+        artifact_text, blocks, counts = _hwpx_sections_to_artifact_and_blocks(section_documents)
+    except Exception as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_HWPX_READ_FAILED,
+            f"HWPX content could not be read: {exc}",
+        )
+
+    if not blocks:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_HWPX_EMPTY,
+            "HWPX does not contain extractable paragraph or table text",
+        )
+
+    metadata = {
+        "source_path": str(source_path),
+        "source_file_name": source_path.name,
+        "parser_name": LOCAL_HWPX_EXTRACTOR_NAME,
+        "parser_version": LOCAL_HWPX_EXTRACTOR_VERSION,
+        "container_format": HWPX_CONTAINER_FORMAT,
+        "section_count": counts["section_count"],
+        "extracted_section_count": counts["extracted_section_count"],
+        "paragraph_count": counts["paragraph_count"],
+        "table_count": counts["table_count"],
+        "block_count": len(blocks),
+        "preserve_sections": True,
+        "preserve_tables": True,
+        "options": request.options,
+    }
+    artifact = ExtractionRuntimeArtifact(
+        artifact_type="normalized_markdown",
+        content_text=artifact_text,
+        content_hash=_hash_text(artifact_text),
+        size_bytes=len(artifact_text.encode("utf-8")),
+        metadata=metadata,
+    )
+    return ExtractionRuntimeResult(
+        status="succeeded",
+        artifacts=(artifact,),
+        blocks=blocks,
+        elapsed_ms=_elapsed_ms(started),
+        runtime_metadata={
+            "profile_name": LOCAL_HWPX_PROFILE_NAME,
+            "extractor_name": LOCAL_HWPX_EXTRACTOR_NAME,
+            "extractor_version": LOCAL_HWPX_EXTRACTOR_VERSION,
+            "container_format": HWPX_CONTAINER_FORMAT,
+            "source_path": str(source_path),
+            "section_count": counts["section_count"],
+            "extracted_section_count": counts["extracted_section_count"],
+            "paragraph_count": counts["paragraph_count"],
+            "table_count": counts["table_count"],
+            "block_count": len(blocks),
+            "preserve_sections": True,
+            "preserve_tables": True,
         },
     )
 
@@ -1088,6 +1160,211 @@ def _normalize_xlsx_cell_value(value: Any) -> str:
     return _normalize_docx_text(str(value))
 
 
+def _read_hwpx_section_documents(source_path: Path) -> tuple[tuple[str, Any], ...]:
+    from xml.etree import ElementTree
+    from zipfile import ZipFile
+
+    with ZipFile(source_path) as archive:
+        section_names = tuple(
+            sorted(
+                name
+                for name in archive.namelist()
+                if name.startswith("Contents/section") and name.endswith(".xml")
+            )
+        )
+        if not section_names:
+            section_names = tuple(
+                sorted(
+                    name
+                    for name in archive.namelist()
+                    if name.startswith("Contents/")
+                    and name.endswith(".xml")
+                    and "header" not in name.lower()
+                    and "settings" not in name.lower()
+                )
+            )
+        return tuple(
+            (section_name, ElementTree.fromstring(archive.read(section_name)))
+            for section_name in section_names
+        )
+
+
+def _hwpx_sections_to_artifact_and_blocks(
+    section_documents: tuple[tuple[str, Any], ...],
+) -> tuple[
+    str,
+    tuple[ExtractionRuntimeBlock, ...],
+    dict[str, int],
+]:
+    parts: list[str] = []
+    blocks: list[ExtractionRuntimeBlock] = []
+    counts = {
+        "section_count": len(section_documents),
+        "extracted_section_count": 0,
+        "paragraph_count": 0,
+        "table_count": 0,
+    }
+    cursor = 0
+    marked_section_indices: set[int] = set()
+    paragraph_index = 0
+    table_index = 0
+
+    def ensure_section_marker(section_index: int) -> None:
+        nonlocal cursor
+        if section_index in marked_section_indices:
+            return
+        section_marker = f"<!-- section: {section_index} -->"
+        if parts:
+            parts.append("\n\n")
+            cursor += 2
+        parts.append(section_marker)
+        cursor += len(section_marker)
+        marked_section_indices.add(section_index)
+
+    def append_block(
+        *,
+        section_index: int,
+        block_type: str,
+        content_text: str,
+        content_markdown: str,
+        source_anchor: dict[str, Any],
+        metadata: dict[str, Any],
+    ) -> None:
+        nonlocal cursor
+        ensure_section_marker(section_index)
+        parts.append("\n\n")
+        cursor += 2
+        char_start = cursor
+        parts.append(content_markdown)
+        cursor += len(content_markdown)
+        blocks.append(
+            ExtractionRuntimeBlock(
+                block_seq=len(blocks),
+                block_type=block_type,
+                content_text=content_text,
+                content_markdown=content_markdown,
+                heading_path=(f"Section {section_index}",),
+                source_anchor=source_anchor,
+                char_start=char_start,
+                char_end=cursor,
+                token_count=count_chunk_tokens(content_markdown),
+                metadata=metadata,
+            )
+        )
+
+    for section_index, (section_name, section_root) in enumerate(
+        section_documents,
+        start=1,
+    ):
+        section_block_count = 0
+        section_paragraph_index = 0
+        section_table_index = 0
+        for block_element in _iter_hwpx_block_elements(section_root):
+            local_name = _xml_local_name(block_element.tag)
+            if local_name == "p":
+                paragraph_text = _hwpx_text_content(block_element)
+                if not paragraph_text:
+                    continue
+                paragraph_index += 1
+                section_paragraph_index += 1
+                counts["paragraph_count"] += 1
+                append_block(
+                    section_index=section_index,
+                    block_type="paragraph",
+                    content_text=paragraph_text,
+                    content_markdown=paragraph_text,
+                    source_anchor={
+                        "section_index": section_index,
+                        "section_name": section_name,
+                        "paragraph_index": paragraph_index,
+                        "section_paragraph_index": section_paragraph_index,
+                    },
+                    metadata={
+                        "source": "hwpx",
+                        "section_name": section_name,
+                    },
+                )
+                section_block_count += 1
+            elif local_name == "tbl":
+                rows = _hwpx_table_rows(block_element)
+                if not rows:
+                    continue
+                table_index += 1
+                section_table_index += 1
+                counts["table_count"] += 1
+                content_text = "\n".join("\t".join(row) for row in rows)
+                append_block(
+                    section_index=section_index,
+                    block_type="table",
+                    content_text=content_text,
+                    content_markdown=_format_markdown_table(rows),
+                    source_anchor={
+                        "section_index": section_index,
+                        "section_name": section_name,
+                        "table_index": table_index,
+                        "section_table_index": section_table_index,
+                    },
+                    metadata={
+                        "source": "hwpx",
+                        "section_name": section_name,
+                        "row_count": len(rows),
+                        "column_count": max(len(row) for row in rows),
+                    },
+                )
+                section_block_count += 1
+
+        if section_block_count:
+            counts["extracted_section_count"] += 1
+
+    return "".join(parts), tuple(blocks), counts
+
+
+def _iter_hwpx_block_elements(element: Any):
+    for child in list(element):
+        local_name = _xml_local_name(child.tag)
+        if local_name in {"p", "tbl"}:
+            yield child
+            continue
+        yield from _iter_hwpx_block_elements(child)
+
+
+def _hwpx_text_content(element: Any) -> str:
+    text_parts = [
+        node.text or "" for node in element.iter() if _xml_local_name(node.tag) == "t" and node.text
+    ]
+    if not text_parts and element.text:
+        text_parts.append(element.text)
+    return _normalize_docx_text("".join(text_parts))
+
+
+def _hwpx_table_rows(table_element: Any) -> tuple[tuple[str, ...], ...]:
+    rows: list[tuple[str, ...]] = []
+    for row_element in _iter_hwpx_descendants_by_local_name(table_element, "tr"):
+        cells = [
+            _hwpx_text_content(cell_element)
+            for cell_element in _iter_hwpx_descendants_by_local_name(row_element, "tc")
+        ]
+        values = tuple(value for value in cells if value or len(cells) > 1)
+        if any(values):
+            rows.append(values)
+    return tuple(rows)
+
+
+def _iter_hwpx_descendants_by_local_name(element: Any, local_name: str):
+    for descendant in element.iter():
+        if descendant is element:
+            continue
+        if _xml_local_name(descendant.tag) == local_name:
+            yield descendant
+
+
+def _xml_local_name(tag: Any) -> str:
+    text = str(tag)
+    if "}" in text:
+        return text.rsplit("}", 1)[1]
+    return text
+
+
 def _normalize_docx_text(text: str) -> str:
     return " ".join(text.replace("\r", "\n").split())
 
@@ -1191,6 +1468,15 @@ LOCAL_EXTRACTION_HANDLERS = (
         extractor_version=LOCAL_XLSX_EXTRACTOR_VERSION,
         supported_file_types=("xlsx",),
         extract=_extract_xlsx_source,
+    ),
+    LocalExtractionHandler(
+        profile_name=LOCAL_HWPX_PROFILE_NAME,
+        parser_name=LOCAL_HWPX_EXTRACTOR_NAME,
+        parser_version=LOCAL_HWPX_EXTRACTOR_VERSION,
+        extractor_name=LOCAL_HWPX_EXTRACTOR_NAME,
+        extractor_version=LOCAL_HWPX_EXTRACTOR_VERSION,
+        supported_file_types=("hwpx",),
+        extract=_extract_hwpx_source,
     ),
 )
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+from zipfile import ZipFile
 
 from docx import Document
 from openpyxl import Workbook
@@ -8,12 +9,14 @@ from pptx.util import Inches
 from app.core.extraction_runtime import ExtractionRuntimeRequest
 from app.core.local_extraction import (
     ERROR_CODE_LOCAL_DOCX_EMPTY,
+    ERROR_CODE_LOCAL_HWPX_EMPTY,
     ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY,
     ERROR_CODE_LOCAL_PPTX_EMPTY,
     ERROR_CODE_LOCAL_SOURCE_NOT_FOUND,
     ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE,
     ERROR_CODE_LOCAL_XLSX_EMPTY,
     LOCAL_DOCX_PROFILE_NAME,
+    LOCAL_HWPX_PROFILE_NAME,
     LOCAL_MARKDOWN_PROFILE_NAME,
     LOCAL_PDF_TEXT_PROFILE_NAME,
     LOCAL_PLAIN_TEXT_PROFILE_NAME,
@@ -116,6 +119,40 @@ def write_sample_xlsx(path: Path) -> None:
     workbook.save(path)
 
 
+def write_sample_hwpx(path: Path) -> None:
+    section_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<hp:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p>
+    <hp:run><hp:t>HWPX first paragraph.</hp:t></hp:run>
+  </hp:p>
+  <hp:tbl>
+    <hp:tr>
+      <hp:tc><hp:subList><hp:p><hp:run><hp:t>Metric</hp:t></hp:run></hp:p></hp:subList></hp:tc>
+      <hp:tc><hp:subList><hp:p><hp:run><hp:t>Value</hp:t></hp:run></hp:p></hp:subList></hp:tc>
+    </hp:tr>
+    <hp:tr>
+      <hp:tc><hp:subList><hp:p><hp:run><hp:t>Quality</hp:t></hp:run></hp:p></hp:subList></hp:tc>
+      <hp:tc><hp:subList><hp:p><hp:run><hp:t>Baseline</hp:t></hp:run></hp:p></hp:subList></hp:tc>
+    </hp:tr>
+  </hp:tbl>
+</hp:sec>
+"""
+    with ZipFile(path, "w") as archive:
+        archive.writestr("mimetype", "application/hwp+zip")
+        archive.writestr("Contents/section0.xml", section_xml)
+
+
+def write_empty_hwpx(path: Path) -> None:
+    section_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<hp:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hp:p/>
+</hp:sec>
+"""
+    with ZipFile(path, "w") as archive:
+        archive.writestr("mimetype", "application/hwp+zip")
+        archive.writestr("Contents/section0.xml", section_xml)
+
+
 def test_local_extraction_registry_selects_implemented_profiles() -> None:
     handlers = {handler.profile_name: handler for handler in list_local_extraction_handlers()}
 
@@ -124,6 +161,7 @@ def test_local_extraction_registry_selects_implemented_profiles() -> None:
     docx_handler = get_local_extraction_handler(LOCAL_DOCX_PROFILE_NAME)
     pptx_handler = get_local_extraction_handler(LOCAL_PPTX_PROFILE_NAME)
     xlsx_handler = get_local_extraction_handler(LOCAL_XLSX_PROFILE_NAME)
+    hwpx_handler = get_local_extraction_handler(LOCAL_HWPX_PROFILE_NAME)
 
     assert set(handlers) == {
         LOCAL_MARKDOWN_PROFILE_NAME,
@@ -132,17 +170,20 @@ def test_local_extraction_registry_selects_implemented_profiles() -> None:
         LOCAL_DOCX_PROFILE_NAME,
         LOCAL_PPTX_PROFILE_NAME,
         LOCAL_XLSX_PROFILE_NAME,
+        LOCAL_HWPX_PROFILE_NAME,
     }
     assert markdown_handler is not None
     assert pdf_handler is not None
     assert docx_handler is not None
     assert pptx_handler is not None
     assert xlsx_handler is not None
+    assert hwpx_handler is not None
     assert markdown_handler.supports_file_type(".MD")
     assert pdf_handler.supports_file_type(".PDF")
     assert docx_handler.supports_file_type(".DOCX")
     assert pptx_handler.supports_file_type(".PPTX")
     assert xlsx_handler.supports_file_type(".XLSX")
+    assert hwpx_handler.supports_file_type(".HWPX")
     assert normalize_file_type(".Txt") == "txt"
     assert select_local_extraction_handler("md") == markdown_handler
     assert select_local_extraction_profile_name(".text") == LOCAL_PLAIN_TEXT_PROFILE_NAME
@@ -150,15 +191,18 @@ def test_local_extraction_registry_selects_implemented_profiles() -> None:
     assert select_local_extraction_profile_name("docx") == LOCAL_DOCX_PROFILE_NAME
     assert select_local_extraction_profile_name("pptx") == LOCAL_PPTX_PROFILE_NAME
     assert select_local_extraction_profile_name("xlsx") == LOCAL_XLSX_PROFILE_NAME
+    assert select_local_extraction_profile_name("hwpx") == LOCAL_HWPX_PROFILE_NAME
     assert select_local_extraction_handler("pdf") == pdf_handler
     assert select_local_extraction_handler("pptx") == pptx_handler
     assert select_local_extraction_handler("xlsx") == xlsx_handler
+    assert select_local_extraction_handler("hwpx") == hwpx_handler
     assert get_local_extraction_handler("missing_profile") is None
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_MARKDOWN_PROFILE_NAME] == {".md"}
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_PDF_TEXT_PROFILE_NAME] == {".pdf"}
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_DOCX_PROFILE_NAME] == {".docx"}
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_PPTX_PROFILE_NAME] == {".pptx"}
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_XLSX_PROFILE_NAME] == {".xlsx"}
+    assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_HWPX_PROFILE_NAME] == {".hwpx"}
 
 
 def test_run_local_markdown_extraction_returns_artifact_and_blocks(tmp_path: Path) -> None:
@@ -528,6 +572,79 @@ def test_run_local_xlsx_extraction_fails_without_extractable_cells(tmp_path: Pat
     assert result.status == "failed"
     assert result.runtime_metadata["error_code"] == ERROR_CODE_LOCAL_XLSX_EMPTY
     assert "XLSX does not contain" in result.errors[0]
+
+
+def test_run_local_hwpx_extraction_returns_artifact_paragraph_and_table_blocks(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sample.hwpx"
+    write_sample_hwpx(source_path)
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_HWPX_PROFILE_NAME,
+            mime_type="application/vnd.hancom.hwpx",
+            detected_file_type="hwpx",
+        )
+    )
+
+    assert result.status == "succeeded"
+    assert result.artifacts[0].artifact_type == "normalized_markdown"
+    assert "<!-- section: 1 -->" in result.artifacts[0].content_text
+    assert "HWPX first paragraph." in result.artifacts[0].content_text
+    assert "| Metric | Value |" in result.artifacts[0].content_text
+    assert result.artifacts[0].metadata["container_format"] == "hwpx_zip_xml"
+    assert result.artifacts[0].metadata["section_count"] == 1
+    assert result.artifacts[0].metadata["extracted_section_count"] == 1
+    assert result.artifacts[0].metadata["paragraph_count"] == 1
+    assert result.artifacts[0].metadata["table_count"] == 1
+    assert result.artifacts[0].metadata["preserve_sections"] is True
+    assert [block.block_type for block in result.blocks] == ["paragraph", "table"]
+    assert result.blocks[0].content_markdown == "HWPX first paragraph."
+    assert result.blocks[0].heading_path == ("Section 1",)
+    assert result.blocks[0].source_anchor == {
+        "section_index": 1,
+        "section_name": "Contents/section0.xml",
+        "paragraph_index": 1,
+        "section_paragraph_index": 1,
+    }
+    assert result.blocks[1].heading_path == ("Section 1",)
+    assert result.blocks[1].source_anchor == {
+        "section_index": 1,
+        "section_name": "Contents/section0.xml",
+        "table_index": 1,
+        "section_table_index": 1,
+    }
+    assert result.blocks[1].metadata == {
+        "source": "hwpx",
+        "section_name": "Contents/section0.xml",
+        "row_count": 2,
+        "column_count": 2,
+    }
+    assert result.runtime_metadata["extractor_name"] == "local_hwpx"
+    assert result.runtime_metadata["table_count"] == 1
+
+
+def test_run_local_hwpx_extraction_fails_without_extractable_text(tmp_path: Path) -> None:
+    source_path = tmp_path / "empty.hwpx"
+    write_empty_hwpx(source_path)
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_HWPX_PROFILE_NAME,
+            detected_file_type="hwpx",
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.runtime_metadata["error_code"] == ERROR_CODE_LOCAL_HWPX_EMPTY
+    assert "HWPX does not contain" in result.errors[0]
 
 
 def test_run_local_extraction_returns_failed_for_missing_source(tmp_path: Path) -> None:
