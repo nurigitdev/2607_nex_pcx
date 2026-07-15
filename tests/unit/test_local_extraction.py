@@ -1,10 +1,14 @@
 from pathlib import Path
 
+from docx import Document
+
 from app.core.extraction_runtime import ExtractionRuntimeRequest
 from app.core.local_extraction import (
+    ERROR_CODE_LOCAL_DOCX_EMPTY,
     ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY,
     ERROR_CODE_LOCAL_SOURCE_NOT_FOUND,
     ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE,
+    LOCAL_DOCX_PROFILE_NAME,
     LOCAL_MARKDOWN_PROFILE_NAME,
     LOCAL_PDF_TEXT_PROFILE_NAME,
     LOCAL_PLAIN_TEXT_PROFILE_NAME,
@@ -65,29 +69,48 @@ def make_minimal_pdf(lines: list[str] | None = None) -> bytes:
     return bytes(output)
 
 
+def write_sample_docx(path: Path) -> None:
+    document = Document()
+    document.add_heading("DOCX Title", level=1)
+    document.add_paragraph("First paragraph from DOCX.")
+    document.add_heading("Data", level=2)
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Metric"
+    table.cell(0, 1).text = "Value"
+    table.cell(1, 0).text = "Accuracy"
+    table.cell(1, 1).text = "High"
+    document.save(path)
+
+
 def test_local_extraction_registry_selects_implemented_profiles() -> None:
     handlers = {handler.profile_name: handler for handler in list_local_extraction_handlers()}
 
     markdown_handler = get_local_extraction_handler(LOCAL_MARKDOWN_PROFILE_NAME)
     pdf_handler = get_local_extraction_handler(LOCAL_PDF_TEXT_PROFILE_NAME)
+    docx_handler = get_local_extraction_handler(LOCAL_DOCX_PROFILE_NAME)
 
     assert set(handlers) == {
         LOCAL_MARKDOWN_PROFILE_NAME,
         LOCAL_PLAIN_TEXT_PROFILE_NAME,
         LOCAL_PDF_TEXT_PROFILE_NAME,
+        LOCAL_DOCX_PROFILE_NAME,
     }
     assert markdown_handler is not None
     assert pdf_handler is not None
+    assert docx_handler is not None
     assert markdown_handler.supports_file_type(".MD")
     assert pdf_handler.supports_file_type(".PDF")
+    assert docx_handler.supports_file_type(".DOCX")
     assert normalize_file_type(".Txt") == "txt"
     assert select_local_extraction_handler("md") == markdown_handler
     assert select_local_extraction_profile_name(".text") == LOCAL_PLAIN_TEXT_PROFILE_NAME
     assert select_local_extraction_profile_name("pdf") == LOCAL_PDF_TEXT_PROFILE_NAME
+    assert select_local_extraction_profile_name("docx") == LOCAL_DOCX_PROFILE_NAME
     assert select_local_extraction_handler("pdf") == pdf_handler
     assert get_local_extraction_handler("missing_profile") is None
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_MARKDOWN_PROFILE_NAME] == {".md"}
     assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_PDF_TEXT_PROFILE_NAME] == {".pdf"}
+    assert SUPPORTED_LOCAL_PROFILE_SUFFIXES[LOCAL_DOCX_PROFILE_NAME] == {".docx"}
 
 
 def test_run_local_markdown_extraction_returns_artifact_and_blocks(tmp_path: Path) -> None:
@@ -249,6 +272,76 @@ def test_run_local_pdf_text_extraction_fails_without_text_layer(tmp_path: Path) 
     assert result.status == "failed"
     assert result.runtime_metadata["error_code"] == ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY
     assert "text layer" in result.errors[0]
+
+
+def test_run_local_docx_extraction_returns_artifact_headings_and_table_blocks(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sample.docx"
+    write_sample_docx(source_path)
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_DOCX_PROFILE_NAME,
+            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            detected_file_type="docx",
+        )
+    )
+
+    assert result.status == "succeeded"
+    assert result.artifacts[0].artifact_type == "normalized_markdown"
+    assert "# DOCX Title" in result.artifacts[0].content_text
+    assert "| Metric | Value |" in result.artifacts[0].content_text
+    assert result.artifacts[0].metadata["library"] == "python-docx"
+    assert result.artifacts[0].metadata["paragraph_count"] == 1
+    assert result.artifacts[0].metadata["heading_count"] == 2
+    assert result.artifacts[0].metadata["table_count"] == 1
+    assert [block.block_type for block in result.blocks] == [
+        "heading",
+        "paragraph",
+        "heading",
+        "table",
+    ]
+    assert result.blocks[0].content_markdown == "# DOCX Title"
+    assert result.blocks[1].parent_block_seq == 0
+    assert result.blocks[1].heading_path == ("DOCX Title",)
+    assert result.blocks[2].parent_block_seq == 0
+    assert result.blocks[2].heading_path == ("DOCX Title", "Data")
+    assert result.blocks[3].parent_block_seq == 2
+    assert result.blocks[3].heading_path == ("DOCX Title", "Data")
+    assert result.blocks[3].source_anchor == {
+        "body_index": 3,
+        "table_index": 1,
+    }
+    assert result.blocks[3].metadata == {
+        "source": "docx",
+        "row_count": 2,
+        "column_count": 2,
+    }
+    assert result.runtime_metadata["extractor_name"] == "local_docx"
+    assert result.runtime_metadata["table_count"] == 1
+
+
+def test_run_local_docx_extraction_fails_without_extractable_text(tmp_path: Path) -> None:
+    source_path = tmp_path / "empty.docx"
+    Document().save(source_path)
+
+    result = run_local_extraction(
+        ExtractionRuntimeRequest(
+            file_id=1,
+            document_id=2,
+            storage_path=str(source_path),
+            extraction_profile_name=LOCAL_DOCX_PROFILE_NAME,
+            detected_file_type="docx",
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.runtime_metadata["error_code"] == ERROR_CODE_LOCAL_DOCX_EMPTY
+    assert "DOCX does not contain" in result.errors[0]
 
 
 def test_run_local_extraction_returns_failed_for_missing_source(tmp_path: Path) -> None:

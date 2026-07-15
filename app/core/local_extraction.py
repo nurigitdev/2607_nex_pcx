@@ -43,11 +43,15 @@ from app.core.ingestion_artifacts import (
 LOCAL_MARKDOWN_PROFILE_NAME = "local_markdown_default"
 LOCAL_PLAIN_TEXT_PROFILE_NAME = "local_plain_text_default"
 LOCAL_PDF_TEXT_PROFILE_NAME = "local_pdf_text_default"
+LOCAL_DOCX_PROFILE_NAME = "local_docx_default"
 LOCAL_PLAIN_TEXT_EXTRACTOR_NAME = "local_plain_text"
 LOCAL_PLAIN_TEXT_EXTRACTOR_VERSION = "0.1.0"
 LOCAL_PDF_TEXT_EXTRACTOR_NAME = "local_pdf_text"
 LOCAL_PDF_TEXT_EXTRACTOR_VERSION = "0.1.0"
+LOCAL_DOCX_EXTRACTOR_NAME = "local_docx"
+LOCAL_DOCX_EXTRACTOR_VERSION = "0.1.0"
 PDF_TEXT_LIBRARY_NAME = "pypdf"
+DOCX_LIBRARY_NAME = "python-docx"
 
 ERROR_CODE_LOCAL_SOURCE_NOT_FOUND = "LOCAL_SOURCE_NOT_FOUND"
 ERROR_CODE_LOCAL_SOURCE_EMPTY = "LOCAL_SOURCE_EMPTY"
@@ -56,6 +60,8 @@ ERROR_CODE_LOCAL_UNSUPPORTED_FILE_TYPE = "LOCAL_UNSUPPORTED_FILE_TYPE"
 ERROR_CODE_LOCAL_TEXT_DECODE_FAILED = "LOCAL_TEXT_DECODE_FAILED"
 ERROR_CODE_LOCAL_PDF_READ_FAILED = "LOCAL_PDF_READ_FAILED"
 ERROR_CODE_LOCAL_PDF_TEXT_LAYER_EMPTY = "LOCAL_PDF_TEXT_LAYER_EMPTY"
+ERROR_CODE_LOCAL_DOCX_READ_FAILED = "LOCAL_DOCX_READ_FAILED"
+ERROR_CODE_LOCAL_DOCX_EMPTY = "LOCAL_DOCX_EMPTY"
 
 
 LocalExtractionCallable = Callable[
@@ -269,6 +275,82 @@ def _extract_pdf_text_source(
     )
 
 
+def _extract_docx_source(
+    request: ExtractionRuntimeRequest,
+    source_path: Path,
+    started: float,
+) -> ExtractionRuntimeResult:
+    try:
+        from docx import Document
+    except ImportError as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_DOCX_READ_FAILED,
+            f"python-docx is required for local DOCX extraction: {exc}",
+        )
+
+    try:
+        document = Document(str(source_path))
+        artifact_text, blocks, counts = _docx_document_to_artifact_and_blocks(document)
+    except Exception as exc:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_DOCX_READ_FAILED,
+            f"DOCX content could not be read: {exc}",
+        )
+
+    if not blocks:
+        return _failed_result(
+            started,
+            ERROR_CODE_LOCAL_DOCX_EMPTY,
+            "DOCX does not contain extractable paragraph or table text",
+        )
+
+    library_version = _package_version(DOCX_LIBRARY_NAME)
+    metadata = {
+        "source_path": str(source_path),
+        "source_file_name": source_path.name,
+        "parser_name": LOCAL_DOCX_EXTRACTOR_NAME,
+        "parser_version": LOCAL_DOCX_EXTRACTOR_VERSION,
+        "library": DOCX_LIBRARY_NAME,
+        "library_version": library_version,
+        "paragraph_count": counts["paragraph_count"],
+        "heading_count": counts["heading_count"],
+        "table_count": counts["table_count"],
+        "block_count": len(blocks),
+        "preserve_headings": True,
+        "preserve_tables": True,
+        "options": request.options,
+    }
+    artifact = ExtractionRuntimeArtifact(
+        artifact_type="normalized_markdown",
+        content_text=artifact_text,
+        content_hash=_hash_text(artifact_text),
+        size_bytes=len(artifact_text.encode("utf-8")),
+        metadata=metadata,
+    )
+    return ExtractionRuntimeResult(
+        status="succeeded",
+        artifacts=(artifact,),
+        blocks=blocks,
+        elapsed_ms=_elapsed_ms(started),
+        runtime_metadata={
+            "profile_name": LOCAL_DOCX_PROFILE_NAME,
+            "extractor_name": LOCAL_DOCX_EXTRACTOR_NAME,
+            "extractor_version": LOCAL_DOCX_EXTRACTOR_VERSION,
+            "library": DOCX_LIBRARY_NAME,
+            "library_version": library_version,
+            "source_path": str(source_path),
+            "paragraph_count": counts["paragraph_count"],
+            "heading_count": counts["heading_count"],
+            "table_count": counts["table_count"],
+            "block_count": len(blocks),
+            "preserve_headings": True,
+            "preserve_tables": True,
+        },
+    )
+
+
 def _read_utf8_text_source(
     source_path: Path,
     started: float,
@@ -355,6 +437,198 @@ def _split_pdf_paragraphs(page_text: str) -> tuple[str, ...]:
     return tuple(paragraphs)
 
 
+def _docx_document_to_artifact_and_blocks(document: Any) -> tuple[
+    str,
+    tuple[ExtractionRuntimeBlock, ...],
+    dict[str, int],
+]:
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    parts: list[str] = []
+    blocks: list[ExtractionRuntimeBlock] = []
+    latest_heading_seq_by_level: dict[int, int] = {}
+    latest_heading_text_by_level: dict[int, str] = {}
+    counts = {
+        "paragraph_count": 0,
+        "heading_count": 0,
+        "table_count": 0,
+    }
+    cursor = 0
+    paragraph_index = 0
+    table_index = 0
+
+    def append_block(
+        *,
+        block_type: str,
+        content_text: str,
+        content_markdown: str,
+        heading_path: tuple[str, ...],
+        source_anchor: dict[str, Any],
+        parent_block_seq: int | None,
+        metadata: dict[str, Any],
+    ) -> None:
+        nonlocal cursor
+        if parts:
+            parts.append("\n\n")
+            cursor += 2
+        char_start = cursor
+        parts.append(content_markdown)
+        cursor += len(content_markdown)
+        blocks.append(
+            ExtractionRuntimeBlock(
+                block_seq=len(blocks),
+                block_type=block_type,
+                parent_block_seq=parent_block_seq,
+                content_text=content_text,
+                content_markdown=content_markdown,
+                heading_path=heading_path,
+                source_anchor=source_anchor,
+                char_start=char_start,
+                char_end=cursor,
+                token_count=count_chunk_tokens(content_markdown),
+                metadata=metadata,
+            )
+        )
+
+    for body_index, child in enumerate(document.element.body.iterchildren()):
+        if child.tag.endswith("}p"):
+            paragraph = Paragraph(child, document)
+            paragraph_text = _normalize_docx_text(paragraph.text)
+            if not paragraph_text:
+                continue
+            paragraph_index += 1
+            style_name = paragraph.style.name if paragraph.style is not None else None
+            heading_level = _docx_heading_level(style_name)
+            if heading_level is not None:
+                parent_block_seq = latest_heading_seq_by_level.get(heading_level - 1)
+                latest_heading_seq_by_level = {
+                    level: seq
+                    for level, seq in latest_heading_seq_by_level.items()
+                    if level < heading_level
+                }
+                latest_heading_text_by_level = {
+                    level: text
+                    for level, text in latest_heading_text_by_level.items()
+                    if level < heading_level
+                }
+                latest_heading_seq_by_level[heading_level] = len(blocks)
+                latest_heading_text_by_level[heading_level] = paragraph_text
+                heading_path = _docx_heading_path(latest_heading_text_by_level)
+                block_type = "heading"
+                content_markdown = f"{'#' * heading_level} {paragraph_text}"
+                counts["heading_count"] += 1
+            else:
+                parent_block_seq = (
+                    latest_heading_seq_by_level[max(latest_heading_seq_by_level)]
+                    if latest_heading_seq_by_level
+                    else None
+                )
+                heading_path = _docx_heading_path(latest_heading_text_by_level)
+                block_type = "paragraph"
+                content_markdown = paragraph_text
+                counts["paragraph_count"] += 1
+
+            append_block(
+                block_type=block_type,
+                content_text=paragraph_text,
+                content_markdown=content_markdown,
+                heading_path=heading_path,
+                source_anchor={
+                    "body_index": body_index,
+                    "paragraph_index": paragraph_index,
+                    "style_name": style_name,
+                },
+                parent_block_seq=parent_block_seq,
+                metadata={
+                    "source": "docx",
+                    "style_name": style_name,
+                    "heading_level": heading_level,
+                },
+            )
+        elif child.tag.endswith("}tbl"):
+            table = Table(child, document)
+            rows = _docx_table_rows(table)
+            if not rows:
+                continue
+            table_index += 1
+            content_text = "\n".join("\t".join(row) for row in rows)
+            content_markdown = _format_markdown_table(rows)
+            parent_block_seq = (
+                latest_heading_seq_by_level[max(latest_heading_seq_by_level)]
+                if latest_heading_seq_by_level
+                else None
+            )
+            append_block(
+                block_type="table",
+                content_text=content_text,
+                content_markdown=content_markdown,
+                heading_path=_docx_heading_path(latest_heading_text_by_level),
+                source_anchor={
+                    "body_index": body_index,
+                    "table_index": table_index,
+                },
+                parent_block_seq=parent_block_seq,
+                metadata={
+                    "source": "docx",
+                    "row_count": len(rows),
+                    "column_count": max(len(row) for row in rows),
+                },
+            )
+            counts["table_count"] += 1
+
+    return "".join(parts), tuple(blocks), counts
+
+
+def _normalize_docx_text(text: str) -> str:
+    return " ".join(text.replace("\r", "\n").split())
+
+
+def _docx_heading_level(style_name: str | None) -> int | None:
+    normalized = (style_name or "").strip().lower()
+    if not normalized.startswith("heading "):
+        return None
+    raw_level = normalized.removeprefix("heading ").strip()
+    if not raw_level.isdigit():
+        return None
+    level = int(raw_level)
+    return level if level > 0 else None
+
+
+def _docx_heading_path(latest_heading_text_by_level: dict[int, str]) -> tuple[str, ...]:
+    return tuple(
+        latest_heading_text_by_level[level] for level in sorted(latest_heading_text_by_level)
+    )
+
+
+def _docx_table_rows(table: Any) -> tuple[tuple[str, ...], ...]:
+    rows: list[tuple[str, ...]] = []
+    for table_row in table.rows:
+        values = tuple(_normalize_docx_text(cell.text) for cell in table_row.cells)
+        if any(values):
+            rows.append(values)
+    return tuple(rows)
+
+
+def _format_markdown_table(rows: tuple[tuple[str, ...], ...]) -> str:
+    column_count = max(len(row) for row in rows)
+    normalized_rows = [
+        tuple(row[index] if index < len(row) else "" for index in range(column_count))
+        for row in rows
+    ]
+    header = normalized_rows[0]
+    separator = tuple("---" for _ in range(column_count))
+    body_rows = normalized_rows[1:]
+    return "\n".join(
+        [_markdown_table_row(header), _markdown_table_row(separator)]
+        + [_markdown_table_row(row) for row in body_rows]
+    )
+
+
+def _markdown_table_row(row: tuple[str, ...]) -> str:
+    return "| " + " | ".join(value.replace("|", "\\|") for value in row) + " |"
+
+
 LOCAL_EXTRACTION_HANDLERS = (
     LocalExtractionHandler(
         profile_name=LOCAL_MARKDOWN_PROFILE_NAME,
@@ -382,6 +656,15 @@ LOCAL_EXTRACTION_HANDLERS = (
         extractor_version=LOCAL_PDF_TEXT_EXTRACTOR_VERSION,
         supported_file_types=("pdf",),
         extract=_extract_pdf_text_source,
+    ),
+    LocalExtractionHandler(
+        profile_name=LOCAL_DOCX_PROFILE_NAME,
+        parser_name=LOCAL_DOCX_EXTRACTOR_NAME,
+        parser_version=LOCAL_DOCX_EXTRACTOR_VERSION,
+        extractor_name=LOCAL_DOCX_EXTRACTOR_NAME,
+        extractor_version=LOCAL_DOCX_EXTRACTOR_VERSION,
+        supported_file_types=("docx",),
+        extract=_extract_docx_source,
     ),
 )
 
