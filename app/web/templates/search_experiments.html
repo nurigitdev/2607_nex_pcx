@@ -618,6 +618,9 @@
 
     {% if selected_detail %}
     <div class="p-3 border-top">
+      {% set run_metadata = selected_detail.run.runtime_metadata or {} %}
+      {% set real_provider_required = run_metadata.get("real_provider_required") %}
+      {% set allow_mock_fallback = run_metadata.get("allow_mock_fallback") %}
       <dl class="search-experiment-detail-list mb-0">
         <dt>{{ t("search_experiments.query") }}</dt>
         <dd>{{ selected_detail.run.query_text }}</dd>
@@ -627,6 +630,17 @@
         <dd>{{ selected_detail.run.document_group or "all" }} · {{ selected_detail.run.file_type or "all" }} · {{ selected_detail.run.chunk_policy_name or "all" }}</dd>
         <dt>{{ t("search_experiments.score_threshold") }}</dt>
         <dd>{{ selected_detail.run.score_threshold if selected_detail.run.score_threshold is not none else "-" }}</dd>
+        <dt>{{ t("search_experiments.provider_mode") }}</dt>
+        <dd>
+          {% if real_provider_required is sameas true %}
+          <span class="badge text-bg-warning">{{ t("search_experiments.real_provider_required") }}</span>
+          <span class="text-secondary small ms-2">{{ t("search_experiments.mock_fallback_blocked") }}</span>
+          {% elif allow_mock_fallback is sameas true %}
+          <span class="badge text-bg-light border">{{ t("search_experiments.mock_fallback_allowed") }}</span>
+          {% else %}
+          <span class="text-secondary">-</span>
+          {% endif %}
+        </dd>
       </dl>
     </div>
 

@@ -523,6 +523,7 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         assert "Recall@K" in batch_page_response.text
         assert "Metric API" in batch_page_response.text
         assert "Metric Snapshot" in batch_page_response.text
+        assert "Mock fallback 허용" in batch_page_response.text
         assert "Snapshot 비교" in batch_page_response.text
         assert "Snapshot Trend" in batch_page_response.text
         assert "Compare API" in batch_page_response.text
