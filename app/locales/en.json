@@ -1088,6 +1088,24 @@
     "clause_count": "Clause Count",
     "includes_company": "Includes Company"
   },
+  "search_runtime": {
+    "title": "Search Runtime Status",
+    "subtitle": "Inspect query embedding provider, latency, and failure per profile.",
+    "status": "Status",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "provider": "Provider",
+    "model": "Model",
+    "dimension": "Dimension",
+    "runtime_source": "Runtime Source",
+    "provider_latency": "Provider Latency",
+    "profile_latency": "Profile Latency",
+    "total_latency": "Total Latency",
+    "error_code": "Error Code",
+    "error_message": "Error Message",
+    "no_metadata": "No runtime metadata",
+    "no_results_after_success": "Search succeeded, but no results were found."
+  },
   "search_reproducibility": {
     "title": "Search Reproducibility Metadata",
     "subtitle": "Stored values for explaining and repeating this search experiment under the same conditions",

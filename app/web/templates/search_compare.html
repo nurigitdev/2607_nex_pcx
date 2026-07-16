@@ -263,6 +263,29 @@
 
 <div id="search-alert" class="alert alert-warning" role="alert" hidden></div>
 
+<section
+  class="search-runtime-panel bg-white p-3 mb-4"
+  id="search-runtime-panel"
+  hidden
+>
+  <div class="search-runtime-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_runtime.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("search_runtime.subtitle") }}</p>
+    </div>
+    <div
+      class="search-runtime-counts"
+      id="search-runtime-counts"
+      aria-live="polite"
+    ></div>
+  </div>
+  <div
+    class="search-runtime-grid"
+    id="search-runtime-grid"
+    aria-live="polite"
+  ></div>
+</section>
+
 <section id="search-results" class="search-results-grid" aria-live="polite"></section>
 {% endblock %}
 
@@ -278,6 +301,9 @@
   const resultsEl = document.getElementById("search-results");
   const summaryEl = document.getElementById("search-summary");
   const submitButton = document.getElementById("search-submit");
+  const runtimePanel = document.getElementById("search-runtime-panel");
+  const runtimeGrid = document.getElementById("search-runtime-grid");
+  const runtimeCounts = document.getElementById("search-runtime-counts");
   const permissionSummaryPanel = document.getElementById("search-permission-summary");
   const permissionSummaryGrid = document.getElementById("search-permission-summary-grid");
   const matrixForm = document.getElementById("permission-matrix-form");
@@ -340,6 +366,22 @@
     none: "{{ t('permissions.none') }}",
     documents: "{{ t('permissions.documents') }}",
   };
+  const runtimeLabels = {
+    status: "{{ t('search_runtime.status') }}",
+    succeeded: "{{ t('search_runtime.succeeded') }}",
+    failed: "{{ t('search_runtime.failed') }}",
+    provider: "{{ t('search_runtime.provider') }}",
+    model: "{{ t('search_runtime.model') }}",
+    dimension: "{{ t('search_runtime.dimension') }}",
+    runtimeSource: "{{ t('search_runtime.runtime_source') }}",
+    providerLatency: "{{ t('search_runtime.provider_latency') }}",
+    profileLatency: "{{ t('search_runtime.profile_latency') }}",
+    totalLatency: "{{ t('search_runtime.total_latency') }}",
+    errorCode: "{{ t('search_runtime.error_code') }}",
+    errorMessage: "{{ t('search_runtime.error_message') }}",
+    noMetadata: "{{ t('search_runtime.no_metadata') }}",
+    noResultsAfterSuccess: "{{ t('search_runtime.no_results_after_success') }}",
+  };
 
   const setAlert = (message) => {
     alertEl.hidden = !message;
@@ -349,6 +391,11 @@
   const clearResults = () => {
     resultsEl.replaceChildren();
     summaryEl.textContent = "";
+    runtimeGrid?.replaceChildren();
+    runtimeCounts?.replaceChildren();
+    if (runtimePanel) {
+      runtimePanel.hidden = true;
+    }
     permissionSummaryGrid?.replaceChildren();
     if (permissionSummaryPanel) {
       permissionSummaryPanel.hidden = true;
@@ -417,6 +464,25 @@
   const formatSearchScope = (scope) => searchScopeLabels[scope] || scope || "-";
   const formatAccessScope = (scope) => accessScopeLabels[scope] || scope || "-";
   const formatRole = (role) => roleLabels[role] || role || "-";
+  const formatRuntimeValue = (value) => {
+    if (value === null || value === undefined || value === "") {
+      return "-";
+    }
+    return String(value);
+  };
+  const formatLatency = (value) => {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) {
+      return "-";
+    }
+    return `${Number(value).toFixed(0)} ms`;
+  };
+  const profileStatus = (profile) =>
+    profile.status || (profile.error_code ? "failed" : "succeeded");
+  const statusLabel = (status) =>
+    status === "failed" ? runtimeLabels.failed : runtimeLabels.succeeded;
+  const runtimeMetadata = (profile) => profile.query_runtime_metadata || {};
+  const runtimeModel = (metadata) =>
+    metadata.provider_model_id || metadata.model_id || metadata.profile_name || "-";
 
   const renderPermissionSummaryRow = (label, value) => {
     const row = document.createElement("div");
@@ -524,6 +590,106 @@
       ]),
     );
     permissionSummaryPanel.hidden = false;
+  };
+
+  const renderRuntimeBadge = (status) => {
+    const badge = document.createElement("span");
+    badge.className = `search-runtime-badge search-runtime-badge-${status}`;
+    badge.textContent = statusLabel(status);
+    return badge;
+  };
+
+  const renderRuntimeRow = (label, value) => {
+    const row = document.createElement("div");
+    row.className = "search-runtime-row";
+    const term = document.createElement("span");
+    term.className = "text-secondary";
+    term.textContent = label;
+    const detail = document.createElement("strong");
+    detail.textContent = formatRuntimeValue(value);
+    row.append(term, detail);
+    return row;
+  };
+
+  const renderRuntimeCounts = (payload) => {
+    if (!runtimeCounts) {
+      return;
+    }
+    runtimeCounts.replaceChildren();
+    const counts = payload.profile_status_counts || {};
+    [
+      ["succeeded", runtimeLabels.succeeded, counts.succeeded || 0],
+      [
+        "failed",
+        runtimeLabels.failed,
+        counts.failed || payload.profile_failure_count || 0,
+      ],
+    ].forEach(([status, label, value]) => {
+      const chip = document.createElement("span");
+      chip.className = `search-runtime-count search-runtime-count-${status}`;
+      chip.textContent = `${label} ${value}`;
+      runtimeCounts.append(chip);
+    });
+  };
+
+  const renderRuntimeCard = (profile) => {
+    const status = profileStatus(profile);
+    const metadata = runtimeMetadata(profile);
+    const card = document.createElement("article");
+    card.className = `search-runtime-card search-runtime-card-${status}`;
+
+    const header = document.createElement("div");
+    header.className = "search-runtime-card-header";
+    const title = document.createElement("h3");
+    title.className = "h6 mb-0";
+    title.textContent = profile.profile_name;
+    header.append(title, renderRuntimeBadge(status));
+
+    const rows = document.createElement("div");
+    rows.className = "search-runtime-rows";
+    rows.append(
+      renderRuntimeRow(runtimeLabels.provider, metadata.provider_type),
+      renderRuntimeRow(runtimeLabels.model, runtimeModel(metadata)),
+      renderRuntimeRow(runtimeLabels.dimension, metadata.dimension),
+      renderRuntimeRow(runtimeLabels.runtimeSource, metadata.runtime_source),
+      renderRuntimeRow(runtimeLabels.providerLatency, formatLatency(metadata.provider_elapsed_ms)),
+      renderRuntimeRow(runtimeLabels.profileLatency, formatLatency(profile.elapsed_ms)),
+      renderRuntimeRow(runtimeLabels.totalLatency, formatLatency(metadata.total_elapsed_ms)),
+    );
+
+    card.append(header, rows);
+
+    if (status === "failed") {
+      const failure = document.createElement("div");
+      failure.className = "search-runtime-failure";
+      failure.append(
+        renderRuntimeRow(runtimeLabels.errorCode, profile.error_code || metadata.error_code),
+        renderRuntimeRow(
+          runtimeLabels.errorMessage,
+          profile.error_message || metadata.error_message,
+        ),
+      );
+      card.append(failure);
+    } else if (!Object.keys(metadata).length) {
+      const empty = document.createElement("div");
+      empty.className = "text-secondary small";
+      empty.textContent = runtimeLabels.noMetadata;
+      card.append(empty);
+    }
+
+    return card;
+  };
+
+  const renderRuntimeStatus = (payload) => {
+    if (!runtimePanel || !runtimeGrid) {
+      return;
+    }
+    runtimeGrid.replaceChildren();
+    renderRuntimeCounts(payload);
+    payload.profiles.forEach((profile) => {
+      runtimeGrid.append(renderRuntimeCard(profile));
+    });
+    runtimePanel.hidden = payload.profiles.length === 0;
   };
 
   const renderSummaryCount = (label, value) => {
@@ -951,37 +1117,63 @@
   };
 
   const renderProfile = (profile) => {
+    const status = profileStatus(profile);
+    const metadata = runtimeMetadata(profile);
     const section = document.createElement("section");
-    section.className = "search-profile-column";
+    section.className = `search-profile-column search-profile-column-${status}`;
 
     const header = document.createElement("div");
     header.className = "search-profile-header";
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "search-profile-title";
     const title = document.createElement("h2");
     title.className = "h6 mb-0";
     title.textContent = profile.profile_name;
+    titleWrap.append(title, renderRuntimeBadge(status));
     const latency = document.createElement("span");
     latency.className = "text-secondary";
-    latency.textContent = `${profile.elapsed_ms} ms`;
-    header.append(title, latency);
+    latency.textContent = formatLatency(profile.elapsed_ms);
+    header.append(titleWrap, latency);
+
+    const runtime = document.createElement("div");
+    runtime.className = "search-profile-runtime";
+    runtime.append(
+      makeCell(runtimeLabels.provider, metadata.provider_type),
+      makeCell(runtimeLabels.model, runtimeModel(metadata)),
+      makeCell(runtimeLabels.dimension, metadata.dimension),
+      makeCell(runtimeLabels.runtimeSource, metadata.runtime_source),
+    );
 
     const body = document.createElement("div");
     body.className = "search-result-list";
-    if (profile.results.length === 0) {
+    if (status === "failed") {
+      const failure = document.createElement("div");
+      failure.className = "search-profile-failure";
+      const code = document.createElement("strong");
+      code.textContent = profile.error_code || metadata.error_code || runtimeLabels.failed;
+      const message = document.createElement("p");
+      message.className = "mb-0";
+      message.textContent =
+        profile.error_message || metadata.error_message || runtimeLabels.errorMessage;
+      failure.append(code, message);
+      body.append(failure);
+    } else if (profile.results.length === 0) {
       const empty = document.createElement("div");
       empty.className = "search-empty-state";
-      empty.textContent = "No results";
+      empty.textContent = runtimeLabels.noResultsAfterSuccess;
       body.append(empty);
     } else {
       profile.results.forEach((result) => body.append(renderResult(result)));
     }
 
-    section.append(header, body);
+    section.append(header, runtime, body);
     return section;
   };
 
   const renderResponse = (payload) => {
     clearResults();
     summaryEl.textContent = `log #${payload.search_log_id} / ${payload.effective_search_scope} / ${payload.total_elapsed_ms} ms`;
+    renderRuntimeStatus(payload);
     renderPermissionSummary(payload.permission_summary);
     payload.profiles.forEach((profile) => resultsEl.append(renderProfile(profile)));
   };

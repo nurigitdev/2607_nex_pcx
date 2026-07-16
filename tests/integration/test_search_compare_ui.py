@@ -42,6 +42,9 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert "bge_m3_1024" in response.text
     assert 'id="search-compare-form"' in response.text
     assert 'id="search-results"' in response.text
+    assert 'id="search-runtime-panel"' in response.text
+    assert 'id="search-runtime-grid"' in response.text
+    assert "검색 Runtime 상태" in response.text
     assert 'id="search-permission-summary"' in response.text
     assert "검색 권한 설명" in response.text
     assert 'id="feedback-summary-grid"' in response.text
