@@ -184,6 +184,54 @@ class MultiPolicyIngestionCoverageMatrix:
     rows: tuple[MultiPolicyIngestionCoverageRow, ...]
 
 
+@dataclass(frozen=True)
+class MultiPolicyIngestionCoverageChunkDetail:
+    chunk_id: int
+    chunk_seq: int
+    chunk_type: str
+    token_count: int | None
+    char_count: int
+    chunk_preview: str
+    heading_path: tuple[str, ...]
+    page_no: int | None
+    slide_no: int | None
+    sheet_name: str | None
+    cell_range: str | None
+    source_char_start: int | None
+    source_char_end: int | None
+    job_id: int | None
+    job_status: str | None
+    attempts: int | None
+    max_attempts: int | None
+    error_code: str | None
+    error_message: str | None
+    job_updated_at: datetime | None
+    job_started_at: datetime | None
+    job_finished_at: datetime | None
+    vector_present: bool
+    vector_elapsed_ms: int | None
+    vector_created_at: datetime | None
+
+
+@dataclass(frozen=True)
+class MultiPolicyIngestionCoverageDetail:
+    document_id: int
+    file_id: int
+    document_title: str | None
+    original_file_name: str
+    file_ext: str | None
+    document_group: str
+    parse_status: str
+    access_scope: str
+    uploaded_at: datetime
+    chunk_policy_name: str
+    target_token_size: int
+    overlap_token_size: int
+    split_strategy: str
+    profile: EmbeddingCoverageProfileCell
+    chunks: tuple[MultiPolicyIngestionCoverageChunkDetail, ...]
+
+
 class InvalidEmbeddingCoverageError(ValueError):
     """Raised when embedding coverage query input is invalid."""
 
@@ -276,6 +324,19 @@ def _row_int(row: dict[str, Any], key: str) -> int:
     return int(row[key] or 0)
 
 
+def _validate_document_id(document_id: int) -> int:
+    if document_id <= 0:
+        raise ValueError("document_id must be greater than 0")
+    return document_id
+
+
+def _chunk_preview(chunk_text: str, max_length: int = 240) -> str:
+    normalized = " ".join(chunk_text.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 3]}..."
+
+
 def _row_to_profile_cell(row: dict[str, Any]) -> EmbeddingCoverageProfileCell:
     chunk_count = _row_int(row, "chunk_count")
     job_count = _row_int(row, "job_count")
@@ -316,6 +377,44 @@ def _row_to_profile_cell(row: dict[str, Any]) -> EmbeddingCoverageProfileCell:
         latest_job_updated_at=row["latest_job_updated_at"],
         latest_embedding_at=row["latest_embedding_at"],
         average_embedding_elapsed_ms=row["average_embedding_elapsed_ms"],
+    )
+
+
+def _row_to_multi_policy_chunk_detail(
+    row: dict[str, Any],
+) -> MultiPolicyIngestionCoverageChunkDetail:
+    return MultiPolicyIngestionCoverageChunkDetail(
+        chunk_id=int(row["chunk_id"]),
+        chunk_seq=int(row["chunk_seq"]),
+        chunk_type=str(row["chunk_type"]),
+        token_count=int(row["token_count"]) if row["token_count"] is not None else None,
+        char_count=int(row["char_count"]),
+        chunk_preview=_chunk_preview(str(row["chunk_text"])),
+        heading_path=tuple(row["heading_path"] or ()),
+        page_no=int(row["page_no"]) if row["page_no"] is not None else None,
+        slide_no=int(row["slide_no"]) if row["slide_no"] is not None else None,
+        sheet_name=row["sheet_name"],
+        cell_range=row["cell_range"],
+        source_char_start=(
+            int(row["source_char_start"]) if row["source_char_start"] is not None else None
+        ),
+        source_char_end=(
+            int(row["source_char_end"]) if row["source_char_end"] is not None else None
+        ),
+        job_id=int(row["job_id"]) if row["job_id"] is not None else None,
+        job_status=row["job_status"],
+        attempts=int(row["attempts"]) if row["attempts"] is not None else None,
+        max_attempts=int(row["max_attempts"]) if row["max_attempts"] is not None else None,
+        error_code=row["error_code"],
+        error_message=row["error_message"],
+        job_updated_at=row["job_updated_at"],
+        job_started_at=row["job_started_at"],
+        job_finished_at=row["job_finished_at"],
+        vector_present=bool(row["vector_present"]),
+        vector_elapsed_ms=(
+            int(row["vector_elapsed_ms"]) if row["vector_elapsed_ms"] is not None else None
+        ),
+        vector_created_at=row["vector_created_at"],
     )
 
 
@@ -913,4 +1012,237 @@ def get_multi_policy_ingestion_coverage_matrix(
     return MultiPolicyIngestionCoverageMatrix(
         summary=_build_multi_policy_summary(coverage_rows),
         rows=coverage_rows,
+    )
+
+
+def get_multi_policy_ingestion_coverage_detail(
+    database_url: str,
+    *,
+    document_id: int,
+    chunk_policy_name: str,
+    profile_name: str,
+    chunk_limit: int = 100,
+) -> MultiPolicyIngestionCoverageDetail | None:
+    try:
+        validated_document_id = _validate_document_id(document_id)
+        validated_chunk_policy_name = _validate_policy_name(chunk_policy_name)
+        validated_profile_name = _validate_profile_name(profile_name)
+        validated_chunk_limit = _validate_limit(chunk_limit, max_limit=500)
+        if validated_profile_name is None:
+            raise ValueError("profile_name is required")
+        vector_table = EMBEDDING_VECTOR_TABLES[validated_profile_name]
+    except KeyError as exc:
+        raise InvalidEmbeddingCoverageError(
+            f"Unsupported embedding profile: {profile_name.strip()}"
+        ) from exc
+    except ValueError as exc:
+        raise InvalidEmbeddingCoverageError(str(exc)) from exc
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                WITH selected_document AS (
+                    SELECT
+                        d.document_id,
+                        d.file_id,
+                        d.document_title,
+                        d.document_group,
+                        d.access_scope,
+                        f.original_file_name,
+                        f.file_ext,
+                        f.parse_status,
+                        f.uploaded_at
+                    FROM documents d
+                    JOIN files f ON f.file_id = d.file_id
+                    WHERE d.document_id = %s
+                ),
+                selected_policy AS (
+                    SELECT
+                        chunk_policy_name,
+                        target_token_size,
+                        overlap_token_size,
+                        split_strategy
+                    FROM chunk_policies
+                    WHERE chunk_policy_name = %s
+                ),
+                selected_profile AS (
+                    SELECT
+                        profile_name,
+                        model_name,
+                        dimension,
+                        storage_type,
+                        is_active
+                    FROM embedding_profiles
+                    WHERE profile_name = %s
+                      AND is_active
+                ),
+                chunk_stats AS (
+                    SELECT
+                        c.document_id,
+                        c.chunk_policy_name,
+                        count(*)::int AS chunk_count
+                    FROM chunks c
+                    JOIN selected_document sd ON sd.document_id = c.document_id
+                    JOIN selected_policy sp ON sp.chunk_policy_name = c.chunk_policy_name
+                    GROUP BY c.document_id, c.chunk_policy_name
+                ),
+                job_stats AS (
+                    SELECT
+                        c.document_id,
+                        c.chunk_policy_name,
+                        ej.profile_name,
+                        count(*)::int AS job_count,
+                        count(*) FILTER (WHERE ej.status = 'pending')::int AS pending_count,
+                        count(*) FILTER (WHERE ej.status = 'running')::int AS running_count,
+                        count(*) FILTER (WHERE ej.status = 'failed')::int AS failed_count,
+                        count(*) FILTER (
+                            WHERE ej.status = 'failed' AND ej.attempts < ej.max_attempts
+                        )::int AS retryable_failed_count,
+                        count(*) FILTER (
+                            WHERE ej.status = 'failed' AND ej.attempts >= ej.max_attempts
+                        )::int AS exhausted_failed_count,
+                        count(*) FILTER (WHERE ej.status = 'succeeded')::int AS succeeded_job_count,
+                        count(*) FILTER (WHERE ej.status = 'skipped')::int AS skipped_count,
+                        max(ej.updated_at) AS latest_job_updated_at
+                    FROM embedding_jobs ej
+                    JOIN chunks c ON c.chunk_id = ej.chunk_id
+                    JOIN selected_document sd ON sd.document_id = c.document_id
+                    JOIN selected_policy sp ON sp.chunk_policy_name = c.chunk_policy_name
+                    JOIN selected_profile ep ON ep.profile_name = ej.profile_name
+                    GROUP BY c.document_id, c.chunk_policy_name, ej.profile_name
+                ),
+                vector_stats AS (
+                    SELECT
+                        c.document_id,
+                        c.chunk_policy_name,
+                        count(v.chunk_id)::int AS embedded_chunk_count,
+                        max(v.created_at) AS latest_embedding_at,
+                        avg(v.elapsed_ms)::numeric(12,2) AS average_embedding_elapsed_ms
+                    FROM chunks c
+                    JOIN selected_document sd ON sd.document_id = c.document_id
+                    JOIN selected_policy sp ON sp.chunk_policy_name = c.chunk_policy_name
+                    JOIN {vector_table.table_name} v ON v.chunk_id = c.chunk_id
+                    GROUP BY c.document_id, c.chunk_policy_name
+                )
+                SELECT
+                    sd.document_id,
+                    sd.file_id,
+                    sd.document_title,
+                    sd.original_file_name,
+                    sd.file_ext,
+                    sd.document_group,
+                    sd.parse_status,
+                    sd.access_scope,
+                    sd.uploaded_at,
+                    cp.chunk_policy_name,
+                    cp.target_token_size,
+                    cp.overlap_token_size,
+                    cp.split_strategy,
+                    ep.profile_name,
+                    ep.model_name,
+                    ep.dimension,
+                    ep.storage_type,
+                    ep.is_active,
+                    COALESCE(cs.chunk_count, 0)::int AS chunk_count,
+                    COALESCE(js.job_count, 0)::int AS job_count,
+                    COALESCE(js.pending_count, 0)::int AS pending_count,
+                    COALESCE(js.running_count, 0)::int AS running_count,
+                    COALESCE(js.failed_count, 0)::int AS failed_count,
+                    COALESCE(js.retryable_failed_count, 0)::int AS retryable_failed_count,
+                    COALESCE(js.exhausted_failed_count, 0)::int AS exhausted_failed_count,
+                    COALESCE(js.succeeded_job_count, 0)::int AS succeeded_job_count,
+                    COALESCE(js.skipped_count, 0)::int AS skipped_count,
+                    COALESCE(vs.embedded_chunk_count, 0)::int AS embedded_chunk_count,
+                    js.latest_job_updated_at,
+                    vs.latest_embedding_at,
+                    vs.average_embedding_elapsed_ms
+                FROM selected_document sd
+                CROSS JOIN selected_policy cp
+                CROSS JOIN selected_profile ep
+                LEFT JOIN chunk_stats cs
+                  ON cs.document_id = sd.document_id
+                 AND cs.chunk_policy_name = cp.chunk_policy_name
+                LEFT JOIN job_stats js
+                  ON js.document_id = sd.document_id
+                 AND js.chunk_policy_name = cp.chunk_policy_name
+                 AND js.profile_name = ep.profile_name
+                LEFT JOIN vector_stats vs
+                  ON vs.document_id = sd.document_id
+                 AND vs.chunk_policy_name = cp.chunk_policy_name
+                """,
+                (
+                    validated_document_id,
+                    validated_chunk_policy_name,
+                    validated_profile_name,
+                ),
+            )
+            summary_row = cursor.fetchone()
+            if summary_row is None:
+                return None
+
+            cursor.execute(
+                f"""
+                SELECT
+                    c.chunk_id,
+                    c.chunk_seq,
+                    c.chunk_type,
+                    c.chunk_text,
+                    c.heading_path,
+                    c.page_no,
+                    c.slide_no,
+                    c.sheet_name,
+                    c.cell_range,
+                    c.source_char_start,
+                    c.source_char_end,
+                    c.token_count,
+                    c.char_count,
+                    ej.job_id,
+                    ej.status AS job_status,
+                    ej.attempts,
+                    ej.max_attempts,
+                    ej.error_code,
+                    ej.error_message,
+                    ej.updated_at AS job_updated_at,
+                    ej.started_at AS job_started_at,
+                    ej.finished_at AS job_finished_at,
+                    (v.chunk_id IS NOT NULL) AS vector_present,
+                    v.elapsed_ms AS vector_elapsed_ms,
+                    v.created_at AS vector_created_at
+                FROM chunks c
+                LEFT JOIN embedding_jobs ej
+                  ON ej.chunk_id = c.chunk_id
+                 AND ej.profile_name = %s
+                LEFT JOIN {vector_table.table_name} v ON v.chunk_id = c.chunk_id
+                WHERE c.document_id = %s
+                  AND c.chunk_policy_name = %s
+                ORDER BY c.chunk_seq ASC, c.chunk_id ASC
+                LIMIT %s
+                """,
+                (
+                    validated_profile_name,
+                    validated_document_id,
+                    validated_chunk_policy_name,
+                    validated_chunk_limit,
+                ),
+            )
+            chunk_rows = [dict(row) for row in cursor.fetchall()]
+
+    payload = dict(summary_row)
+    return MultiPolicyIngestionCoverageDetail(
+        document_id=int(payload["document_id"]),
+        file_id=int(payload["file_id"]),
+        document_title=payload["document_title"],
+        original_file_name=str(payload["original_file_name"]),
+        file_ext=payload["file_ext"],
+        document_group=str(payload["document_group"]),
+        parse_status=str(payload["parse_status"]),
+        access_scope=str(payload["access_scope"]),
+        uploaded_at=payload["uploaded_at"],
+        chunk_policy_name=str(payload["chunk_policy_name"]),
+        target_token_size=int(payload["target_token_size"]),
+        overlap_token_size=int(payload["overlap_token_size"]),
+        split_strategy=str(payload["split_strategy"]),
+        profile=_row_to_profile_cell(payload),
+        chunks=tuple(_row_to_multi_policy_chunk_detail(row) for row in chunk_rows),
     )

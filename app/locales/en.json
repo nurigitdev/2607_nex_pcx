@@ -311,6 +311,7 @@
     "matrix": "Document x Profile Matrix",
     "matrix_help": "Each cell shows embedded chunks, total chunks, and job state counts.",
     "document": "Document",
+    "status": "Status",
     "chunks": "Chunks",
     "model": "Model",
     "complete": "Complete",
@@ -343,7 +344,19 @@
     "embedded": "Embedded",
     "no_policies": "No chunk policies to display.",
     "no_rows": "No multi-policy coverage rows to display.",
-    "filter": "Filter"
+    "filter": "Filter",
+    "detail_title": "Coverage Detail",
+    "detail_help": "Chunk, job, and vector status for the selected document, chunk policy, and profile.",
+    "open_detail": "Open detail",
+    "preview": "Preview",
+    "job": "Job",
+    "vector": "Vector",
+    "source": "Source",
+    "token_count": "Token",
+    "char_count": "Char",
+    "elapsed_ms": "ms",
+    "no_job": "No job",
+    "no_detail_chunks": "No chunk details to display."
   },
   "search_compare": {
     "chunk_policy": "Chunk Policy",

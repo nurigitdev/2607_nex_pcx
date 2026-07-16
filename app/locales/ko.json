@@ -311,6 +311,7 @@
     "matrix": "문서 x Profile Matrix",
     "matrix_help": "각 cell은 embedded chunk 수, 전체 chunk 수, job 상태를 함께 보여줍니다.",
     "document": "문서",
+    "status": "상태",
     "chunks": "Chunks",
     "model": "Model",
     "complete": "Complete",
@@ -343,7 +344,19 @@
     "embedded": "임베딩 완료",
     "no_policies": "표시할 chunk 정책이 없습니다.",
     "no_rows": "표시할 multi-policy coverage row가 없습니다.",
-    "filter": "필터"
+    "filter": "필터",
+    "detail_title": "Coverage 상세",
+    "detail_help": "선택한 문서, chunk 정책, profile 조합의 chunk/job/vector 상태입니다.",
+    "open_detail": "상세 보기",
+    "preview": "Preview",
+    "job": "Job",
+    "vector": "Vector",
+    "source": "Source",
+    "token_count": "Token",
+    "char_count": "Char",
+    "elapsed_ms": "ms",
+    "no_job": "Job 없음",
+    "no_detail_chunks": "표시할 chunk 상세가 없습니다."
   },
   "search_compare": {
     "chunk_policy": "Chunk 정책",

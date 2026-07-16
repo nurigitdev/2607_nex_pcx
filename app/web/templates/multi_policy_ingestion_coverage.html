@@ -129,6 +129,122 @@
   </div>
 </section>
 
+{% if detail_error_message %}
+<div class="alert alert-warning" role="alert">{{ detail_error_message }}</div>
+{% endif %}
+
+{% if selected_detail %}
+<section id="coverage-detail" class="metric-card bg-white p-0 overflow-hidden mb-4" data-multi-policy-coverage-detail>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("multi_policy_coverage.detail_title") }}</h2>
+      <div class="text-secondary">{{ t("multi_policy_coverage.detail_help") }}</div>
+    </div>
+    <a
+      class="btn btn-outline-secondary btn-sm"
+      href="/api/admin/multi-policy-ingestion-coverage/detail?document_id={{ selected_detail.document_id }}&amp;chunk_policy_name={{ selected_detail.chunk_policy_name|urlencode }}&amp;profile_name={{ selected_detail.profile.profile_name|urlencode }}"
+    >
+      {{ t("common.api") }}
+    </a>
+  </div>
+  <div class="multi-policy-detail-summary border-top">
+    <div>
+      <div class="metric-label">{{ t("embedding_coverage.document") }}</div>
+      <a class="fw-semibold text-break" href="/documents/{{ selected_detail.document_id }}">
+        {{ selected_detail.document_title or selected_detail.original_file_name }}
+      </a>
+      <div class="text-secondary small">#{{ selected_detail.document_id }} · {{ selected_detail.document_group }}</div>
+    </div>
+    <div>
+      <div class="metric-label">{{ t("multi_policy_coverage.policy") }}</div>
+      <div class="fw-semibold text-break">{{ selected_detail.chunk_policy_name }}</div>
+      <div class="text-secondary small">{{ selected_detail.target_token_size }} / {{ selected_detail.overlap_token_size }} · {{ selected_detail.split_strategy }}</div>
+    </div>
+    <div>
+      <div class="metric-label">{{ t("embedding_coverage.profile") }}</div>
+      <div class="fw-semibold text-break">{{ selected_detail.profile.profile_name }}</div>
+      <div class="text-secondary small">{{ selected_detail.profile.model_name }} · {{ selected_detail.profile.dimension }}</div>
+    </div>
+    <div>
+      <div class="metric-label">{{ t("embedding_coverage.status") }}</div>
+      <span class="badge embedding-coverage-badge embedding-coverage-status-{{ selected_detail.profile.status }}">
+        {{ t("embedding_coverage.status_" ~ selected_detail.profile.status) }}
+      </span>
+      <div class="text-secondary small">
+        {{ selected_detail.profile.embedded_chunk_count }} / {{ selected_detail.profile.chunk_count }}
+        ({{ "%.2f"|format(selected_detail.profile.coverage_percent) }}%)
+      </div>
+    </div>
+  </div>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0 multi-policy-detail-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_coverage.chunks") }}</th>
+          <th scope="col">{{ t("multi_policy_coverage.preview") }}</th>
+          <th scope="col">{{ t("multi_policy_coverage.job") }}</th>
+          <th scope="col">{{ t("multi_policy_coverage.vector") }}</th>
+          <th scope="col">{{ t("multi_policy_coverage.source") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for chunk in selected_detail.chunks %}
+        <tr>
+          <td>
+            <strong>#{{ chunk.chunk_seq }}</strong>
+            <div class="text-secondary small">ID {{ chunk.chunk_id }} · {{ chunk.chunk_type }}</div>
+            <div class="text-secondary small">
+              {{ t("multi_policy_coverage.token_count") }} {{ chunk.token_count if chunk.token_count is not none else "-" }}
+              · {{ t("multi_policy_coverage.char_count") }} {{ chunk.char_count }}
+            </div>
+          </td>
+          <td class="text-break">{{ chunk.chunk_preview }}</td>
+          <td>
+            {% if chunk.job_id %}
+            <a class="fw-semibold" href="/admin/embedding-jobs?job_id={{ chunk.job_id }}">#{{ chunk.job_id }}</a>
+            <div class="text-secondary small">{{ t("status." ~ chunk.job_status) if chunk.job_status else "-" }}</div>
+            <div class="text-secondary small">{{ chunk.attempts }} / {{ chunk.max_attempts }}</div>
+            {% if chunk.error_code %}
+            <div class="text-danger small text-break">{{ chunk.error_code }} · {{ chunk.error_message }}</div>
+            {% endif %}
+            {% else %}
+            <span class="text-secondary">{{ t("multi_policy_coverage.no_job") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if chunk.vector_present %}
+            <span class="badge text-bg-success">{{ t("common.yes") }}</span>
+            <div class="text-secondary small">
+              {{ t("multi_policy_coverage.elapsed_ms") }}
+              {{ chunk.vector_elapsed_ms if chunk.vector_elapsed_ms is not none else "-" }}
+            </div>
+            {% else %}
+            <span class="badge text-bg-light border">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+          <td class="text-secondary small">
+            {% if chunk.heading_path %}
+            <div class="text-break">{{ chunk.heading_path|join(" / ") }}</div>
+            {% endif %}
+            {% if chunk.page_no %}<div>p.{{ chunk.page_no }}</div>{% endif %}
+            {% if chunk.slide_no %}<div>slide {{ chunk.slide_no }}</div>{% endif %}
+            {% if chunk.sheet_name %}<div>{{ chunk.sheet_name }}{% if chunk.cell_range %} {{ chunk.cell_range }}{% endif %}</div>{% endif %}
+            {% if chunk.source_char_start is not none or chunk.source_char_end is not none %}
+            <div>{{ chunk.source_char_start if chunk.source_char_start is not none else "-" }} - {{ chunk.source_char_end if chunk.source_char_end is not none else "-" }}</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="5">{{ t("multi_policy_coverage.no_detail_chunks") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
 <section class="metric-card bg-white p-0 overflow-hidden">
   <div class="dashboard-panel-header p-3">
     <div>
@@ -173,7 +289,12 @@
           </td>
           {% for cell in row.profiles %}
           <td>
-            <div class="embedding-coverage-cell embedding-coverage-status-{{ cell.status }}">
+            <a
+              class="embedding-coverage-cell-link"
+              href="/admin/multi-policy-ingestion-coverage?{{ selected_filter_query }}{% if selected_filter_query %}&amp;{% endif %}detail_document_id={{ row.document_id }}&amp;detail_chunk_policy_name={{ row.chunk_policy_name|urlencode }}&amp;detail_profile_name={{ cell.profile_name|urlencode }}#coverage-detail"
+              aria-label="{{ t('multi_policy_coverage.open_detail') }} {{ row.document_title or row.original_file_name }} {{ row.chunk_policy_name }} {{ cell.profile_name }}"
+            >
+            <div class="embedding-coverage-cell embedding-coverage-status-{{ cell.status }}{% if selected_detail_document_id == row.document_id and selected_detail_chunk_policy_name == row.chunk_policy_name and selected_detail_profile_name == cell.profile_name %} is-selected{% endif %}">
               <span class="badge embedding-coverage-badge">{{ t("embedding_coverage.status_" ~ cell.status) }}</span>
               <div class="embedding-coverage-cell-main">
                 {{ cell.embedded_chunk_count }} / {{ cell.chunk_count }}
@@ -183,6 +304,7 @@
                 J {{ cell.job_count }} · P {{ cell.pending_count }} · R {{ cell.running_count }} · F {{ cell.failed_count }}
               </div>
             </div>
+            </a>
           </td>
           {% endfor %}
         </tr>

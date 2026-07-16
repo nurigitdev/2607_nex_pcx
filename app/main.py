@@ -107,10 +107,13 @@ from app.core.embedding_coverage import (
     EmbeddingCoverageProfileCell,
     EmbeddingCoverageProfileSummary,
     InvalidEmbeddingCoverageError,
+    MultiPolicyIngestionCoverageChunkDetail,
+    MultiPolicyIngestionCoverageDetail,
     MultiPolicyIngestionCoverageMatrix,
     MultiPolicyIngestionCoveragePolicySummary,
     MultiPolicyIngestionCoverageRow,
     get_embedding_coverage_matrix,
+    get_multi_policy_ingestion_coverage_detail,
     get_multi_policy_ingestion_coverage_matrix,
 )
 from app.core.embedding_jobs import (
@@ -2307,6 +2310,67 @@ def multi_policy_ingestion_coverage_matrix_payload(
             ],
         },
         "rows": [multi_policy_ingestion_coverage_row_payload(row) for row in matrix.rows],
+    }
+
+
+def multi_policy_ingestion_coverage_chunk_detail_payload(
+    chunk: MultiPolicyIngestionCoverageChunkDetail,
+) -> dict[str, object]:
+    return {
+        "chunk_id": chunk.chunk_id,
+        "chunk_seq": chunk.chunk_seq,
+        "chunk_type": chunk.chunk_type,
+        "token_count": chunk.token_count,
+        "char_count": chunk.char_count,
+        "chunk_preview": chunk.chunk_preview,
+        "heading_path": list(chunk.heading_path),
+        "page_no": chunk.page_no,
+        "slide_no": chunk.slide_no,
+        "sheet_name": chunk.sheet_name,
+        "cell_range": chunk.cell_range,
+        "source_char_start": chunk.source_char_start,
+        "source_char_end": chunk.source_char_end,
+        "job_id": chunk.job_id,
+        "job_status": chunk.job_status,
+        "attempts": chunk.attempts,
+        "max_attempts": chunk.max_attempts,
+        "error_code": chunk.error_code,
+        "error_message": chunk.error_message,
+        "job_updated_at": _datetime_response(chunk.job_updated_at),
+        "job_started_at": _datetime_response(chunk.job_started_at),
+        "job_finished_at": _datetime_response(chunk.job_finished_at),
+        "vector_present": chunk.vector_present,
+        "vector_elapsed_ms": chunk.vector_elapsed_ms,
+        "vector_created_at": _datetime_response(chunk.vector_created_at),
+    }
+
+
+def multi_policy_ingestion_coverage_detail_payload(
+    detail: MultiPolicyIngestionCoverageDetail,
+) -> dict[str, object]:
+    return {
+        "document": {
+            "document_id": detail.document_id,
+            "file_id": detail.file_id,
+            "document_title": detail.document_title,
+            "original_file_name": detail.original_file_name,
+            "file_ext": detail.file_ext,
+            "document_group": detail.document_group,
+            "parse_status": detail.parse_status,
+            "access_scope": detail.access_scope,
+            "uploaded_at": _datetime_response(detail.uploaded_at),
+        },
+        "chunk_policy": {
+            "chunk_policy_name": detail.chunk_policy_name,
+            "target_token_size": detail.target_token_size,
+            "overlap_token_size": detail.overlap_token_size,
+            "split_strategy": detail.split_strategy,
+        },
+        "profile": embedding_coverage_profile_cell_payload(detail.profile),
+        "chunks": [
+            multi_policy_ingestion_coverage_chunk_detail_payload(chunk)
+            for chunk in detail.chunks
+        ],
     }
 
 
@@ -9403,6 +9467,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=multi_policy_ingestion_coverage_matrix_payload(matrix))
 
+    @app.get("/api/admin/multi-policy-ingestion-coverage/detail")
+    def api_get_multi_policy_ingestion_coverage_detail(
+        document_id: int,
+        chunk_policy_name: str,
+        profile_name: str,
+        chunk_limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            detail = get_multi_policy_ingestion_coverage_detail(
+                settings.database_url,
+                document_id=document_id,
+                chunk_policy_name=chunk_policy_name,
+                profile_name=profile_name,
+                chunk_limit=chunk_limit,
+            )
+        except InvalidEmbeddingCoverageError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Multi-policy ingestion coverage detail not found.",
+            )
+
+        return JSONResponse(content=multi_policy_ingestion_coverage_detail_payload(detail))
+
     @app.get("/api/admin/embedding-jobs/stale-leases")
     def api_list_stale_embedding_job_leases(
         profile_name: str | None = None,
@@ -12981,12 +13076,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         document_group: str | None = None,
         profile_name: str | None = None,
         chunk_policy_name: str | None = None,
+        detail_document_id: int | None = None,
+        detail_chunk_policy_name: str | None = None,
+        detail_profile_name: str | None = None,
         limit: int = 100,
     ) -> HTMLResponse:
         matrix: MultiPolicyIngestionCoverageMatrix | None = None
+        selected_detail: MultiPolicyIngestionCoverageDetail | None = None
         profiles: list[EmbeddingProfileRecord] = []
         policies: list[ChunkPolicySummaryRecord] = []
         error_message = None
+        detail_error_message = None
 
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
@@ -13002,8 +13102,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     chunk_policy_name=chunk_policy_name,
                     limit=limit,
                 )
+                detail_requested = (
+                    detail_document_id is not None
+                    or detail_chunk_policy_name is not None
+                    or detail_profile_name is not None
+                )
+                if detail_requested:
+                    if (
+                        detail_document_id is None
+                        or detail_chunk_policy_name is None
+                        or detail_profile_name is None
+                    ):
+                        detail_error_message = (
+                            "detail_document_id, detail_chunk_policy_name, "
+                            "and detail_profile_name are required together."
+                        )
+                    else:
+                        selected_detail = get_multi_policy_ingestion_coverage_detail(
+                            settings.database_url,
+                            document_id=detail_document_id,
+                            chunk_policy_name=detail_chunk_policy_name,
+                            profile_name=detail_profile_name,
+                        )
+                        if selected_detail is None:
+                            detail_error_message = (
+                                "Multi-policy ingestion coverage detail not found."
+                            )
             except (InvalidEmbeddingCoverageError, InvalidEmbeddingJobError) as exc:
                 error_message = str(exc)
+
+        filter_query = urlencode(
+            {
+                key: value
+                for key, value in {
+                    "parse_status": parse_status or "",
+                    "document_group": document_group or "",
+                    "profile_name": profile_name or "",
+                    "chunk_policy_name": chunk_policy_name or "",
+                    "limit": str(limit),
+                }.items()
+                if value
+            }
+        )
 
         return TEMPLATES.TemplateResponse(
             request,
@@ -13011,14 +13151,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             template_context(
                 request,
                 matrix=matrix,
+                selected_detail=selected_detail,
                 profiles=profiles,
                 policies=policies,
                 selected_parse_status=parse_status or "",
                 selected_document_group=document_group or "",
                 selected_profile_name=profile_name or "",
                 selected_chunk_policy_name=chunk_policy_name or "",
+                selected_detail_document_id=detail_document_id,
+                selected_detail_chunk_policy_name=detail_chunk_policy_name or "",
+                selected_detail_profile_name=detail_profile_name or "",
                 selected_limit=limit,
                 error_message=error_message,
+                detail_error_message=detail_error_message,
+                selected_filter_query=filter_query,
                 database_configured=bool(settings.database_url),
             ),
         )

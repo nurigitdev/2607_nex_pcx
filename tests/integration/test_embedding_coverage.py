@@ -8,6 +8,7 @@ from app.core.config import Settings
 from app.core.database import connect
 from app.core.embedding_coverage import (
     get_embedding_coverage_matrix,
+    get_multi_policy_ingestion_coverage_detail,
     get_multi_policy_ingestion_coverage_matrix,
 )
 from app.core.embedding_jobs import (
@@ -333,8 +334,60 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
                 "/admin/multi-policy-ingestion-coverage",
                 params={"document_group": fixture["document_group"], "lang": "en"},
             )
+            detail_api_response = client.get(
+                "/api/admin/multi-policy-ingestion-coverage/detail",
+                params={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "profile_name": COMPLETE_PROFILE,
+                },
+            )
+            missing_detail_response = client.get(
+                "/api/admin/multi-policy-ingestion-coverage/detail",
+                params={
+                    "document_id": 999999999,
+                    "chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "profile_name": COMPLETE_PROFILE,
+                },
+            )
+            bad_detail_response = client.get(
+                "/api/admin/multi-policy-ingestion-coverage/detail",
+                params={
+                    "document_id": 0,
+                    "chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "profile_name": COMPLETE_PROFILE,
+                },
+            )
+            detail_page_response = client.get(
+                "/admin/multi-policy-ingestion-coverage",
+                params={
+                    "document_group": fixture["document_group"],
+                    "lang": "ko",
+                    "detail_document_id": fixture["document_id"],
+                    "detail_chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "detail_profile_name": COMPLETE_PROFILE,
+                },
+            )
 
         rows_by_policy = {row.chunk_policy_name: row for row in matrix.rows}
+        default_detail = get_multi_policy_ingestion_coverage_detail(
+            migrated_database_url,
+            document_id=int(fixture["document_id"]),
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
+            profile_name=COMPLETE_PROFILE,
+        )
+        failed_detail = get_multi_policy_ingestion_coverage_detail(
+            migrated_database_url,
+            document_id=int(fixture["document_id"]),
+            chunk_policy_name=LARGE_POLICY,
+            profile_name=FAILED_PROFILE,
+        )
+        not_chunked_detail = get_multi_policy_ingestion_coverage_detail(
+            migrated_database_url,
+            document_id=int(fixture["document_id"]),
+            chunk_policy_name=LONG_POLICY,
+            profile_name=COMPLETE_PROFILE,
+        )
         default_cells = {
             cell.profile_name: cell for cell in rows_by_policy[DEFAULT_CHUNK_POLICY_NAME].profiles
         }
@@ -346,6 +399,7 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
             cell["profile_name"]: cell
             for cell in payload_rows[DEFAULT_CHUNK_POLICY_NAME]["profiles"]
         }
+        detail_payload = detail_api_response.json()
 
         assert matrix.summary.document_count == 1
         assert matrix.summary.policy_count >= 3
@@ -358,10 +412,26 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
         assert large_cells[FAILED_PROFILE].status == "failed"
         assert large_cells[FAILED_PROFILE].failed_count == 1
         assert long_cells[COMPLETE_PROFILE].status == "not_chunked"
+        assert default_detail is not None
+        assert default_detail.profile.status == "complete"
+        assert len(default_detail.chunks) == 2
+        assert all(chunk.vector_present for chunk in default_detail.chunks)
+        assert failed_detail is not None
+        assert failed_detail.profile.status == "failed"
+        assert failed_detail.chunks[0].error_code == "TEST_POLICY_PROVIDER_ERROR"
+        assert not_chunked_detail is not None
+        assert not_chunked_detail.profile.status == "not_chunked"
+        assert not_chunked_detail.chunks == ()
         assert api_response.status_code == 200
         assert payload["summary"]["document_count"] == 1
         assert payload["summary"]["policy_count"] >= 3
         assert default_payload_cells[COMPLETE_PROFILE]["coverage_label"] == "100.00%"
+        assert detail_api_response.status_code == 200
+        assert detail_payload["profile"]["status"] == "complete"
+        assert detail_payload["chunks"][0]["vector_present"] is True
+        assert detail_payload["chunks"][0]["job_status"] == "succeeded"
+        assert missing_detail_response.status_code == 404
+        assert bad_detail_response.status_code == 400
         assert policy_filtered_api_response.status_code == 200
         assert policy_filtered_api_response.json()["summary"]["policy_count"] == 1
         assert policy_filtered_api_response.json()["summary"]["profile_count"] == 1
@@ -371,6 +441,10 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
         assert "다중 Chunk 정책 Coverage" in page_response.text
         assert DEFAULT_CHUNK_POLICY_NAME in page_response.text
         assert "2 / 2" in page_response.text
+        assert detail_page_response.status_code == 200
+        assert "data-multi-policy-coverage-detail" in detail_page_response.text
+        assert "Coverage 상세" in detail_page_response.text
+        assert "Multi policy default first chunk" in detail_page_response.text
         assert english_page_response.status_code == 200
         assert "Document x Policy x Profile Matrix" in english_page_response.text
     finally:
