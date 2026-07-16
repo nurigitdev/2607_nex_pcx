@@ -639,6 +639,8 @@
 {% set metadata = selected_log.search_log.permission_filter_metadata or {} %}
 {% set permission_summary = metadata.get("permission_explainability", {}) %}
 {% set runtime_metadata = selected_log.search_log.query_runtime_metadata or {} %}
+{% set real_provider_required = runtime_metadata.get("real_provider_required") %}
+{% set allow_mock_fallback = runtime_metadata.get("allow_mock_fallback") %}
 <div class="search-history-detail">
   <section class="metric-card bg-white p-3">
     <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-3">
@@ -677,6 +679,17 @@
       <dd>{{ selected_log.search_log.top_k }}</dd>
       <dt>Profiles</dt>
       <dd>{{ selected_log.search_log.profiles | join(", ") }}</dd>
+      <dt>{{ t("search_runtime.provider_mode") }}</dt>
+      <dd>
+        {% if real_provider_required is sameas true %}
+        <span class="badge text-bg-warning">{{ t("search_runtime.real_provider_required") }}</span>
+        <span class="text-secondary small ms-2">{{ t("search_runtime.mock_fallback_blocked") }}</span>
+        {% elif allow_mock_fallback is sameas true %}
+        <span class="badge text-bg-light border">{{ t("search_runtime.mock_fallback_allowed") }}</span>
+        {% else %}
+        <span class="text-secondary">-</span>
+        {% endif %}
+      </dd>
       <dt>Latency</dt>
       <dd>{{ selected_log.search_log.total_elapsed_ms or "" }} ms</dd>
       <dt>Created</dt>

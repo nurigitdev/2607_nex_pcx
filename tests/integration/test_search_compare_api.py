@@ -1419,6 +1419,10 @@ def test_search_operations_summary_api_returns_recent_signal_deltas(
                 "/api/search/logs/operations-summary",
                 params={"min_total_elapsed_ms": -1},
             )
+            detail_page_response = client.get(
+                "/search/logs",
+                params={"search_log_id": no_result_log.search_log_id},
+            )
 
         assert response.status_code == 200
         summary = response.json()["operations_summary"]
@@ -1445,6 +1449,9 @@ def test_search_operations_summary_api_returns_recent_signal_deltas(
         assert "lookback_hours" in invalid_lookback_response.json()["detail"]
         assert invalid_threshold_response.status_code == 400
         assert "min_total_elapsed_ms" in invalid_threshold_response.json()["detail"]
+        assert detail_page_response.status_code == 200
+        assert "실제 provider 필수" in detail_page_response.text
+        assert "mock fallback 차단" in detail_page_response.text
     finally:
         _delete_search_logs(migrated_database_url, [no_result_log.search_log_id])
         _cleanup_files(migrated_database_url, [file_id])
