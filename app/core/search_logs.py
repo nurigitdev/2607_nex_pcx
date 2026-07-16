@@ -266,6 +266,31 @@ class SearchNoResultRecord:
 
 
 @dataclass(frozen=True)
+class SearchDuplicateFingerprintRecord:
+    condition_fingerprint: str
+    duplicate_count: int
+    latest_search_log_id: int
+    first_search_log_id: int
+    query_text: str
+    actor_user_id: int | None
+    actor_login_id: str | None
+    actor_display_name: str | None
+    requested_search_scope: str | None
+    effective_search_scope: str | None
+    document_group: str | None
+    file_type: str | None
+    chunk_policy_name: str | None
+    top_k: int
+    similarity_metric: str
+    profiles: tuple[str, ...]
+    zero_result_count: int
+    runtime_failure_count: int
+    average_total_elapsed_ms: float | None
+    first_created_at: datetime
+    latest_created_at: datetime
+
+
+@dataclass(frozen=True)
 class SearchLogResultDetailRecord:
     search_log_result: SearchLogResultRecord
     document_id: int
@@ -600,6 +625,34 @@ def _row_to_search_no_result_record(row: dict[str, Any]) -> SearchNoResultRecord
     )
 
 
+def _row_to_search_duplicate_fingerprint_record(
+    row: dict[str, Any],
+) -> SearchDuplicateFingerprintRecord:
+    return SearchDuplicateFingerprintRecord(
+        condition_fingerprint=str(row["condition_fingerprint"]),
+        duplicate_count=int(row["duplicate_count"] or 0),
+        latest_search_log_id=int(row["latest_search_log_id"]),
+        first_search_log_id=int(row["first_search_log_id"]),
+        query_text=str(row["query_text"]),
+        actor_user_id=int(row["actor_user_id"]) if row["actor_user_id"] is not None else None,
+        actor_login_id=row["actor_login_id"],
+        actor_display_name=row["actor_display_name"],
+        requested_search_scope=row["requested_search_scope"],
+        effective_search_scope=row["effective_search_scope"],
+        document_group=row["document_group"],
+        file_type=row["file_type"],
+        chunk_policy_name=row["chunk_policy_name"],
+        top_k=int(row["top_k"]),
+        similarity_metric=str(row["similarity_metric"]),
+        profiles=tuple(row["profiles"] or ()),
+        zero_result_count=int(row["zero_result_count"] or 0),
+        runtime_failure_count=int(row["runtime_failure_count"] or 0),
+        average_total_elapsed_ms=_optional_float(row["average_total_elapsed_ms"]),
+        first_created_at=row["first_created_at"],
+        latest_created_at=row["latest_created_at"],
+    )
+
+
 def _row_to_search_feedback_profile_summary_record(
     row: dict[str, Any],
 ) -> SearchFeedbackProfileSummaryRecord:
@@ -702,6 +755,14 @@ def _validate_min_total_elapsed_ms(min_total_elapsed_ms: int) -> int:
     if min_total_elapsed_ms < 0:
         raise InvalidSearchLogError("min_total_elapsed_ms must be greater than or equal to 0")
     return min_total_elapsed_ms
+
+
+def _validate_min_duplicate_count(min_count: int) -> int:
+    if min_count < 2:
+        raise InvalidSearchLogError("min_count must be greater than or equal to 2")
+    if min_count > 1000:
+        raise InvalidSearchLogError("min_count must be less than or equal to 1000")
+    return min_count
 
 
 def _parse_bool(value: str, default: bool) -> bool:
@@ -1203,6 +1264,111 @@ def list_search_no_result_logs(
             )
             rows = cursor.fetchall()
     return [_row_to_search_no_result_record(dict(row)) for row in rows]
+
+
+def list_search_duplicate_fingerprints(
+    database_url: str,
+    *,
+    min_count: int = 2,
+    limit: int = 20,
+) -> list[SearchDuplicateFingerprintRecord]:
+    validated_min_count = _validate_min_duplicate_count(min_count)
+    validated_limit = _validate_limit(limit)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH log_base AS (
+                    SELECT
+                        sl.*,
+                        au.login_id AS actor_login_id,
+                        au.display_name AS actor_display_name,
+                        count(slr.search_log_result_id) AS result_count,
+                        md5(
+                            jsonb_build_object(
+                                'normalized_query_text',
+                                COALESCE(
+                                    sl.normalized_query_text,
+                                    lower(btrim(sl.query_text))
+                                ),
+                                'actor_user_id', sl.actor_user_id,
+                                'requested_search_scope', sl.requested_search_scope,
+                                'effective_search_scope', sl.effective_search_scope,
+                                'permission_filter_metadata',
+                                sl.permission_filter_metadata,
+                                'document_group', sl.document_group,
+                                'file_type', sl.file_type,
+                                'chunk_policy_name', sl.chunk_policy_name,
+                                'top_k', sl.top_k,
+                                'similarity_metric', sl.similarity_metric,
+                                'profiles', sl.profiles
+                            )::text
+                        ) AS condition_fingerprint
+                    FROM search_logs sl
+                    LEFT JOIN app_users au ON au.user_id = sl.actor_user_id
+                    LEFT JOIN search_log_results slr ON slr.search_log_id = sl.search_log_id
+                    GROUP BY sl.search_log_id, au.login_id, au.display_name
+                )
+                SELECT
+                    condition_fingerprint,
+                    count(*) AS duplicate_count,
+                    (array_agg(search_log_id ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS latest_search_log_id,
+                    (array_agg(search_log_id ORDER BY created_at ASC, search_log_id ASC))[1]
+                        AS first_search_log_id,
+                    (array_agg(query_text ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS query_text,
+                    (array_agg(actor_user_id ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS actor_user_id,
+                    (array_agg(actor_login_id ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS actor_login_id,
+                    (array_agg(actor_display_name ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS actor_display_name,
+                    (
+                        array_agg(
+                            requested_search_scope
+                            ORDER BY created_at DESC, search_log_id DESC
+                        )
+                    )[1] AS requested_search_scope,
+                    (
+                        array_agg(
+                            effective_search_scope
+                            ORDER BY created_at DESC, search_log_id DESC
+                        )
+                    )[1] AS effective_search_scope,
+                    (array_agg(document_group ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS document_group,
+                    (array_agg(file_type ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS file_type,
+                    (array_agg(chunk_policy_name ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS chunk_policy_name,
+                    (array_agg(top_k ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS top_k,
+                    (array_agg(similarity_metric ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS similarity_metric,
+                    (array_agg(profiles ORDER BY created_at DESC, search_log_id DESC))[1]
+                        AS profiles,
+                    count(*) FILTER (WHERE result_count = 0) AS zero_result_count,
+                    count(*) FILTER (
+                        WHERE COALESCE(
+                            query_runtime_metadata -> 'profile_failures',
+                            '{}'::jsonb
+                        ) <> '{}'::jsonb
+                    ) AS runtime_failure_count,
+                    avg(total_elapsed_ms) FILTER (WHERE total_elapsed_ms IS NOT NULL)
+                        AS average_total_elapsed_ms,
+                    min(created_at) AS first_created_at,
+                    max(created_at) AS latest_created_at
+                FROM log_base
+                GROUP BY condition_fingerprint
+                HAVING count(*) >= %s
+                ORDER BY duplicate_count DESC, latest_created_at DESC
+                LIMIT %s
+                """,
+                (validated_min_count, validated_limit),
+            )
+            rows = cursor.fetchall()
+    return [_row_to_search_duplicate_fingerprint_record(dict(row)) for row in rows]
 
 
 def get_search_log_result(

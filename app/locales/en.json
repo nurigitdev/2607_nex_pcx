@@ -1157,6 +1157,22 @@
     "open": "Open Detail",
     "empty": "No recent no-result search logs."
   },
+  "search_duplicate": {
+    "title": "Search Duplicate Fingerprint Triage",
+    "subtitle": "Track search-condition groups that were executed repeatedly.",
+    "fingerprint": "Fingerprint",
+    "query": "Query",
+    "count": "Count",
+    "scope": "Scope",
+    "signals": "Signals",
+    "average_latency": "Avg Latency",
+    "latest": "Latest",
+    "action": "Action",
+    "no_result_short": "NoResult",
+    "failure_short": "Failure",
+    "open_latest": "Open Latest",
+    "empty": "No repeated search conditions."
+  },
   "search_reproducibility": {
     "title": "Search Reproducibility Metadata",
     "subtitle": "Stored values for explaining and repeating this search experiment under the same conditions",

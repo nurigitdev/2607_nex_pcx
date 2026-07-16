@@ -1184,6 +1184,135 @@ def test_search_no_result_logs_api_lists_zero_result_searches(
         _delete_search_logs(migrated_database_url, [search_log.search_log_id])
 
 
+def test_search_duplicate_fingerprints_api_groups_repeated_conditions(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    document_group = f"duplicate-fingerprint-{uuid4()}"
+    first_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Repeated search condition",
+            normalized_query_text="repeated search condition",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="team",
+            permission_filter_metadata={"visible_document_count": 3},
+            document_group=document_group,
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
+            top_k=5,
+            profiles=("kure_v1_1024", "bge_m3_1024"),
+            query_runtime_metadata={
+                "profile_status_counts": {"succeeded": 2, "failed": 0},
+            },
+            total_elapsed_ms=600,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    second_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Repeated search condition",
+            normalized_query_text="repeated search condition",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="team",
+            permission_filter_metadata={"visible_document_count": 3},
+            document_group=document_group,
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
+            top_k=5,
+            profiles=("kure_v1_1024", "bge_m3_1024"),
+            query_runtime_metadata={
+                "profile_failures": {
+                    "bge_m3_1024": {
+                        "error_code": "query_embedding_failed",
+                        "error_message": "provider failed",
+                    }
+                },
+                "profile_status_counts": {"succeeded": 1, "failed": 1},
+            },
+            total_elapsed_ms=900,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    different_top_k_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Repeated search condition",
+            normalized_query_text="repeated search condition",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="team",
+            permission_filter_metadata={"visible_document_count": 3},
+            document_group=document_group,
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
+            top_k=3,
+            profiles=("kure_v1_1024", "bge_m3_1024"),
+            query_runtime_metadata={
+                "profile_status_counts": {"succeeded": 2, "failed": 0},
+            },
+            total_elapsed_ms=120,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/search/logs/duplicate-fingerprints",
+                params={"min_count": 2, "limit": 20},
+            )
+            min_three_response = client.get(
+                "/api/search/logs/duplicate-fingerprints",
+                params={"min_count": 3, "limit": 20},
+            )
+            invalid_min_response = client.get(
+                "/api/search/logs/duplicate-fingerprints",
+                params={"min_count": 1},
+            )
+
+        assert response.status_code == 200
+        matching_records = [
+            record
+            for record in response.json()["records"]
+            if record["document_group"] == document_group and record["top_k"] == 5
+        ]
+        assert len(matching_records) == 1
+        record = matching_records[0]
+        assert record["duplicate_count"] == 2
+        assert record["latest_search_log_id"] == second_log.search_log_id
+        assert record["first_search_log_id"] == first_log.search_log_id
+        assert record["profile_count"] == 2
+        assert record["zero_result_count"] == 2
+        assert record["runtime_failure_count"] == 1
+        assert record["average_total_elapsed_ms"] == 750.0
+        assert len(record["condition_fingerprint"]) == 32
+        assert "T" not in record["latest_created_at_label"]
+        assert record["latest_search_log_url"] == (
+            f"/search/logs?search_log_id={second_log.search_log_id}"
+        )
+        assert response.json()["min_count"] == 2
+        assert all(
+            record["document_group"] != document_group
+            for record in min_three_response.json()["records"]
+        )
+        assert invalid_min_response.status_code == 400
+        assert "min_count" in invalid_min_response.json()["detail"]
+    finally:
+        _delete_search_logs(
+            migrated_database_url,
+            [
+                first_log.search_log_id,
+                second_log.search_log_id,
+                different_top_k_log.search_log_id,
+            ],
+        )
+
+
 def test_search_compare_api_handles_invalid_scope(
     migrated_database_url: str,
 ) -> None:

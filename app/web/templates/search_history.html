@@ -366,6 +366,73 @@
   {% endif %}
 </section>
 
+<section class="metric-card bg-white p-3 mb-4 search-duplicate-fingerprint-panel">
+  <div class="search-runtime-triage-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_duplicate.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("search_duplicate.subtitle") }}</p>
+    </div>
+    <span class="badge text-bg-light">GET /api/search/logs/duplicate-fingerprints</span>
+  </div>
+  {% if duplicate_fingerprints %}
+  <div class="table-responsive mt-3">
+    <table class="table table-sm align-middle mb-0 search-duplicate-fingerprint-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("search_duplicate.fingerprint") }}</th>
+          <th scope="col">{{ t("search_duplicate.query") }}</th>
+          <th scope="col">{{ t("search_duplicate.count") }}</th>
+          <th scope="col">{{ t("search_duplicate.scope") }}</th>
+          <th scope="col">{{ t("search_duplicate.signals") }}</th>
+          <th scope="col">{{ t("search_duplicate.average_latency") }}</th>
+          <th scope="col">{{ t("search_duplicate.latest") }}</th>
+          <th scope="col">{{ t("search_duplicate.action") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in duplicate_fingerprints %}
+        <tr>
+          <td><code>{{ record.condition_fingerprint[:10] }}</code></td>
+          <td>
+            <div class="search-runtime-triage-query">{{ record.query_text }}</div>
+            <div class="text-secondary small">
+              {{ record.actor_display_name or record.actor_login_id or t("permissions.none") }}
+              · {{ record.document_group or t("permissions.none") }}
+            </div>
+          </td>
+          <td><strong>{{ record.duplicate_count }}</strong></td>
+          <td>{{ record.requested_search_scope or t("permissions.none") }}</td>
+          <td>
+            <span class="badge text-bg-light border">
+              {{ t("search_duplicate.no_result_short") }} {{ record.zero_result_count }}
+            </span>
+            <span class="badge text-bg-light border">
+              {{ t("search_duplicate.failure_short") }} {{ record.runtime_failure_count }}
+            </span>
+          </td>
+          <td>
+            {% if record.average_total_elapsed_ms is not none %}
+            {{ "%.1f"|format(record.average_total_elapsed_ms) }} ms
+            {% else %}
+            {{ t("permissions.none") }}
+            {% endif %}
+          </td>
+          <td>{{ record.latest_created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+          <td>
+            <a class="btn btn-sm btn-outline-primary" href="/search/logs?search_log_id={{ record.latest_search_log_id }}">
+              {{ t("search_duplicate.open_latest") }}
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-secondary mt-3">{{ t("search_duplicate.empty") }}</div>
+  {% endif %}
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0 search-log-table">

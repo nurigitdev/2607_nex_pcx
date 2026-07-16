@@ -3274,6 +3274,8 @@ main.container-fluid {
 
 .search-latency-outlier-table td,
 .search-latency-outlier-table th,
+.search-duplicate-fingerprint-table td,
+.search-duplicate-fingerprint-table th,
 .search-no-result-table td,
 .search-no-result-table th,
 .search-runtime-triage-table td,
@@ -3282,12 +3284,14 @@ main.container-fluid {
 }
 
 .search-latency-outlier-table td:last-child,
+.search-duplicate-fingerprint-table td:last-child,
 .search-no-result-table td:last-child,
 .search-runtime-triage-table td:last-child {
   min-width: 11rem;
 }
 
 .search-latency-outlier-table th:last-child,
+.search-duplicate-fingerprint-table th:last-child,
 .search-no-result-table th:last-child,
 .search-runtime-triage-table th:last-child {
   min-width: 11rem;

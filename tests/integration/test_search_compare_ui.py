@@ -155,6 +155,29 @@ def test_search_history_detail_renders_permission_explainability(
             created_by_user_id=user_id,
         ),
     )
+    duplicate_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text=search_log.query_text,
+            normalized_query_text=search_log.normalized_query_text,
+            actor_user_id=search_log.actor_user_id,
+            requested_search_scope=search_log.requested_search_scope,
+            effective_search_scope=search_log.effective_search_scope,
+            permission_filter_metadata=search_log.permission_filter_metadata,
+            document_group=search_log.document_group,
+            file_type=search_log.file_type,
+            chunk_policy_name=search_log.chunk_policy_name,
+            top_k=search_log.top_k,
+            profiles=search_log.profiles,
+            query_runtime_metadata={
+                "adapter": "query_embedding_bridge",
+                "search_mode": "history_duplicate_fingerprint",
+                "profile_status_counts": {"succeeded": 2, "failed": 0},
+            },
+            total_elapsed_ms=980,
+            created_by_user_id=user_id,
+        ),
+    )
     comparison_log = create_search_log(
         migrated_database_url,
         SearchLogInput(
@@ -261,6 +284,10 @@ def test_search_history_detail_renders_permission_explainability(
         assert "1250 ms" in response.text
         assert "검색 No Result Triage" in response.text
         assert "GET /api/search/logs/no-results" in response.text
+        assert "검색 Duplicate Fingerprint Triage" in response.text
+        assert "GET /api/search/logs/duplicate-fingerprints" in response.text
+        assert "최신 로그 보기" in response.text
+        assert f"/search/logs?search_log_id={duplicate_log.search_log_id}" in response.text
         assert "History permission explainability" in response.text
         assert "nlpai-lab/KURE-v1" in response.text
         assert "Remote provider request failed" in response.text
@@ -325,4 +352,5 @@ def test_search_history_detail_renders_permission_explainability(
         assert 'value="bge_m3_1024"' in replay_response.text
     finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)
+        _delete_search_log(migrated_database_url, duplicate_log.search_log_id)
         _delete_search_log(migrated_database_url, comparison_log.search_log_id)

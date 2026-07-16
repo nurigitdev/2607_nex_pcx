@@ -1157,6 +1157,22 @@
     "open": "상세 보기",
     "empty": "최근 no-result 검색 로그가 없습니다."
   },
+  "search_duplicate": {
+    "title": "검색 Duplicate Fingerprint Triage",
+    "subtitle": "같은 검색 조건이 반복 실행된 그룹을 추적합니다.",
+    "fingerprint": "Fingerprint",
+    "query": "Query",
+    "count": "Count",
+    "scope": "Scope",
+    "signals": "Signals",
+    "average_latency": "Avg Latency",
+    "latest": "Latest",
+    "action": "Action",
+    "no_result_short": "NoResult",
+    "failure_short": "Failure",
+    "open_latest": "최신 로그 보기",
+    "empty": "반복 실행된 검색 조건이 없습니다."
+  },
   "search_reproducibility": {
     "title": "검색 재현성 Metadata",
     "subtitle": "같은 조건으로 검색 실험을 다시 설명하고 재현하기 위한 저장값",

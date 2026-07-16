@@ -460,6 +460,7 @@ from app.core.search_experiments import (
 )
 from app.core.search_logs import (
     InvalidSearchLogError,
+    SearchDuplicateFingerprintRecord,
     SearchFeedbackCommentRecord,
     SearchFeedbackProfileSummaryRecord,
     SearchLatencyOutlierRecord,
@@ -480,6 +481,7 @@ from app.core.search_logs import (
     get_search_log,
     get_search_log_detail,
     get_search_log_result,
+    list_search_duplicate_fingerprints,
     list_search_feedback_comments,
     list_search_latency_outliers,
     list_search_logs,
@@ -4238,6 +4240,38 @@ def search_no_result_payload(record: SearchNoResultRecord) -> dict[str, object]:
         "created_at": _datetime_response(record.created_at),
         "created_at_label": _datetime_label(record.created_at),
         "search_log_url": f"/search/logs?search_log_id={record.search_log_id}",
+    }
+
+
+def search_duplicate_fingerprint_payload(
+    record: SearchDuplicateFingerprintRecord,
+) -> dict[str, object]:
+    return {
+        "condition_fingerprint": record.condition_fingerprint,
+        "duplicate_count": record.duplicate_count,
+        "latest_search_log_id": record.latest_search_log_id,
+        "first_search_log_id": record.first_search_log_id,
+        "query_text": record.query_text,
+        "actor_user_id": record.actor_user_id,
+        "actor_login_id": record.actor_login_id,
+        "actor_display_name": record.actor_display_name,
+        "requested_search_scope": record.requested_search_scope,
+        "effective_search_scope": record.effective_search_scope,
+        "document_group": record.document_group,
+        "file_type": record.file_type,
+        "chunk_policy_name": record.chunk_policy_name,
+        "top_k": record.top_k,
+        "similarity_metric": record.similarity_metric,
+        "profiles": list(record.profiles),
+        "profile_count": len(record.profiles),
+        "zero_result_count": record.zero_result_count,
+        "runtime_failure_count": record.runtime_failure_count,
+        "average_total_elapsed_ms": record.average_total_elapsed_ms,
+        "first_created_at": _datetime_response(record.first_created_at),
+        "first_created_at_label": _datetime_label(record.first_created_at),
+        "latest_created_at": _datetime_response(record.latest_created_at),
+        "latest_created_at_label": _datetime_label(record.latest_created_at),
+        "latest_search_log_url": f"/search/logs?search_log_id={record.latest_search_log_id}",
     }
 
 
@@ -10061,6 +10095,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/search/logs/duplicate-fingerprints")
+    def api_list_search_duplicate_fingerprints(
+        min_count: int = 2,
+        limit: int = 20,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            records = list_search_duplicate_fingerprints(
+                settings.database_url,
+                min_count=min_count,
+                limit=limit,
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "min_count": min_count,
+                "records": [
+                    search_duplicate_fingerprint_payload(record) for record in records
+                ],
+            }
+        )
+
     @app.post("/api/search/logs/runtime-failures/retry")
     def api_retry_search_runtime_failures(
         payload: SearchRuntimeFailureRetryRequest,
@@ -12049,6 +12112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runtime_failures: list[SearchRuntimeFailureRecord] = []
         latency_outliers: list[SearchLatencyOutlierRecord] = []
         no_result_logs: list[SearchNoResultRecord] = []
+        duplicate_fingerprints: list[SearchDuplicateFingerprintRecord] = []
         selected_log: SearchLogDetailRecord | None = None
         selected_log_comparison: dict[str, object] | None = None
         retention_settings = SearchLogRetentionSettings()
@@ -12086,6 +12150,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 no_result_logs = list_search_no_result_logs(
                     settings.database_url,
+                    limit=8,
+                )
+                duplicate_fingerprints = list_search_duplicate_fingerprints(
+                    settings.database_url,
+                    min_count=2,
                     limit=8,
                 )
                 logs = list_search_logs(
@@ -12126,6 +12195,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 runtime_failures=runtime_failures,
                 latency_outliers=latency_outliers,
                 no_result_logs=no_result_logs,
+                duplicate_fingerprints=duplicate_fingerprints,
                 selected_log=selected_log,
                 selected_log_comparison=selected_log_comparison,
                 selected_log_reproducibility=(
