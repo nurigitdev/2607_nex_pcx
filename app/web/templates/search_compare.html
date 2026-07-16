@@ -25,13 +25,6 @@
 
 <section class="metric-card bg-white p-3 mb-4">
   <form id="search-compare-form" class="search-form-grid">
-    <input
-      id="chunk_policy_name"
-      name="chunk_policy_name"
-      type="hidden"
-      value="{{ search_prefill.chunk_policy_name }}"
-    >
-
     <div class="search-query-field">
       <label class="form-label" for="query_text">Query</label>
       <input
@@ -117,6 +110,26 @@
         <option value="{{ ext }}" {% if ext == search_prefill.file_type %}selected{% endif %}>{{ ext }}</option>
         {% endfor %}
       </select>
+    </div>
+
+    <div>
+      <label class="form-label" for="chunk_policy_name">{{ t("search_compare.chunk_policy") }}</label>
+      <select
+        class="form-select"
+        id="chunk_policy_name"
+        name="chunk_policy_name"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="" {% if not search_prefill.chunk_policy_name %}selected{% endif %}>{{ t("search_compare.all_chunk_policies") }}</option>
+        {% for policy in chunk_policy_options %}
+        <option value="{{ policy.chunk_policy_name }}" {% if policy.chunk_policy_name == search_prefill.chunk_policy_name %}selected{% endif %}>
+          {{ policy.chunk_policy_name }}
+          {% if policy.is_default %} · {{ t("search_compare.default_chunk_policy") }}{% endif %}
+          · {{ policy.target_token_size }}/{{ policy.overlap_token_size }}
+        </option>
+        {% endfor %}
+      </select>
+      <div class="form-text">{{ t("search_compare.chunk_policy_help") }}</div>
     </div>
 
     <div class="search-provider-mode-field">

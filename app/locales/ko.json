@@ -329,6 +329,10 @@
     "status_not_chunked": "Chunk 없음"
   },
   "search_compare": {
+    "chunk_policy": "Chunk 정책",
+    "all_chunk_policies": "전체 정책",
+    "default_chunk_policy": "기본",
+    "chunk_policy_help": "선택한 정책으로 생성된 chunk만 검색합니다.",
     "provider_mode": "Provider 모드",
     "require_real_provider": "실제 provider만 사용",
     "require_real_provider_help": "활성 route 또는 remote fallback이 없으면 mock 결과 대신 profile 실패로 기록합니다.",

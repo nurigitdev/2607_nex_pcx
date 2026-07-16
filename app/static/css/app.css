@@ -2589,7 +2589,7 @@ main.container-fluid {
   align-items: end;
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(18rem, 2fr) repeat(6, minmax(8rem, 1fr)) auto;
+  grid-template-columns: minmax(18rem, 2fr) repeat(7, minmax(8rem, 1fr)) auto;
 }
 
 .search-query-field {

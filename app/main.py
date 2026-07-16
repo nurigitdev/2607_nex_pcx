@@ -12108,6 +12108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def search_compare_page(request: Request) -> HTMLResponse:
         actor_options: list[dict[str, object]] = []
         profile_options: list[str] = []
+        chunk_policy_options: list[ChunkPolicySummaryRecord] = []
         error_message = None
 
         if not settings.database_url:
@@ -12119,6 +12120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     profile.profile_name
                     for profile in list_active_embedding_profiles(settings.database_url)
                 ]
+                chunk_policy_options = list_chunk_policy_summaries(settings.database_url)
             except Exception as exc:
                 error_message = str(exc)
 
@@ -12134,6 +12136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 search_prefill=search_compare_prefill_payload(request, default_actor_id),
                 search_scope_options=SEARCH_COMPARE_SCOPE_OPTIONS,
                 search_file_type_options=SEARCH_COMPARE_FILE_TYPES,
+                chunk_policy_options=chunk_policy_options,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

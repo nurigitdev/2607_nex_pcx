@@ -665,6 +665,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                     "requested_search_scope": "company",
                     "top_k": 5,
                     "profiles": ["kure_v1_1024", "bge_m3_1024"],
+                    "chunk_policy_name": "heading_512_64",
                     "document_group": document_group,
                 },
             )
@@ -674,6 +675,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                     "query_text": query_text,
                     "top_k": 5,
                     "profiles": ["kure_v1_1024"],
+                    "chunk_policy_name": "heading_512_64",
                     "document_group": document_group,
                     "entries": [
                         {
@@ -754,6 +756,14 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                 params={
                     "document_group": document_group,
                     "provider_mode_filter": "mock_fallback_allowed",
+                },
+            )
+            search_page_response = client.get(
+                "/search",
+                params={
+                    "query_text": query_text,
+                    "document_group": document_group,
+                    "chunk_policy_name": "heading_512_64",
                 },
             )
             detail_response = client.get(f"/api/search/logs/{body['search_log_id']}")
@@ -939,6 +949,11 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert filtered_history_page_response.status_code == 200
         assert "Mock fallback 허용" in filtered_history_page_response.text
         assert str(body["search_log_id"]) in filtered_history_page_response.text
+        assert search_page_response.status_code == 200
+        assert 'id="chunk_policy_name"' in search_page_response.text
+        assert "Chunk 정책" in search_page_response.text
+        assert "전체 정책" in search_page_response.text
+        assert "heading_512_64" in search_page_response.text
         logs_by_id = {log["search_log_id"]: log for log in logs_body["logs"]}
         matrix_log_ids = {entry["search_log_id"] for entry in matrix_body["entries"]}
         assert {body["search_log_id"], *matrix_log_ids} == set(logs_by_id)
@@ -1011,6 +1026,7 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert detail_response.status_code == 200
         assert detail_body["search_log"]["search_log_id"] == body["search_log_id"]
         assert detail_body["search_log"]["actor_login_id"] == "alice.member"
+        assert detail_body["search_log"]["chunk_policy_name"] == "heading_512_64"
         assert detail_body["search_log"]["permission_summary"]["visible_document_count"] == 1
         assert detail_body["search_log"]["permission_summary"]["excluded_document_count"] == 1
         assert detail_body["search_log"]["reproducibility_summary"]["top_k"] == 5
