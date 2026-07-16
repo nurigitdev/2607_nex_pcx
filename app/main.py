@@ -107,7 +107,11 @@ from app.core.embedding_coverage import (
     EmbeddingCoverageProfileCell,
     EmbeddingCoverageProfileSummary,
     InvalidEmbeddingCoverageError,
+    MultiPolicyIngestionCoverageMatrix,
+    MultiPolicyIngestionCoveragePolicySummary,
+    MultiPolicyIngestionCoverageRow,
     get_embedding_coverage_matrix,
+    get_multi_policy_ingestion_coverage_matrix,
 )
 from app.core.embedding_jobs import (
     EmbeddingJobBacklogProfileSummary,
@@ -2231,6 +2235,78 @@ def embedding_coverage_matrix_payload(
         "documents": [
             embedding_coverage_document_payload(document) for document in matrix.documents
         ],
+    }
+
+
+def multi_policy_ingestion_coverage_policy_summary_payload(
+    summary: MultiPolicyIngestionCoveragePolicySummary,
+) -> dict[str, object]:
+    return {
+        "chunk_policy_name": summary.chunk_policy_name,
+        "document_count": summary.document_count,
+        "chunked_document_count": summary.chunked_document_count,
+        "complete_document_count": summary.complete_document_count,
+        "attention_document_count": summary.attention_document_count,
+        "total_chunk_count": summary.total_chunk_count,
+        "expected_embedding_count": summary.expected_embedding_count,
+        "embedded_chunk_count": summary.embedded_chunk_count,
+        "complete_cell_count": summary.complete_cell_count,
+        "attention_cell_count": summary.attention_cell_count,
+        "not_chunked_cell_count": summary.not_chunked_cell_count,
+        "coverage_percent": _percent_value(summary.coverage_percent),
+        "coverage_label": _percent_label(summary.coverage_percent),
+    }
+
+
+def multi_policy_ingestion_coverage_row_payload(
+    row: MultiPolicyIngestionCoverageRow,
+) -> dict[str, object]:
+    return {
+        "document_id": row.document_id,
+        "file_id": row.file_id,
+        "document_title": row.document_title,
+        "original_file_name": row.original_file_name,
+        "file_ext": row.file_ext,
+        "document_group": row.document_group,
+        "parse_status": row.parse_status,
+        "access_scope": row.access_scope,
+        "chunk_policy_name": row.chunk_policy_name,
+        "target_token_size": row.target_token_size,
+        "overlap_token_size": row.overlap_token_size,
+        "split_strategy": row.split_strategy,
+        "chunk_count": row.chunk_count,
+        "uploaded_at": _datetime_response(row.uploaded_at),
+        "complete_profile_count": row.complete_profile_count,
+        "attention_profile_count": row.attention_profile_count,
+        "missing_profile_count": row.missing_profile_count,
+        "profiles": [embedding_coverage_profile_cell_payload(cell) for cell in row.profiles],
+    }
+
+
+def multi_policy_ingestion_coverage_matrix_payload(
+    matrix: MultiPolicyIngestionCoverageMatrix,
+) -> dict[str, object]:
+    summary = matrix.summary
+    return {
+        "summary": {
+            "document_count": summary.document_count,
+            "policy_count": summary.policy_count,
+            "profile_count": summary.profile_count,
+            "document_policy_count": summary.document_policy_count,
+            "total_chunk_count": summary.total_chunk_count,
+            "expected_embedding_count": summary.expected_embedding_count,
+            "embedded_chunk_count": summary.embedded_chunk_count,
+            "complete_cell_count": summary.complete_cell_count,
+            "incomplete_cell_count": summary.incomplete_cell_count,
+            "attention_cell_count": summary.attention_cell_count,
+            "coverage_percent": _percent_value(summary.coverage_percent),
+            "coverage_label": _percent_label(summary.coverage_percent),
+            "policies": [
+                multi_policy_ingestion_coverage_policy_summary_payload(policy)
+                for policy in summary.policy_summaries
+            ],
+        },
+        "rows": [multi_policy_ingestion_coverage_row_payload(row) for row in matrix.rows],
     }
 
 
@@ -9299,6 +9375,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=embedding_coverage_matrix_payload(matrix))
 
+    @app.get("/api/admin/multi-policy-ingestion-coverage")
+    def api_get_multi_policy_ingestion_coverage_matrix(
+        parse_status: str | None = None,
+        document_group: str | None = None,
+        profile_name: str | None = None,
+        chunk_policy_name: str | None = None,
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            matrix = get_multi_policy_ingestion_coverage_matrix(
+                settings.database_url,
+                parse_status=parse_status,
+                document_group=document_group,
+                profile_name=profile_name,
+                chunk_policy_name=chunk_policy_name,
+                limit=limit,
+            )
+        except InvalidEmbeddingCoverageError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=multi_policy_ingestion_coverage_matrix_payload(matrix))
+
     @app.get("/api/admin/embedding-jobs/stale-leases")
     def api_list_stale_embedding_job_leases(
         profile_name: str | None = None,
@@ -12864,6 +12968,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_parse_status=parse_status or "",
                 selected_document_group=document_group or "",
                 selected_profile_name=profile_name or "",
+                selected_limit=limit,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/multi-policy-ingestion-coverage", response_class=HTMLResponse)
+    def multi_policy_ingestion_coverage_page(
+        request: Request,
+        parse_status: str | None = None,
+        document_group: str | None = None,
+        profile_name: str | None = None,
+        chunk_policy_name: str | None = None,
+        limit: int = 100,
+    ) -> HTMLResponse:
+        matrix: MultiPolicyIngestionCoverageMatrix | None = None
+        profiles: list[EmbeddingProfileRecord] = []
+        policies: list[ChunkPolicySummaryRecord] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                profiles = list_active_embedding_profiles(settings.database_url)
+                policies = list_chunk_policy_summaries(settings.database_url)
+                matrix = get_multi_policy_ingestion_coverage_matrix(
+                    settings.database_url,
+                    parse_status=parse_status,
+                    document_group=document_group,
+                    profile_name=profile_name,
+                    chunk_policy_name=chunk_policy_name,
+                    limit=limit,
+                )
+            except (InvalidEmbeddingCoverageError, InvalidEmbeddingJobError) as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "multi_policy_ingestion_coverage.html",
+            template_context(
+                request,
+                matrix=matrix,
+                profiles=profiles,
+                policies=policies,
+                selected_parse_status=parse_status or "",
+                selected_document_group=document_group or "",
+                selected_profile_name=profile_name or "",
+                selected_chunk_policy_name=chunk_policy_name or "",
                 selected_limit=limit,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),

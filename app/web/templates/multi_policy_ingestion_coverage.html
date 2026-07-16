@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4" data-multi-policy-ingestion-coverage-page>
+  <div>
+    <h1 class="h3 mb-1">{{ t("multi_policy_coverage.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("multi_policy_coverage.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="/api/admin/multi-policy-ingestion-coverage">{{ t("common.api") }}</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form class="embedding-coverage-filter multi-policy-coverage-filter d-flex align-items-center gap-2 mb-4" method="get">
+  <label class="form-label mb-0 text-secondary" for="parse_status">{{ t("embedding_coverage.parse") }}</label>
+  <select class="form-select form-select-sm" id="parse_status" name="parse_status" onchange="this.form.submit()">
+    <option value="" {% if not selected_parse_status %}selected{% endif %}>{{ t("embedding_coverage.all") }}</option>
+    {% for status in ["pending", "running", "succeeded", "failed"] %}
+    <option value="{{ status }}" {% if selected_parse_status == status %}selected{% endif %}>{{ t("status." ~ status) }}</option>
+    {% endfor %}
+  </select>
+
+  <label class="form-label mb-0 text-secondary" for="chunk_policy_name">{{ t("multi_policy_coverage.policy") }}</label>
+  <select class="form-select form-select-sm" id="chunk_policy_name" name="chunk_policy_name" onchange="this.form.submit()">
+    <option value="" {% if not selected_chunk_policy_name %}selected{% endif %}>{{ t("multi_policy_coverage.all_policies") }}</option>
+    {% for policy in policies %}
+    <option value="{{ policy.chunk_policy_name }}" {% if selected_chunk_policy_name == policy.chunk_policy_name %}selected{% endif %}>
+      {{ policy.chunk_policy_name }}
+      {% if policy.is_default %} · {{ t("search_compare.default_chunk_policy") }}{% endif %}
+    </option>
+    {% endfor %}
+  </select>
+
+  <label class="form-label mb-0 text-secondary" for="profile_name">{{ t("embedding_coverage.profile") }}</label>
+  <select class="form-select form-select-sm" id="profile_name" name="profile_name" onchange="this.form.submit()">
+    <option value="" {% if not selected_profile_name %}selected{% endif %}>{{ t("embedding_coverage.all") }}</option>
+    {% for profile in profiles %}
+    <option value="{{ profile.profile_name }}" {% if selected_profile_name == profile.profile_name %}selected{% endif %}>{{ profile.profile_name }}</option>
+    {% endfor %}
+  </select>
+
+  <label class="form-label mb-0 text-secondary" for="document_group">{{ t("embedding_coverage.group") }}</label>
+  <input
+    class="form-control form-control-sm"
+    id="document_group"
+    name="document_group"
+    type="text"
+    value="{{ selected_document_group }}"
+    placeholder="{{ t('embedding_coverage.all') }}"
+  >
+
+  <label class="form-label mb-0 text-secondary" for="limit">{{ t("embedding_coverage.limit") }}</label>
+  <input
+    class="form-control form-control-sm embedding-coverage-limit"
+    id="limit"
+    name="limit"
+    min="1"
+    max="200"
+    type="number"
+    value="{{ selected_limit }}"
+  >
+  <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t("multi_policy_coverage.filter") }}</button>
+</form>
+
+{% if matrix %}
+<section class="embedding-coverage-summary-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_coverage.documents") }}</div>
+    <div class="metric-value fs-4">{{ matrix.summary.document_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("multi_policy_coverage.policies") }}</div>
+    <div class="metric-value fs-4">{{ matrix.summary.policy_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_coverage.expected") }}</div>
+    <div class="metric-value fs-4">{{ matrix.summary.expected_embedding_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_coverage.coverage") }}</div>
+    <div class="metric-value fs-4">{{ "%.2f"|format(matrix.summary.coverage_percent) }}%</div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("multi_policy_coverage.policy_summary") }}</h2>
+      <div class="text-secondary">{{ t("multi_policy_coverage.policy_summary_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0 multi-policy-summary-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("multi_policy_coverage.policy") }}</th>
+          <th scope="col">{{ t("embedding_coverage.documents") }}</th>
+          <th scope="col">{{ t("multi_policy_coverage.chunked") }}</th>
+          <th scope="col">{{ t("embedding_coverage.chunks") }}</th>
+          <th scope="col">{{ t("embedding_coverage.expected") }}</th>
+          <th scope="col">{{ t("multi_policy_coverage.embedded") }}</th>
+          <th scope="col">{{ t("embedding_coverage.coverage") }}</th>
+          <th scope="col">{{ t("embedding_coverage.failed") }}</th>
+          <th scope="col">{{ t("embedding_coverage.status_not_chunked") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for policy in matrix.summary.policy_summaries %}
+        <tr>
+          <td class="text-break">{{ policy.chunk_policy_name }}</td>
+          <td>{{ policy.document_count }}</td>
+          <td>{{ policy.chunked_document_count }}</td>
+          <td>{{ policy.total_chunk_count }}</td>
+          <td>{{ policy.expected_embedding_count }}</td>
+          <td>{{ policy.embedded_chunk_count }}</td>
+          <td>{{ "%.2f"|format(policy.coverage_percent) }}%</td>
+          <td>{{ policy.attention_cell_count }}</td>
+          <td>{{ policy.not_chunked_cell_count }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="9">{{ t("multi_policy_coverage.no_policies") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("multi_policy_coverage.matrix") }}</h2>
+      <div class="text-secondary">{{ t("multi_policy_coverage.matrix_help") }}</div>
+    </div>
+  </div>
+  {% set profile_headers = matrix.rows[0].profiles if matrix.rows else [] %}
+  <div class="table-responsive border-top embedding-coverage-table-wrap">
+    <table class="table table-sm align-middle mb-0 embedding-coverage-table multi-policy-coverage-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_coverage.document") }}</th>
+          <th scope="col">{{ t("multi_policy_coverage.policy") }}</th>
+          <th scope="col">{{ t("embedding_coverage.chunks") }}</th>
+          {% for profile in profile_headers %}
+          <th scope="col">{{ profile.profile_name }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix.rows %}
+        <tr>
+          <td>
+            <a class="document-title" href="/documents/{{ row.document_id }}">
+              {{ row.document_title or row.original_file_name }}
+            </a>
+            <div class="text-secondary small">
+              #{{ row.document_id }} · {{ row.document_group }} · {{ row.access_scope }}
+            </div>
+            <div class="text-secondary small">
+              {{ row.uploaded_at.strftime("%Y-%m-%d %H:%M:%S") }}
+            </div>
+          </td>
+          <td>
+            <strong class="text-break">{{ row.chunk_policy_name }}</strong>
+            <div class="text-secondary small">{{ row.target_token_size }} / {{ row.overlap_token_size }}</div>
+          </td>
+          <td>
+            <strong>{{ row.chunk_count }}</strong>
+            <div class="text-secondary small">{{ t("status." ~ row.parse_status) }}</div>
+          </td>
+          {% for cell in row.profiles %}
+          <td>
+            <div class="embedding-coverage-cell embedding-coverage-status-{{ cell.status }}">
+              <span class="badge embedding-coverage-badge">{{ t("embedding_coverage.status_" ~ cell.status) }}</span>
+              <div class="embedding-coverage-cell-main">
+                {{ cell.embedded_chunk_count }} / {{ cell.chunk_count }}
+                <span class="text-secondary">({{ "%.2f"|format(cell.coverage_percent) }}%)</span>
+              </div>
+              <div class="text-secondary small">
+                J {{ cell.job_count }} · P {{ cell.pending_count }} · R {{ cell.running_count }} · F {{ cell.failed_count }}
+              </div>
+            </div>
+          </td>
+          {% endfor %}
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="{{ matrix.summary.profile_count + 3 }}">
+            {% if database_configured %}{{ t("multi_policy_coverage.no_rows") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="metric-card bg-white p-5 text-center text-secondary">
+  {% if database_configured %}{{ t("multi_policy_coverage.no_rows") }}{% else %}{{ t("common.no_database") }}{% endif %}
+</section>
+{% endif %}
+{% endblock %}

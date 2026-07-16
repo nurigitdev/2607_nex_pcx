@@ -10,6 +10,7 @@
     "upload": "Upload",
     "documents": "Documents",
     "embedding_coverage": "Embedding Coverage",
+    "multi_policy_coverage": "Policy Coverage",
     "search": "Search",
     "search_experiments": "Search Experiments",
     "history": "History",
@@ -327,6 +328,22 @@
     "status_skipped": "Skipped",
     "status_missing": "Missing",
     "status_not_chunked": "No Chunks"
+  },
+  "multi_policy_coverage": {
+    "title": "Multi-Policy Ingestion Coverage",
+    "subtitle": "Review readiness across document, chunk policy, and embedding profile combinations.",
+    "policy": "Chunk Policy",
+    "policies": "Policies",
+    "all_policies": "All Policies",
+    "policy_summary": "Policy Summary",
+    "policy_summary_help": "Document, chunk, and embedding readiness by chunk policy.",
+    "matrix": "Document x Policy x Profile Matrix",
+    "matrix_help": "Each row is a document and chunk policy combination; each cell shows profile readiness.",
+    "chunked": "Chunked Docs",
+    "embedded": "Embedded",
+    "no_policies": "No chunk policies to display.",
+    "no_rows": "No multi-policy coverage rows to display.",
+    "filter": "Filter"
   },
   "search_compare": {
     "chunk_policy": "Chunk Policy",

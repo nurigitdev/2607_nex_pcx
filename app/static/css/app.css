@@ -1767,6 +1767,31 @@ main.container-fluid {
   min-width: 12rem;
 }
 
+.multi-policy-summary-table th:nth-child(n + 2),
+.multi-policy-summary-table td:nth-child(n + 2) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.multi-policy-coverage-table th:nth-child(2),
+.multi-policy-coverage-table td:nth-child(2) {
+  min-width: 12rem;
+  text-align: left;
+  white-space: normal;
+}
+
+.multi-policy-coverage-table th:nth-child(3),
+.multi-policy-coverage-table td:nth-child(3) {
+  min-width: 6rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.multi-policy-coverage-table th:nth-child(n + 4),
+.multi-policy-coverage-table td:nth-child(n + 4) {
+  min-width: 12rem;
+}
+
 .embedding-coverage-cell {
   border: 1px solid var(--pcx-border);
   border-radius: 0.375rem;

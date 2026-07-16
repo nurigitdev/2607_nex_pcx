@@ -10,6 +10,7 @@
     "upload": "업로드",
     "documents": "문서",
     "embedding_coverage": "임베딩 Coverage",
+    "multi_policy_coverage": "정책 Coverage",
     "search": "검색",
     "search_experiments": "검색 실험",
     "history": "검색 이력",
@@ -327,6 +328,22 @@
     "status_skipped": "건너뜀",
     "status_missing": "누락",
     "status_not_chunked": "Chunk 없음"
+  },
+  "multi_policy_coverage": {
+    "title": "다중 Chunk 정책 Coverage",
+    "subtitle": "문서별 chunk 정책과 embedding profile 조합의 준비 상태를 확인합니다.",
+    "policy": "Chunk 정책",
+    "policies": "정책",
+    "all_policies": "전체 정책",
+    "policy_summary": "정책 요약",
+    "policy_summary_help": "chunk 정책별 문서, chunk, embedding 준비 상태입니다.",
+    "matrix": "문서 x 정책 x Profile Matrix",
+    "matrix_help": "각 행은 문서와 chunk 정책 조합이며, cell은 profile별 embedding 준비 상태입니다.",
+    "chunked": "Chunk 생성 문서",
+    "embedded": "임베딩 완료",
+    "no_policies": "표시할 chunk 정책이 없습니다.",
+    "no_rows": "표시할 multi-policy coverage row가 없습니다.",
+    "filter": "필터"
   },
   "search_compare": {
     "chunk_policy": "Chunk 정책",
