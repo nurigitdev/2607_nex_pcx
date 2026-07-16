@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from psycopg.types.json import Json
 
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
@@ -134,6 +135,241 @@ def _store_profile_embeddings(database_url: str, chunk_id: int, chunk_text: str)
                 elapsed_ms=4,
             ),
         )
+
+
+def _create_search_result_source_context_fixture(
+    database_url: str,
+    *,
+    owner_user_id: int | None,
+    owner_org_unit_id: int,
+    document_group: str,
+) -> tuple[int, int, int]:
+    checksum = f"search-context-{uuid4()}"
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO files (
+                    original_file_name,
+                    stored_file_name,
+                    file_ext,
+                    file_size_bytes,
+                    sha256_checksum,
+                    storage_path,
+                    uploaded_by_user_id,
+                    document_group
+                )
+                VALUES (%s, %s, '.md', 3, %s, %s, %s, %s)
+                RETURNING file_id
+                """,
+                (
+                    f"{checksum}.md",
+                    f"{checksum}.stored.md",
+                    checksum,
+                    f"/tmp/{checksum}.md",
+                    owner_user_id,
+                    document_group,
+                ),
+            )
+            file_id = int(cursor.fetchone()["file_id"])
+            cursor.execute(
+                """
+                INSERT INTO documents (
+                    file_id,
+                    document_title,
+                    document_group,
+                    owner_user_id,
+                    owner_org_unit_id,
+                    access_scope
+                )
+                VALUES (%s, %s, %s, %s, %s, 'company')
+                RETURNING document_id
+                """,
+                (
+                    file_id,
+                    "source context fixture",
+                    document_group,
+                    owner_user_id,
+                    owner_org_unit_id,
+                ),
+            )
+            document_id = int(cursor.fetchone()["document_id"])
+            artifact_text = "\n".join(
+                [
+                    "# Source Context",
+                    "Previous context sentence.",
+                    "Current source context anchor sentence.",
+                    "Next context sentence.",
+                ]
+            )
+            cursor.execute(
+                """
+                INSERT INTO extraction_artifacts (
+                    file_id,
+                    document_id,
+                    artifact_type,
+                    content_text,
+                    content_hash,
+                    size_bytes,
+                    language,
+                    metadata
+                )
+                VALUES (%s, %s, 'normalized_markdown', %s, %s, %s, 'ko', %s)
+                RETURNING artifact_id
+                """,
+                (
+                    file_id,
+                    document_id,
+                    artifact_text,
+                    f"artifact-{checksum}",
+                    len(artifact_text.encode("utf-8")),
+                    Json({"fixture": "source-context"}),
+                ),
+            )
+            artifact_id = int(cursor.fetchone()["artifact_id"])
+            cursor.execute(
+                """
+                INSERT INTO document_blocks (
+                    artifact_id,
+                    document_id,
+                    block_seq,
+                    block_type,
+                    content_text,
+                    content_markdown,
+                    heading_path,
+                    source_anchor,
+                    char_start,
+                    char_end,
+                    token_count,
+                    metadata
+                )
+                VALUES (%s, %s, 1, 'paragraph', %s, %s, %s, %s, 31, 70, 6, %s)
+                RETURNING block_id
+                """,
+                (
+                    artifact_id,
+                    document_id,
+                    "Current source context anchor sentence.",
+                    "Current source context anchor sentence.",
+                    ["Source Context"],
+                    Json({"source": "fixture", "start_line": 3, "end_line": 3}),
+                    Json({"block_fixture": True}),
+                ),
+            )
+            block_id = int(cursor.fetchone()["block_id"])
+            chunk_ids: list[int] = []
+            chunk_inputs = [
+                ("Previous context sentence.", 0, None, None),
+                (
+                    "Current source context anchor sentence.",
+                    1,
+                    artifact_id,
+                    block_id,
+                ),
+                ("Next context sentence.", 2, None, None),
+            ]
+            for chunk_text, chunk_seq, chunk_artifact_id, chunk_block_id in chunk_inputs:
+                cursor.execute(
+                    """
+                    INSERT INTO chunks (
+                        document_id,
+                        artifact_id,
+                        block_id,
+                        chunk_seq,
+                        chunk_type,
+                        chunk_text,
+                        content_markdown,
+                        content_hash,
+                        chunk_policy_name,
+                        heading_path,
+                        source_anchor,
+                        source_char_start,
+                        source_char_end,
+                        token_count,
+                        char_count,
+                        metadata
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, 'text', %s, %s, %s, 'heading_512_64',
+                        %s, %s, %s, %s, %s, %s, %s
+                    )
+                    RETURNING chunk_id
+                    """,
+                    (
+                        document_id,
+                        chunk_artifact_id,
+                        chunk_block_id,
+                        chunk_seq,
+                        chunk_text,
+                        chunk_text,
+                        f"chunk-{checksum}-{chunk_seq}",
+                        ["Source Context"],
+                        Json({"source": "fixture", "chunk_seq": chunk_seq}),
+                        chunk_seq * 30,
+                        chunk_seq * 30 + len(chunk_text),
+                        5,
+                        len(chunk_text),
+                        Json({"chunk_fixture": chunk_seq}),
+                    ),
+                )
+                chunk_ids.append(int(cursor.fetchone()["chunk_id"]))
+            cursor.execute(
+                """
+                UPDATE chunks
+                SET prev_chunk_id = %s,
+                    next_chunk_id = %s
+                WHERE chunk_id = %s
+                """,
+                (None, chunk_ids[1], chunk_ids[0]),
+            )
+            cursor.execute(
+                """
+                UPDATE chunks
+                SET prev_chunk_id = %s,
+                    next_chunk_id = %s
+                WHERE chunk_id = %s
+                """,
+                (chunk_ids[0], chunk_ids[2], chunk_ids[1]),
+            )
+            cursor.execute(
+                """
+                UPDATE chunks
+                SET prev_chunk_id = %s,
+                    next_chunk_id = %s
+                WHERE chunk_id = %s
+                """,
+                (chunk_ids[1], None, chunk_ids[2]),
+            )
+
+    search_log = create_search_log(
+        database_url,
+        SearchLogInput(
+            query_text="source context query",
+            normalized_query_text="source context query",
+            actor_user_id=owner_user_id,
+            requested_search_scope="company",
+            effective_search_scope="company",
+            document_group=document_group,
+            top_k=3,
+            profiles=("kure_v1_1024",),
+            created_by="source-context-test",
+        ),
+    )
+    result = create_search_log_results(
+        database_url,
+        [
+            SearchLogResultInput(
+                search_log_id=search_log.search_log_id,
+                profile_name="kure_v1_1024",
+                rank=1,
+                chunk_id=chunk_ids[1],
+                distance=0.12,
+                score=0.88,
+                profile_elapsed_ms=9,
+            )
+        ],
+    )[0]
+    return file_id, result.search_log_result_id, chunk_ids[1]
 
 
 def _cleanup_files(database_url: str, file_ids: list[int]) -> None:
@@ -319,6 +555,66 @@ def test_search_log_cleanup_api_previews_and_deletes_expired_logs(
                     "cleanup_batch_size": 1000,
                 },
             )
+
+
+def test_search_result_source_context_api_returns_chunk_trace(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    document_group = f"slice-255-{uuid4()}"
+    file_id, search_log_result_id, current_chunk_id = (
+        _create_search_result_source_context_fixture(
+            migrated_database_url,
+            owner_user_id=ids["alice.member"],
+            owner_org_unit_id=ids["NeX Company"],
+            document_group=document_group,
+        )
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/api/search/results/{search_log_result_id}/source-context"
+            )
+            missing_response = client.get("/api/search/results/999999999/source-context")
+            invalid_response = client.get("/api/search/results/-1/source-context")
+
+        body = response.json()
+        chunks_by_position = {chunk["position"]: chunk for chunk in body["chunks"]}
+
+        assert response.status_code == 200
+        assert body["search_result"]["search_log_result_id"] == search_log_result_id
+        assert body["search_result"]["chunk_id"] == current_chunk_id
+        assert body["document"]["document_title"] == "source context fixture"
+        assert body["document"]["document_group"] == document_group
+        assert set(chunks_by_position) == {"previous", "current", "next"}
+        assert chunks_by_position["current"]["chunk_id"] == current_chunk_id
+        assert chunks_by_position["current"]["chunk_preview"] == (
+            "Current source context anchor sentence."
+        )
+        assert chunks_by_position["previous"]["chunk_preview"] == "Previous context sentence."
+        assert chunks_by_position["next"]["chunk_preview"] == "Next context sentence."
+        assert chunks_by_position["current"]["source_anchor"]["chunk_seq"] == 1
+        assert body["source_block"]["block_type"] == "paragraph"
+        assert body["source_block"]["content_preview"] == (
+            "Current source context anchor sentence."
+        )
+        assert body["source_block"]["source_anchor"]["start_line"] == 3
+        assert body["source_artifact"]["artifact_type"] == "normalized_markdown"
+        assert body["source_artifact"]["content_length"] > 0
+        assert body["trace_summary"] == {
+            "has_previous_chunk": True,
+            "has_next_chunk": True,
+            "has_source_block": True,
+            "has_source_artifact": True,
+            "context_chunk_count": 3,
+            "current_source_anchor": {"source": "fixture", "chunk_seq": 1},
+        }
+        assert missing_response.status_code == 404
+        assert invalid_response.status_code == 400
+    finally:
+        _cleanup_files(migrated_database_url, [file_id])
 
 
 def test_search_compare_api_returns_permission_filtered_profile_results(

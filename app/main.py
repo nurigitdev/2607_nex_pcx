@@ -494,6 +494,14 @@ from app.core.search_logs import (
     update_search_log_retention_settings,
     update_search_log_review_metadata,
 )
+from app.core.search_result_context import (
+    InvalidSearchResultContextError,
+    SearchResultContextChunk,
+    SearchResultSourceArtifact,
+    SearchResultSourceBlock,
+    SearchResultSourceContext,
+    get_search_result_source_context,
+)
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -3200,6 +3208,129 @@ def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
         "profile_status_counts": profile_status_counts,
         "profile_failure_count": profile_status_counts.get("failed", 0),
         "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
+    }
+
+
+def search_result_context_chunk_payload(chunk: SearchResultContextChunk) -> dict[str, object]:
+    return {
+        "position": chunk.position,
+        "chunk_id": chunk.chunk_id,
+        "document_id": chunk.document_id,
+        "chunk_seq": chunk.chunk_seq,
+        "chunk_text": chunk.chunk_text,
+        "chunk_preview": chunk.chunk_preview,
+        "content_hash": chunk.content_hash,
+        "chunk_policy_name": chunk.chunk_policy_name,
+        "artifact_id": chunk.artifact_id,
+        "block_id": chunk.block_id,
+        "chunk_type": chunk.chunk_type,
+        "heading_path": list(chunk.heading_path),
+        "source_anchor": chunk.source_anchor,
+        "page_no": chunk.page_no,
+        "slide_no": chunk.slide_no,
+        "sheet_name": chunk.sheet_name,
+        "cell_range": chunk.cell_range,
+        "source_char_start": chunk.source_char_start,
+        "source_char_end": chunk.source_char_end,
+        "token_count": chunk.token_count,
+        "char_count": chunk.char_count,
+        "prev_chunk_id": chunk.prev_chunk_id,
+        "next_chunk_id": chunk.next_chunk_id,
+        "metadata": chunk.metadata,
+    }
+
+
+def search_result_source_block_payload(
+    block: SearchResultSourceBlock | None,
+) -> dict[str, object] | None:
+    if block is None:
+        return None
+    return {
+        "block_id": block.block_id,
+        "artifact_id": block.artifact_id,
+        "document_id": block.document_id,
+        "parent_block_id": block.parent_block_id,
+        "block_seq": block.block_seq,
+        "block_type": block.block_type,
+        "content_preview": block.content_preview,
+        "content_markdown_preview": block.content_markdown_preview,
+        "heading_path": list(block.heading_path),
+        "source_anchor": block.source_anchor,
+        "page_no": block.page_no,
+        "slide_no": block.slide_no,
+        "sheet_name": block.sheet_name,
+        "cell_range": block.cell_range,
+        "char_start": block.char_start,
+        "char_end": block.char_end,
+        "token_count": block.token_count,
+        "metadata": block.metadata,
+        "created_at": _datetime_response(block.created_at),
+    }
+
+
+def search_result_source_artifact_payload(
+    artifact: SearchResultSourceArtifact | None,
+) -> dict[str, object] | None:
+    if artifact is None:
+        return None
+    return {
+        "artifact_id": artifact.artifact_id,
+        "extraction_run_id": artifact.extraction_run_id,
+        "file_id": artifact.file_id,
+        "document_id": artifact.document_id,
+        "artifact_type": artifact.artifact_type,
+        "content_preview": artifact.content_preview,
+        "content_length": artifact.content_length,
+        "storage_path": artifact.storage_path,
+        "content_hash": artifact.content_hash,
+        "size_bytes": artifact.size_bytes,
+        "language": artifact.language,
+        "metadata": artifact.metadata,
+        "created_at": _datetime_response(artifact.created_at),
+    }
+
+
+def search_result_source_context_payload(
+    context: SearchResultSourceContext,
+) -> dict[str, object]:
+    positions = {chunk.position for chunk in context.chunks}
+    current_chunk = next(
+        (chunk for chunk in context.chunks if chunk.position == "current"),
+        None,
+    )
+    return {
+        "search_result": {
+            "search_log_result_id": context.search_result.search_log_result_id,
+            "search_log_id": context.search_result.search_log_id,
+            "profile_name": context.search_result.profile_name,
+            "rank": context.search_result.rank,
+            "chunk_id": context.search_result.chunk_id,
+            "distance": context.search_result.distance,
+            "score": context.search_result.score,
+            "profile_elapsed_ms": context.search_result.profile_elapsed_ms,
+            "created_at": _datetime_response(context.search_result.created_at),
+        },
+        "document": {
+            "document_id": context.document.document_id,
+            "file_id": context.document.file_id,
+            "document_title": context.document.document_title,
+            "document_group": context.document.document_group,
+            "document_status": context.document.document_status,
+            "original_file_name": context.document.original_file_name,
+            "file_ext": context.document.file_ext,
+            "storage_path": context.document.storage_path,
+        },
+        "chunks": [search_result_context_chunk_payload(chunk) for chunk in context.chunks],
+        "source_block": search_result_source_block_payload(context.source_block),
+        "source_artifact": search_result_source_artifact_payload(context.source_artifact),
+        "trace_summary": {
+            "has_previous_chunk": "previous" in positions,
+            "has_next_chunk": "next" in positions,
+            "has_source_block": context.source_block is not None,
+            "has_source_artifact": context.source_artifact is not None,
+            "context_chunk_count": len(context.chunks),
+            "current_source_anchor": current_chunk.source_anchor if current_chunk else {},
+        },
     }
 
 
@@ -9658,6 +9789,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content=search_compare_payload(result))
+
+    @app.get("/api/search/results/{search_log_result_id}/source-context")
+    def api_get_search_result_source_context(search_log_result_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            context = get_search_result_source_context(
+                settings.database_url,
+                search_log_result_id,
+            )
+        except InvalidSearchResultContextError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if context is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search result source context not found.",
+            )
+
+        return JSONResponse(content=search_result_source_context_payload(context))
 
     @app.post("/api/search/logs/{search_log_id}/retry-profile")
     def api_retry_search_log_profile(

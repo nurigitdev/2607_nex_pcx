@@ -399,6 +399,21 @@
     noMetadata: "{{ t('search_runtime.no_metadata') }}",
     noResultsAfterSuccess: "{{ t('search_runtime.no_results_after_success') }}",
   };
+  const sourceContextLabels = {
+    show: "{{ t('search_compare.show_source_context') }}",
+    hide: "{{ t('search_compare.hide_source_context') }}",
+    loading: "{{ t('search_compare.loading_source_context') }}",
+    failed: "{{ t('search_compare.source_context_failed') }}",
+    document: "{{ t('search_compare.source_context_document') }}",
+    chunks: "{{ t('search_compare.source_context_chunks') }}",
+    previous: "{{ t('search_compare.previous_chunk') }}",
+    current: "{{ t('search_compare.current_chunk') }}",
+    next: "{{ t('search_compare.next_chunk') }}",
+    sourceBlock: "{{ t('search_compare.source_block') }}",
+    sourceArtifact: "{{ t('search_compare.source_artifact') }}",
+    sourceAnchor: "{{ t('search_compare.source_anchor') }}",
+    empty: "{{ t('search_compare.no_source_context') }}",
+  };
 
   const setAlert = (message) => {
     alertEl.hidden = !message;
@@ -1060,6 +1075,176 @@
     }
   };
 
+  const sourcePositionLabel = (position) => {
+    if (position === "previous") {
+      return sourceContextLabels.previous;
+    }
+    if (position === "next") {
+      return sourceContextLabels.next;
+    }
+    return sourceContextLabels.current;
+  };
+
+  const renderSourceJson = (value) => {
+    const pre = document.createElement("pre");
+    pre.className = "search-source-context-json";
+    pre.textContent = JSON.stringify(value || {}, null, 2);
+    return pre;
+  };
+
+  const renderSourceContextChunk = (chunk) => {
+    const card = document.createElement("article");
+    card.className = `search-source-context-chunk search-source-context-chunk-${chunk.position}`;
+    const header = document.createElement("div");
+    header.className = "search-source-context-chunk-header";
+    const badge = document.createElement("span");
+    badge.className = "badge text-bg-light border";
+    badge.textContent = sourcePositionLabel(chunk.position);
+    const meta = document.createElement("span");
+    meta.className = "text-secondary";
+    meta.textContent = `#${chunk.chunk_id} / seq ${chunk.chunk_seq}`;
+    header.append(badge, meta);
+
+    const preview = document.createElement("p");
+    preview.className = "search-source-context-preview";
+    preview.textContent = chunk.chunk_preview || sourceContextLabels.empty;
+
+    const details = document.createElement("div");
+    details.className = "search-source-context-meta";
+    details.append(
+      makeCell("policy", chunk.chunk_policy_name),
+      makeCell("type", chunk.chunk_type),
+      makeCell("path", (chunk.heading_path || []).join(" / ")),
+    );
+
+    card.append(header, preview, details);
+    if (Object.keys(chunk.source_anchor || {}).length) {
+      const anchor = document.createElement("details");
+      anchor.className = "search-source-context-details";
+      const summary = document.createElement("summary");
+      summary.textContent = sourceContextLabels.sourceAnchor;
+      anchor.append(summary, renderSourceJson(chunk.source_anchor));
+      card.append(anchor);
+    }
+    return card;
+  };
+
+  const renderSourceContext = (payload, panel) => {
+    panel.replaceChildren();
+    if (!payload || !Array.isArray(payload.chunks) || payload.chunks.length === 0) {
+      panel.textContent = sourceContextLabels.empty;
+      return;
+    }
+
+    const documentSection = document.createElement("section");
+    documentSection.className = "search-source-context-section";
+    const documentTitle = document.createElement("h4");
+    documentTitle.className = "h6 mb-0";
+    documentTitle.textContent = sourceContextLabels.document;
+    const documentMeta = document.createElement("div");
+    documentMeta.className = "search-source-context-meta";
+    documentMeta.append(
+      makeCell("document", payload.document?.document_title || payload.document?.original_file_name),
+      makeCell("file", payload.document?.original_file_name),
+      makeCell("group", payload.document?.document_group),
+    );
+    documentSection.append(documentTitle, documentMeta);
+
+    const chunksSection = document.createElement("section");
+    chunksSection.className = "search-source-context-section";
+    const chunksTitle = document.createElement("h4");
+    chunksTitle.className = "h6 mb-0";
+    chunksTitle.textContent = sourceContextLabels.chunks;
+    const chunkList = document.createElement("div");
+    chunkList.className = "search-source-context-chunks";
+    payload.chunks.forEach((chunk) => chunkList.append(renderSourceContextChunk(chunk)));
+    chunksSection.append(chunksTitle, chunkList);
+
+    panel.append(documentSection, chunksSection);
+
+    if (payload.source_block) {
+      const blockSection = document.createElement("details");
+      blockSection.className = "search-source-context-section search-source-context-details";
+      const summary = document.createElement("summary");
+      summary.textContent = `${sourceContextLabels.sourceBlock} #${payload.source_block.block_id}`;
+      const blockMeta = document.createElement("div");
+      blockMeta.className = "search-source-context-meta mt-2";
+      blockMeta.append(
+        makeCell("type", payload.source_block.block_type),
+        makeCell("seq", String(payload.source_block.block_seq)),
+        makeCell("preview", payload.source_block.content_preview),
+      );
+      blockSection.append(summary, blockMeta, renderSourceJson(payload.source_block.source_anchor));
+      panel.append(blockSection);
+    }
+
+    if (payload.source_artifact) {
+      const artifactSection = document.createElement("details");
+      artifactSection.className = "search-source-context-section search-source-context-details";
+      const summary = document.createElement("summary");
+      summary.textContent = `${sourceContextLabels.sourceArtifact} #${payload.source_artifact.artifact_id}`;
+      const artifactMeta = document.createElement("div");
+      artifactMeta.className = "search-source-context-meta mt-2";
+      artifactMeta.append(
+        makeCell("type", payload.source_artifact.artifact_type),
+        makeCell("length", String(payload.source_artifact.content_length || "-")),
+        makeCell("preview", payload.source_artifact.content_preview),
+      );
+      artifactSection.append(summary, artifactMeta);
+      panel.append(artifactSection);
+    }
+  };
+
+  const loadSourceContext = async (result, button, panel) => {
+    if (!result.search_log_result_id) {
+      panel.hidden = false;
+      panel.textContent = sourceContextLabels.empty;
+      return;
+    }
+    if (panel.dataset.loaded === "true") {
+      panel.hidden = !panel.hidden;
+      button.textContent = panel.hidden ? sourceContextLabels.show : sourceContextLabels.hide;
+      return;
+    }
+
+    panel.hidden = false;
+    panel.textContent = sourceContextLabels.loading;
+    button.disabled = true;
+    try {
+      const response = await fetch(
+        `/api/search/results/${result.search_log_result_id}/source-context`,
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        panel.textContent = body.detail || sourceContextLabels.failed;
+        return;
+      }
+      renderSourceContext(body, panel);
+      panel.dataset.loaded = "true";
+      button.textContent = sourceContextLabels.hide;
+    } catch (error) {
+      panel.textContent =
+        error instanceof Error ? error.message : sourceContextLabels.failed;
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  const renderSourceContextActions = (result) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "search-source-context";
+    const button = document.createElement("button");
+    button.className = "btn btn-outline-secondary btn-sm";
+    button.type = "button";
+    button.textContent = sourceContextLabels.show;
+    const panel = document.createElement("div");
+    panel.className = "search-source-context-panel";
+    panel.hidden = true;
+    button.addEventListener("click", () => loadSourceContext(result, button, panel));
+    wrapper.append(button, panel);
+    return wrapper;
+  };
+
   const renderFeedbackActions = (result) => {
     const wrapper = document.createElement("div");
     wrapper.className = "search-feedback";
@@ -1130,7 +1315,14 @@
       makeCell("path", (result.heading_path || []).join(" / ")),
     );
 
-    item.append(header, title, preview, meta, renderFeedbackActions(result));
+    item.append(
+      header,
+      title,
+      preview,
+      meta,
+      renderSourceContextActions(result),
+      renderFeedbackActions(result),
+    );
     return item;
   };
 

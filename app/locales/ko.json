@@ -331,7 +331,20 @@
   "search_compare": {
     "provider_mode": "Provider 모드",
     "require_real_provider": "실제 provider만 사용",
-    "require_real_provider_help": "활성 route 또는 remote fallback이 없으면 mock 결과 대신 profile 실패로 기록합니다."
+    "require_real_provider_help": "활성 route 또는 remote fallback이 없으면 mock 결과 대신 profile 실패로 기록합니다.",
+    "show_source_context": "근거 보기",
+    "hide_source_context": "근거 접기",
+    "loading_source_context": "근거 조회 중",
+    "source_context_failed": "근거 조회 실패",
+    "source_context_document": "원문 문서",
+    "source_context_chunks": "주변 chunk",
+    "previous_chunk": "이전",
+    "current_chunk": "현재",
+    "next_chunk": "다음",
+    "source_block": "Source block",
+    "source_artifact": "Source artifact",
+    "source_anchor": "Source anchor",
+    "no_source_context": "표시할 근거 정보가 없습니다."
   },
   "search_experiments": {
     "title": "검색 실험 Run",
