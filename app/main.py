@@ -522,6 +522,15 @@ class SearchProfileRetryRequest(BaseModel):
     profile_name: str
 
 
+class SearchRuntimeFailureRetryItemRequest(BaseModel):
+    search_log_id: int = Field(ge=1)
+    profile_name: str
+
+
+class SearchRuntimeFailureRetryRequest(BaseModel):
+    failures: list[SearchRuntimeFailureRetryItemRequest]
+
+
 class SearchPermissionMatrixEntryRequest(BaseModel):
     actor_user_id: int = Field(ge=1)
     requested_search_scope: str = "company"
@@ -9431,6 +9440,73 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content={"benchmark": dgx_ingestion_benchmark_detail_payload(detail)})
 
+    def retry_search_log_profile_response_payload(
+        search_log_id: int,
+        raw_profile_name: str,
+    ) -> dict[str, object]:
+        try:
+            source_log = get_search_log(settings.database_url or "", search_log_id)
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if source_log is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log not found.",
+            )
+        if source_log.actor_user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Search log actor_user_id is required for retry.",
+            )
+
+        profile_name = raw_profile_name.strip()
+        if not profile_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="profile_name is required.",
+            )
+        if profile_name not in source_log.profiles:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="profile_name is not included in the source search log.",
+            )
+
+        try:
+            result = run_search_compare(
+                settings.database_url or "",
+                SearchCompareInput(
+                    query_text=source_log.query_text,
+                    actor_user_id=source_log.actor_user_id,
+                    requested_search_scope=(
+                        source_log.requested_search_scope
+                        or source_log.effective_search_scope
+                        or "company"
+                    ),
+                    top_k=source_log.top_k,
+                    profiles=(profile_name,),
+                    chunk_policy_name=source_log.chunk_policy_name,
+                    document_group=source_log.document_group,
+                    file_type=source_log.file_type,
+                ),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+            )
+        except (
+            InvalidEmbeddingProviderError,
+            InvalidQueryEmbeddingError,
+            InvalidSearchCompareError,
+            InvalidPermissionError,
+            InvalidVectorSearchError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return {
+            "source_search_log_id": source_log.search_log_id,
+            "retry_profile_name": profile_name,
+            "retry_search_log_url": f"/search/logs?search_log_id={result.search_log_id}",
+            "search_result": search_compare_payload(result),
+        }
+
     @app.post("/api/search/compare")
     def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:
         if not settings.database_url:
@@ -9477,69 +9553,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="NEX_PCX_DATABASE_URL is not configured.",
             )
 
-        try:
-            source_log = get_search_log(settings.database_url, search_log_id)
-        except InvalidSearchLogError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        if source_log is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Search log not found.",
-            )
-        if source_log.actor_user_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Search log actor_user_id is required for retry.",
-            )
-
-        profile_name = payload.profile_name.strip()
-        if not profile_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="profile_name is required.",
-            )
-        if profile_name not in source_log.profiles:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="profile_name is not included in the source search log.",
-            )
-
-        try:
-            result = run_search_compare(
-                settings.database_url,
-                SearchCompareInput(
-                    query_text=source_log.query_text,
-                    actor_user_id=source_log.actor_user_id,
-                    requested_search_scope=(
-                        source_log.requested_search_scope
-                        or source_log.effective_search_scope
-                        or "company"
-                    ),
-                    top_k=source_log.top_k,
-                    profiles=(profile_name,),
-                    chunk_policy_name=source_log.chunk_policy_name,
-                    document_group=source_log.document_group,
-                    file_type=source_log.file_type,
-                ),
-                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
-            )
-        except (
-            InvalidEmbeddingProviderError,
-            InvalidQueryEmbeddingError,
-            InvalidSearchCompareError,
-            InvalidPermissionError,
-            InvalidVectorSearchError,
-            InvalidSearchLogError,
-        ) as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
         return JSONResponse(
-            content={
-                "source_search_log_id": source_log.search_log_id,
-                "retry_profile_name": profile_name,
-                "retry_search_log_url": f"/search/logs?search_log_id={result.search_log_id}",
-                "search_result": search_compare_payload(result),
-            }
+            content=retry_search_log_profile_response_payload(
+                search_log_id,
+                payload.profile_name,
+            )
         )
 
     @app.post("/api/search/experiments/run")
@@ -9942,6 +9960,70 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             content={
                 "failures": [search_runtime_failure_payload(failure) for failure in failures],
+            }
+        )
+
+    @app.post("/api/search/logs/runtime-failures/retry")
+    def api_retry_search_runtime_failures(
+        payload: SearchRuntimeFailureRetryRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        if not payload.failures:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="failures must not be empty.",
+            )
+        if len(payload.failures) > 20:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="failures must contain at most 20 items.",
+            )
+
+        results: list[dict[str, object]] = []
+        for failure in payload.failures:
+            try:
+                retry_result = retry_search_log_profile_response_payload(
+                    failure.search_log_id,
+                    failure.profile_name,
+                )
+            except HTTPException as exc:
+                results.append(
+                    {
+                        "source_search_log_id": failure.search_log_id,
+                        "retry_profile_name": failure.profile_name,
+                        "status": "failed",
+                        "detail": exc.detail,
+                    }
+                )
+                continue
+
+            search_result = retry_result["search_result"]
+            retry_search_log_id = (
+                search_result["search_log_id"] if isinstance(search_result, dict) else None
+            )
+            results.append(
+                {
+                    "source_search_log_id": retry_result["source_search_log_id"],
+                    "retry_profile_name": retry_result["retry_profile_name"],
+                    "status": "succeeded",
+                    "retry_search_log_id": retry_search_log_id,
+                    "retry_search_log_url": retry_result["retry_search_log_url"],
+                    "search_result": search_result,
+                }
+            )
+
+        retried_count = sum(1 for result in results if result["status"] == "succeeded")
+        failed_count = len(results) - retried_count
+        return JSONResponse(
+            content={
+                "requested_count": len(payload.failures),
+                "retried_count": retried_count,
+                "failed_count": failed_count,
+                "results": results,
             }
         )
 

@@ -1123,7 +1123,12 @@
     "triage_created": "Created",
     "triage_action": "Action",
     "triage_open": "상세 보기",
-    "triage_empty": "최근 runtime failure가 없습니다."
+    "triage_empty": "최근 runtime failure가 없습니다.",
+    "triage_retry_visible": "표시된 실패 재시도",
+    "triage_retry_running": "표시된 runtime failure 재시도 중...",
+    "triage_retry_running_short": "재시도 중",
+    "triage_retry_complete": "재시도 완료: 성공 {retried_count}건, 실패 {failed_count}건",
+    "triage_retry_failed": "runtime failure 재시도 실패"
   },
   "search_reproducibility": {
     "title": "검색 재현성 Metadata",

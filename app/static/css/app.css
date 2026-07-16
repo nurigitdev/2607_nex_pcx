@@ -3264,15 +3264,35 @@ main.container-fluid {
   justify-content: space-between;
 }
 
+.search-runtime-triage-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .search-runtime-triage-table td,
 .search-runtime-triage-table th {
   white-space: nowrap;
+}
+
+.search-runtime-triage-table td:last-child {
+  min-width: 11rem;
+}
+
+.search-runtime-triage-table th:last-child {
+  min-width: 11rem;
 }
 
 .search-runtime-triage-query,
 .search-runtime-triage-error {
   max-width: 26rem;
   overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.search-runtime-triage-row-status {
   white-space: normal;
 }
 

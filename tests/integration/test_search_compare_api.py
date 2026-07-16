@@ -934,6 +934,7 @@ def test_search_runtime_failures_api_lists_and_filters_profile_failures(
         ),
     )
     app = create_app(Settings(database_url=migrated_database_url))
+    retry_log_ids: list[int] = []
 
     try:
         with TestClient(app) as client:
@@ -945,6 +946,41 @@ def test_search_runtime_failures_api_lists_and_filters_profile_failures(
             invalid_limit_response = client.get(
                 "/api/search/logs/runtime-failures",
                 params={"limit": 0},
+            )
+            bulk_retry_response = client.post(
+                "/api/search/logs/runtime-failures/retry",
+                json={
+                    "failures": [
+                        {
+                            "search_log_id": first_log.search_log_id,
+                            "profile_name": "bge_m3_1024",
+                        },
+                        {
+                            "search_log_id": first_log.search_log_id,
+                            "profile_name": "missing_profile",
+                        },
+                        {
+                            "search_log_id": 999999999,
+                            "profile_name": "bge_m3_1024",
+                        },
+                    ]
+                },
+            )
+            empty_retry_response = client.post(
+                "/api/search/logs/runtime-failures/retry",
+                json={"failures": []},
+            )
+            too_many_retry_response = client.post(
+                "/api/search/logs/runtime-failures/retry",
+                json={
+                    "failures": [
+                        {
+                            "search_log_id": first_log.search_log_id,
+                            "profile_name": "bge_m3_1024",
+                        }
+                        for _ in range(21)
+                    ]
+                },
             )
 
         assert response.status_code == 200
@@ -974,10 +1010,35 @@ def test_search_runtime_failures_api_lists_and_filters_profile_failures(
         assert all(failure["profile_name"] == "bge_m3_1024" for failure in filtered_failures)
         assert invalid_limit_response.status_code == 400
         assert "limit" in invalid_limit_response.json()["detail"]
+        assert bulk_retry_response.status_code == 200
+        bulk_body = bulk_retry_response.json()
+        assert bulk_body["requested_count"] == 3
+        assert bulk_body["retried_count"] == 1
+        assert bulk_body["failed_count"] == 2
+        succeeded_retry = next(
+            result for result in bulk_body["results"] if result["status"] == "succeeded"
+        )
+        retry_log_ids.append(succeeded_retry["retry_search_log_id"])
+        assert succeeded_retry["source_search_log_id"] == first_log.search_log_id
+        assert succeeded_retry["retry_profile_name"] == "bge_m3_1024"
+        assert succeeded_retry["retry_search_log_url"] == (
+            f"/search/logs?search_log_id={succeeded_retry['retry_search_log_id']}"
+        )
+        failed_details = [
+            result["detail"] for result in bulk_body["results"] if result["status"] == "failed"
+        ]
+        assert "profile_name is not included in the source search log." in failed_details
+        assert "Search log not found." in failed_details
+        assert empty_retry_response.status_code == 400
+        assert empty_retry_response.json() == {"detail": "failures must not be empty."}
+        assert too_many_retry_response.status_code == 400
+        assert too_many_retry_response.json() == {
+            "detail": "failures must contain at most 20 items."
+        }
     finally:
         _delete_search_logs(
             migrated_database_url,
-            [first_log.search_log_id, second_log.search_log_id],
+            [first_log.search_log_id, second_log.search_log_id, *retry_log_ids],
         )
 
 

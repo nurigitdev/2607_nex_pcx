@@ -167,8 +167,21 @@
       <h2 class="h5 mb-1">{{ t("search_runtime.triage_title") }}</h2>
       <p class="text-secondary mb-0">{{ t("search_runtime.triage_subtitle") }}</p>
     </div>
-    <span class="badge text-bg-light">GET /api/search/logs/runtime-failures</span>
+    <div class="search-runtime-triage-actions">
+      <span class="badge text-bg-light">GET /api/search/logs/runtime-failures</span>
+      {% if runtime_failures %}
+      <button
+        class="btn btn-sm btn-outline-primary"
+        type="button"
+        data-runtime-failure-bulk-retry-button
+        {% if not database_configured %}disabled{% endif %}
+      >
+        {{ t("search_runtime.triage_retry_visible") }}
+      </button>
+      {% endif %}
+    </div>
   </div>
+  <div class="text-secondary small mt-2" data-runtime-failure-bulk-retry-status aria-live="polite"></div>
   {% if runtime_failures %}
   <div class="table-responsive mt-3">
     <table class="table table-sm align-middle mb-0 search-runtime-triage-table">
@@ -185,7 +198,11 @@
       </thead>
       <tbody>
         {% for failure in runtime_failures %}
-        <tr>
+        <tr
+          data-runtime-failure-row
+          data-search-log-id="{{ failure.search_log_id }}"
+          data-profile-name="{{ failure.profile_name }}"
+        >
           <td>
             <a class="job-link" href="/search/logs?search_log_id={{ failure.search_log_id }}">
               #{{ failure.search_log_id }}
@@ -217,6 +234,7 @@
             <a class="btn btn-sm btn-outline-primary" href="/search/logs?search_log_id={{ failure.search_log_id }}#search-history-runtime-panel">
               {{ t("search_runtime.triage_open") }}
             </a>
+            <div class="search-runtime-triage-row-status text-secondary small mt-1" aria-live="polite"></div>
           </td>
         </tr>
         {% endfor %}
@@ -1101,6 +1119,91 @@
       }
     });
   });
+
+  const runtimeFailureBulkRetryButton = document.querySelector(
+    "[data-runtime-failure-bulk-retry-button]",
+  );
+  const runtimeFailureBulkRetryStatus = document.querySelector(
+    "[data-runtime-failure-bulk-retry-status]",
+  );
+  if (runtimeFailureBulkRetryButton && runtimeFailureBulkRetryStatus) {
+    runtimeFailureBulkRetryButton.addEventListener("click", async () => {
+      const rows = Array.from(document.querySelectorAll("[data-runtime-failure-row]"));
+      const failures = rows
+        .map((row) => ({
+          search_log_id: Number(row.dataset.searchLogId),
+          profile_name: row.dataset.profileName || "",
+        }))
+        .filter((failure) => failure.search_log_id && failure.profile_name);
+      if (!failures.length) return;
+
+      runtimeFailureBulkRetryButton.disabled = true;
+      runtimeFailureBulkRetryStatus.classList.remove("text-danger", "text-success");
+      runtimeFailureBulkRetryStatus.classList.add("text-secondary");
+      runtimeFailureBulkRetryStatus.textContent = "{{ t('search_runtime.triage_retry_running') }}";
+      rows.forEach((row) => {
+        const rowStatus = row.querySelector(".search-runtime-triage-row-status");
+        if (rowStatus) {
+          rowStatus.classList.remove("text-danger", "text-success");
+          rowStatus.classList.add("text-secondary");
+          rowStatus.textContent = "{{ t('search_runtime.triage_retry_running_short') }}";
+        }
+      });
+
+      try {
+        const response = await fetch("/api/search/logs/runtime-failures/retry", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({failures}),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          runtimeFailureBulkRetryStatus.classList.remove("text-secondary", "text-success");
+          runtimeFailureBulkRetryStatus.classList.add("text-danger");
+          runtimeFailureBulkRetryStatus.textContent =
+            body.detail || "{{ t('search_runtime.triage_retry_failed') }}";
+          return;
+        }
+
+        runtimeFailureBulkRetryStatus.classList.remove("text-secondary", "text-danger");
+        runtimeFailureBulkRetryStatus.classList.add("text-success");
+        runtimeFailureBulkRetryStatus.textContent =
+          "{{ t('search_runtime.triage_retry_complete') }}"
+            .replace("{retried_count}", body.retried_count)
+            .replace("{failed_count}", body.failed_count);
+
+        rows.forEach((row) => {
+          const rowStatus = row.querySelector(".search-runtime-triage-row-status");
+          const searchLogId = Number(row.dataset.searchLogId);
+          const profileName = row.dataset.profileName || "";
+          const result = (body.results || []).find(
+            (item) =>
+              item.source_search_log_id === searchLogId &&
+              item.retry_profile_name === profileName,
+          );
+          if (!rowStatus || !result) return;
+
+          rowStatus.classList.remove("text-secondary", "text-danger", "text-success");
+          if (result.status === "succeeded") {
+            rowStatus.classList.add("text-success");
+            rowStatus.textContent = "{{ t('search_runtime.retry_complete') }}";
+          } else {
+            rowStatus.classList.add("text-danger");
+            rowStatus.textContent = result.detail || "{{ t('search_runtime.triage_retry_failed') }}";
+          }
+        });
+      } catch (error) {
+        runtimeFailureBulkRetryStatus.classList.remove("text-secondary", "text-success");
+        runtimeFailureBulkRetryStatus.classList.add("text-danger");
+        runtimeFailureBulkRetryStatus.textContent =
+          error instanceof Error
+            ? error.message
+            : "{{ t('search_runtime.triage_retry_failed') }}";
+      } finally {
+        runtimeFailureBulkRetryButton.disabled = false;
+      }
+    });
+  }
 
   document.querySelectorAll(".search-history-promotion").forEach((form) => {
     const resultId = form.dataset.searchLogResultId;

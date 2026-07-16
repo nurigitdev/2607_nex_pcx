@@ -44,6 +44,19 @@ def test_search_runtime_failures_api_requires_database_url() -> None:
     assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
 
 
+def test_search_runtime_failure_retry_api_requires_database_url() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/search/logs/runtime-failures/retry",
+            json={"failures": [{"search_log_id": 1, "profile_name": "kure_v1_1024"}]},
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "NEX_PCX_DATABASE_URL is not configured."}
+
+
 def test_search_permission_matrix_api_requires_database_url() -> None:
     app = create_app(Settings(database_url=None))
 
