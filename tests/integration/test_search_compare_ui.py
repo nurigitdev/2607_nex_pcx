@@ -250,6 +250,9 @@ def test_search_history_detail_renders_permission_explainability(
         assert "history_reproducibility" in response.text
         assert "검색 이력 Runtime 상태" in response.text
         assert 'id="search-history-runtime-panel"' in response.text
+        assert "검색 Runtime Failure Triage" in response.text
+        assert "GET /api/search/logs/runtime-failures" in response.text
+        assert "상세 보기" in response.text
         assert "nlpai-lab/KURE-v1" in response.text
         assert "Remote provider request failed" in response.text
         assert "query_embedding_failed" in response.text

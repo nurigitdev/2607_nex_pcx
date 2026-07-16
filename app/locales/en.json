@@ -1112,7 +1112,18 @@
     "retry_failed_profile": "Retry Failed Profile",
     "retry_running": "Retrying...",
     "retry_complete": "Retry complete",
-    "retry_failed": "Retry failed"
+    "retry_failed": "Retry failed",
+    "triage_title": "Search Runtime Failure Triage",
+    "triage_subtitle": "Track profiles that failed query embedding or vector search in recent search logs.",
+    "triage_log": "Log",
+    "triage_query": "Query",
+    "triage_profile": "Profile",
+    "triage_error": "Error",
+    "triage_latency": "Latency",
+    "triage_created": "Created",
+    "triage_action": "Action",
+    "triage_open": "Open Detail",
+    "triage_empty": "No recent runtime failures."
   },
   "search_reproducibility": {
     "title": "Search Reproducibility Metadata",

@@ -207,6 +207,26 @@ class SearchLogListItem:
 
 
 @dataclass(frozen=True)
+class SearchRuntimeFailureRecord:
+    search_log_id: int
+    query_text: str
+    actor_user_id: int | None
+    actor_login_id: str | None
+    actor_display_name: str | None
+    requested_search_scope: str | None
+    effective_search_scope: str | None
+    document_group: str | None
+    file_type: str | None
+    chunk_policy_name: str | None
+    top_k: int
+    profile_name: str
+    error_code: str | None
+    error_message: str | None
+    elapsed_ms: int | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class SearchLogResultDetailRecord:
     search_log_result: SearchLogResultRecord
     document_id: int
@@ -466,6 +486,36 @@ def _row_to_search_result_feedback_record(row: dict[str, Any]) -> SearchResultFe
 
 def _optional_float(value: Any) -> float | None:
     return float(value) if value is not None else None
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _row_to_search_runtime_failure_record(row: dict[str, Any]) -> SearchRuntimeFailureRecord:
+    return SearchRuntimeFailureRecord(
+        search_log_id=int(row["search_log_id"]),
+        query_text=str(row["query_text"]),
+        actor_user_id=int(row["actor_user_id"]) if row["actor_user_id"] is not None else None,
+        actor_login_id=row["actor_login_id"],
+        actor_display_name=row["actor_display_name"],
+        requested_search_scope=row["requested_search_scope"],
+        effective_search_scope=row["effective_search_scope"],
+        document_group=row["document_group"],
+        file_type=row["file_type"],
+        chunk_policy_name=row["chunk_policy_name"],
+        top_k=int(row["top_k"]),
+        profile_name=str(row["profile_name"]),
+        error_code=row["error_code"],
+        error_message=row["error_message"],
+        elapsed_ms=_optional_int(row["elapsed_ms"]),
+        created_at=row["created_at"],
+    )
 
 
 def _row_to_search_feedback_profile_summary_record(
@@ -915,6 +965,56 @@ def list_search_logs(
             )
             rows = cursor.fetchall()
     return [_row_to_search_log_list_item(dict(row)) for row in rows]
+
+
+def list_search_runtime_failures(
+    database_url: str,
+    *,
+    profile_name: str | None = None,
+    limit: int = 20,
+) -> list[SearchRuntimeFailureRecord]:
+    validated_limit = _validate_limit(limit)
+    normalized_profile = _validate_nonblank(profile_name, "profile_name")
+    params: list[object] = []
+    profile_filter = ""
+    if normalized_profile is not None:
+        profile_filter = "WHERE failure.key = %s"
+        params.append(normalized_profile)
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    sl.search_log_id,
+                    sl.query_text,
+                    sl.actor_user_id,
+                    au.login_id AS actor_login_id,
+                    au.display_name AS actor_display_name,
+                    sl.requested_search_scope,
+                    sl.effective_search_scope,
+                    sl.document_group,
+                    sl.file_type,
+                    sl.chunk_policy_name,
+                    sl.top_k,
+                    sl.created_at,
+                    failure.key AS profile_name,
+                    failure.value ->> 'error_code' AS error_code,
+                    failure.value ->> 'error_message' AS error_message,
+                    failure.value ->> 'elapsed_ms' AS elapsed_ms
+                FROM search_logs sl
+                LEFT JOIN app_users au ON au.user_id = sl.actor_user_id
+                JOIN LATERAL jsonb_each(
+                    COALESCE(sl.query_runtime_metadata -> 'profile_failures', '{{}}'::jsonb)
+                ) AS failure(key, value) ON TRUE
+                {profile_filter}
+                ORDER BY sl.created_at DESC, sl.search_log_id DESC, failure.key ASC
+                LIMIT %s
+                """,
+                [*params, validated_limit],
+            )
+            rows = cursor.fetchall()
+    return [_row_to_search_runtime_failure_record(dict(row)) for row in rows]
 
 
 def get_search_log_result(

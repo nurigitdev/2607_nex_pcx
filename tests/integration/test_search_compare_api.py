@@ -875,6 +875,112 @@ def test_search_log_profile_retry_api_replays_source_conditions(
         )
 
 
+def test_search_runtime_failures_api_lists_and_filters_profile_failures(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    first_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Runtime failure triage first",
+            normalized_query_text="runtime failure triage first",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="company",
+            document_group=f"runtime-failure-triage-{uuid4()}",
+            top_k=5,
+            profiles=("kure_v1_1024", "bge_m3_1024"),
+            query_runtime_metadata={
+                "query_embedding_bridge": True,
+                "profile_status_counts": {"succeeded": 1, "failed": 1},
+                "profile_failures": {
+                    "bge_m3_1024": {
+                        "profile_name": "bge_m3_1024",
+                        "status": "failed",
+                        "error_code": "query_embedding_failed",
+                        "error_message": "BGE provider timeout",
+                        "elapsed_ms": 250,
+                    }
+                },
+            },
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    second_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Runtime failure triage second",
+            normalized_query_text="runtime failure triage second",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="team",
+            effective_search_scope="team",
+            document_group=f"runtime-failure-triage-{uuid4()}",
+            top_k=3,
+            profiles=("kure_v1_1024",),
+            query_runtime_metadata={
+                "query_embedding_bridge": True,
+                "profile_status_counts": {"succeeded": 0, "failed": 1},
+                "profile_failures": {
+                    "kure_v1_1024": {
+                        "profile_name": "kure_v1_1024",
+                        "status": "failed",
+                        "error_code": "vector_search_failed",
+                        "error_message": "Vector search failed",
+                        "elapsed_ms": 88,
+                    }
+                },
+            },
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/search/logs/runtime-failures", params={"limit": 20})
+            filtered_response = client.get(
+                "/api/search/logs/runtime-failures",
+                params={"profile_name": "bge_m3_1024", "limit": 20},
+            )
+            invalid_limit_response = client.get(
+                "/api/search/logs/runtime-failures",
+                params={"limit": 0},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        failures_by_log_id = {
+            failure["search_log_id"]: failure for failure in body["failures"]
+        }
+        assert first_log.search_log_id in failures_by_log_id
+        assert second_log.search_log_id in failures_by_log_id
+        assert failures_by_log_id[first_log.search_log_id]["profile_name"] == "bge_m3_1024"
+        assert failures_by_log_id[first_log.search_log_id]["error_code"] == (
+            "query_embedding_failed"
+        )
+        assert failures_by_log_id[first_log.search_log_id]["elapsed_ms"] == 250
+        assert failures_by_log_id[first_log.search_log_id]["actor_display_name"] == (
+            "Alice Member"
+        )
+        assert failures_by_log_id[first_log.search_log_id]["search_log_url"] == (
+            f"/search/logs?search_log_id={first_log.search_log_id}"
+        )
+        assert filtered_response.status_code == 200
+        filtered_failures = filtered_response.json()["failures"]
+        assert any(
+            failure["search_log_id"] == first_log.search_log_id
+            for failure in filtered_failures
+        )
+        assert all(failure["profile_name"] == "bge_m3_1024" for failure in filtered_failures)
+        assert invalid_limit_response.status_code == 400
+        assert "limit" in invalid_limit_response.json()["detail"]
+    finally:
+        _delete_search_logs(
+            migrated_database_url,
+            [first_log.search_log_id, second_log.search_log_id],
+        )
+
+
 def test_search_compare_api_handles_invalid_scope(
     migrated_database_url: str,
 ) -> None:

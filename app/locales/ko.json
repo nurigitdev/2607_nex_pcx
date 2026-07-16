@@ -1112,7 +1112,18 @@
     "retry_failed_profile": "실패 Profile 재시도",
     "retry_running": "재시도 중...",
     "retry_complete": "재시도 완료",
-    "retry_failed": "재시도 실패"
+    "retry_failed": "재시도 실패",
+    "triage_title": "검색 Runtime Failure Triage",
+    "triage_subtitle": "최근 검색 로그 중 query embedding 또는 vector search가 실패한 profile을 추적합니다.",
+    "triage_log": "Log",
+    "triage_query": "Query",
+    "triage_profile": "Profile",
+    "triage_error": "Error",
+    "triage_latency": "Latency",
+    "triage_created": "Created",
+    "triage_action": "Action",
+    "triage_open": "상세 보기",
+    "triage_empty": "최근 runtime failure가 없습니다."
   },
   "search_reproducibility": {
     "title": "검색 재현성 Metadata",

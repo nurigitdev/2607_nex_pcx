@@ -161,6 +161,73 @@
   </form>
 </section>
 
+<section class="metric-card bg-white p-3 mb-4 search-runtime-triage-panel">
+  <div class="search-runtime-triage-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_runtime.triage_title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("search_runtime.triage_subtitle") }}</p>
+    </div>
+    <span class="badge text-bg-light">GET /api/search/logs/runtime-failures</span>
+  </div>
+  {% if runtime_failures %}
+  <div class="table-responsive mt-3">
+    <table class="table table-sm align-middle mb-0 search-runtime-triage-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("search_runtime.triage_log") }}</th>
+          <th scope="col">{{ t("search_runtime.triage_query") }}</th>
+          <th scope="col">{{ t("search_runtime.triage_profile") }}</th>
+          <th scope="col">{{ t("search_runtime.triage_error") }}</th>
+          <th scope="col">{{ t("search_runtime.triage_latency") }}</th>
+          <th scope="col">{{ t("search_runtime.triage_created") }}</th>
+          <th scope="col">{{ t("search_runtime.triage_action") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for failure in runtime_failures %}
+        <tr>
+          <td>
+            <a class="job-link" href="/search/logs?search_log_id={{ failure.search_log_id }}">
+              #{{ failure.search_log_id }}
+            </a>
+          </td>
+          <td>
+            <div class="search-runtime-triage-query">{{ failure.query_text }}</div>
+            <div class="text-secondary small">
+              {{ failure.actor_display_name or failure.actor_login_id or t("permissions.none") }}
+              · {{ failure.document_group or t("permissions.none") }}
+            </div>
+          </td>
+          <td><code>{{ failure.profile_name }}</code></td>
+          <td>
+            <div class="fw-semibold">{{ failure.error_code or t("permissions.none") }}</div>
+            <div class="text-secondary small search-runtime-triage-error">
+              {{ failure.error_message or t("permissions.none") }}
+            </div>
+          </td>
+          <td>
+            {% if failure.elapsed_ms is not none %}
+            {{ failure.elapsed_ms }} ms
+            {% else %}
+            {{ t("permissions.none") }}
+            {% endif %}
+          </td>
+          <td>{{ failure.created_at }}</td>
+          <td>
+            <a class="btn btn-sm btn-outline-primary" href="/search/logs?search_log_id={{ failure.search_log_id }}#search-history-runtime-panel">
+              {{ t("search_runtime.triage_open") }}
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-secondary mt-3">{{ t("search_runtime.triage_empty") }}</div>
+  {% endif %}
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0 search-log-table">

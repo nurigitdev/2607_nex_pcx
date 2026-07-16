@@ -472,6 +472,7 @@ from app.core.search_logs import (
     SearchLogReviewMetadataInput,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
+    SearchRuntimeFailureRecord,
     cleanup_expired_search_logs,
     create_search_result_feedback,
     get_search_log,
@@ -479,6 +480,7 @@ from app.core.search_logs import (
     get_search_log_result,
     list_search_feedback_comments,
     list_search_logs,
+    list_search_runtime_failures,
     load_search_log_retention_settings,
     summarize_search_feedback,
     update_search_log_retention_settings,
@@ -4151,6 +4153,30 @@ def search_log_record_payload(item: SearchLogListItem) -> dict[str, object]:
         "reviewed_at": _datetime_response(search_log.reviewed_at),
         "created_at": _datetime_response(search_log.created_at),
         "latest_feedback_at": _datetime_response(item.latest_feedback_at),
+    }
+
+
+def search_runtime_failure_payload(
+    failure: SearchRuntimeFailureRecord,
+) -> dict[str, object]:
+    return {
+        "search_log_id": failure.search_log_id,
+        "query_text": failure.query_text,
+        "actor_user_id": failure.actor_user_id,
+        "actor_login_id": failure.actor_login_id,
+        "actor_display_name": failure.actor_display_name,
+        "requested_search_scope": failure.requested_search_scope,
+        "effective_search_scope": failure.effective_search_scope,
+        "document_group": failure.document_group,
+        "file_type": failure.file_type,
+        "chunk_policy_name": failure.chunk_policy_name,
+        "top_k": failure.top_k,
+        "profile_name": failure.profile_name,
+        "error_code": failure.error_code,
+        "error_message": failure.error_message,
+        "elapsed_ms": failure.elapsed_ms,
+        "created_at": _datetime_response(failure.created_at),
+        "search_log_url": f"/search/logs?search_log_id={failure.search_log_id}",
     }
 
 
@@ -9893,6 +9919,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content={"logs": [search_log_record_payload(log) for log in logs]})
 
+    @app.get("/api/search/logs/runtime-failures")
+    def api_list_search_runtime_failures(
+        profile_name: str | None = None,
+        limit: int = 20,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            failures = list_search_runtime_failures(
+                settings.database_url,
+                profile_name=profile_name,
+                limit=limit,
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "failures": [search_runtime_failure_payload(failure) for failure in failures],
+            }
+        )
+
     @app.get("/api/search/logs/compare")
     def api_compare_search_logs(
         left_search_log_id: int = Query(ge=1),
@@ -11814,6 +11866,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_options: list[dict[str, object]] = []
         question_sets: list[GoldenQuestionSetRecord] = []
         logs: list[SearchLogListItem] = []
+        runtime_failures: list[SearchRuntimeFailureRecord] = []
         selected_log: SearchLogDetailRecord | None = None
         selected_log_comparison: dict[str, object] | None = None
         retention_settings = SearchLogRetentionSettings()
@@ -11840,6 +11893,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     active_only=True,
                 )
                 retention_settings = load_search_log_retention_settings(settings.database_url)
+                runtime_failures = list_search_runtime_failures(
+                    settings.database_url,
+                    limit=8,
+                )
                 logs = list_search_logs(
                     settings.database_url,
                     actor_user_id=actor_user_id_value,
@@ -11875,6 +11932,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 actor_options=actor_options,
                 question_sets=question_sets,
                 logs=logs,
+                runtime_failures=runtime_failures,
                 selected_log=selected_log,
                 selected_log_comparison=selected_log_comparison,
                 selected_log_reproducibility=(
