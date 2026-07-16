@@ -1185,6 +1185,9 @@
     "max_duplicate": "Max",
     "average_latency": "Avg Latency",
     "latest": "Latest Search",
+    "lookback": "Time Window",
+    "latency_threshold": "Latency Threshold (ms)",
+    "apply": "Apply",
     "empty": "Search operations summary is unavailable."
   },
   "search_reproducibility": {

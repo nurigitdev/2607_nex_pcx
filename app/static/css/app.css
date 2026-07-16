@@ -3278,6 +3278,22 @@ main.container-fluid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.search-operations-control-form {
+  align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(14rem, 1fr) minmax(12rem, 16rem) auto;
+}
+
+.search-operations-control-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.search-operations-window-controls {
+  flex-wrap: wrap;
+}
+
 .search-operations-summary-item {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -3952,6 +3968,7 @@ main.container-fluid {
   .search-log-compare-summary,
   .search-log-review-current,
   .search-log-review-form,
+  .search-operations-control-form,
   .search-operations-summary-grid,
   .search-retention-form,
   .search-permission-matrix-form,
@@ -3989,6 +4006,7 @@ main.container-fluid {
   .search-history-filter-actions .btn,
   .search-history-promotion-row .btn,
   .search-log-review-actions .btn,
+  .search-operations-control-actions .btn,
   .search-retention-actions .btn {
     width: 100%;
   }
@@ -4033,6 +4051,7 @@ main.container-fluid {
   .search-history-filter,
   .search-log-review-current,
   .search-log-review-form,
+  .search-operations-control-form,
   .search-operations-summary-grid,
   .search-retention-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));

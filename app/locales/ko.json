@@ -1185,6 +1185,9 @@
     "max_duplicate": "Max",
     "average_latency": "평균 Latency",
     "latest": "최근 검색",
+    "lookback": "조회 기간",
+    "latency_threshold": "Latency 기준(ms)",
+    "apply": "적용",
     "empty": "검색 운영 요약을 불러올 수 없습니다."
   },
   "search_reproducibility": {

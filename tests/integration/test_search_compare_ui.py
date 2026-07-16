@@ -66,7 +66,13 @@ def test_search_history_page_renders_filters_and_log_table(
     app = create_app(Settings(database_url=migrated_database_url))
 
     with TestClient(app) as client:
-        response = client.get("/search/logs")
+        response = client.get(
+            "/search/logs",
+            params={
+                "operations_lookback_hours": 168,
+                "operations_min_total_elapsed_ms": 1500,
+            },
+        )
 
     assert response.status_code == 200
     assert "Search History" in response.text
@@ -77,6 +83,12 @@ def test_search_history_page_renders_filters_and_log_table(
     assert 'id="search-cleanup-run"' in response.text
     assert "/api/search/logs/retention-settings" in response.text
     assert "/api/search/logs/cleanup" in response.text
+    assert "검색 Operations Summary" in response.text
+    assert "GET /api/search/logs/operations-summary" in response.text
+    assert 'name="operations_lookback_hours"' in response.text
+    assert 'id="operations_lookback_hours_168"' in response.text
+    assert 'value="1500"' in response.text
+    assert "7d" in response.text
     assert 'class="search-history-filter"' in response.text
     assert 'class="table table-sm align-middle mb-0 search-log-table"' in response.text
 
@@ -284,6 +296,8 @@ def test_search_history_detail_renders_permission_explainability(
         assert "1250 ms" in response.text
         assert "검색 Operations Summary" in response.text
         assert "GET /api/search/logs/operations-summary" in response.text
+        assert "24h / 1000ms" in response.text
+        assert 'id="operations_min_total_elapsed_ms"' in response.text
         assert "Runtime Failure" in response.text
         assert "Duplicate 그룹" in response.text
         assert "검색 No Result Triage" in response.text

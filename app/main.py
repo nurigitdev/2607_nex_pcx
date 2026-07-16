@@ -12151,6 +12151,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         fingerprint: str | None = None,
         search_log_id: int | None = None,
         compare_search_log_id: int | None = None,
+        operations_lookback_hours: int = 24,
+        operations_min_total_elapsed_ms: int = 1000,
         limit: int = 50,
     ) -> HTMLResponse:
         actor_options: list[dict[str, object]] = []
@@ -12202,8 +12204,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 operations_summary = get_search_operations_summary(
                     settings.database_url,
-                    lookback_hours=24,
-                    min_total_elapsed_ms=1000,
+                    lookback_hours=operations_lookback_hours,
+                    min_total_elapsed_ms=operations_min_total_elapsed_ms,
                 )
                 duplicate_fingerprints = list_search_duplicate_fingerprints(
                     settings.database_url,
@@ -12265,6 +12267,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_fingerprint=fingerprint_value or "",
                 selected_search_log_id=search_log_id,
                 selected_compare_search_log_id=compare_search_log_id or "",
+                selected_operations_lookback_hours=operations_lookback_hours,
+                selected_operations_min_total_elapsed_ms=operations_min_total_elapsed_ms,
+                operations_lookback_options=(
+                    {"hours": 1, "label": "1h"},
+                    {"hours": 24, "label": "24h"},
+                    {"hours": 168, "label": "7d"},
+                    {"hours": 720, "label": "30d"},
+                ),
                 selected_limit=limit,
                 comparison_error_message=comparison_error_message,
                 error_message=error_message,

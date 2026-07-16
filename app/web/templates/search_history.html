@@ -174,6 +174,62 @@
     </div>
     <span class="badge text-bg-light">GET /api/search/logs/operations-summary</span>
   </div>
+  <form class="search-operations-control-form mt-3" method="get">
+    <input type="hidden" name="actor_user_id" value="{{ selected_actor_user_id }}">
+    <input type="hidden" name="requested_search_scope" value="{{ selected_scope }}">
+    <input type="hidden" name="document_group" value="{{ selected_document_group }}">
+    <input type="hidden" name="fingerprint" value="{{ selected_fingerprint }}">
+    <input type="hidden" name="search_log_id" value="{{ selected_search_log_id or '' }}">
+    <input
+      type="hidden"
+      name="compare_search_log_id"
+      value="{{ selected_compare_search_log_id or '' }}"
+    >
+    <input type="hidden" name="limit" value="{{ selected_limit }}">
+    <div>
+      <label class="form-label">{{ t("search_operations.lookback") }}</label>
+      <div class="btn-group btn-group-sm search-operations-window-controls" role="group" aria-label="{{ t('search_operations.lookback') }}">
+        {% for option in operations_lookback_options %}
+        <input
+          class="btn-check"
+          id="operations_lookback_hours_{{ option.hours }}"
+          name="operations_lookback_hours"
+          type="radio"
+          value="{{ option.hours }}"
+          {% if selected_operations_lookback_hours == option.hours %}checked{% endif %}
+          {% if not database_configured %}disabled{% endif %}
+        >
+        <label
+          class="btn btn-outline-secondary"
+          for="operations_lookback_hours_{{ option.hours }}"
+        >
+          {{ option.label }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <label class="form-label" for="operations_min_total_elapsed_ms">
+        {{ t("search_operations.latency_threshold") }}
+      </label>
+      <input
+        class="form-control form-control-sm"
+        id="operations_min_total_elapsed_ms"
+        name="operations_min_total_elapsed_ms"
+        type="number"
+        min="0"
+        max="600000"
+        step="100"
+        value="{{ selected_operations_min_total_elapsed_ms }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="search-operations-control-actions">
+      <button class="btn btn-primary btn-sm" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("search_operations.apply") }}
+      </button>
+    </div>
+  </form>
   {% if operations_summary %}
   <div class="search-operations-summary-grid mt-3">
     <div class="search-operations-summary-item">
