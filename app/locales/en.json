@@ -1130,6 +1130,19 @@
     "triage_retry_complete": "Retry complete: {retried_count} succeeded, {failed_count} failed",
     "triage_retry_failed": "Runtime failure retry failed"
   },
+  "search_latency": {
+    "title": "Search Latency Outlier Triage",
+    "subtitle": "Track slow search logs over the default 1000ms threshold.",
+    "log": "Log",
+    "query": "Query",
+    "profiles": "Profiles",
+    "failed_profiles": "Failed",
+    "elapsed": "Elapsed",
+    "created": "Created",
+    "action": "Action",
+    "open": "Open Detail",
+    "empty": "No recent latency outliers."
+  },
   "search_reproducibility": {
     "title": "Search Reproducibility Metadata",
     "subtitle": "Stored values for explaining and repeating this search experiment under the same conditions",

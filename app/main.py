@@ -462,6 +462,7 @@ from app.core.search_logs import (
     InvalidSearchLogError,
     SearchFeedbackCommentRecord,
     SearchFeedbackProfileSummaryRecord,
+    SearchLatencyOutlierRecord,
     SearchLogCleanupResult,
     SearchLogDetailRecord,
     SearchLogListItem,
@@ -479,6 +480,7 @@ from app.core.search_logs import (
     get_search_log_detail,
     get_search_log_result,
     list_search_feedback_comments,
+    list_search_latency_outliers,
     list_search_logs,
     list_search_runtime_failures,
     load_search_log_retention_settings,
@@ -4186,6 +4188,31 @@ def search_runtime_failure_payload(
         "elapsed_ms": failure.elapsed_ms,
         "created_at": _datetime_response(failure.created_at),
         "search_log_url": f"/search/logs?search_log_id={failure.search_log_id}",
+    }
+
+
+def search_latency_outlier_payload(
+    outlier: SearchLatencyOutlierRecord,
+) -> dict[str, object]:
+    return {
+        "search_log_id": outlier.search_log_id,
+        "query_text": outlier.query_text,
+        "actor_user_id": outlier.actor_user_id,
+        "actor_login_id": outlier.actor_login_id,
+        "actor_display_name": outlier.actor_display_name,
+        "requested_search_scope": outlier.requested_search_scope,
+        "effective_search_scope": outlier.effective_search_scope,
+        "document_group": outlier.document_group,
+        "file_type": outlier.file_type,
+        "chunk_policy_name": outlier.chunk_policy_name,
+        "top_k": outlier.top_k,
+        "profiles": list(outlier.profiles),
+        "profile_count": len(outlier.profiles),
+        "total_elapsed_ms": outlier.total_elapsed_ms,
+        "succeeded_profile_count": outlier.succeeded_profile_count,
+        "failed_profile_count": outlier.failed_profile_count,
+        "created_at": _datetime_response(outlier.created_at),
+        "search_log_url": f"/search/logs?search_log_id={outlier.search_log_id}",
     }
 
 
@@ -9963,6 +9990,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/search/logs/latency-outliers")
+    def api_list_search_latency_outliers(
+        min_total_elapsed_ms: int = 1000,
+        limit: int = 20,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            outliers = list_search_latency_outliers(
+                settings.database_url,
+                min_total_elapsed_ms=min_total_elapsed_ms,
+                limit=limit,
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "min_total_elapsed_ms": min_total_elapsed_ms,
+                "outliers": [search_latency_outlier_payload(outlier) for outlier in outliers],
+            }
+        )
+
     @app.post("/api/search/logs/runtime-failures/retry")
     def api_retry_search_runtime_failures(
         payload: SearchRuntimeFailureRetryRequest,
@@ -11949,6 +12003,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         question_sets: list[GoldenQuestionSetRecord] = []
         logs: list[SearchLogListItem] = []
         runtime_failures: list[SearchRuntimeFailureRecord] = []
+        latency_outliers: list[SearchLatencyOutlierRecord] = []
         selected_log: SearchLogDetailRecord | None = None
         selected_log_comparison: dict[str, object] | None = None
         retention_settings = SearchLogRetentionSettings()
@@ -11977,6 +12032,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 retention_settings = load_search_log_retention_settings(settings.database_url)
                 runtime_failures = list_search_runtime_failures(
                     settings.database_url,
+                    limit=8,
+                )
+                latency_outliers = list_search_latency_outliers(
+                    settings.database_url,
+                    min_total_elapsed_ms=1000,
                     limit=8,
                 )
                 logs = list_search_logs(
@@ -12015,6 +12075,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 question_sets=question_sets,
                 logs=logs,
                 runtime_failures=runtime_failures,
+                latency_outliers=latency_outliers,
                 selected_log=selected_log,
                 selected_log_comparison=selected_log_comparison,
                 selected_log_reproducibility=(

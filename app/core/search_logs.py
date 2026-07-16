@@ -227,6 +227,26 @@ class SearchRuntimeFailureRecord:
 
 
 @dataclass(frozen=True)
+class SearchLatencyOutlierRecord:
+    search_log_id: int
+    query_text: str
+    actor_user_id: int | None
+    actor_login_id: str | None
+    actor_display_name: str | None
+    requested_search_scope: str | None
+    effective_search_scope: str | None
+    document_group: str | None
+    file_type: str | None
+    chunk_policy_name: str | None
+    top_k: int
+    profiles: tuple[str, ...]
+    total_elapsed_ms: int
+    succeeded_profile_count: int
+    failed_profile_count: int
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class SearchLogResultDetailRecord:
     search_log_result: SearchLogResultRecord
     document_id: int
@@ -518,6 +538,27 @@ def _row_to_search_runtime_failure_record(row: dict[str, Any]) -> SearchRuntimeF
     )
 
 
+def _row_to_search_latency_outlier_record(row: dict[str, Any]) -> SearchLatencyOutlierRecord:
+    return SearchLatencyOutlierRecord(
+        search_log_id=int(row["search_log_id"]),
+        query_text=str(row["query_text"]),
+        actor_user_id=int(row["actor_user_id"]) if row["actor_user_id"] is not None else None,
+        actor_login_id=row["actor_login_id"],
+        actor_display_name=row["actor_display_name"],
+        requested_search_scope=row["requested_search_scope"],
+        effective_search_scope=row["effective_search_scope"],
+        document_group=row["document_group"],
+        file_type=row["file_type"],
+        chunk_policy_name=row["chunk_policy_name"],
+        top_k=int(row["top_k"]),
+        profiles=tuple(row["profiles"] or ()),
+        total_elapsed_ms=int(row["total_elapsed_ms"]),
+        succeeded_profile_count=int(row["succeeded_profile_count"] or 0),
+        failed_profile_count=int(row["failed_profile_count"] or 0),
+        created_at=row["created_at"],
+    )
+
+
 def _row_to_search_feedback_profile_summary_record(
     row: dict[str, Any],
 ) -> SearchFeedbackProfileSummaryRecord:
@@ -614,6 +655,12 @@ def _validate_limit(limit: int, *, max_limit: int = 200) -> int:
     if limit > max_limit:
         raise InvalidSearchLogError(f"limit must be less than or equal to {max_limit}")
     return limit
+
+
+def _validate_min_total_elapsed_ms(min_total_elapsed_ms: int) -> int:
+    if min_total_elapsed_ms < 0:
+        raise InvalidSearchLogError("min_total_elapsed_ms must be greater than or equal to 0")
+    return min_total_elapsed_ms
 
 
 def _parse_bool(value: str, default: bool) -> bool:
@@ -1015,6 +1062,60 @@ def list_search_runtime_failures(
             )
             rows = cursor.fetchall()
     return [_row_to_search_runtime_failure_record(dict(row)) for row in rows]
+
+
+def list_search_latency_outliers(
+    database_url: str,
+    *,
+    min_total_elapsed_ms: int = 1000,
+    limit: int = 20,
+) -> list[SearchLatencyOutlierRecord]:
+    validated_threshold = _validate_min_total_elapsed_ms(min_total_elapsed_ms)
+    validated_limit = _validate_limit(limit)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    sl.search_log_id,
+                    sl.query_text,
+                    sl.actor_user_id,
+                    au.login_id AS actor_login_id,
+                    au.display_name AS actor_display_name,
+                    sl.requested_search_scope,
+                    sl.effective_search_scope,
+                    sl.document_group,
+                    sl.file_type,
+                    sl.chunk_policy_name,
+                    sl.top_k,
+                    sl.profiles,
+                    sl.total_elapsed_ms,
+                    COALESCE(
+                        NULLIF(
+                            sl.query_runtime_metadata #>> '{profile_status_counts,succeeded}',
+                            ''
+                        )::int,
+                        0
+                    ) AS succeeded_profile_count,
+                    COALESCE(
+                        NULLIF(
+                            sl.query_runtime_metadata #>> '{profile_status_counts,failed}',
+                            ''
+                        )::int,
+                        0
+                    ) AS failed_profile_count,
+                    sl.created_at
+                FROM search_logs sl
+                LEFT JOIN app_users au ON au.user_id = sl.actor_user_id
+                WHERE sl.total_elapsed_ms IS NOT NULL
+                  AND sl.total_elapsed_ms >= %s
+                ORDER BY sl.total_elapsed_ms DESC, sl.created_at DESC, sl.search_log_id DESC
+                LIMIT %s
+                """,
+                (validated_threshold, validated_limit),
+            )
+            rows = cursor.fetchall()
+    return [_row_to_search_latency_outlier_record(dict(row)) for row in rows]
 
 
 def get_search_log_result(

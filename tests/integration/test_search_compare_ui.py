@@ -151,7 +151,7 @@ def test_search_history_detail_renders_permission_explainability(
                     }
                 },
             },
-            total_elapsed_ms=12,
+            total_elapsed_ms=1250,
             created_by_user_id=user_id,
         ),
     )
@@ -256,6 +256,9 @@ def test_search_history_detail_renders_permission_explainability(
         assert "/api/search/logs/runtime-failures/retry" in response.text
         assert "data-runtime-failure-row" in response.text
         assert "상세 보기" in response.text
+        assert "검색 Latency Outlier Triage" in response.text
+        assert "GET /api/search/logs/latency-outliers" in response.text
+        assert "1250 ms" in response.text
         assert "nlpai-lab/KURE-v1" in response.text
         assert "Remote provider request failed" in response.text
         assert "query_embedding_failed" in response.text

@@ -1042,6 +1042,94 @@ def test_search_runtime_failures_api_lists_and_filters_profile_failures(
         )
 
 
+def test_search_latency_outliers_api_lists_slow_search_logs(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    slow_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Latency outlier slow fixture",
+            normalized_query_text="latency outlier slow fixture",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="company",
+            document_group=f"latency-outlier-{uuid4()}",
+            top_k=5,
+            profiles=("kure_v1_1024", "bge_m3_1024"),
+            query_runtime_metadata={
+                "query_embedding_bridge": True,
+                "profile_status_counts": {"succeeded": 1, "failed": 1},
+            },
+            total_elapsed_ms=1750,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    fast_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Latency outlier fast fixture",
+            normalized_query_text="latency outlier fast fixture",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="company",
+            document_group=f"latency-outlier-{uuid4()}",
+            top_k=5,
+            profiles=("kure_v1_1024",),
+            query_runtime_metadata={
+                "query_embedding_bridge": True,
+                "profile_status_counts": {"succeeded": 1, "failed": 0},
+            },
+            total_elapsed_ms=250,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/search/logs/latency-outliers",
+                params={"min_total_elapsed_ms": 1000, "limit": 20},
+            )
+            low_threshold_response = client.get(
+                "/api/search/logs/latency-outliers",
+                params={"min_total_elapsed_ms": 0, "limit": 20},
+            )
+            invalid_threshold_response = client.get(
+                "/api/search/logs/latency-outliers",
+                params={"min_total_elapsed_ms": -1},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        outliers_by_log_id = {
+            outlier["search_log_id"]: outlier for outlier in body["outliers"]
+        }
+        assert body["min_total_elapsed_ms"] == 1000
+        assert slow_log.search_log_id in outliers_by_log_id
+        assert fast_log.search_log_id not in outliers_by_log_id
+        assert outliers_by_log_id[slow_log.search_log_id]["total_elapsed_ms"] == 1750
+        assert outliers_by_log_id[slow_log.search_log_id]["profile_count"] == 2
+        assert outliers_by_log_id[slow_log.search_log_id]["failed_profile_count"] == 1
+        assert outliers_by_log_id[slow_log.search_log_id]["actor_display_name"] == (
+            "Alice Member"
+        )
+        assert low_threshold_response.status_code == 200
+        low_threshold_ids = {
+            outlier["search_log_id"] for outlier in low_threshold_response.json()["outliers"]
+        }
+        assert slow_log.search_log_id in low_threshold_ids
+        assert fast_log.search_log_id in low_threshold_ids
+        assert invalid_threshold_response.status_code == 400
+        assert "min_total_elapsed_ms" in invalid_threshold_response.json()["detail"]
+    finally:
+        _delete_search_logs(
+            migrated_database_url,
+            [slow_log.search_log_id, fast_log.search_log_id],
+        )
+
+
 def test_search_compare_api_handles_invalid_scope(
     migrated_database_url: str,
 ) -> None:

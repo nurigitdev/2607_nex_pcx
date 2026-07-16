@@ -246,6 +246,62 @@
   {% endif %}
 </section>
 
+<section class="metric-card bg-white p-3 mb-4 search-latency-outlier-panel">
+  <div class="search-runtime-triage-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_latency.title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("search_latency.subtitle") }}</p>
+    </div>
+    <span class="badge text-bg-light">GET /api/search/logs/latency-outliers</span>
+  </div>
+  {% if latency_outliers %}
+  <div class="table-responsive mt-3">
+    <table class="table table-sm align-middle mb-0 search-latency-outlier-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("search_latency.log") }}</th>
+          <th scope="col">{{ t("search_latency.query") }}</th>
+          <th scope="col">{{ t("search_latency.profiles") }}</th>
+          <th scope="col">{{ t("search_latency.failed_profiles") }}</th>
+          <th scope="col">{{ t("search_latency.elapsed") }}</th>
+          <th scope="col">{{ t("search_latency.created") }}</th>
+          <th scope="col">{{ t("search_latency.action") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for outlier in latency_outliers %}
+        <tr>
+          <td>
+            <a class="job-link" href="/search/logs?search_log_id={{ outlier.search_log_id }}">
+              #{{ outlier.search_log_id }}
+            </a>
+          </td>
+          <td>
+            <div class="search-runtime-triage-query">{{ outlier.query_text }}</div>
+            <div class="text-secondary small">
+              {{ outlier.actor_display_name or outlier.actor_login_id or t("permissions.none") }}
+              · {{ outlier.document_group or t("permissions.none") }}
+            </div>
+          </td>
+          <td>{{ outlier.profiles | length }}</td>
+          <td>{{ outlier.failed_profile_count }}</td>
+          <td><strong>{{ outlier.total_elapsed_ms }} ms</strong></td>
+          <td>{{ outlier.created_at }}</td>
+          <td>
+            <a class="btn btn-sm btn-outline-primary" href="/search/logs?search_log_id={{ outlier.search_log_id }}#search-history-runtime-panel">
+              {{ t("search_latency.open") }}
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="text-secondary mt-3">{{ t("search_latency.empty") }}</div>
+  {% endif %}
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0 search-log-table">

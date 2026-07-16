@@ -3272,15 +3272,19 @@ main.container-fluid {
   justify-content: flex-end;
 }
 
+.search-latency-outlier-table td,
+.search-latency-outlier-table th,
 .search-runtime-triage-table td,
 .search-runtime-triage-table th {
   white-space: nowrap;
 }
 
+.search-latency-outlier-table td:last-child,
 .search-runtime-triage-table td:last-child {
   min-width: 11rem;
 }
 
+.search-latency-outlier-table th:last-child,
 .search-runtime-triage-table th:last-child {
   min-width: 11rem;
 }
