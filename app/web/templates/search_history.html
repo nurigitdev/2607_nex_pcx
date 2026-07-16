@@ -1215,6 +1215,21 @@
         <div class="search-result-meta-row"><span class="text-secondary">path</span><span>{{ result.heading_path | join(" / ") }}</span></div>
       </div>
 
+      <div class="search-source-context search-history-source-context">
+        <button
+          class="btn btn-outline-secondary btn-sm search-history-source-context-button"
+          type="button"
+          data-search-log-result-id="{{ result.search_log_result.search_log_result_id }}"
+        >
+          {{ t("search_compare.show_source_context") }}
+        </button>
+        <div
+          class="search-source-context-panel search-history-source-context-panel"
+          aria-live="polite"
+          hidden
+        ></div>
+      </div>
+
       <div class="search-history-feedback">
         {% for feedback in result.feedback %}
         <div class="search-history-feedback-row">
@@ -1266,6 +1281,201 @@
 {% block scripts %}
 <script>
 (() => {
+  const sourceContextLabels = {
+    show: "{{ t('search_compare.show_source_context') }}",
+    hide: "{{ t('search_compare.hide_source_context') }}",
+    loading: "{{ t('search_compare.loading_source_context') }}",
+    failed: "{{ t('search_compare.source_context_failed') }}",
+    document: "{{ t('search_compare.source_context_document') }}",
+    chunks: "{{ t('search_compare.source_context_chunks') }}",
+    previous: "{{ t('search_compare.previous_chunk') }}",
+    current: "{{ t('search_compare.current_chunk') }}",
+    next: "{{ t('search_compare.next_chunk') }}",
+    sourceBlock: "{{ t('search_compare.source_block') }}",
+    sourceArtifact: "{{ t('search_compare.source_artifact') }}",
+    sourceAnchor: "{{ t('search_compare.source_anchor') }}",
+    empty: "{{ t('search_compare.no_source_context') }}",
+  };
+
+  const makeSourceContextCell = (label, value) => {
+    const row = document.createElement("div");
+    row.className = "search-result-meta-row";
+    const term = document.createElement("span");
+    term.className = "text-secondary";
+    term.textContent = label;
+    const detail = document.createElement("span");
+    detail.textContent = value || "";
+    row.append(term, detail);
+    return row;
+  };
+
+  const sourcePositionLabel = (position) => {
+    if (position === "previous") {
+      return sourceContextLabels.previous;
+    }
+    if (position === "next") {
+      return sourceContextLabels.next;
+    }
+    return sourceContextLabels.current;
+  };
+
+  const renderSourceJson = (value) => {
+    const pre = document.createElement("pre");
+    pre.className = "search-source-context-json";
+    pre.textContent = JSON.stringify(value || {}, null, 2);
+    return pre;
+  };
+
+  const renderSourceContextChunk = (chunk) => {
+    const card = document.createElement("article");
+    card.className = `search-source-context-chunk search-source-context-chunk-${chunk.position}`;
+
+    const header = document.createElement("div");
+    header.className = "search-source-context-chunk-header";
+    const badge = document.createElement("span");
+    badge.className = "badge text-bg-light border";
+    badge.textContent = sourcePositionLabel(chunk.position);
+    const meta = document.createElement("span");
+    meta.className = "text-secondary";
+    meta.textContent = `#${chunk.chunk_id} / seq ${chunk.chunk_seq}`;
+    header.append(badge, meta);
+
+    const preview = document.createElement("p");
+    preview.className = "search-source-context-preview";
+    preview.textContent = chunk.chunk_preview || sourceContextLabels.empty;
+
+    const details = document.createElement("div");
+    details.className = "search-source-context-meta";
+    details.append(
+      makeSourceContextCell("policy", chunk.chunk_policy_name),
+      makeSourceContextCell("type", chunk.chunk_type),
+      makeSourceContextCell("path", (chunk.heading_path || []).join(" / ")),
+    );
+
+    card.append(header, preview, details);
+    if (Object.keys(chunk.source_anchor || {}).length) {
+      const anchor = document.createElement("details");
+      anchor.className = "search-source-context-details";
+      const summary = document.createElement("summary");
+      summary.textContent = sourceContextLabels.sourceAnchor;
+      anchor.append(summary, renderSourceJson(chunk.source_anchor));
+      card.append(anchor);
+    }
+    return card;
+  };
+
+  const renderSearchHistorySourceContext = (payload, panel) => {
+    panel.replaceChildren();
+    if (!payload || !Array.isArray(payload.chunks) || payload.chunks.length === 0) {
+      panel.textContent = sourceContextLabels.empty;
+      return;
+    }
+
+    const documentSection = document.createElement("section");
+    documentSection.className = "search-source-context-section";
+    const documentTitle = document.createElement("h4");
+    documentTitle.className = "h6 mb-0";
+    documentTitle.textContent = sourceContextLabels.document;
+    const documentMeta = document.createElement("div");
+    documentMeta.className = "search-source-context-meta";
+    documentMeta.append(
+      makeSourceContextCell(
+        "document",
+        payload.document?.document_title || payload.document?.original_file_name,
+      ),
+      makeSourceContextCell("file", payload.document?.original_file_name),
+      makeSourceContextCell("group", payload.document?.document_group),
+    );
+    documentSection.append(documentTitle, documentMeta);
+
+    const chunksSection = document.createElement("section");
+    chunksSection.className = "search-source-context-section";
+    const chunksTitle = document.createElement("h4");
+    chunksTitle.className = "h6 mb-0";
+    chunksTitle.textContent = sourceContextLabels.chunks;
+    const chunkList = document.createElement("div");
+    chunkList.className = "search-source-context-chunks";
+    payload.chunks.forEach((chunk) => chunkList.append(renderSourceContextChunk(chunk)));
+    chunksSection.append(chunksTitle, chunkList);
+
+    panel.append(documentSection, chunksSection);
+
+    if (payload.source_block) {
+      const blockSection = document.createElement("details");
+      blockSection.className = "search-source-context-section search-source-context-details";
+      const summary = document.createElement("summary");
+      summary.textContent = `${sourceContextLabels.sourceBlock} #${payload.source_block.block_id}`;
+      const blockMeta = document.createElement("div");
+      blockMeta.className = "search-source-context-meta mt-2";
+      blockMeta.append(
+        makeSourceContextCell("type", payload.source_block.block_type),
+        makeSourceContextCell("seq", String(payload.source_block.block_seq)),
+        makeSourceContextCell("preview", payload.source_block.content_preview),
+      );
+      blockSection.append(summary, blockMeta, renderSourceJson(payload.source_block.source_anchor));
+      panel.append(blockSection);
+    }
+
+    if (payload.source_artifact) {
+      const artifactSection = document.createElement("details");
+      artifactSection.className = "search-source-context-section search-source-context-details";
+      const summary = document.createElement("summary");
+      summary.textContent = `${sourceContextLabels.sourceArtifact} #${payload.source_artifact.artifact_id}`;
+      const artifactMeta = document.createElement("div");
+      artifactMeta.className = "search-source-context-meta mt-2";
+      artifactMeta.append(
+        makeSourceContextCell("type", payload.source_artifact.artifact_type),
+        makeSourceContextCell("length", String(payload.source_artifact.content_length || "-")),
+        makeSourceContextCell("preview", payload.source_artifact.content_preview),
+      );
+      artifactSection.append(summary, artifactMeta);
+      panel.append(artifactSection);
+    }
+  };
+
+  const loadSearchHistorySourceContext = async (button, panel) => {
+    const resultId = button.dataset.searchLogResultId;
+    if (!resultId) {
+      panel.hidden = false;
+      panel.textContent = sourceContextLabels.empty;
+      return;
+    }
+    if (panel.dataset.loaded === "true") {
+      panel.hidden = !panel.hidden;
+      button.textContent = panel.hidden ? sourceContextLabels.show : sourceContextLabels.hide;
+      return;
+    }
+
+    panel.hidden = false;
+    panel.textContent = sourceContextLabels.loading;
+    button.disabled = true;
+    try {
+      const response = await fetch(`/api/search/results/${resultId}/source-context`);
+      const body = await response.json();
+      if (!response.ok) {
+        panel.textContent = body.detail || sourceContextLabels.failed;
+        return;
+      }
+      renderSearchHistorySourceContext(body, panel);
+      panel.dataset.loaded = "true";
+      button.textContent = sourceContextLabels.hide;
+    } catch (error) {
+      panel.textContent =
+        error instanceof Error ? error.message : sourceContextLabels.failed;
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  document.querySelectorAll(".search-history-source-context-button").forEach((button) => {
+    const wrapper = button.closest(".search-history-source-context");
+    const panel = wrapper?.querySelector(".search-history-source-context-panel");
+    if (!panel) {
+      return;
+    }
+    button.addEventListener("click", () => loadSearchHistorySourceContext(button, panel));
+  });
+
   const retentionForm = document.getElementById("search-retention-form");
   if (retentionForm) {
     const status = document.getElementById("search-retention-status");

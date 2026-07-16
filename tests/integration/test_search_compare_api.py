@@ -581,6 +581,12 @@ def test_search_result_source_context_api_returns_chunk_trace(
             invalid_response = client.get("/api/search/results/-1/source-context")
 
         body = response.json()
+        with TestClient(app) as client:
+            history_page_response = client.get(
+                "/search/logs",
+                params={"search_log_id": body["search_result"]["search_log_id"]},
+            )
+
         chunks_by_position = {chunk["position"]: chunk for chunk in body["chunks"]}
 
         assert response.status_code == 200
@@ -613,6 +619,10 @@ def test_search_result_source_context_api_returns_chunk_trace(
         }
         assert missing_response.status_code == 404
         assert invalid_response.status_code == 400
+        assert history_page_response.status_code == 200
+        assert "근거 보기" in history_page_response.text
+        assert f'data-search-log-result-id="{search_log_result_id}"' in history_page_response.text
+        assert "search-history-source-context-panel" in history_page_response.text
     finally:
         _cleanup_files(migrated_database_url, [file_id])
 
