@@ -1231,6 +1231,22 @@ main.container-fluid {
   min-width: 0;
 }
 
+.golden-search-provider-mode {
+  grid-column: 1 / -2;
+  min-width: 0;
+}
+
+.golden-search-provider-mode-check {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.golden-search-provider-mode-check .form-check-input {
+  margin: 0;
+}
+
 .golden-search-profile-field {
   grid-column: 1 / -2;
   margin: 0;
@@ -3994,6 +4010,7 @@ main.container-fluid {
   }
 
   .golden-search-profile-field,
+  .golden-search-provider-mode,
   .golden-search-run-name,
   .golden-search-experiment-form .evaluation-execute-actions {
     grid-column: auto;
@@ -4052,6 +4069,7 @@ main.container-fluid {
 
   .evaluation-execute-run-name,
   .golden-search-run-name,
+  .golden-search-provider-mode,
   .golden-search-profile-field,
   .evaluation-execute-actions {
     grid-column: 1 / -1;

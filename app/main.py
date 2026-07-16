@@ -785,6 +785,7 @@ class GoldenSearchExperimentBatchRequest(BaseModel):
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
     created_by: str | None = "golden-search-experiment-api"
     created_by_user_id: int | None = Field(default=None, ge=1)
+    allow_mock_fallback: bool = True
 
 
 class GoldenQuestionImportTargetRequest(BaseModel):
@@ -5227,6 +5228,7 @@ def golden_search_experiment_batch_input_from_request(
         runtime_metadata=dict(payload.runtime_metadata),
         created_by=payload.created_by,
         created_by_user_id=payload.created_by_user_id,
+        allow_mock_fallback=payload.allow_mock_fallback,
     )
 
 

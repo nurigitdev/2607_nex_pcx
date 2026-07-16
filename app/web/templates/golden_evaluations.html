@@ -224,6 +224,24 @@
       >
     </div>
 
+    <div class="golden-search-provider-mode">
+      <label class="form-label">Provider Mode</label>
+      <label class="form-check golden-search-provider-mode-check">
+        <input
+          class="form-check-input"
+          id="search_experiment_require_real_provider"
+          name="require_real_provider"
+          type="checkbox"
+          value="1"
+          {% if not database_configured %}disabled{% endif %}
+        >
+        <span class="form-check-label">Require real provider</span>
+      </label>
+      <div class="form-text">
+        Record profile failures instead of mock results when active routes are unavailable.
+      </div>
+    </div>
+
     <fieldset class="golden-search-profile-field">
       <legend class="form-label">Profiles</legend>
       <div class="golden-search-profile-list">
@@ -715,6 +733,7 @@
           chunk_policy_name: fieldValue("chunk_policy_name"),
           runtime_metadata: {trigger: "golden_search_experiment_batch_ui"},
           created_by: "golden-search-experiment-ui",
+          allow_mock_fallback: !data.has("require_real_provider"),
         }),
       });
       const body = await response.json();

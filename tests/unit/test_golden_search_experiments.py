@@ -58,6 +58,7 @@ def test_golden_search_experiment_batch_validation_normalizes_values() -> None:
             runtime_metadata={"slice": 170},
             created_by=" api ",
             created_by_user_id=2,
+            allow_mock_fallback=False,
         )
     )
 
@@ -65,6 +66,7 @@ def test_golden_search_experiment_batch_validation_normalizes_values() -> None:
     assert validated.strategy_name == "vector_cosine_threshold"
     assert validated.chunk_policy_name == "heading_512_64"
     assert validated.created_by == "api"
+    assert validated.allow_mock_fallback is False
 
 
 @pytest.mark.parametrize(
@@ -98,6 +100,7 @@ def test_golden_search_experiment_question_input_uses_question_defaults() -> Non
             profiles=("kure_v1_1024",),
             strategy_name="vector_cosine",
             runtime_metadata={"batch": True},
+            allow_mock_fallback=False,
         ),
         run_name_prefix="Batch",
     )
@@ -105,6 +108,7 @@ def test_golden_search_experiment_question_input_uses_question_defaults() -> Non
     assert execution_input.run_name == "Batch / Q11"
     assert execution_input.top_k == 4
     assert execution_input.chunk_policy_name == "heading_512_64"
+    assert execution_input.allow_mock_fallback is False
     assert execution_input.runtime_metadata["question_id"] == 11
     assert execution_input.runtime_metadata["golden_question_batch"] is True
 

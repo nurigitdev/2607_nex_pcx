@@ -332,6 +332,7 @@ def test_golden_search_experiment_batch_api_runs_question_set(
                     "score_threshold": 0.0,
                     "chunk_policy_name": "heading_512_64",
                     "runtime_metadata": {"slice": "170"},
+                    "allow_mock_fallback": True,
                 },
             )
             batch = response.json()["batch"]
@@ -420,6 +421,8 @@ def test_golden_search_experiment_batch_api_runs_question_set(
         assert runtime_metadata["question_set_id"] == fixture["question_set_id"]
         assert runtime_metadata["question_id"] == fixture["question_id"]
         assert runtime_metadata["golden_question_batch"] is True
+        assert runtime_metadata["allow_mock_fallback"] is True
+        assert runtime_metadata["real_provider_required"] is False
         assert detail_response.status_code == 200
         assert detail_response.json()["experiment_run"]["experiment_run_id"] == experiment_run_id
         assert batch_list_response.status_code == 200

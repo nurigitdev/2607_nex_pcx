@@ -34,6 +34,7 @@ class GoldenSearchExperimentBatchInput:
     runtime_metadata: dict[str, Any] = field(default_factory=dict)
     created_by: str | None = "golden-search-experiment-batch"
     created_by_user_id: int | None = None
+    allow_mock_fallback: bool = True
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,7 @@ def validate_golden_search_experiment_batch_input(
         runtime_metadata=_validate_metadata(batch_input.runtime_metadata),
         created_by=_validate_nonblank(batch_input.created_by, "created_by"),
         created_by_user_id=batch_input.created_by_user_id,
+        allow_mock_fallback=batch_input.allow_mock_fallback,
     )
 
 
@@ -152,6 +154,7 @@ def _question_execution_input(
         },
         created_by=batch_input.created_by,
         created_by_user_id=batch_input.created_by_user_id,
+        allow_mock_fallback=batch_input.allow_mock_fallback,
     )
 
 
