@@ -255,6 +255,12 @@ def test_search_history_detail_renders_permission_explainability(
         assert "query_embedding_failed" in response.text
         assert "성공 1" in response.text
         assert "실패 1" in response.text
+        assert "실패 Profile 재시도" in response.text
+        assert 'class="btn btn-sm btn-outline-primary search-runtime-retry-button"' in (
+            response.text
+        )
+        assert 'data-profile-name="bge_m3_1024"' in response.text
+        assert "/api/search/logs/${searchLogId}/retry-profile" in response.text
         assert "JSON Export" in response.text
         assert "CSV Export" in response.text
         assert "Report Export" in response.text

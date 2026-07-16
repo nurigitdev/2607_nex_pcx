@@ -1108,7 +1108,11 @@
     "error_message": "Error Message",
     "no_metadata": "No runtime metadata",
     "no_profile_status": "No runtime status metadata was recorded for this profile.",
-    "no_results_after_success": "Search succeeded, but no results were found."
+    "no_results_after_success": "Search succeeded, but no results were found.",
+    "retry_failed_profile": "Retry Failed Profile",
+    "retry_running": "Retrying...",
+    "retry_complete": "Retry complete",
+    "retry_failed": "Retry failed"
   },
   "search_reproducibility": {
     "title": "Search Reproducibility Metadata",

@@ -558,6 +558,18 @@
             <strong>{{ failure_metadata.get("error_message") or t("permissions.none") }}</strong>
           </div>
         </div>
+        <div class="search-runtime-retry">
+          <button
+            class="btn btn-sm btn-outline-primary search-runtime-retry-button"
+            type="button"
+            data-search-log-id="{{ selected_log.search_log.search_log_id }}"
+            data-profile-name="{{ profile }}"
+            {% if not database_configured %}disabled{% endif %}
+          >
+            {{ t("search_runtime.retry_failed_profile") }}
+          </button>
+          <span class="search-runtime-retry-status text-secondary" aria-live="polite"></span>
+        </div>
         {% elif not success_metadata %}
         <div class="text-secondary small">{{ t("search_runtime.no_profile_status") }}</div>
         {% endif %}
@@ -974,6 +986,54 @@
       }
     });
   }
+
+  document.querySelectorAll(".search-runtime-retry-button").forEach((button) => {
+    const wrapper = button.closest(".search-runtime-retry");
+    const statusElement = wrapper?.querySelector(".search-runtime-retry-status");
+    const searchLogId = button.dataset.searchLogId;
+    const profileName = button.dataset.profileName;
+
+    button.addEventListener("click", async () => {
+      if (!searchLogId || !profileName || !statusElement) return;
+
+      button.disabled = true;
+      statusElement.classList.remove("text-danger", "text-success");
+      statusElement.classList.add("text-secondary");
+      statusElement.textContent = "{{ t('search_runtime.retry_running') }}";
+      try {
+        const response = await fetch(`/api/search/logs/${searchLogId}/retry-profile`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({profile_name: profileName}),
+        });
+        const body = await response.json();
+        if (!response.ok) {
+          statusElement.classList.remove("text-secondary", "text-success");
+          statusElement.classList.add("text-danger");
+          statusElement.textContent = body.detail || "{{ t('search_runtime.retry_failed') }}";
+          return;
+        }
+
+        const link = document.createElement("a");
+        link.href = body.retry_search_log_url;
+        link.className = "job-link";
+        link.textContent = `#${body.search_result.search_log_id}`;
+        statusElement.classList.remove("text-secondary", "text-danger");
+        statusElement.classList.add("text-success");
+        statusElement.replaceChildren(
+          document.createTextNode("{{ t('search_runtime.retry_complete') }} "),
+          link,
+        );
+      } catch (error) {
+        statusElement.classList.remove("text-secondary", "text-success");
+        statusElement.classList.add("text-danger");
+        statusElement.textContent =
+          error instanceof Error ? error.message : "{{ t('search_runtime.retry_failed') }}";
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
 
   document.querySelectorAll(".search-history-promotion").forEach((form) => {
     const resultId = form.dataset.searchLogResultId;

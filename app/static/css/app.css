@@ -3242,6 +3242,20 @@ main.container-fluid {
   padding-top: 0.75rem;
 }
 
+.search-runtime-retry {
+  align-items: center;
+  border-top: 1px solid #fecaca;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+}
+
+.search-runtime-retry-status {
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
 .search-runtime-row {
   align-items: start;
   display: grid;

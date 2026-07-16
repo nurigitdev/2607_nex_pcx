@@ -516,6 +516,10 @@ class SearchCompareRequest(BaseModel):
     file_type: str | None = None
 
 
+class SearchProfileRetryRequest(BaseModel):
+    profile_name: str
+
+
 class SearchPermissionMatrixEntryRequest(BaseModel):
     actor_user_id: int = Field(ge=1)
     requested_search_scope: str = "company"
@@ -9435,6 +9439,82 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content=search_compare_payload(result))
+
+    @app.post("/api/search/logs/{search_log_id}/retry-profile")
+    def api_retry_search_log_profile(
+        search_log_id: int,
+        payload: SearchProfileRetryRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            source_log = get_search_log(settings.database_url, search_log_id)
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if source_log is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log not found.",
+            )
+        if source_log.actor_user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Search log actor_user_id is required for retry.",
+            )
+
+        profile_name = payload.profile_name.strip()
+        if not profile_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="profile_name is required.",
+            )
+        if profile_name not in source_log.profiles:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="profile_name is not included in the source search log.",
+            )
+
+        try:
+            result = run_search_compare(
+                settings.database_url,
+                SearchCompareInput(
+                    query_text=source_log.query_text,
+                    actor_user_id=source_log.actor_user_id,
+                    requested_search_scope=(
+                        source_log.requested_search_scope
+                        or source_log.effective_search_scope
+                        or "company"
+                    ),
+                    top_k=source_log.top_k,
+                    profiles=(profile_name,),
+                    chunk_policy_name=source_log.chunk_policy_name,
+                    document_group=source_log.document_group,
+                    file_type=source_log.file_type,
+                ),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+            )
+        except (
+            InvalidEmbeddingProviderError,
+            InvalidQueryEmbeddingError,
+            InvalidSearchCompareError,
+            InvalidPermissionError,
+            InvalidVectorSearchError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "source_search_log_id": source_log.search_log_id,
+                "retry_profile_name": profile_name,
+                "retry_search_log_url": f"/search/logs?search_log_id={result.search_log_id}",
+                "search_result": search_compare_payload(result),
+            }
+        )
 
     @app.post("/api/search/experiments/run")
     def api_run_search_experiment(payload: SearchExperimentRunRequest) -> JSONResponse:

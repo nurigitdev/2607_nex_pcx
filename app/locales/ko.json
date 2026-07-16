@@ -1108,7 +1108,11 @@
     "error_message": "Error Message",
     "no_metadata": "Runtime metadata 없음",
     "no_profile_status": "이 profile의 runtime status metadata가 없습니다.",
-    "no_results_after_success": "검색은 성공했지만 결과가 없습니다."
+    "no_results_after_success": "검색은 성공했지만 결과가 없습니다.",
+    "retry_failed_profile": "실패 Profile 재시도",
+    "retry_running": "재시도 중...",
+    "retry_complete": "재시도 완료",
+    "retry_failed": "재시도 실패"
   },
   "search_reproducibility": {
     "title": "검색 재현성 Metadata",

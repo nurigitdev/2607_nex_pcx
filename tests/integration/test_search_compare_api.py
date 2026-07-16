@@ -10,6 +10,7 @@ from app.core.embedding_vectors import (
     generate_mock_embedding,
     store_chunk_embedding,
 )
+from app.core.search_logs import SearchLogInput, create_search_log
 from app.main import create_app
 
 pytestmark = pytest.mark.integration
@@ -774,6 +775,104 @@ def test_search_compare_api_returns_profile_failure_for_provider_errors(
     finally:
         if search_log_id is not None:
             _delete_search_logs(migrated_database_url, [search_log_id])
+
+
+def test_search_log_profile_retry_api_replays_source_conditions(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    document_group = f"profile-retry-{uuid4()}"
+    source_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Retry failed profile fixture",
+            normalized_query_text="retry failed profile fixture",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="company",
+            permission_filter_metadata={"fixture": "profile_retry"},
+            document_group=document_group,
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
+            top_k=3,
+            profiles=("kure_v1_1024", "bge_m3_1024"),
+            query_runtime_metadata={
+                "adapter": "query_embedding_bridge",
+                "search_mode": "compare_mvp",
+                "query_embedding_bridge": True,
+                "profile_status_counts": {"succeeded": 1, "failed": 1},
+                "profile_failure_count": 1,
+                "profile_query_embeddings": {
+                    "kure_v1_1024": {
+                        "profile_name": "kure_v1_1024",
+                        "dimension": 1024,
+                        "provider_type": "mock",
+                        "runtime_source": "fallback",
+                    }
+                },
+                "profile_failures": {
+                    "bge_m3_1024": {
+                        "profile_name": "bge_m3_1024",
+                        "status": "failed",
+                        "error_code": "query_embedding_failed",
+                        "error_message": "Remote provider request failed",
+                        "elapsed_ms": 176,
+                    }
+                },
+            },
+            total_elapsed_ms=12,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    retry_log_id: int | None = None
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/search/logs/{source_log.search_log_id}/retry-profile",
+                json={"profile_name": "bge_m3_1024"},
+            )
+            invalid_profile_response = client.post(
+                f"/api/search/logs/{source_log.search_log_id}/retry-profile",
+                json={"profile_name": "missing_profile"},
+            )
+            missing_response = client.post(
+                "/api/search/logs/999999999/retry-profile",
+                json={"profile_name": "bge_m3_1024"},
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        retry_log_id = body["search_result"]["search_log_id"]
+        retry_profile = body["search_result"]["profiles"][0]
+
+        assert body["source_search_log_id"] == source_log.search_log_id
+        assert body["retry_profile_name"] == "bge_m3_1024"
+        assert body["retry_search_log_url"] == f"/search/logs?search_log_id={retry_log_id}"
+        assert body["search_result"]["query_text"] == source_log.query_text
+        assert body["search_result"]["actor_user_id"] == ids["alice.member"]
+        assert body["search_result"]["requested_search_scope"] == "company"
+        assert body["search_result"]["effective_search_scope"] == "company"
+        assert body["search_result"]["top_k"] == 3
+        assert body["search_result"]["profile_status_counts"] == {"succeeded": 1, "failed": 0}
+        assert retry_profile["profile_name"] == "bge_m3_1024"
+        assert retry_profile["status"] == "succeeded"
+        assert invalid_profile_response.status_code == 400
+        assert invalid_profile_response.json() == {
+            "detail": "profile_name is not included in the source search log."
+        }
+        assert missing_response.status_code == 404
+        assert missing_response.json() == {"detail": "Search log not found."}
+    finally:
+        _delete_search_logs(
+            migrated_database_url,
+            [
+                search_log_id
+                for search_log_id in (source_log.search_log_id, retry_log_id)
+                if search_log_id is not None
+            ],
+        )
 
 
 def test_search_compare_api_handles_invalid_scope(
