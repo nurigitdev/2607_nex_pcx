@@ -4,12 +4,17 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from app.core.embedding_providers import (
+    EmbeddingProviderRuntimeConfig,
+    build_embedding_provider_from_runtime_config,
+)
 from app.core.golden_questions import (
     GoldenQuestionRecord,
     GoldenQuestionSetRecord,
     get_golden_question_set,
     list_golden_questions,
 )
+from app.core.query_embeddings import QueryEmbeddingProviderBuilder
 from app.core.search_experiment_runner import (
     SearchExperimentExecutionInput,
     SearchExperimentExecutionReport,
@@ -153,6 +158,11 @@ def _question_execution_input(
 def execute_golden_search_experiment_batch(
     database_url: str,
     batch_input: GoldenSearchExperimentBatchInput,
+    *,
+    fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
+        build_embedding_provider_from_runtime_config
+    ),
 ) -> GoldenSearchExperimentBatchReport | None:
     validated = validate_golden_search_experiment_batch_input(batch_input)
     question_set = get_golden_question_set(database_url, validated.question_set_id)
@@ -181,6 +191,8 @@ def execute_golden_search_experiment_batch(
                 batch_input=validated,
                 run_name_prefix=run_name_prefix,
             ),
+            fallback_runtime_config=fallback_runtime_config,
+            query_embedding_provider_builder=query_embedding_provider_builder,
         )
         total_elapsed_ms += experiment.run.total_elapsed_ms or 0
         question_reports.append(

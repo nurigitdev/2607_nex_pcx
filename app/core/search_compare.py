@@ -6,7 +6,17 @@ from typing import Any
 
 from app.core.database import connect
 from app.core.embedding_jobs import list_active_embedding_profiles
+from app.core.embedding_providers import (
+    EmbeddingProviderRuntimeConfig,
+    build_embedding_provider_from_runtime_config,
+)
 from app.core.permissions import PermissionSearchFilter, resolve_permission_search_filter
+from app.core.query_embeddings import (
+    QueryEmbeddingProviderBuilder,
+    QueryEmbeddingResult,
+    embed_query_for_profile,
+    query_embedding_runtime_metadata,
+)
 from app.core.search_logs import (
     SearchLogInput,
     SearchLogResultInput,
@@ -313,12 +323,48 @@ def _with_permission_explainability(
     return replace(permission_filter, metadata=metadata)
 
 
+def _search_compare_query_runtime_metadata(
+    query_embedding_results: dict[str, QueryEmbeddingResult],
+) -> dict[str, object]:
+    profiles = {
+        profile_name: query_embedding_runtime_metadata(result)
+        for profile_name, result in query_embedding_results.items()
+    }
+    provider_types = sorted(
+        {
+            result.provider_type
+            for result in query_embedding_results.values()
+        }
+    )
+    runtime_sources = sorted(
+        {
+            result.runtime_source
+            for result in query_embedding_results.values()
+        }
+    )
+    return {
+        "adapter": "query_embedding_bridge",
+        "search_mode": "compare_mvp",
+        "query_embedding_bridge": True,
+        "query_embedding_profile_count": len(query_embedding_results),
+        "query_embedding_provider_types": provider_types,
+        "query_embedding_runtime_sources": runtime_sources,
+        "profile_query_embeddings": profiles,
+    }
+
+
 def run_search_compare(
     database_url: str,
     search_input: SearchCompareInput,
+    *,
+    fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
+        build_embedding_provider_from_runtime_config
+    ),
 ) -> SearchCompareResult:
     validated = _validate_search_compare_input(search_input)
     profiles = validated.profiles or _default_profiles(database_url)
+    fallback_config = fallback_runtime_config or EmbeddingProviderRuntimeConfig(mode="mock")
     permission_filter = resolve_permission_search_filter(
         database_url,
         actor_user_id=validated.actor_user_id,
@@ -332,14 +378,25 @@ def run_search_compare(
 
     started_at = perf_counter()
     raw_profile_results: list[tuple[str, int, tuple[VectorSearchResult, ...]]] = []
+    query_embedding_results: dict[str, QueryEmbeddingResult] = {}
     for profile_name in profiles:
         profile_started_at = perf_counter()
+        query_embedding = embed_query_for_profile(
+            database_url,
+            query_text=validated.query_text,
+            profile_name=profile_name,
+            fallback_runtime_config=fallback_config,
+            provider_builder=query_embedding_provider_builder,
+            trace_id=f"search-compare:{validated.actor_user_id}:{profile_name}",
+        )
+        query_embedding_results[profile_name] = query_embedding
         results = search_similar_chunks(
             database_url,
             VectorSearchInput(
                 query_text=validated.query_text,
                 profile_name=profile_name,
                 top_k=validated.top_k,
+                query_embedding=query_embedding.embedding,
                 chunk_policy_name=validated.chunk_policy_name,
                 document_group=validated.document_group,
                 file_type=validated.file_type,
@@ -370,10 +427,9 @@ def run_search_compare(
             top_k=validated.top_k,
             similarity_metric="cosine",
             profiles=profiles,
-            query_runtime_metadata={
-                "adapter": "mock",
-                "search_mode": "compare_mvp",
-            },
+            query_runtime_metadata=_search_compare_query_runtime_metadata(
+                query_embedding_results,
+            ),
             total_elapsed_ms=total_elapsed_ms,
             created_by_user_id=validated.actor_user_id,
         ),
@@ -436,6 +492,11 @@ def _first_profile_top_result(
 def run_permission_search_matrix(
     database_url: str,
     matrix_input: SearchPermissionMatrixInput,
+    *,
+    fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
+        build_embedding_provider_from_runtime_config
+    ),
 ) -> SearchPermissionMatrixResult:
     validated = _validate_permission_matrix_input(matrix_input)
     profiles = validated.profiles or _default_profiles(database_url)
@@ -455,6 +516,8 @@ def run_permission_search_matrix(
                 document_group=validated.document_group,
                 file_type=validated.file_type,
             ),
+            fallback_runtime_config=fallback_runtime_config,
+            query_embedding_provider_builder=query_embedding_provider_builder,
         )
         chunk_ids = {
             result.vector_result.chunk_id

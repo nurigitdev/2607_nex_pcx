@@ -5,6 +5,11 @@ from statistics import fmean
 from typing import Any
 
 from app.core.embedding_jobs import list_active_embedding_profiles
+from app.core.embedding_providers import (
+    EmbeddingProviderRuntimeConfig,
+    build_embedding_provider_from_runtime_config,
+)
+from app.core.query_embeddings import QueryEmbeddingProviderBuilder
 from app.core.search_compare import SearchCompareInput, SearchCompareResult, run_search_compare
 from app.core.search_experiments import (
     SearchExperimentProfileRunInput,
@@ -117,6 +122,11 @@ def _profile_summary(
 def execute_search_experiment(
     database_url: str,
     execution_input: SearchExperimentExecutionInput,
+    *,
+    fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
+        build_embedding_provider_from_runtime_config
+    ),
 ) -> SearchExperimentExecutionReport:
     try:
         strategy_selection = validate_search_strategy_selection(
@@ -171,6 +181,8 @@ def execute_search_experiment(
                 document_group=execution_input.document_group,
                 file_type=execution_input.file_type,
             ),
+            fallback_runtime_config=fallback_runtime_config,
+            query_embedding_provider_builder=query_embedding_provider_builder,
         )
     except Exception as exc:
         update_search_experiment_run_status(

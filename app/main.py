@@ -229,6 +229,10 @@ from app.core.embedding_provider_routes import (
     upsert_embedding_provider_route,
     validate_embedding_provider_route_input,
 )
+from app.core.embedding_providers import (
+    InvalidEmbeddingProviderError,
+    embedding_provider_runtime_config_from_settings,
+)
 from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
     InvalidEmbeddingVectorError,
@@ -416,6 +420,7 @@ from app.core.pipeline_jobs import (
     list_pipeline_jobs,
     retry_pipeline_job,
 )
+from app.core.query_embeddings import InvalidQueryEmbeddingError
 from app.core.search_compare import (
     InvalidSearchCompareError,
     SearchCompareInput,
@@ -9408,8 +9413,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     document_group=payload.document_group,
                     file_type=payload.file_type,
                 ),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
         except (
+            InvalidEmbeddingProviderError,
+            InvalidQueryEmbeddingError,
             InvalidSearchCompareError,
             InvalidPermissionError,
             InvalidVectorSearchError,
@@ -9446,8 +9454,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     created_by=payload.created_by,
                     created_by_user_id=payload.created_by_user_id,
                 ),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
         except (
+            InvalidEmbeddingProviderError,
+            InvalidQueryEmbeddingError,
             InvalidSearchExperimentExecutionError,
             InvalidSearchExperimentError,
             InvalidSearchCompareError,
@@ -9751,8 +9762,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     document_group=payload.document_group,
                     file_type=payload.file_type,
                 ),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
         except (
+            InvalidEmbeddingProviderError,
+            InvalidQueryEmbeddingError,
             InvalidSearchCompareError,
             InvalidPermissionError,
             InvalidVectorSearchError,
@@ -10607,8 +10621,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             execution = execute_golden_evaluation(
                 settings.database_url,
                 golden_evaluation_execution_input_from_request(payload),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
         except (
+            InvalidEmbeddingProviderError,
+            InvalidQueryEmbeddingError,
             InvalidGoldenEvaluationExecutionError,
             InvalidEvaluationRunError,
             InvalidGoldenQuestionError,
@@ -10642,8 +10659,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             report = execute_golden_search_experiment_batch(
                 settings.database_url,
                 golden_search_experiment_batch_input_from_request(payload),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
         except (
+            InvalidEmbeddingProviderError,
+            InvalidQueryEmbeddingError,
             InvalidGoldenSearchExperimentError,
             InvalidGoldenQuestionError,
             InvalidSearchExperimentExecutionError,

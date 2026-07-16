@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from app.core.embedding_providers import (
+    EmbeddingProviderRuntimeConfig,
+    build_embedding_provider_from_runtime_config,
+)
 from app.core.evaluation_runs import (
     EvaluationRunInput,
     EvaluationRunReport,
@@ -15,6 +19,7 @@ from app.core.golden_questions import (
     get_golden_question_set,
     list_golden_questions,
 )
+from app.core.query_embeddings import QueryEmbeddingProviderBuilder
 from app.core.search_compare import SearchCompareInput, run_search_compare
 
 
@@ -107,6 +112,11 @@ def _question_search_input(
 def execute_golden_evaluation(
     database_url: str,
     execution_input: GoldenEvaluationExecutionInput,
+    *,
+    fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
+        build_embedding_provider_from_runtime_config
+    ),
 ) -> GoldenEvaluationExecutionReport | None:
     validated = validate_golden_evaluation_execution_input(execution_input)
     question_set = get_golden_question_set(database_url, validated.question_set_id)
@@ -126,6 +136,8 @@ def execute_golden_evaluation(
         search_result = run_search_compare(
             database_url,
             _question_search_input(question, validated),
+            fallback_runtime_config=fallback_runtime_config,
+            query_embedding_provider_builder=query_embedding_provider_builder,
         )
         search_log_ids_by_question[question.question_id] = search_result.search_log_id
 

@@ -629,6 +629,30 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             ]
             == "compare_mvp"
         )
+        query_runtime_metadata = logs_by_id[body["search_log_id"]][
+            "reproducibility_summary"
+        ]["query_runtime_metadata"]
+        assert query_runtime_metadata["adapter"] == "query_embedding_bridge"
+        assert query_runtime_metadata["query_embedding_bridge"] is True
+        assert query_runtime_metadata["query_embedding_profile_count"] == 2
+        assert query_runtime_metadata["query_embedding_provider_types"] == ["mock"]
+        assert query_runtime_metadata["query_embedding_runtime_sources"] == [
+            "fallback_runtime_config"
+        ]
+        assert set(query_runtime_metadata["profile_query_embeddings"]) == {
+            "kure_v1_1024",
+            "bge_m3_1024",
+        }
+        assert (
+            query_runtime_metadata["profile_query_embeddings"]["kure_v1_1024"]["dimension"]
+            == 1024
+        )
+        assert (
+            query_runtime_metadata["profile_query_embeddings"]["kure_v1_1024"][
+                "runtime_metadata"
+            ]["query_embedding_input_type"]
+            == "query"
+        )
         assert detail_response.status_code == 200
         assert detail_body["search_log"]["search_log_id"] == body["search_log_id"]
         assert detail_body["search_log"]["actor_login_id"] == "alice.member"
