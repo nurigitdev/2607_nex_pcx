@@ -1083,12 +1083,23 @@ def _search_log_filter_clause(
     actor_user_id: int | None,
     requested_search_scope: str | None,
     document_group: str | None,
+    provider_mode_filter: str | None,
 ) -> tuple[str, list[object]]:
     params: list[object] = []
     clauses: list[str] = []
     _require_positive_id(actor_user_id, "actor_user_id")
     normalized_scope = _validate_scope(requested_search_scope, "requested_search_scope")
     normalized_document_group = _validate_nonblank(document_group, "document_group")
+    normalized_provider_mode = _validate_nonblank(
+        provider_mode_filter,
+        "provider_mode_filter",
+    )
+    if normalized_provider_mode not in {
+        None,
+        "real_provider_required",
+        "mock_fallback_allowed",
+    }:
+        raise InvalidSearchLogError("Unsupported provider_mode_filter")
     if actor_user_id is not None:
         clauses.append("sl.actor_user_id = %s")
         params.append(actor_user_id)
@@ -1098,6 +1109,10 @@ def _search_log_filter_clause(
     if normalized_document_group is not None:
         clauses.append("sl.document_group = %s")
         params.append(normalized_document_group)
+    if normalized_provider_mode == "real_provider_required":
+        clauses.append("sl.query_runtime_metadata ->> 'real_provider_required' = 'true'")
+    elif normalized_provider_mode == "mock_fallback_allowed":
+        clauses.append("sl.query_runtime_metadata ->> 'allow_mock_fallback' = 'true'")
     if not clauses:
         return "", params
     return f"WHERE {' AND '.join(clauses)}", params
@@ -1109,6 +1124,7 @@ def list_search_logs(
     actor_user_id: int | None = None,
     requested_search_scope: str | None = None,
     document_group: str | None = None,
+    provider_mode_filter: str | None = None,
     limit: int = 50,
 ) -> list[SearchLogListItem]:
     validated_limit = _validate_limit(limit)
@@ -1116,6 +1132,7 @@ def list_search_logs(
         actor_user_id=actor_user_id,
         requested_search_scope=requested_search_scope,
         document_group=document_group,
+        provider_mode_filter=provider_mode_filter,
     )
     with connect(database_url) as connection:
         with connection.cursor() as cursor:

@@ -72,6 +72,24 @@
     </div>
 
     <div>
+      <label class="form-label" for="provider_mode_filter">{{ t("search_runtime.provider_mode") }}</label>
+      <select
+        class="form-select"
+        id="provider_mode_filter"
+        name="provider_mode_filter"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="" {% if not selected_provider_mode_filter %}selected{% endif %}>All</option>
+        <option value="real_provider_required" {% if selected_provider_mode_filter == "real_provider_required" %}selected{% endif %}>
+          {{ t("search_runtime.real_provider_required") }}
+        </option>
+        <option value="mock_fallback_allowed" {% if selected_provider_mode_filter == "mock_fallback_allowed" %}selected{% endif %}>
+          {{ t("search_runtime.mock_fallback_allowed") }}
+        </option>
+      </select>
+    </div>
+
+    <div>
       <label class="form-label" for="limit">Limit</label>
       <input
         class="form-control"
@@ -178,6 +196,7 @@
     <input type="hidden" name="actor_user_id" value="{{ selected_actor_user_id }}">
     <input type="hidden" name="requested_search_scope" value="{{ selected_scope }}">
     <input type="hidden" name="document_group" value="{{ selected_document_group }}">
+    <input type="hidden" name="provider_mode_filter" value="{{ selected_provider_mode_filter }}">
     <input type="hidden" name="fingerprint" value="{{ selected_fingerprint }}">
     <input type="hidden" name="search_log_id" value="{{ selected_search_log_id or '' }}">
     <input
@@ -1087,6 +1106,7 @@
       <input type="hidden" name="actor_user_id" value="{{ selected_actor_user_id }}">
       <input type="hidden" name="requested_search_scope" value="{{ selected_scope }}">
       <input type="hidden" name="document_group" value="{{ selected_document_group }}">
+      <input type="hidden" name="provider_mode_filter" value="{{ selected_provider_mode_filter }}">
       <input type="hidden" name="fingerprint" value="{{ selected_fingerprint }}">
       <input type="hidden" name="limit" value="{{ selected_limit }}">
       <div>

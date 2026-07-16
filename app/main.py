@@ -10033,6 +10033,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_user_id: int | None = None,
         requested_search_scope: str | None = None,
         document_group: str | None = None,
+        provider_mode_filter: str | None = None,
         fingerprint: str | None = None,
         limit: int = 50,
     ) -> JSONResponse:
@@ -10048,6 +10049,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 actor_user_id=actor_user_id,
                 requested_search_scope=requested_search_scope,
                 document_group=document_group,
+                provider_mode_filter=provider_mode_filter,
                 limit=limit,
             )
             logs = filter_search_logs_by_fingerprint(logs, fingerprint)
@@ -12160,6 +12162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_user_id: str | None = None,
         requested_search_scope: str | None = None,
         document_group: str | None = None,
+        provider_mode_filter: str | None = None,
         fingerprint: str | None = None,
         search_log_id: int | None = None,
         compare_search_log_id: int | None = None,
@@ -12183,11 +12186,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_user_id_value: int | None = None
         scope_value = requested_search_scope.strip() if requested_search_scope else None
         document_group_value = document_group.strip() if document_group else None
+        provider_mode_filter_value = (
+            provider_mode_filter.strip() if provider_mode_filter else None
+        )
         fingerprint_value = normalize_search_fingerprint(fingerprint)
         if scope_value == "":
             scope_value = None
         if document_group_value == "":
             document_group_value = None
+        if provider_mode_filter_value == "":
+            provider_mode_filter_value = None
 
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
@@ -12229,6 +12237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     actor_user_id=actor_user_id_value,
                     requested_search_scope=scope_value,
                     document_group=document_group_value,
+                    provider_mode_filter=provider_mode_filter_value,
                     limit=limit,
                 )
                 logs = filter_search_logs_by_fingerprint(logs, fingerprint_value)
@@ -12276,6 +12285,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_actor_user_id=actor_user_id_value or "",
                 selected_scope=scope_value or "",
                 selected_document_group=document_group_value or "",
+                selected_provider_mode_filter=provider_mode_filter_value or "",
                 selected_fingerprint=fingerprint_value or "",
                 selected_search_log_id=search_log_id,
                 selected_compare_search_log_id=compare_search_log_id or "",

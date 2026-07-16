@@ -422,6 +422,34 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
                 "/api/search/logs",
                 params={"document_group": document_group},
             )
+            mock_provider_logs_response = client.get(
+                "/api/search/logs",
+                params={
+                    "document_group": document_group,
+                    "provider_mode_filter": "mock_fallback_allowed",
+                },
+            )
+            real_provider_logs_response = client.get(
+                "/api/search/logs",
+                params={
+                    "document_group": document_group,
+                    "provider_mode_filter": "real_provider_required",
+                },
+            )
+            invalid_provider_logs_response = client.get(
+                "/api/search/logs",
+                params={
+                    "document_group": document_group,
+                    "provider_mode_filter": "unsupported",
+                },
+            )
+            filtered_history_page_response = client.get(
+                "/search/logs",
+                params={
+                    "document_group": document_group,
+                    "provider_mode_filter": "mock_fallback_allowed",
+                },
+            )
             detail_response = client.get(f"/api/search/logs/{body['search_log_id']}")
             export_response = client.get(f"/api/search/logs/{body['search_log_id']}/export")
             export_csv_response = client.get(
@@ -596,6 +624,15 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert comments_body["comments"][0]["relevance_label"] == "correct"
         assert logs_response.status_code == 200
         assert len(logs_body["logs"]) == 3
+        assert mock_provider_logs_response.status_code == 200
+        assert real_provider_logs_response.status_code == 200
+        assert invalid_provider_logs_response.status_code == 400
+        assert len(mock_provider_logs_response.json()["logs"]) == 3
+        assert real_provider_logs_response.json()["logs"] == []
+        assert "provider_mode_filter" in invalid_provider_logs_response.json()["detail"]
+        assert filtered_history_page_response.status_code == 200
+        assert "Mock fallback 허용" in filtered_history_page_response.text
+        assert str(body["search_log_id"]) in filtered_history_page_response.text
         logs_by_id = {log["search_log_id"]: log for log in logs_body["logs"]}
         matrix_log_ids = {entry["search_log_id"] for entry in matrix_body["entries"]}
         assert {body["search_log_id"], *matrix_log_ids} == set(logs_by_id)
