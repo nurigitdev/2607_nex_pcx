@@ -259,6 +259,9 @@ def test_search_history_detail_renders_permission_explainability(
         assert "검색 Latency Outlier Triage" in response.text
         assert "GET /api/search/logs/latency-outliers" in response.text
         assert "1250 ms" in response.text
+        assert "검색 No Result Triage" in response.text
+        assert "GET /api/search/logs/no-results" in response.text
+        assert "History permission explainability" in response.text
         assert "nlpai-lab/KURE-v1" in response.text
         assert "Remote provider request failed" in response.text
         assert "query_embedding_failed" in response.text

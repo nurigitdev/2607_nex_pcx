@@ -247,6 +247,25 @@ class SearchLatencyOutlierRecord:
 
 
 @dataclass(frozen=True)
+class SearchNoResultRecord:
+    search_log_id: int
+    query_text: str
+    actor_user_id: int | None
+    actor_login_id: str | None
+    actor_display_name: str | None
+    requested_search_scope: str | None
+    effective_search_scope: str | None
+    document_group: str | None
+    file_type: str | None
+    chunk_policy_name: str | None
+    top_k: int
+    profiles: tuple[str, ...]
+    total_elapsed_ms: int | None
+    failed_profile_count: int
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class SearchLogResultDetailRecord:
     search_log_result: SearchLogResultRecord
     document_id: int
@@ -554,6 +573,28 @@ def _row_to_search_latency_outlier_record(row: dict[str, Any]) -> SearchLatencyO
         profiles=tuple(row["profiles"] or ()),
         total_elapsed_ms=int(row["total_elapsed_ms"]),
         succeeded_profile_count=int(row["succeeded_profile_count"] or 0),
+        failed_profile_count=int(row["failed_profile_count"] or 0),
+        created_at=row["created_at"],
+    )
+
+
+def _row_to_search_no_result_record(row: dict[str, Any]) -> SearchNoResultRecord:
+    return SearchNoResultRecord(
+        search_log_id=int(row["search_log_id"]),
+        query_text=str(row["query_text"]),
+        actor_user_id=int(row["actor_user_id"]) if row["actor_user_id"] is not None else None,
+        actor_login_id=row["actor_login_id"],
+        actor_display_name=row["actor_display_name"],
+        requested_search_scope=row["requested_search_scope"],
+        effective_search_scope=row["effective_search_scope"],
+        document_group=row["document_group"],
+        file_type=row["file_type"],
+        chunk_policy_name=row["chunk_policy_name"],
+        top_k=int(row["top_k"]),
+        profiles=tuple(row["profiles"] or ()),
+        total_elapsed_ms=(
+            int(row["total_elapsed_ms"]) if row["total_elapsed_ms"] is not None else None
+        ),
         failed_profile_count=int(row["failed_profile_count"] or 0),
         created_at=row["created_at"],
     )
@@ -1116,6 +1157,52 @@ def list_search_latency_outliers(
             )
             rows = cursor.fetchall()
     return [_row_to_search_latency_outlier_record(dict(row)) for row in rows]
+
+
+def list_search_no_result_logs(
+    database_url: str,
+    *,
+    limit: int = 20,
+) -> list[SearchNoResultRecord]:
+    validated_limit = _validate_limit(limit)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    sl.search_log_id,
+                    sl.query_text,
+                    sl.actor_user_id,
+                    au.login_id AS actor_login_id,
+                    au.display_name AS actor_display_name,
+                    sl.requested_search_scope,
+                    sl.effective_search_scope,
+                    sl.document_group,
+                    sl.file_type,
+                    sl.chunk_policy_name,
+                    sl.top_k,
+                    sl.profiles,
+                    sl.total_elapsed_ms,
+                    COALESCE(
+                        NULLIF(
+                            sl.query_runtime_metadata #>> '{profile_status_counts,failed}',
+                            ''
+                        )::int,
+                        0
+                    ) AS failed_profile_count,
+                    sl.created_at
+                FROM search_logs sl
+                LEFT JOIN app_users au ON au.user_id = sl.actor_user_id
+                LEFT JOIN search_log_results slr ON slr.search_log_id = sl.search_log_id
+                GROUP BY sl.search_log_id, au.login_id, au.display_name
+                HAVING count(slr.search_log_result_id) = 0
+                ORDER BY sl.created_at DESC, sl.search_log_id DESC
+                LIMIT %s
+                """,
+                (validated_limit,),
+            )
+            rows = cursor.fetchall()
+    return [_row_to_search_no_result_record(dict(row)) for row in rows]
 
 
 def get_search_log_result(

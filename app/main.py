@@ -471,6 +471,7 @@ from app.core.search_logs import (
     SearchLogRetentionSettings,
     SearchLogRetentionSettingsInput,
     SearchLogReviewMetadataInput,
+    SearchNoResultRecord,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
     SearchRuntimeFailureRecord,
@@ -482,6 +483,7 @@ from app.core.search_logs import (
     list_search_feedback_comments,
     list_search_latency_outliers,
     list_search_logs,
+    list_search_no_result_logs,
     list_search_runtime_failures,
     load_search_log_retention_settings,
     summarize_search_feedback,
@@ -4213,6 +4215,29 @@ def search_latency_outlier_payload(
         "failed_profile_count": outlier.failed_profile_count,
         "created_at": _datetime_response(outlier.created_at),
         "search_log_url": f"/search/logs?search_log_id={outlier.search_log_id}",
+    }
+
+
+def search_no_result_payload(record: SearchNoResultRecord) -> dict[str, object]:
+    return {
+        "search_log_id": record.search_log_id,
+        "query_text": record.query_text,
+        "actor_user_id": record.actor_user_id,
+        "actor_login_id": record.actor_login_id,
+        "actor_display_name": record.actor_display_name,
+        "requested_search_scope": record.requested_search_scope,
+        "effective_search_scope": record.effective_search_scope,
+        "document_group": record.document_group,
+        "file_type": record.file_type,
+        "chunk_policy_name": record.chunk_policy_name,
+        "top_k": record.top_k,
+        "profiles": list(record.profiles),
+        "profile_count": len(record.profiles),
+        "total_elapsed_ms": record.total_elapsed_ms,
+        "failed_profile_count": record.failed_profile_count,
+        "created_at": _datetime_response(record.created_at),
+        "created_at_label": _datetime_label(record.created_at),
+        "search_log_url": f"/search/logs?search_log_id={record.search_log_id}",
     }
 
 
@@ -10017,6 +10042,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/search/logs/no-results")
+    def api_list_search_no_result_logs(limit: int = 20) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            records = list_search_no_result_logs(settings.database_url, limit=limit)
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "records": [search_no_result_payload(record) for record in records],
+            }
+        )
+
     @app.post("/api/search/logs/runtime-failures/retry")
     def api_retry_search_runtime_failures(
         payload: SearchRuntimeFailureRetryRequest,
@@ -12004,6 +12048,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logs: list[SearchLogListItem] = []
         runtime_failures: list[SearchRuntimeFailureRecord] = []
         latency_outliers: list[SearchLatencyOutlierRecord] = []
+        no_result_logs: list[SearchNoResultRecord] = []
         selected_log: SearchLogDetailRecord | None = None
         selected_log_comparison: dict[str, object] | None = None
         retention_settings = SearchLogRetentionSettings()
@@ -12037,6 +12082,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 latency_outliers = list_search_latency_outliers(
                     settings.database_url,
                     min_total_elapsed_ms=1000,
+                    limit=8,
+                )
+                no_result_logs = list_search_no_result_logs(
+                    settings.database_url,
                     limit=8,
                 )
                 logs = list_search_logs(
@@ -12076,6 +12125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 logs=logs,
                 runtime_failures=runtime_failures,
                 latency_outliers=latency_outliers,
+                no_result_logs=no_result_logs,
                 selected_log=selected_log,
                 selected_log_comparison=selected_log_comparison,
                 selected_log_reproducibility=(

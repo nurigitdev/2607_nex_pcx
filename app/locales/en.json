@@ -1143,6 +1143,20 @@
     "open": "Open Detail",
     "empty": "No recent latency outliers."
   },
+  "search_no_result": {
+    "title": "Search No Result Triage",
+    "subtitle": "Track queries that ran successfully but returned zero result chunks.",
+    "log": "Log",
+    "query": "Query",
+    "scope": "Scope",
+    "profiles": "Profiles",
+    "failed_profiles": "Failed",
+    "elapsed": "Elapsed",
+    "created": "Created",
+    "action": "Action",
+    "open": "Open Detail",
+    "empty": "No recent no-result search logs."
+  },
   "search_reproducibility": {
     "title": "Search Reproducibility Metadata",
     "subtitle": "Stored values for explaining and repeating this search experiment under the same conditions",

@@ -1130,6 +1130,60 @@ def test_search_latency_outliers_api_lists_slow_search_logs(
         )
 
 
+def test_search_no_result_logs_api_lists_zero_result_searches(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    search_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="No result triage fixture",
+            normalized_query_text="no result triage fixture",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="company",
+            document_group=f"no-result-triage-{uuid4()}",
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
+            top_k=5,
+            profiles=("kure_v1_1024", "bge_m3_1024"),
+            query_runtime_metadata={
+                "query_embedding_bridge": True,
+                "profile_status_counts": {"succeeded": 2, "failed": 0},
+            },
+            total_elapsed_ms=640,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/search/logs/no-results", params={"limit": 20})
+            invalid_limit_response = client.get(
+                "/api/search/logs/no-results",
+                params={"limit": 0},
+            )
+
+        assert response.status_code == 200
+        records_by_log_id = {
+            record["search_log_id"]: record for record in response.json()["records"]
+        }
+        assert search_log.search_log_id in records_by_log_id
+        record = records_by_log_id[search_log.search_log_id]
+        assert record["query_text"] == "No result triage fixture"
+        assert record["profile_count"] == 2
+        assert record["failed_profile_count"] == 0
+        assert record["total_elapsed_ms"] == 640
+        assert len(record["created_at_label"]) == len("2026-07-16 13:02:05")
+        assert "T" not in record["created_at_label"]
+        assert record["search_log_url"] == f"/search/logs?search_log_id={search_log.search_log_id}"
+        assert invalid_limit_response.status_code == 400
+        assert "limit" in invalid_limit_response.json()["detail"]
+    finally:
+        _delete_search_logs(migrated_database_url, [search_log.search_log_id])
+
+
 def test_search_compare_api_handles_invalid_scope(
     migrated_database_url: str,
 ) -> None:

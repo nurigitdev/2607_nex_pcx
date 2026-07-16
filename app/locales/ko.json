@@ -1143,6 +1143,20 @@
     "open": "상세 보기",
     "empty": "최근 latency outlier가 없습니다."
   },
+  "search_no_result": {
+    "title": "검색 No Result Triage",
+    "subtitle": "검색은 실행됐지만 결과 chunk가 0건인 query를 추적합니다.",
+    "log": "Log",
+    "query": "Query",
+    "scope": "Scope",
+    "profiles": "Profiles",
+    "failed_profiles": "Failed",
+    "elapsed": "Elapsed",
+    "created": "Created",
+    "action": "Action",
+    "open": "상세 보기",
+    "empty": "최근 no-result 검색 로그가 없습니다."
+  },
   "search_reproducibility": {
     "title": "검색 재현성 Metadata",
     "subtitle": "같은 조건으로 검색 실험을 다시 설명하고 재현하기 위한 저장값",
