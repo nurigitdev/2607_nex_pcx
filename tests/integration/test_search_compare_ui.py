@@ -62,6 +62,9 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert 'id="chunk-policy-compare-form"' in response.text
     assert "/api/search/compare/chunk-policies" in response.text
     assert "heading_1000_200" in response.text
+    assert 'id="search-readiness-panel"' in response.text
+    assert "검색 준비 상태" in response.text
+    assert "/api/search/compare/readiness" in response.text
 
 
 def test_search_history_page_renders_filters_and_log_table(

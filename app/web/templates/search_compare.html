@@ -184,6 +184,29 @@
 </section>
 
 <section
+  class="search-readiness-panel bg-white p-3 mb-4"
+  id="search-readiness-panel"
+  hidden
+>
+  <div class="search-readiness-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_compare.readiness_title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("search_compare.readiness_subtitle") }}</p>
+    </div>
+    <div
+      class="search-readiness-summary"
+      id="search-readiness-summary"
+      aria-live="polite"
+    ></div>
+  </div>
+  <div
+    class="search-readiness-grid"
+    id="search-readiness-grid"
+    aria-live="polite"
+  ></div>
+</section>
+
+<section
   class="search-permission-summary-panel bg-white p-3 mb-4"
   id="search-permission-summary"
   hidden
@@ -377,6 +400,9 @@
   const runtimePanel = document.getElementById("search-runtime-panel");
   const runtimeGrid = document.getElementById("search-runtime-grid");
   const runtimeCounts = document.getElementById("search-runtime-counts");
+  const readinessPanel = document.getElementById("search-readiness-panel");
+  const readinessSummary = document.getElementById("search-readiness-summary");
+  const readinessGrid = document.getElementById("search-readiness-grid");
   const permissionSummaryPanel = document.getElementById("search-permission-summary");
   const permissionSummaryGrid = document.getElementById("search-permission-summary-grid");
   const matrixForm = document.getElementById("permission-matrix-form");
@@ -459,6 +485,25 @@
     errorMessage: "{{ t('search_runtime.error_message') }}",
     noMetadata: "{{ t('search_runtime.no_metadata') }}",
     noResultsAfterSuccess: "{{ t('search_runtime.no_results_after_success') }}",
+  };
+  const readinessLabels = {
+    ready: "{{ t('search_compare.readiness_ready') }}",
+    attention: "{{ t('search_compare.readiness_attention') }}",
+    unavailable: "{{ t('search_compare.readiness_unavailable') }}",
+    policy: "{{ t('search_compare.policy_compare_policy') }}",
+    profile: "{{ t('search_experiments.profile') }}",
+    chunks: "{{ t('search_compare.readiness_chunks') }}",
+    embedded: "{{ t('search_compare.readiness_embedded') }}",
+    missing: "{{ t('search_compare.readiness_missing') }}",
+    jobs: "{{ t('search_compare.readiness_jobs') }}",
+    status: "{{ t('search_runtime.status') }}",
+    coverage: "{{ t('embedding_coverage.coverage') }}",
+    allPolicies: "{{ t('search_compare.all_chunk_policies') }}",
+    failed: "{{ t('search_runtime.failed') }}",
+    pending: "{{ t('status.pending') }}",
+    running: "{{ t('status.running') }}",
+    partial: "{{ t('search_compare.readiness_partial') }}",
+    missingStatus: "{{ t('search_compare.readiness_missing_status') }}",
   };
   const sourceContextLabels = {
     show: "{{ t('search_compare.show_source_context') }}",
@@ -582,6 +627,156 @@
   const runtimeMetadata = (profile) => profile.query_runtime_metadata || {};
   const runtimeModel = (metadata) =>
     metadata.provider_model_id || metadata.model_id || metadata.profile_name || "-";
+
+  const readinessStatusLabel = (status) => {
+    if (status === "ready") {
+      return readinessLabels.ready;
+    }
+    if (status === "failed") {
+      return readinessLabels.failed;
+    }
+    if (status === "pending") {
+      return readinessLabels.pending;
+    }
+    if (status === "running") {
+      return readinessLabels.running;
+    }
+    if (status === "partial") {
+      return readinessLabels.partial;
+    }
+    if (status === "missing") {
+      return readinessLabels.missingStatus;
+    }
+    if (status === "not_chunked") {
+      return readinessLabels.unavailable;
+    }
+    return status || "-";
+  };
+
+  const readinessStatusClass = (status) => {
+    if (status === "ready") {
+      return "ready";
+    }
+    if (status === "not_chunked" || status === "missing") {
+      return "missing";
+    }
+    if (status === "failed") {
+      return "failed";
+    }
+    return "attention";
+  };
+
+  const renderReadinessCard = (profile) => {
+    const status = readinessStatusClass(profile.status);
+    const card = document.createElement("article");
+    card.className = `search-readiness-card search-readiness-card-${status}`;
+
+    const header = document.createElement("div");
+    header.className = "search-readiness-card-header";
+    const title = document.createElement("h3");
+    title.className = "h6 mb-0";
+    title.textContent = profile.profile_name;
+    const badge = document.createElement("span");
+    badge.className = `search-runtime-badge search-runtime-badge-${status}`;
+    badge.textContent = readinessStatusLabel(profile.status);
+    header.append(title, badge);
+
+    const body = document.createElement("div");
+    body.className = "search-readiness-rows";
+    body.append(
+      renderRuntimeRow(
+        readinessLabels.policy,
+        profile.chunk_policy_name || readinessLabels.allPolicies,
+      ),
+      renderRuntimeRow(readinessLabels.chunks, formatInteger(profile.chunk_count)),
+      renderRuntimeRow(
+        readinessLabels.embedded,
+        `${formatInteger(profile.embedded_chunk_count)} / ${formatInteger(profile.chunk_count)}`,
+      ),
+      renderRuntimeRow(
+        readinessLabels.missing,
+        formatInteger(profile.missing_embedding_count),
+      ),
+      renderRuntimeRow(readinessLabels.coverage, profile.coverage_label || "-"),
+      renderRuntimeRow(
+        readinessLabels.jobs,
+        `${readinessLabels.pending} ${formatInteger(profile.pending_count)} · ${readinessLabels.running} ${formatInteger(profile.running_count)} · ${readinessLabels.failed} ${formatInteger(profile.failed_count)}`,
+      ),
+    );
+
+    card.append(header, body);
+    return card;
+  };
+
+  const renderReadiness = (payload) => {
+    if (!readinessPanel || !readinessSummary || !readinessGrid) {
+      return;
+    }
+    readinessGrid.replaceChildren();
+    const summaryStatus = payload.ready
+      ? readinessLabels.ready
+      : readinessLabels.attention;
+    readinessSummary.textContent =
+      `${summaryStatus} · ${payload.coverage_label || "-"} · ${formatInteger(payload.embedded_chunk_count)} / ${formatInteger(payload.expected_embedding_count)}`;
+    payload.profiles.forEach((profile) => {
+      readinessGrid.append(renderReadinessCard(profile));
+    });
+    readinessPanel.hidden = false;
+  };
+
+  const readinessPayload = (chunkPolicyNames = null) => {
+    const formData = new FormData(form);
+    const profiles = selectedProfiles();
+    if (!profiles.length) {
+      return null;
+    }
+    const payload = {
+      actor_user_id: Number(formData.get("actor_user_id")),
+      requested_search_scope: fieldValue("requested_search_scope") || "company",
+      profiles,
+      document_group: fieldValue("document_group"),
+      file_type: fieldValue("file_type"),
+    };
+    if (chunkPolicyNames && chunkPolicyNames.length) {
+      payload.chunk_policy_names = chunkPolicyNames;
+    } else {
+      payload.chunk_policy_name = fieldValue("chunk_policy_name");
+    }
+    return payload;
+  };
+
+  const loadReadiness = async (options = {}) => {
+    if (!readinessPanel || !readinessSummary || !readinessGrid) {
+      return null;
+    }
+    const payload = readinessPayload(options.chunkPolicyNames || null);
+    if (!payload) {
+      readinessPanel.hidden = true;
+      return null;
+    }
+    readinessPanel.hidden = false;
+    readinessSummary.textContent = options.loadingText || "Checking";
+    readinessGrid.replaceChildren();
+    try {
+      const response = await fetch("/api/search/compare/readiness", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        readinessSummary.textContent =
+          body.detail || readinessLabels.unavailable;
+        return null;
+      }
+      renderReadiness(body);
+      return body;
+    } catch (error) {
+      readinessSummary.textContent =
+        error instanceof Error ? error.message : readinessLabels.unavailable;
+      return null;
+    }
+  };
 
   const renderPermissionSummaryRow = (label, value) => {
     const row = document.createElement("div");
@@ -1123,6 +1318,10 @@
         "{{ t('search_compare.policy_compare_too_many_policies') }}";
       return;
     }
+    await loadReadiness({
+      chunkPolicyNames,
+      loadingText: "{{ t('search_compare.readiness_checking') }}",
+    });
 
     const formData = new FormData(form);
     const payload = {
@@ -1603,6 +1802,7 @@
       setAlert("At least one profile is required.");
       return;
     }
+    await loadReadiness({loadingText: "{{ t('search_compare.readiness_checking') }}"});
 
     const payload = {
       query_text: fieldValue("query_text"),
@@ -1653,6 +1853,17 @@
     runPolicyCompare();
   });
 
+  form.addEventListener("change", () => {
+    loadReadiness();
+  });
+  policyCompareForm?.addEventListener("change", () => {
+    const chunkPolicyNames = selectedPolicyCompareNames();
+    if (chunkPolicyNames.length >= 2) {
+      loadReadiness({chunkPolicyNames});
+    }
+  });
+
+  loadReadiness();
   loadFeedbackSummary();
   loadFeedbackComments();
 })();

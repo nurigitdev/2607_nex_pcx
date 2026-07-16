@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 
 from app.core.permissions import PermissionSearchFilter
@@ -8,8 +10,14 @@ from app.core.search_compare import (
     SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED,
     InvalidSearchCompareError,
     SearchCompareInput,
+    SearchCompareReadinessInput,
+    SearchCompareReadinessProfile,
+    SearchCompareReadinessResult,
     SearchPermissionMatrixEntryInput,
     SearchPermissionMatrixInput,
+    _coverage_percent,
+    _readiness_status,
+    _validate_readiness_input,
     run_permission_search_matrix,
     run_search_compare,
 )
@@ -77,6 +85,199 @@ def _vector_search_result(profile_name: str) -> VectorSearchResult:
         file_ext=".md",
         embedding_elapsed_ms=3,
     )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({"chunk_count": 0}, "not_chunked"),
+        ({"chunk_count": 2, "embedded_chunk_count": 2}, "ready"),
+        ({"chunk_count": 2, "running_count": 1}, "running"),
+        ({"chunk_count": 2, "failed_count": 1}, "failed"),
+        ({"chunk_count": 2, "failed_count": 1, "pending_count": 1}, "pending"),
+        ({"chunk_count": 2, "pending_count": 1}, "pending"),
+        ({"chunk_count": 2, "embedded_chunk_count": 1}, "partial"),
+        ({"chunk_count": 2, "succeeded_job_count": 1}, "partial"),
+        ({"chunk_count": 2}, "missing"),
+    ],
+)
+def test_readiness_status_classifies_profile_policy_state(
+    kwargs: dict[str, int],
+    expected: str,
+) -> None:
+    defaults = {
+        "chunk_count": 1,
+        "pending_count": 0,
+        "running_count": 0,
+        "failed_count": 0,
+        "succeeded_job_count": 0,
+        "embedded_chunk_count": 0,
+    }
+    assert _readiness_status(**{**defaults, **kwargs}) == expected
+
+
+@pytest.mark.parametrize(
+    ("readiness_input", "message"),
+    [
+        (
+            SearchCompareReadinessInput(
+                actor_user_id=0,
+                requested_search_scope="company",
+            ),
+            "actor_user_id",
+        ),
+        (
+            SearchCompareReadinessInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                profiles=(),
+            ),
+            "profiles must not be empty",
+        ),
+        (
+            SearchCompareReadinessInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                profiles=("kure_v1_1024", "kure_v1_1024"),
+            ),
+            "profiles must be unique",
+        ),
+        (
+            SearchCompareReadinessInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                profiles=(" ",),
+            ),
+            "profile_name",
+        ),
+        (
+            SearchCompareReadinessInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                chunk_policy_names=(),
+            ),
+            "chunk_policy_names must not be empty",
+        ),
+        (
+            SearchCompareReadinessInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                chunk_policy_names=("heading_512_64", "heading_512_64"),
+            ),
+            "chunk_policy_names must be unique",
+        ),
+        (
+            SearchCompareReadinessInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                chunk_policy_name="heading_512_64",
+                chunk_policy_names=("heading_1000_200",),
+            ),
+            "cannot be used together",
+        ),
+        (
+            SearchCompareReadinessInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                document_group=" ",
+            ),
+            "document_group",
+        ),
+    ],
+)
+def test_validate_readiness_input_rejects_invalid_values(
+    readiness_input: SearchCompareReadinessInput,
+    message: str,
+) -> None:
+    with pytest.raises(InvalidSearchCompareError, match=message):
+        _validate_readiness_input(readiness_input)
+
+
+def test_validate_readiness_input_normalizes_optional_values() -> None:
+    validated = _validate_readiness_input(
+        SearchCompareReadinessInput(
+            actor_user_id=1,
+            requested_search_scope=" company ",
+            profiles=(" kure_v1_1024 ",),
+            chunk_policy_names=(" heading_512_64 ",),
+            file_type=" .md ",
+        )
+    )
+
+    assert validated.requested_search_scope == "company"
+    assert validated.profiles == ("kure_v1_1024",)
+    assert validated.chunk_policy_names == ("heading_512_64",)
+    assert validated.file_type == ".md"
+
+
+def test_search_compare_readiness_result_summarizes_profiles() -> None:
+    ready_profile = SearchCompareReadinessProfile(
+        profile_name="kure_v1_1024",
+        chunk_policy_name="heading_512_64",
+        chunk_count=2,
+        job_count=2,
+        pending_count=0,
+        running_count=0,
+        failed_count=0,
+        succeeded_job_count=2,
+        skipped_count=0,
+        embedded_chunk_count=2,
+        coverage_percent=Decimal("100.00"),
+        status="ready",
+        latest_job_updated_at=None,
+        latest_embedding_at=None,
+        average_embedding_elapsed_ms=None,
+    )
+    failed_profile = SearchCompareReadinessProfile(
+        profile_name="bge_m3_1024",
+        chunk_policy_name=None,
+        chunk_count=2,
+        job_count=1,
+        pending_count=0,
+        running_count=0,
+        failed_count=1,
+        succeeded_job_count=0,
+        skipped_count=0,
+        embedded_chunk_count=1,
+        coverage_percent=Decimal("50.00"),
+        status="failed",
+        latest_job_updated_at=None,
+        latest_embedding_at=None,
+        average_embedding_elapsed_ms=None,
+    )
+    result = SearchCompareReadinessResult(
+        actor_user_id=1,
+        requested_search_scope="company",
+        effective_search_scope="company",
+        document_group=None,
+        file_type=None,
+        chunk_policy_names=("heading_512_64", "all"),
+        profiles=(ready_profile, failed_profile),
+    )
+    empty_result = SearchCompareReadinessResult(
+        actor_user_id=1,
+        requested_search_scope="company",
+        effective_search_scope="company",
+        document_group=None,
+        file_type=None,
+        chunk_policy_names=(),
+        profiles=(),
+    )
+
+    assert ready_profile.ready is True
+    assert failed_profile.ready is False
+    assert failed_profile.missing_embedding_count == 1
+    assert result.profile_count == 2
+    assert result.policy_count == 2
+    assert result.expected_embedding_count == 4
+    assert result.embedded_chunk_count == 3
+    assert result.attention_count == 1
+    assert result.ready is False
+    assert result.coverage_percent == Decimal("75.00")
+    assert empty_result.ready is False
+    assert empty_result.coverage_percent == Decimal("0.00")
+    assert _coverage_percent(chunk_count=0, embedded_chunk_count=0) == Decimal("0.00")
+    assert _coverage_percent(chunk_count=4, embedded_chunk_count=1) == Decimal("25.00")
 
 
 @pytest.mark.parametrize(

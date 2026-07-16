@@ -3299,6 +3299,73 @@ main.container-fluid {
   display: none;
 }
 
+.search-readiness-panel {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 1rem;
+}
+
+.search-readiness-panel[hidden] {
+  display: none;
+}
+
+.search-readiness-header,
+.search-readiness-card-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.search-readiness-summary {
+  color: var(--pcx-muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.search-readiness-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.search-readiness-card {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.875rem;
+}
+
+.search-readiness-card-ready {
+  border-left: 4px solid #10b981;
+}
+
+.search-readiness-card-attention {
+  background: #fffbeb;
+  border-color: #fde68a;
+  border-left: 4px solid #f59e0b;
+}
+
+.search-readiness-card-failed {
+  background: #fff7f7;
+  border-color: #fecaca;
+  border-left: 4px solid #ef4444;
+}
+
+.search-readiness-card-missing {
+  background: #f8fafc;
+  border-left: 4px solid #94a3b8;
+}
+
+.search-readiness-rows {
+  display: grid;
+  gap: 0.35rem;
+}
+
 .search-runtime-panel {
   border: 1px solid var(--pcx-border);
   border-radius: 8px;
@@ -3400,9 +3467,24 @@ main.container-fluid {
   color: #166534;
 }
 
+.search-runtime-badge-ready {
+  background: #dcfce7;
+  color: #166534;
+}
+
 .search-runtime-badge-failed {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.search-runtime-badge-attention {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.search-runtime-badge-missing {
+  background: #e2e8f0;
+  color: #475569;
 }
 
 .search-runtime-badge-not_available {
@@ -4208,6 +4290,7 @@ main.container-fluid {
   .search-policy-compare-form,
   .search-permission-matrix-form,
   .search-permission-summary-grid,
+  .search-readiness-grid,
   .search-reproducibility-grid,
   .search-runtime-grid,
   .search-results-grid {
@@ -4303,6 +4386,7 @@ main.container-fluid {
     grid-column: 1 / -1;
   }
 
+  .search-readiness-grid,
   .search-runtime-grid,
   .search-results-grid {
     grid-template-columns: repeat(2, minmax(16rem, 1fr));

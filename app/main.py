@@ -436,11 +436,15 @@ from app.core.search_compare import (
     InvalidSearchCompareError,
     SearchCompareInput,
     SearchCompareProfileResult,
+    SearchCompareReadinessInput,
+    SearchCompareReadinessProfile,
+    SearchCompareReadinessResult,
     SearchCompareResult,
     SearchPermissionMatrixEntryInput,
     SearchPermissionMatrixEntryResult,
     SearchPermissionMatrixInput,
     SearchPermissionMatrixResult,
+    get_search_compare_readiness,
     run_permission_search_matrix,
     run_search_compare,
 )
@@ -560,6 +564,16 @@ class SearchChunkPolicyCompareRequest(BaseModel):
     document_group: str | None = None
     file_type: str | None = None
     allow_mock_fallback: bool = True
+
+
+class SearchCompareReadinessRequest(BaseModel):
+    actor_user_id: int
+    requested_search_scope: str = "company"
+    profiles: list[str] | None = None
+    chunk_policy_name: str | None = None
+    chunk_policy_names: list[str] | None = None
+    document_group: str | None = None
+    file_type: str | None = None
 
 
 class SearchProfileRetryRequest(BaseModel):
@@ -3398,6 +3412,60 @@ def search_compare_profile_status_counts(
     for profile in profiles:
         profile_status_counts[profile.status] = profile_status_counts.get(profile.status, 0) + 1
     return profile_status_counts
+
+
+def search_compare_readiness_profile_payload(
+    profile: SearchCompareReadinessProfile,
+) -> dict[str, object]:
+    return {
+        "profile_name": profile.profile_name,
+        "chunk_policy_name": profile.chunk_policy_name,
+        "chunk_count": profile.chunk_count,
+        "job_count": profile.job_count,
+        "pending_count": profile.pending_count,
+        "running_count": profile.running_count,
+        "failed_count": profile.failed_count,
+        "succeeded_job_count": profile.succeeded_job_count,
+        "skipped_count": profile.skipped_count,
+        "embedded_chunk_count": profile.embedded_chunk_count,
+        "missing_embedding_count": profile.missing_embedding_count,
+        "coverage_percent": _percent_value(profile.coverage_percent),
+        "coverage_label": _percent_label(profile.coverage_percent),
+        "status": profile.status,
+        "ready": profile.ready,
+        "latest_job_updated_at": _datetime_response(profile.latest_job_updated_at),
+        "latest_embedding_at": _datetime_response(profile.latest_embedding_at),
+        "average_embedding_elapsed_ms": (
+            str(profile.average_embedding_elapsed_ms)
+            if profile.average_embedding_elapsed_ms is not None
+            else None
+        ),
+    }
+
+
+def search_compare_readiness_payload(
+    readiness: SearchCompareReadinessResult,
+) -> dict[str, object]:
+    return {
+        "actor_user_id": readiness.actor_user_id,
+        "requested_search_scope": readiness.requested_search_scope,
+        "effective_search_scope": readiness.effective_search_scope,
+        "document_group": readiness.document_group,
+        "file_type": readiness.file_type,
+        "chunk_policy_names": list(readiness.chunk_policy_names),
+        "profile_count": readiness.profile_count,
+        "policy_count": readiness.policy_count,
+        "expected_embedding_count": readiness.expected_embedding_count,
+        "embedded_chunk_count": readiness.embedded_chunk_count,
+        "attention_count": readiness.attention_count,
+        "coverage_percent": _percent_value(readiness.coverage_percent),
+        "coverage_label": _percent_label(readiness.coverage_percent),
+        "ready": readiness.ready,
+        "profiles": [
+            search_compare_readiness_profile_payload(profile)
+            for profile in readiness.profiles
+        ],
+    }
 
 
 def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
@@ -10202,6 +10270,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "retry_search_log_url": f"/search/logs?search_log_id={result.search_log_id}",
             "search_result": search_compare_payload(result),
         }
+
+    @app.post("/api/search/compare/readiness")
+    def api_search_compare_readiness(payload: SearchCompareReadinessRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            readiness = get_search_compare_readiness(
+                settings.database_url,
+                SearchCompareReadinessInput(
+                    actor_user_id=payload.actor_user_id,
+                    requested_search_scope=payload.requested_search_scope,
+                    profiles=tuple(payload.profiles) if payload.profiles is not None else None,
+                    chunk_policy_name=payload.chunk_policy_name,
+                    chunk_policy_names=(
+                        tuple(payload.chunk_policy_names)
+                        if payload.chunk_policy_names is not None
+                        else None
+                    ),
+                    document_group=payload.document_group,
+                    file_type=payload.file_type,
+                ),
+            )
+        except (InvalidSearchCompareError, InvalidPermissionError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=search_compare_readiness_payload(readiness))
 
     @app.post("/api/search/compare")
     def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:

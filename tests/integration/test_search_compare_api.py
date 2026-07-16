@@ -1102,6 +1102,152 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
 
 
+def test_search_compare_readiness_api_flags_incomplete_profile_policy_coverage(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    document_group = f"slice-264-{uuid4()}"
+    ready_file_id, ready_chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="readiness ready fixture",
+        owner_user_id=None,
+        owner_org_unit_id=ids["NeX Company"],
+        access_scope="company",
+        chunk_text="Readiness vector is available",
+        document_group=document_group,
+    )
+    failed_file_id, failed_chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="readiness failed fixture",
+        owner_user_id=None,
+        owner_org_unit_id=ids["NeX Company"],
+        access_scope="company",
+        chunk_text="Readiness vector is missing",
+        document_group=document_group,
+    )
+    try:
+        _store_profile_embeddings(
+            migrated_database_url,
+            ready_chunk_id,
+            "Readiness vector is available",
+        )
+        with connect(migrated_database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO embedding_jobs (
+                        chunk_id,
+                        profile_name,
+                        status,
+                        attempts,
+                        error_code,
+                        error_message,
+                        last_error_at,
+                        finished_at,
+                        updated_at
+                    )
+                    VALUES (
+                        %s,
+                        'bge_m3_1024',
+                        'failed',
+                        3,
+                        'READINESS_FIXTURE_FAILURE',
+                        'readiness fixture failed',
+                        now(),
+                        now(),
+                        now()
+                    )
+                    """,
+                    (failed_chunk_id,),
+                )
+        app = create_app(Settings(database_url=migrated_database_url))
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/search/compare/readiness",
+                json={
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "profiles": ["kure_v1_1024", "bge_m3_1024"],
+                    "chunk_policy_name": "heading_512_64",
+                    "document_group": document_group,
+                    "file_type": ".md",
+                },
+            )
+            all_policy_response = client.post(
+                "/api/search/compare/readiness",
+                json={
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "profiles": ["kure_v1_1024"],
+                    "document_group": document_group,
+                },
+            )
+            policy_response = client.post(
+                "/api/search/compare/readiness",
+                json={
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "profiles": ["kure_v1_1024", "bge_m3_1024"],
+                    "chunk_policy_names": ["heading_512_64", "heading_1000_200"],
+                    "document_group": document_group,
+                },
+            )
+            conflicting_policy_response = client.post(
+                "/api/search/compare/readiness",
+                json={
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "profiles": ["kure_v1_1024"],
+                    "chunk_policy_name": "heading_512_64",
+                    "chunk_policy_names": ["heading_1000_200"],
+                    "document_group": document_group,
+                },
+            )
+            unsupported_profile_response = client.post(
+                "/api/search/compare/readiness",
+                json={
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "profiles": ["missing_profile"],
+                    "document_group": document_group,
+                },
+            )
+
+        body = response.json()
+        all_policy_body = all_policy_response.json()
+        policy_body = policy_response.json()
+        profiles = {profile["profile_name"]: profile for profile in body["profiles"]}
+        policy_profiles = {
+            (profile["chunk_policy_name"], profile["profile_name"]): profile
+            for profile in policy_body["profiles"]
+        }
+
+        assert response.status_code == 200
+        assert body["ready"] is False
+        assert body["expected_embedding_count"] == 4
+        assert body["embedded_chunk_count"] == 2
+        assert body["coverage_label"] == "50.00%"
+        assert profiles["kure_v1_1024"]["status"] == "partial"
+        assert profiles["kure_v1_1024"]["missing_embedding_count"] == 1
+        assert profiles["bge_m3_1024"]["status"] == "failed"
+        assert profiles["bge_m3_1024"]["failed_count"] == 1
+        assert all_policy_response.status_code == 200
+        assert all_policy_body["chunk_policy_names"] == ["all"]
+        assert all_policy_body["profiles"][0]["chunk_policy_name"] is None
+        assert policy_response.status_code == 200
+        assert policy_body["policy_count"] == 2
+        assert policy_profiles[("heading_1000_200", "kure_v1_1024")]["status"] == (
+            "not_chunked"
+        )
+        assert conflicting_policy_response.status_code == 400
+        assert "cannot be used together" in conflicting_policy_response.json()["detail"]
+        assert unsupported_profile_response.status_code == 400
+        assert "Unsupported embedding profiles" in unsupported_profile_response.json()["detail"]
+    finally:
+        _cleanup_files(migrated_database_url, [ready_file_id, failed_file_id])
+
+
 def test_search_compare_chunk_policy_multi_run_api_compares_policy_results(
     migrated_database_url: str,
 ) -> None:

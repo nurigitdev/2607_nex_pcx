@@ -1,6 +1,8 @@
 """Search compare service for profile-by-profile vector retrieval."""
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime
+from decimal import Decimal
 from time import perf_counter
 from typing import Any
 
@@ -10,6 +12,7 @@ from app.core.embedding_providers import (
     EmbeddingProviderRuntimeConfig,
     build_embedding_provider_from_runtime_config,
 )
+from app.core.embedding_vectors import EMBEDDING_VECTOR_TABLES
 from app.core.permissions import PermissionSearchFilter, resolve_permission_search_filter
 from app.core.query_embeddings import (
     InvalidQueryEmbeddingError,
@@ -52,6 +55,17 @@ class SearchCompareInput:
 
 
 @dataclass(frozen=True)
+class SearchCompareReadinessInput:
+    actor_user_id: int
+    requested_search_scope: str
+    profiles: tuple[str, ...] | None = None
+    chunk_policy_names: tuple[str, ...] | None = None
+    chunk_policy_name: str | None = None
+    document_group: str | None = None
+    file_type: str | None = None
+
+
+@dataclass(frozen=True)
 class SearchCompareResultItem:
     search_log_result_id: int
     vector_result: VectorSearchResult
@@ -79,6 +93,78 @@ class SearchCompareResult:
     top_k: int
     profiles: tuple[SearchCompareProfileResult, ...]
     total_elapsed_ms: int
+
+
+@dataclass(frozen=True)
+class SearchCompareReadinessProfile:
+    profile_name: str
+    chunk_policy_name: str | None
+    chunk_count: int
+    job_count: int
+    pending_count: int
+    running_count: int
+    failed_count: int
+    succeeded_job_count: int
+    skipped_count: int
+    embedded_chunk_count: int
+    coverage_percent: Decimal
+    status: str
+    latest_job_updated_at: datetime | None
+    latest_embedding_at: datetime | None
+    average_embedding_elapsed_ms: Decimal | None
+
+    @property
+    def missing_embedding_count(self) -> int:
+        return max(0, self.chunk_count - self.embedded_chunk_count)
+
+    @property
+    def ready(self) -> bool:
+        return self.status == "ready"
+
+
+@dataclass(frozen=True)
+class SearchCompareReadinessResult:
+    actor_user_id: int
+    requested_search_scope: str
+    effective_search_scope: str
+    document_group: str | None
+    file_type: str | None
+    chunk_policy_names: tuple[str, ...]
+    profiles: tuple[SearchCompareReadinessProfile, ...]
+
+    @property
+    def profile_count(self) -> int:
+        return len({profile.profile_name for profile in self.profiles})
+
+    @property
+    def policy_count(self) -> int:
+        return len({profile.chunk_policy_name or "all" for profile in self.profiles})
+
+    @property
+    def expected_embedding_count(self) -> int:
+        return sum(profile.chunk_count for profile in self.profiles)
+
+    @property
+    def embedded_chunk_count(self) -> int:
+        return sum(profile.embedded_chunk_count for profile in self.profiles)
+
+    @property
+    def attention_count(self) -> int:
+        return sum(1 for profile in self.profiles if profile.status in {"failed", "partial"})
+
+    @property
+    def ready(self) -> bool:
+        return bool(self.profiles) and all(profile.ready for profile in self.profiles)
+
+    @property
+    def coverage_percent(self) -> Decimal:
+        if self.expected_embedding_count == 0:
+            return Decimal("0.00")
+        return (
+            Decimal(self.embedded_chunk_count)
+            / Decimal(self.expected_embedding_count)
+            * Decimal("100")
+        ).quantize(Decimal("0.01"))
 
 
 @dataclass(frozen=True)
@@ -242,6 +328,283 @@ def _default_profiles(database_url: str) -> tuple[str, ...]:
     if not profiles:
         raise InvalidSearchCompareError("No active embedding profiles are configured")
     return profiles
+
+
+def _validate_readiness_input(
+    readiness_input: SearchCompareReadinessInput,
+) -> SearchCompareReadinessInput:
+    if readiness_input.actor_user_id <= 0:
+        raise InvalidSearchCompareError("actor_user_id must be greater than 0")
+    requested_search_scope = (
+        _validate_nonblank(readiness_input.requested_search_scope, "requested_search_scope")
+        or readiness_input.requested_search_scope
+    )
+    profiles = None
+    if readiness_input.profiles is not None:
+        profiles = tuple(
+            _validate_nonblank(profile, "profile_name") for profile in readiness_input.profiles
+        )
+        if not profiles:
+            raise InvalidSearchCompareError("profiles must not be empty")
+        if len(set(profiles)) != len(profiles):
+            raise InvalidSearchCompareError("profiles must be unique")
+    chunk_policy_names = None
+    if readiness_input.chunk_policy_names is not None:
+        chunk_policy_names = tuple(
+            _validate_nonblank(policy_name, "chunk_policy_name")
+            for policy_name in readiness_input.chunk_policy_names
+        )
+        if not chunk_policy_names:
+            raise InvalidSearchCompareError("chunk_policy_names must not be empty")
+        if len(set(chunk_policy_names)) != len(chunk_policy_names):
+            raise InvalidSearchCompareError("chunk_policy_names must be unique")
+    chunk_policy_name = _validate_nonblank(
+        readiness_input.chunk_policy_name,
+        "chunk_policy_name",
+    )
+    if chunk_policy_names is not None and chunk_policy_name is not None:
+        raise InvalidSearchCompareError(
+            "chunk_policy_name and chunk_policy_names cannot be used together"
+        )
+    return SearchCompareReadinessInput(
+        actor_user_id=readiness_input.actor_user_id,
+        requested_search_scope=requested_search_scope,
+        profiles=profiles,
+        chunk_policy_names=chunk_policy_names,
+        chunk_policy_name=chunk_policy_name,
+        document_group=_validate_nonblank(readiness_input.document_group, "document_group"),
+        file_type=_validate_nonblank(readiness_input.file_type, "file_type"),
+    )
+
+
+def _readiness_status(
+    *,
+    chunk_count: int,
+    pending_count: int,
+    running_count: int,
+    failed_count: int,
+    succeeded_job_count: int,
+    embedded_chunk_count: int,
+) -> str:
+    if chunk_count == 0:
+        return "not_chunked"
+    if embedded_chunk_count >= chunk_count:
+        return "ready"
+    if running_count > 0:
+        return "running"
+    if failed_count > 0 and pending_count == 0:
+        return "failed"
+    if pending_count > 0:
+        return "pending"
+    if embedded_chunk_count > 0 or succeeded_job_count > 0:
+        return "partial"
+    return "missing"
+
+
+def _coverage_percent(*, chunk_count: int, embedded_chunk_count: int) -> Decimal:
+    if chunk_count == 0:
+        return Decimal("0.00")
+    return (Decimal(embedded_chunk_count) / Decimal(chunk_count) * Decimal("100")).quantize(
+        Decimal("0.01")
+    )
+
+
+def _fetch_readiness_profiles(
+    database_url: str,
+    profiles: tuple[str, ...] | None,
+) -> tuple[str, ...]:
+    if profiles is None:
+        return _default_profiles(database_url)
+    unsupported_profiles = sorted(
+        profile for profile in profiles if profile not in EMBEDDING_VECTOR_TABLES
+    )
+    if unsupported_profiles:
+        raise InvalidSearchCompareError(
+            f"Unsupported embedding profiles: {', '.join(unsupported_profiles)}"
+        )
+    placeholders = ", ".join(["%s"] * len(profiles))
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT profile_name
+                FROM embedding_profiles
+                WHERE is_active
+                  AND profile_name IN ({placeholders})
+                """,
+                profiles,
+            )
+            active_profiles = {str(row["profile_name"]) for row in cursor.fetchall()}
+    inactive_profiles = sorted(set(profiles) - active_profiles)
+    if inactive_profiles:
+        raise InvalidSearchCompareError(
+            f"Inactive embedding profiles: {', '.join(inactive_profiles)}"
+        )
+    return profiles
+
+
+def _fetch_readiness_chunk_policies(
+    database_url: str,
+    readiness_input: SearchCompareReadinessInput,
+) -> tuple[str | None, ...]:
+    if readiness_input.chunk_policy_names is None and readiness_input.chunk_policy_name is None:
+        return (None,)
+    requested = readiness_input.chunk_policy_names or (readiness_input.chunk_policy_name,)
+    requested = tuple(policy for policy in requested if policy is not None)
+    placeholders = ", ".join(["%s"] * len(requested))
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT chunk_policy_name
+                FROM chunk_policies
+                WHERE chunk_policy_name IN ({placeholders})
+                """,
+                requested,
+            )
+            known_policy_names = {str(row["chunk_policy_name"]) for row in cursor.fetchall()}
+    unknown_policy_names = sorted(set(requested) - known_policy_names)
+    if unknown_policy_names:
+        raise InvalidSearchCompareError(
+            f"Unknown chunk_policy_names: {', '.join(unknown_policy_names)}"
+        )
+    return requested
+
+
+def _readiness_filters(
+    readiness_input: SearchCompareReadinessInput,
+    permission_filter: PermissionSearchFilter,
+    chunk_policy_name: str | None,
+) -> tuple[str, list[object]]:
+    clauses = ["d.document_status = 'active'"]
+    params: list[object] = []
+    if readiness_input.document_group is not None:
+        clauses.append("d.document_group = %s")
+        params.append(readiness_input.document_group)
+    if readiness_input.file_type is not None:
+        clauses.append("f.file_ext = %s")
+        params.append(readiness_input.file_type)
+    if chunk_policy_name is not None:
+        clauses.append("c.chunk_policy_name = %s")
+        params.append(chunk_policy_name)
+    clauses.append(permission_filter.where_sql)
+    params.extend(permission_filter.params)
+    return " AND ".join(clauses), params
+
+
+def _fetch_readiness_profile(
+    database_url: str,
+    *,
+    readiness_input: SearchCompareReadinessInput,
+    permission_filter: PermissionSearchFilter,
+    profile_name: str,
+    chunk_policy_name: str | None,
+) -> SearchCompareReadinessProfile:
+    vector_table = EMBEDDING_VECTOR_TABLES[profile_name]
+    where_sql, filter_params = _readiness_filters(
+        readiness_input,
+        permission_filter,
+        chunk_policy_name,
+    )
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    count(c.chunk_id)::int AS chunk_count,
+                    count(ej.job_id)::int AS job_count,
+                    count(ej.job_id) FILTER (WHERE ej.status = 'pending')::int AS pending_count,
+                    count(ej.job_id) FILTER (WHERE ej.status = 'running')::int AS running_count,
+                    count(ej.job_id) FILTER (WHERE ej.status = 'failed')::int AS failed_count,
+                    count(ej.job_id) FILTER (WHERE ej.status = 'succeeded')::int
+                        AS succeeded_job_count,
+                    count(ej.job_id) FILTER (WHERE ej.status = 'skipped')::int AS skipped_count,
+                    count(v.chunk_id)::int AS embedded_chunk_count,
+                    max(ej.updated_at) AS latest_job_updated_at,
+                    max(v.created_at) AS latest_embedding_at,
+                    avg(v.elapsed_ms)::numeric(12,2) AS average_embedding_elapsed_ms
+                FROM chunks c
+                JOIN documents d ON d.document_id = c.document_id
+                JOIN files f ON f.file_id = d.file_id
+                LEFT JOIN embedding_jobs ej
+                  ON ej.chunk_id = c.chunk_id
+                 AND ej.profile_name = %s
+                LEFT JOIN {vector_table.table_name} v ON v.chunk_id = c.chunk_id
+                WHERE {where_sql}
+                """,
+                (profile_name, *filter_params),
+            )
+            row = cursor.fetchone()
+
+    if row is None:
+        raise InvalidSearchCompareError("Search readiness query returned no row")
+    chunk_count = int(row["chunk_count"])
+    pending_count = int(row["pending_count"])
+    running_count = int(row["running_count"])
+    failed_count = int(row["failed_count"])
+    succeeded_job_count = int(row["succeeded_job_count"])
+    embedded_chunk_count = int(row["embedded_chunk_count"])
+    return SearchCompareReadinessProfile(
+        profile_name=profile_name,
+        chunk_policy_name=chunk_policy_name,
+        chunk_count=chunk_count,
+        job_count=int(row["job_count"]),
+        pending_count=pending_count,
+        running_count=running_count,
+        failed_count=failed_count,
+        succeeded_job_count=succeeded_job_count,
+        skipped_count=int(row["skipped_count"]),
+        embedded_chunk_count=embedded_chunk_count,
+        coverage_percent=_coverage_percent(
+            chunk_count=chunk_count,
+            embedded_chunk_count=embedded_chunk_count,
+        ),
+        status=_readiness_status(
+            chunk_count=chunk_count,
+            pending_count=pending_count,
+            running_count=running_count,
+            failed_count=failed_count,
+            succeeded_job_count=succeeded_job_count,
+            embedded_chunk_count=embedded_chunk_count,
+        ),
+        latest_job_updated_at=row["latest_job_updated_at"],
+        latest_embedding_at=row["latest_embedding_at"],
+        average_embedding_elapsed_ms=row["average_embedding_elapsed_ms"],
+    )
+
+
+def get_search_compare_readiness(
+    database_url: str,
+    readiness_input: SearchCompareReadinessInput,
+) -> SearchCompareReadinessResult:
+    validated = _validate_readiness_input(readiness_input)
+    profiles = _fetch_readiness_profiles(database_url, validated.profiles)
+    chunk_policy_names = _fetch_readiness_chunk_policies(database_url, validated)
+    permission_filter = resolve_permission_search_filter(
+        database_url,
+        actor_user_id=validated.actor_user_id,
+        requested_search_scope=validated.requested_search_scope,
+    )
+    readiness_profiles = tuple(
+        _fetch_readiness_profile(
+            database_url,
+            readiness_input=validated,
+            permission_filter=permission_filter,
+            profile_name=profile_name,
+            chunk_policy_name=chunk_policy_name,
+        )
+        for chunk_policy_name in chunk_policy_names
+        for profile_name in profiles
+    )
+    return SearchCompareReadinessResult(
+        actor_user_id=validated.actor_user_id,
+        requested_search_scope=permission_filter.requested_search_scope,
+        effective_search_scope=permission_filter.effective_search_scope,
+        document_group=validated.document_group,
+        file_type=validated.file_type,
+        chunk_policy_names=tuple(policy or "all" for policy in chunk_policy_names),
+        profiles=readiness_profiles,
+    )
 
 
 def _document_visibility_filters(
