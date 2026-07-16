@@ -158,6 +158,22 @@
         </button>
       </form>
       {% endif %}
+      {% if selected_detail.profile.retryable_failed_count > 0 %}
+      <form method="post" action="/admin/multi-policy-ingestion-coverage/retry-failed-jobs">
+        <input type="hidden" name="document_id" value="{{ selected_detail.document_id }}">
+        <input type="hidden" name="detail_chunk_policy_name" value="{{ selected_detail.chunk_policy_name }}">
+        <input type="hidden" name="detail_profile_name" value="{{ selected_detail.profile.profile_name }}">
+        <input type="hidden" name="parse_status" value="{{ selected_parse_status }}">
+        <input type="hidden" name="document_group" value="{{ selected_document_group }}">
+        <input type="hidden" name="profile_name" value="{{ selected_profile_name }}">
+        <input type="hidden" name="chunk_policy_name" value="{{ selected_chunk_policy_name }}">
+        <input type="hidden" name="limit" value="{{ selected_limit }}">
+        <input type="hidden" name="lang" value="{{ current_language }}">
+        <button class="btn btn-outline-danger btn-sm" type="submit">
+          {{ t("multi_policy_coverage.retry_failed_jobs") }}
+        </button>
+      </form>
+      {% endif %}
       <a
         class="btn btn-outline-secondary btn-sm"
         href="/api/admin/multi-policy-ingestion-coverage/detail?document_id={{ selected_detail.document_id }}&amp;chunk_policy_name={{ selected_detail.chunk_policy_name|urlencode }}&amp;profile_name={{ selected_detail.profile.profile_name|urlencode }}"
@@ -175,6 +191,17 @@
   <div class="alert alert-success m-3" role="alert">
     {{ t("multi_policy_coverage.reconcile_done") }}
     {{ reconcile_created }} / {{ reconcile_missing if reconcile_missing is not none else 0 }}
+  </div>
+  {% endif %}
+  {% if retry_error %}
+  <div class="alert alert-warning m-3" role="alert">
+    {{ t("multi_policy_coverage.retry_failed") }}: {{ retry_error }}
+  </div>
+  {% endif %}
+  {% if retry_retried is not none %}
+  <div class="alert alert-success m-3" role="alert">
+    {{ t("multi_policy_coverage.retry_done") }}
+    {{ retry_retried }} / {{ retry_failed if retry_failed is not none else 0 }}
   </div>
   {% endif %}
   <div class="multi-policy-detail-summary border-top">

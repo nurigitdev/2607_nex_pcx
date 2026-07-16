@@ -133,6 +133,17 @@ class MissingEmbeddingJobReconcileResult:
     created_jobs: tuple[EmbeddingJobRecord, ...]
 
 
+@dataclass(frozen=True)
+class FailedEmbeddingJobRetryResult:
+    document_id: int
+    chunk_policy_name: str
+    profile_name: str
+    failed_job_count: int
+    retryable_failed_job_count: int
+    retried_job_count: int
+    retried_jobs: tuple[EmbeddingJobRecord, ...]
+
+
 class InvalidEmbeddingJobError(ValueError):
     """Raised when an embedding job operation is invalid before reaching the DB."""
 
@@ -687,6 +698,117 @@ def reconcile_missing_embedding_jobs_for_document_policy_profile(
 ) -> MissingEmbeddingJobReconcileResult:
     with connect(database_url) as connection:
         return reconcile_missing_embedding_jobs_for_document_policy_profile_in_connection(
+            connection,
+            document_id=document_id,
+            chunk_policy_name=chunk_policy_name,
+            profile_name=profile_name,
+            max_jobs=max_jobs,
+        )
+
+
+def retry_failed_embedding_jobs_for_document_policy_profile_in_connection(
+    connection: Connection,
+    *,
+    document_id: int,
+    chunk_policy_name: str,
+    profile_name: str,
+    max_jobs: int = 500,
+) -> FailedEmbeddingJobRetryResult:
+    _require_positive_id(document_id, "document_id")
+    validated_policy_name = _validate_policy_name(chunk_policy_name)
+    validated_profile_name = _validate_profile_name(profile_name)
+    if validated_profile_name is None:
+        raise InvalidEmbeddingJobError("profile_name is required")
+    _validate_limit(max_jobs)
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT 1 FROM documents WHERE document_id = %s", (document_id,))
+        if cursor.fetchone() is None:
+            raise InvalidEmbeddingJobError("document_id was not found")
+
+        cursor.execute(
+            "SELECT 1 FROM chunk_policies WHERE chunk_policy_name = %s",
+            (validated_policy_name,),
+        )
+        if cursor.fetchone() is None:
+            raise InvalidEmbeddingJobError("chunk_policy_name was not found")
+
+        cursor.execute(
+            """
+            SELECT 1
+            FROM embedding_profiles
+            WHERE profile_name = %s
+              AND is_active
+            """,
+            (validated_profile_name,),
+        )
+        if cursor.fetchone() is None:
+            raise InvalidEmbeddingJobError("active profile_name was not found")
+
+        cursor.execute(
+            """
+            SELECT
+                count(ej.job_id) FILTER (WHERE ej.status = 'failed')::int
+                    AS failed_job_count,
+                count(ej.job_id) FILTER (
+                    WHERE ej.status = 'failed' AND ej.attempts < ej.max_attempts
+                )::int AS retryable_failed_job_count
+            FROM chunks c
+            JOIN embedding_jobs ej
+              ON ej.chunk_id = c.chunk_id
+             AND ej.profile_name = %s
+            WHERE c.document_id = %s
+              AND c.chunk_policy_name = %s
+            """,
+            (validated_profile_name, document_id, validated_policy_name),
+        )
+        summary = dict(cursor.fetchone())
+
+        cursor.execute(
+            """
+            SELECT ej.job_id
+            FROM chunks c
+            JOIN embedding_jobs ej
+              ON ej.chunk_id = c.chunk_id
+             AND ej.profile_name = %s
+            WHERE c.document_id = %s
+              AND c.chunk_policy_name = %s
+              AND ej.status = 'failed'
+              AND ej.attempts < ej.max_attempts
+            ORDER BY c.chunk_seq ASC, c.chunk_id ASC, ej.job_id ASC
+            LIMIT %s
+            """,
+            (validated_profile_name, document_id, validated_policy_name, max_jobs),
+        )
+        retryable_job_ids = [int(row["job_id"]) for row in cursor.fetchall()]
+
+    retried_jobs = tuple(
+        job
+        for job_id in retryable_job_ids
+        if (job := retry_embedding_job_in_connection(connection, job_id)) is not None
+    )
+
+    return FailedEmbeddingJobRetryResult(
+        document_id=document_id,
+        chunk_policy_name=validated_policy_name,
+        profile_name=validated_profile_name,
+        failed_job_count=int(summary["failed_job_count"] or 0),
+        retryable_failed_job_count=int(summary["retryable_failed_job_count"] or 0),
+        retried_job_count=len(retried_jobs),
+        retried_jobs=retried_jobs,
+    )
+
+
+def retry_failed_embedding_jobs_for_document_policy_profile(
+    database_url: str,
+    *,
+    document_id: int,
+    chunk_policy_name: str,
+    profile_name: str,
+    max_jobs: int = 500,
+) -> FailedEmbeddingJobRetryResult:
+    with connect(database_url) as connection:
+        return retry_failed_embedding_jobs_for_document_policy_profile_in_connection(
             connection,
             document_id=document_id,
             chunk_policy_name=chunk_policy_name,

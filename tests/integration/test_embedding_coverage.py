@@ -226,6 +226,16 @@ def _create_multi_policy_coverage_fixture(database_url: str) -> dict[str, object
         error_code="TEST_POLICY_PROVIDER_ERROR",
         error_message="multi-policy coverage fixture failure",
     )
+    second_failed_job = create_embedding_job(
+        database_url,
+        EmbeddingJobInput(chunk_id=large_chunk.chunk_id, profile_name=MISSING_PROFILE),
+    ).job
+    mark_embedding_job_failed(
+        database_url,
+        second_failed_job.job_id,
+        error_code="TEST_POLICY_PROVIDER_TIMEOUT",
+        error_message="multi-policy coverage fixture timeout",
+    )
 
     return {
         "checksum": checksum,
@@ -376,12 +386,79 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
                     "profile_name": "missing_profile",
                 },
             )
+            reconcile_missing_document_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs",
+                json={
+                    "document_id": 999999999,
+                    "chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "profile_name": MISSING_PROFILE,
+                },
+            )
             reconcile_page_response = client.post(
                 "/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs",
                 data={
                     "document_id": fixture["document_id"],
                     "detail_chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
                     "detail_profile_name": SECOND_MISSING_PROFILE,
+                    "document_group": fixture["document_group"],
+                    "limit": "100",
+                    "lang": "ko",
+                },
+            )
+            failed_detail_api_response = client.get(
+                "/api/admin/multi-policy-ingestion-coverage/detail",
+                params={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": LARGE_POLICY,
+                    "profile_name": FAILED_PROFILE,
+                },
+            )
+            retry_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/retry-failed-jobs",
+                json={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": LARGE_POLICY,
+                    "profile_name": FAILED_PROFILE,
+                },
+            )
+            retry_repeat_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/retry-failed-jobs",
+                json={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": LARGE_POLICY,
+                    "profile_name": FAILED_PROFILE,
+                },
+            )
+            retry_bad_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/retry-failed-jobs",
+                json={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": "missing_policy",
+                    "profile_name": FAILED_PROFILE,
+                },
+            )
+            retry_missing_document_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/retry-failed-jobs",
+                json={
+                    "document_id": 999999999,
+                    "chunk_policy_name": LARGE_POLICY,
+                    "profile_name": FAILED_PROFILE,
+                },
+            )
+            retry_missing_profile_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/retry-failed-jobs",
+                json={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": LARGE_POLICY,
+                    "profile_name": "missing_profile",
+                },
+            )
+            retry_page_response = client.post(
+                "/admin/multi-policy-ingestion-coverage/retry-failed-jobs",
+                data={
+                    "document_id": fixture["document_id"],
+                    "detail_chunk_policy_name": LARGE_POLICY,
+                    "detail_profile_name": MISSING_PROFILE,
                     "document_group": fixture["document_group"],
                     "limit": "100",
                     "lang": "ko",
@@ -421,12 +498,6 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
             chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
             profile_name=COMPLETE_PROFILE,
         )
-        failed_detail = get_multi_policy_ingestion_coverage_detail(
-            migrated_database_url,
-            document_id=int(fixture["document_id"]),
-            chunk_policy_name=LARGE_POLICY,
-            profile_name=FAILED_PROFILE,
-        )
         not_chunked_detail = get_multi_policy_ingestion_coverage_detail(
             migrated_database_url,
             document_id=int(fixture["document_id"]),
@@ -437,6 +508,18 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
             migrated_database_url,
             document_id=int(fixture["document_id"]),
             chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
+            profile_name=MISSING_PROFILE,
+        )
+        retried_detail = get_multi_policy_ingestion_coverage_detail(
+            migrated_database_url,
+            document_id=int(fixture["document_id"]),
+            chunk_policy_name=LARGE_POLICY,
+            profile_name=FAILED_PROFILE,
+        )
+        ui_retried_detail = get_multi_policy_ingestion_coverage_detail(
+            migrated_database_url,
+            document_id=int(fixture["document_id"]),
+            chunk_policy_name=LARGE_POLICY,
             profile_name=MISSING_PROFILE,
         )
         default_cells = {
@@ -452,8 +535,11 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
         }
         detail_payload = detail_api_response.json()
         missing_detail_payload = missing_detail_api_response.json()
+        failed_detail_payload = failed_detail_api_response.json()
         reconcile_payload = reconcile_response.json()
         reconcile_repeat_payload = reconcile_repeat_response.json()
+        retry_payload = retry_response.json()
+        retry_repeat_payload = retry_repeat_response.json()
 
         assert matrix.summary.document_count == 1
         assert matrix.summary.policy_count >= 3
@@ -470,15 +556,17 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
         assert default_detail.profile.status == "complete"
         assert len(default_detail.chunks) == 2
         assert all(chunk.vector_present for chunk in default_detail.chunks)
-        assert failed_detail is not None
-        assert failed_detail.profile.status == "failed"
-        assert failed_detail.chunks[0].error_code == "TEST_POLICY_PROVIDER_ERROR"
         assert not_chunked_detail is not None
         assert not_chunked_detail.profile.status == "not_chunked"
         assert not_chunked_detail.chunks == ()
         assert reconciled_detail is not None
         assert reconciled_detail.profile.status == "pending"
         assert reconciled_detail.profile.job_count == 2
+        assert retried_detail is not None
+        assert retried_detail.profile.status == "pending"
+        assert retried_detail.profile.failed_count == 0
+        assert ui_retried_detail is not None
+        assert ui_retried_detail.profile.status == "pending"
         assert api_response.status_code == 200
         assert payload["summary"]["document_count"] == 1
         assert payload["summary"]["policy_count"] >= 3
@@ -498,8 +586,25 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
         assert reconcile_repeat_payload["missing_job_count"] == 0
         assert reconcile_repeat_payload["created_job_count"] == 0
         assert reconcile_bad_response.status_code == 400
+        assert reconcile_missing_document_response.status_code == 400
         assert reconcile_page_response.status_code == 200
         assert "누락 Job 생성 완료" in reconcile_page_response.text
+        assert failed_detail_api_response.status_code == 200
+        assert failed_detail_payload["profile"]["status"] == "failed"
+        assert failed_detail_payload["chunks"][0]["error_code"] == "TEST_POLICY_PROVIDER_ERROR"
+        assert retry_response.status_code == 200
+        assert retry_payload["failed_job_count"] == 1
+        assert retry_payload["retryable_failed_job_count"] == 1
+        assert retry_payload["retried_job_count"] == 1
+        assert retry_payload["retried_jobs"][0]["status"] == "pending"
+        assert retry_repeat_response.status_code == 200
+        assert retry_repeat_payload["retryable_failed_job_count"] == 0
+        assert retry_repeat_payload["retried_job_count"] == 0
+        assert retry_bad_response.status_code == 400
+        assert retry_missing_document_response.status_code == 400
+        assert retry_missing_profile_response.status_code == 400
+        assert retry_page_response.status_code == 200
+        assert "실패 Job 재시도 완료" in retry_page_response.text
         assert missing_detail_response.status_code == 404
         assert bad_detail_response.status_code == 400
         assert policy_filtered_api_response.status_code == 200

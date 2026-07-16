@@ -359,7 +359,10 @@
     "no_detail_chunks": "표시할 chunk 상세가 없습니다.",
     "reconcile_missing_jobs": "누락 Job 생성",
     "reconcile_done": "누락 Job 생성 완료",
-    "reconcile_failed": "누락 Job 생성 실패"
+    "reconcile_failed": "누락 Job 생성 실패",
+    "retry_failed_jobs": "실패 Job 재시도",
+    "retry_done": "실패 Job 재시도 완료",
+    "retry_failed": "실패 Job 재시도 실패"
   },
   "search_compare": {
     "chunk_policy": "Chunk 정책",

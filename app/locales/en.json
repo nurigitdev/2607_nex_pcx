@@ -359,7 +359,10 @@
     "no_detail_chunks": "No chunk details to display.",
     "reconcile_missing_jobs": "Create Missing Jobs",
     "reconcile_done": "Missing job reconcile completed",
-    "reconcile_failed": "Missing job reconcile failed"
+    "reconcile_failed": "Missing job reconcile failed",
+    "retry_failed_jobs": "Retry Failed Jobs",
+    "retry_done": "Failed job retry completed",
+    "retry_failed": "Failed job retry failed"
   },
   "search_compare": {
     "chunk_policy": "Chunk Policy",

@@ -121,6 +121,7 @@ from app.core.embedding_jobs import (
     EmbeddingJobBacklogSummary,
     EmbeddingJobRecord,
     EmbeddingProfileRecord,
+    FailedEmbeddingJobRetryResult,
     InvalidEmbeddingJobError,
     MissingEmbeddingJobReconcileResult,
     get_embedding_job,
@@ -131,6 +132,7 @@ from app.core.embedding_jobs import (
     reconcile_missing_embedding_jobs_for_document_policy_profile,
     release_stale_embedding_job_lease,
     retry_embedding_job,
+    retry_failed_embedding_jobs_for_document_policy_profile,
 )
 from app.core.embedding_model_distribution import (
     EmbeddingModelReadiness,
@@ -565,6 +567,13 @@ class SearchProfileRetryRequest(BaseModel):
 
 
 class MissingEmbeddingJobReconcileRequest(BaseModel):
+    document_id: int = Field(ge=1)
+    chunk_policy_name: str
+    profile_name: str
+    max_jobs: int = Field(default=500, ge=1, le=500)
+
+
+class FailedEmbeddingJobRetryRequest(BaseModel):
     document_id: int = Field(ge=1)
     chunk_policy_name: str
     profile_name: str
@@ -2395,6 +2404,20 @@ def missing_embedding_job_reconcile_result_payload(
         "missing_job_count": result.missing_job_count,
         "created_job_count": result.created_job_count,
         "created_jobs": [embedding_job_payload(job) for job in result.created_jobs],
+    }
+
+
+def failed_embedding_job_retry_result_payload(
+    result: FailedEmbeddingJobRetryResult,
+) -> dict[str, object]:
+    return {
+        "document_id": result.document_id,
+        "chunk_policy_name": result.chunk_policy_name,
+        "profile_name": result.profile_name,
+        "failed_job_count": result.failed_job_count,
+        "retryable_failed_job_count": result.retryable_failed_job_count,
+        "retried_job_count": result.retried_job_count,
+        "retried_jobs": [embedding_job_payload(job) for job in result.retried_jobs],
     }
 
 
@@ -9545,6 +9568,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=missing_embedding_job_reconcile_result_payload(result))
 
+    @app.post("/api/admin/multi-policy-ingestion-coverage/retry-failed-jobs")
+    def api_retry_multi_policy_failed_embedding_jobs(
+        payload: FailedEmbeddingJobRetryRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            result = retry_failed_embedding_jobs_for_document_policy_profile(
+                settings.database_url,
+                document_id=payload.document_id,
+                chunk_policy_name=payload.chunk_policy_name,
+                profile_name=payload.profile_name,
+                max_jobs=payload.max_jobs,
+            )
+        except InvalidEmbeddingJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=failed_embedding_job_retry_result_payload(result))
+
     @app.post("/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs")
     def multi_policy_missing_embedding_jobs_reconcile_action(
         document_id: int = Form(...),
@@ -9587,6 +9633,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 redirect_params["reconcile_missing"] = result.missing_job_count
             except InvalidEmbeddingJobError as exc:
                 redirect_params["reconcile_error"] = str(exc)
+
+        return RedirectResponse(
+            url=(
+                "/admin/multi-policy-ingestion-coverage?"
+                f"{urlencode(redirect_params)}#coverage-detail"
+            ),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/admin/multi-policy-ingestion-coverage/retry-failed-jobs")
+    def multi_policy_failed_embedding_jobs_retry_action(
+        document_id: int = Form(...),
+        detail_chunk_policy_name: str = Form(...),
+        detail_profile_name: str = Form(...),
+        parse_status: str = Form(""),
+        document_group: str = Form(""),
+        profile_name: str = Form(""),
+        chunk_policy_name: str = Form(""),
+        limit: int = Form(100),
+        lang: str = Form(""),
+    ) -> RedirectResponse:
+        redirect_params: dict[str, object] = {
+            "detail_document_id": document_id,
+            "detail_chunk_policy_name": detail_chunk_policy_name,
+            "detail_profile_name": detail_profile_name,
+            "limit": limit,
+        }
+        for key, value in {
+            "parse_status": parse_status,
+            "document_group": document_group,
+            "profile_name": profile_name,
+            "chunk_policy_name": chunk_policy_name,
+            "lang": lang,
+        }.items():
+            if value:
+                redirect_params[key] = value
+
+        if not settings.database_url:
+            redirect_params["retry_error"] = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                result = retry_failed_embedding_jobs_for_document_policy_profile(
+                    settings.database_url,
+                    document_id=document_id,
+                    chunk_policy_name=detail_chunk_policy_name,
+                    profile_name=detail_profile_name,
+                )
+                redirect_params["retry_retried"] = result.retried_job_count
+                redirect_params["retry_failed"] = result.retryable_failed_job_count
+            except InvalidEmbeddingJobError as exc:
+                redirect_params["retry_error"] = str(exc)
 
         return RedirectResponse(
             url=(
@@ -13180,6 +13277,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         reconcile_created: int | None = None,
         reconcile_missing: int | None = None,
         reconcile_error: str | None = None,
+        retry_retried: int | None = None,
+        retry_failed: int | None = None,
+        retry_error: str | None = None,
         limit: int = 100,
     ) -> HTMLResponse:
         matrix: MultiPolicyIngestionCoverageMatrix | None = None
@@ -13265,6 +13365,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reconcile_created=reconcile_created,
                 reconcile_missing=reconcile_missing,
                 reconcile_error=reconcile_error or "",
+                retry_retried=retry_retried,
+                retry_failed=retry_failed,
+                retry_error=retry_error or "",
                 selected_limit=limit,
                 error_message=error_message,
                 detail_error_message=detail_error_message,
