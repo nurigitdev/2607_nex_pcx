@@ -1354,6 +1354,8 @@ def test_search_operations_summary_api_returns_recent_signal_deltas(
             top_k=5,
             profiles=("kure_v1_1024",),
             query_runtime_metadata={
+                "allow_mock_fallback": True,
+                "real_provider_required": False,
                 "profile_status_counts": {"succeeded": 1, "failed": 0},
             },
             total_elapsed_ms=1200,
@@ -1388,6 +1390,8 @@ def test_search_operations_summary_api_returns_recent_signal_deltas(
             top_k=5,
             profiles=("kure_v1_1024",),
             query_runtime_metadata={
+                "allow_mock_fallback": False,
+                "real_provider_required": True,
                 "profile_failures": {
                     "kure_v1_1024": {
                         "error_code": "query_embedding_failed",
@@ -1425,6 +1429,12 @@ def test_search_operations_summary_api_returns_recent_signal_deltas(
         assert summary["no_result_count"] == baseline["no_result_count"] + 1
         assert summary["runtime_failure_count"] == baseline["runtime_failure_count"] + 1
         assert summary["latency_outlier_count"] == baseline["latency_outlier_count"] + 2
+        assert summary["real_provider_required_count"] == (
+            baseline["real_provider_required_count"] + 1
+        )
+        assert summary["mock_fallback_allowed_count"] == (
+            baseline["mock_fallback_allowed_count"] + 1
+        )
         assert summary["duplicate_fingerprint_count"] == (
             baseline["duplicate_fingerprint_count"] + 1
         )

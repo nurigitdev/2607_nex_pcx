@@ -253,6 +253,14 @@
       <strong>{{ operations_summary.latency_outlier_count }}</strong>
     </div>
     <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.real_provider_required") }}</span>
+      <strong>{{ operations_summary.real_provider_required_count }}</strong>
+    </div>
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.mock_fallback_allowed") }}</span>
+      <strong>{{ operations_summary.mock_fallback_allowed_count }}</strong>
+    </div>
+    <div class="search-operations-summary-item">
       <span>{{ t("search_operations.duplicate_groups") }}</span>
       <strong>{{ operations_summary.duplicate_fingerprint_count }}</strong>
       <small>{{ t("search_operations.max_duplicate") }} {{ operations_summary.max_duplicate_count }}</small>

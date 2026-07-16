@@ -299,6 +299,8 @@ class SearchOperationsSummaryRecord:
     no_result_count: int
     runtime_failure_count: int
     latency_outlier_count: int
+    real_provider_required_count: int
+    mock_fallback_allowed_count: int
     duplicate_fingerprint_count: int
     max_duplicate_count: int
     average_total_elapsed_ms: float | None
@@ -677,6 +679,8 @@ def _row_to_search_operations_summary_record(row: dict[str, Any]) -> SearchOpera
         no_result_count=int(row["no_result_count"] or 0),
         runtime_failure_count=int(row["runtime_failure_count"] or 0),
         latency_outlier_count=int(row["latency_outlier_count"] or 0),
+        real_provider_required_count=int(row["real_provider_required_count"] or 0),
+        mock_fallback_allowed_count=int(row["mock_fallback_allowed_count"] or 0),
         duplicate_fingerprint_count=int(row["duplicate_fingerprint_count"] or 0),
         max_duplicate_count=int(row["max_duplicate_count"] or 0),
         average_total_elapsed_ms=_optional_float(row["average_total_elapsed_ms"]),
@@ -1472,6 +1476,12 @@ def get_search_operations_summary(
                         WHERE total_elapsed_ms IS NOT NULL
                           AND total_elapsed_ms >= %s
                     ) AS latency_outlier_count,
+                    count(*) FILTER (
+                        WHERE query_runtime_metadata ->> 'real_provider_required' = 'true'
+                    ) AS real_provider_required_count,
+                    count(*) FILTER (
+                        WHERE query_runtime_metadata ->> 'allow_mock_fallback' = 'true'
+                    ) AS mock_fallback_allowed_count,
                     (
                         SELECT count(*)
                         FROM duplicate_groups

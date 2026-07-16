@@ -4294,6 +4294,8 @@ def search_operations_summary_payload(
         "no_result_count": summary.no_result_count,
         "runtime_failure_count": summary.runtime_failure_count,
         "latency_outlier_count": summary.latency_outlier_count,
+        "real_provider_required_count": summary.real_provider_required_count,
+        "mock_fallback_allowed_count": summary.mock_fallback_allowed_count,
         "duplicate_fingerprint_count": summary.duplicate_fingerprint_count,
         "max_duplicate_count": summary.max_duplicate_count,
         "average_total_elapsed_ms": summary.average_total_elapsed_ms,

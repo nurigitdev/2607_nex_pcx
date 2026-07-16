@@ -1190,6 +1190,8 @@
     "no_results": "No Result",
     "runtime_failures": "Runtime Failure",
     "latency_outliers": "Latency Outlier",
+    "real_provider_required": "Real Provider Required",
+    "mock_fallback_allowed": "Mock Fallback Allowed",
     "duplicate_groups": "Duplicate Groups",
     "max_duplicate": "Max",
     "average_latency": "Avg Latency",

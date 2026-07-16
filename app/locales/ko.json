@@ -1190,6 +1190,8 @@
     "no_results": "No Result",
     "runtime_failures": "Runtime Failure",
     "latency_outliers": "Latency Outlier",
+    "real_provider_required": "실제 Provider 필수",
+    "mock_fallback_allowed": "Mock fallback 허용",
     "duplicate_groups": "Duplicate 그룹",
     "max_duplicate": "Max",
     "average_latency": "평균 Latency",
