@@ -3221,6 +3221,13 @@ main.container-fluid {
   gap: 1rem;
 }
 
+.search-policy-compare-panel {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 1rem;
+}
+
 .search-permission-summary-panel {
   border: 1px solid var(--pcx-border);
   border-radius: 8px;
@@ -3550,13 +3557,32 @@ main.container-fluid {
   justify-content: space-between;
 }
 
+.search-policy-compare-header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
 .search-permission-matrix-form {
   display: grid;
   gap: 1rem;
   grid-template-columns: minmax(0, 2fr) minmax(15rem, 1fr);
 }
 
+.search-policy-compare-form {
+  display: grid;
+  gap: 1rem;
+}
+
 .search-matrix-option-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.search-policy-option-list {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -3573,12 +3599,33 @@ main.container-fluid {
   padding: 0.4rem 0.65rem;
 }
 
+.search-policy-option {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 0.45rem;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.65rem;
+}
+
 .search-matrix-option span {
   font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
 
+.search-policy-option span {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
 .search-permission-matrix-results {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.search-policy-compare-results {
   display: grid;
   gap: 0.75rem;
 }
@@ -3590,7 +3637,21 @@ main.container-fluid {
   white-space: nowrap;
 }
 
+.search-policy-compare-table td:nth-child(2),
+.search-policy-compare-table td:nth-child(3),
+.search-policy-compare-table td:nth-child(4),
+.search-policy-compare-table td:nth-child(6),
+.search-policy-compare-table td:nth-child(7) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .search-permission-matrix-top-result {
+  min-width: 16rem;
+  overflow-wrap: anywhere;
+}
+
+.search-policy-compare-top-result {
   min-width: 16rem;
   overflow-wrap: anywhere;
 }
@@ -4083,6 +4144,7 @@ main.container-fluid {
   .search-operations-control-form,
   .search-operations-summary-grid,
   .search-retention-form,
+  .search-policy-compare-form,
   .search-permission-matrix-form,
   .search-permission-summary-grid,
   .search-reproducibility-grid,
@@ -4115,6 +4177,7 @@ main.container-fluid {
   .golden-candidate-actions .btn,
   .golden-candidate-actions .form-control,
   .golden-form-actions .btn,
+  .search-policy-compare-header .btn,
   .search-permission-matrix-header .btn,
   .search-history-filter-actions .btn,
   .search-history-promotion-row .btn,

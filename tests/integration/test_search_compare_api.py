@@ -49,6 +49,7 @@ def _create_search_compare_chunk(
     access_scope: str,
     chunk_text: str,
     document_group: str,
+    chunk_policy_name: str = "heading_512_64",
 ) -> tuple[int, int]:
     checksum = f"search-compare-{uuid4()}"
     with connect(database_url) as connection:
@@ -111,10 +112,16 @@ def _create_search_compare_chunk(
                     chunk_policy_name,
                     char_count
                 )
-                VALUES (%s, 0, %s, %s, 'heading_512_64', %s)
+                VALUES (%s, 0, %s, %s, %s, %s)
                 RETURNING chunk_id
                 """,
-                (document_id, chunk_text, f"chunk-{checksum}", len(chunk_text)),
+                (
+                    document_id,
+                    chunk_text,
+                    f"chunk-{checksum}",
+                    chunk_policy_name,
+                    len(chunk_text),
+                ),
             )
             chunk_id = cursor.fetchone()["chunk_id"]
     return file_id, chunk_id
@@ -1093,6 +1100,121 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert bad_export_response.json() == {"detail": "format must be json or csv."}
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
+
+
+def test_search_compare_chunk_policy_multi_run_api_compares_policy_results(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    query_text = "Chunk policy compare anchor"
+    document_group = f"slice-258-{uuid4()}"
+    default_file_id, default_chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="default chunk policy fixture",
+        owner_user_id=None,
+        owner_org_unit_id=ids["NeX Company"],
+        access_scope="company",
+        chunk_text=query_text,
+        document_group=document_group,
+        chunk_policy_name="heading_512_64",
+    )
+    large_file_id, large_chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="large chunk policy fixture",
+        owner_user_id=None,
+        owner_org_unit_id=ids["NeX Company"],
+        access_scope="company",
+        chunk_text=query_text,
+        document_group=document_group,
+        chunk_policy_name="heading_1000_200",
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        _store_profile_embeddings(migrated_database_url, default_chunk_id, query_text)
+        _store_profile_embeddings(migrated_database_url, large_chunk_id, query_text)
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/search/compare/chunk-policies",
+                json={
+                    "query_text": query_text,
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "top_k": 5,
+                    "profiles": ["kure_v1_1024"],
+                    "chunk_policy_names": ["heading_512_64", "heading_1000_200"],
+                    "document_group": document_group,
+                },
+            )
+            duplicate_response = client.post(
+                "/api/search/compare/chunk-policies",
+                json={
+                    "query_text": query_text,
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "top_k": 5,
+                    "profiles": ["kure_v1_1024"],
+                    "chunk_policy_names": ["heading_512_64", "heading_512_64"],
+                    "document_group": document_group,
+                },
+            )
+            unknown_response = client.post(
+                "/api/search/compare/chunk-policies",
+                json={
+                    "query_text": query_text,
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "top_k": 5,
+                    "profiles": ["kure_v1_1024"],
+                    "chunk_policy_names": ["heading_512_64", "missing_policy"],
+                    "document_group": document_group,
+                },
+            )
+
+        body = response.json()
+        runs_by_policy = {run["chunk_policy_name"]: run for run in body["runs"]}
+        default_run = runs_by_policy["heading_512_64"]
+        large_run = runs_by_policy["heading_1000_200"]
+        default_log = fetch_one(
+            migrated_database_url,
+            "SELECT chunk_policy_name FROM search_logs WHERE search_log_id = %s",
+            (default_run["search_log_id"],),
+        )
+        large_log = fetch_one(
+            migrated_database_url,
+            "SELECT chunk_policy_name FROM search_logs WHERE search_log_id = %s",
+            (large_run["search_log_id"],),
+        )
+
+        assert response.status_code == 200
+        assert body["policy_count"] == 2
+        assert body["shared_chunk_count"] == 0
+        assert body["profiles"] == ["kure_v1_1024"]
+        assert set(runs_by_policy) == {"heading_512_64", "heading_1000_200"}
+        assert default_run["result_count"] == 1
+        assert default_run["unique_chunk_count"] == 1
+        assert default_run["top_result"]["chunk_id"] == default_chunk_id
+        assert default_run["search_result"]["profiles"][0]["results"][0]["chunk_id"] == (
+            default_chunk_id
+        )
+        assert default_run["search_log_url"] == (
+            f"/search/logs?search_log_id={default_run['search_log_id']}"
+        )
+        assert large_run["result_count"] == 1
+        assert large_run["unique_chunk_count"] == 1
+        assert large_run["top_result"]["chunk_id"] == large_chunk_id
+        assert large_run["search_result"]["profiles"][0]["results"][0]["chunk_id"] == (
+            large_chunk_id
+        )
+        assert default_log["chunk_policy_name"] == "heading_512_64"
+        assert large_log["chunk_policy_name"] == "heading_1000_200"
+        assert duplicate_response.status_code == 400
+        assert "unique" in duplicate_response.json()["detail"]
+        assert unknown_response.status_code == 400
+        assert "missing_policy" in unknown_response.json()["detail"]
+    finally:
+        _cleanup_files(migrated_database_url, [default_file_id, large_file_id])
 
 
 def test_search_compare_api_returns_profile_failure_for_provider_errors(

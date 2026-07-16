@@ -201,6 +201,49 @@
   ></div>
 </section>
 
+<section class="search-policy-compare-panel bg-white p-3 mb-4">
+  <div class="search-policy-compare-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_compare.policy_compare_title") }}</h2>
+      <p class="text-secondary mb-0">{{ t("search_compare.policy_compare_subtitle") }}</p>
+    </div>
+    <button
+      class="btn btn-outline-primary"
+      id="chunk-policy-compare-submit"
+      type="button"
+      {% if not database_configured %}disabled{% endif %}
+    >
+      {{ t("search_compare.policy_compare_run") }}
+    </button>
+  </div>
+  <form id="chunk-policy-compare-form" class="search-policy-compare-form">
+    <fieldset>
+      <legend class="form-label">{{ t("search_compare.policy_compare_policies") }}</legend>
+      <div class="search-policy-option-list">
+        {% for policy in chunk_policy_options %}
+        <label class="search-policy-option">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            name="policy_compare_chunk_policy_names"
+            value="{{ policy.chunk_policy_name }}"
+            {% if loop.index <= 2 %}checked{% endif %}
+            {% if not database_configured %}disabled{% endif %}
+          >
+          <span>
+            {{ policy.chunk_policy_name }}
+            {% if policy.is_default %} · {{ t("search_compare.default_chunk_policy") }}{% endif %}
+            · {{ policy.target_token_size }}/{{ policy.overlap_token_size }}
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+  </form>
+  <div id="chunk-policy-compare-status" class="text-secondary small" aria-live="polite"></div>
+  <div id="chunk-policy-compare-results" class="search-policy-compare-results"></div>
+</section>
+
 <section class="search-permission-matrix-panel bg-white p-3 mb-4">
   <div class="search-permission-matrix-header">
     <div>
@@ -340,6 +383,10 @@
   const matrixSubmit = document.getElementById("permission-matrix-submit");
   const matrixStatus = document.getElementById("permission-matrix-status");
   const matrixResults = document.getElementById("permission-matrix-results");
+  const policyCompareForm = document.getElementById("chunk-policy-compare-form");
+  const policyCompareSubmit = document.getElementById("chunk-policy-compare-submit");
+  const policyCompareStatus = document.getElementById("chunk-policy-compare-status");
+  const policyCompareResults = document.getElementById("chunk-policy-compare-results");
   const feedbackSummaryGrid = document.getElementById("feedback-summary-grid");
   const feedbackSummaryMeta = document.getElementById("feedback-summary-meta");
   const feedbackSummaryRefresh = document.getElementById("feedback-summary-refresh");
@@ -347,6 +394,7 @@
   const feedbackCommentsMeta = document.getElementById("feedback-comments-meta");
   const canLoadFeedbackSummary = {{ "true" if database_configured else "false" }};
   const matrixLimit = 12;
+  const policyCompareLimit = 8;
   const feedbackOptions = [
     {label: "Correct", value: "correct"},
     {label: "Partial", value: "partial"},
@@ -476,6 +524,12 @@
 
   const selectedProfiles = () =>
     new FormData(form).getAll("profiles").filter(Boolean);
+
+  const selectedPolicyCompareNames = () => Array.from(
+    policyCompareForm?.querySelectorAll(
+      'input[name="policy_compare_chunk_policy_names"]:checked',
+    ) || [],
+  ).map((input) => input.value);
 
   const makeCell = (label, value) => {
     const row = document.createElement("div");
@@ -975,6 +1029,143 @@
     }
   };
 
+  const renderPolicyCompare = (payload) => {
+    policyCompareResults.replaceChildren();
+    policyCompareStatus.textContent =
+      `${payload.policy_count} {{ t('search_compare.policy_compare_policies_short') }} / ${payload.shared_chunk_count} {{ t('search_compare.policy_compare_shared_chunks') }} / ${payload.total_elapsed_ms} ms`;
+
+    const tableWrapper = document.createElement("div");
+    tableWrapper.className = "table-responsive";
+    const table = document.createElement("table");
+    table.className = "table table-sm align-middle mb-0 search-policy-compare-table";
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    [
+      "{{ t('search_compare.policy_compare_policy') }}",
+      "{{ t('search_compare.policy_compare_results') }}",
+      "{{ t('search_compare.policy_compare_unique_chunks') }}",
+      "{{ t('search_compare.policy_compare_top_score') }}",
+      "{{ t('search_compare.policy_compare_top_result') }}",
+      "{{ t('search_compare.policy_compare_log') }}",
+      "{{ t('search_compare.policy_compare_elapsed') }}",
+    ].forEach((label) => {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = label;
+      headerRow.append(th);
+    });
+    thead.append(headerRow);
+
+    const tbody = document.createElement("tbody");
+    payload.runs.forEach((run) => {
+      const row = document.createElement("tr");
+      const topResult = run.top_result;
+      const topText = topResult
+        ? `${topResult.document_title || topResult.original_file_name || "Untitled"} · #${topResult.chunk_id}`
+        : "{{ t('search_compare.policy_compare_no_results') }}";
+      [
+        run.chunk_policy_name,
+        String(run.result_count),
+        String(run.unique_chunk_count),
+        run.top_score === null || run.top_score === undefined
+          ? "-"
+          : Number(run.top_score).toFixed(4),
+        topText,
+        `#${run.search_log_id}`,
+        `${run.total_elapsed_ms} ms`,
+      ].forEach((value, index) => {
+        const td = document.createElement("td");
+        if (index === 5) {
+          const link = document.createElement("a");
+          link.href = run.search_log_url;
+          link.textContent = value;
+          td.append(link);
+        } else {
+          td.textContent = value;
+        }
+        if (index === 4) {
+          td.className = "search-policy-compare-top-result";
+        }
+        row.append(td);
+      });
+      tbody.append(row);
+    });
+
+    table.append(thead, tbody);
+    tableWrapper.append(table);
+    policyCompareResults.append(tableWrapper);
+  };
+
+  const runPolicyCompare = async () => {
+    if (!policyCompareForm || !policyCompareSubmit) {
+      return;
+    }
+    policyCompareResults.replaceChildren();
+    const chunkPolicyNames = selectedPolicyCompareNames();
+    const profiles = selectedProfiles();
+    if (!fieldValue("query_text")) {
+      policyCompareStatus.textContent = "{{ t('search_compare.policy_compare_query_required') }}";
+      return;
+    }
+    if (profiles.length === 0) {
+      policyCompareStatus.textContent =
+        "{{ t('search_compare.policy_compare_profiles_required') }}";
+      return;
+    }
+    if (chunkPolicyNames.length < 2) {
+      policyCompareStatus.textContent =
+        "{{ t('search_compare.policy_compare_policies_required') }}";
+      return;
+    }
+    if (chunkPolicyNames.length > policyCompareLimit) {
+      policyCompareStatus.textContent =
+        "{{ t('search_compare.policy_compare_too_many_policies') }}";
+      return;
+    }
+
+    const formData = new FormData(form);
+    const payload = {
+      query_text: fieldValue("query_text"),
+      actor_user_id: Number(formData.get("actor_user_id")),
+      requested_search_scope: fieldValue("requested_search_scope") || "company",
+      top_k: Number(formData.get("top_k") || 5),
+      profiles,
+      chunk_policy_names: chunkPolicyNames,
+      document_group: fieldValue("document_group"),
+      file_type: fieldValue("file_type"),
+      allow_mock_fallback: !formData.has("require_real_provider"),
+    };
+
+    policyCompareSubmit.disabled = true;
+    policyCompareSubmit.textContent = "{{ t('search_compare.policy_compare_running') }}";
+    policyCompareStatus.textContent = "{{ t('search_compare.policy_compare_running') }}";
+    try {
+      const response = await fetch("/api/search/compare/chunk-policies", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        policyCompareStatus.textContent =
+          body.detail || "{{ t('search_compare.policy_compare_failed') }}";
+        return;
+      }
+      renderPolicyCompare(body);
+      loadFeedbackSummary();
+      loadFeedbackComments();
+    } catch (error) {
+      policyCompareStatus.textContent =
+        error instanceof Error
+          ? error.message
+          : "{{ t('search_compare.policy_compare_failed') }}";
+    } finally {
+      policyCompareSubmit.disabled = false;
+      policyCompareSubmit.textContent = "{{ t('search_compare.policy_compare_run') }}";
+    }
+  };
+
   const loadFeedbackSummary = async () => {
     if (!canLoadFeedbackSummary) {
       feedbackSummaryMeta.textContent = "Database unavailable";
@@ -1456,6 +1647,10 @@
 
   matrixSubmit?.addEventListener("click", () => {
     runPermissionMatrix();
+  });
+
+  policyCompareSubmit?.addEventListener("click", () => {
+    runPolicyCompare();
   });
 
   loadFeedbackSummary();

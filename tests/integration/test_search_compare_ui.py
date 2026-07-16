@@ -58,6 +58,10 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert "권한 검색 Matrix" in response.text
     assert 'id="permission-matrix-form"' in response.text
     assert "/api/search/permission-matrix" in response.text
+    assert "Chunk 정책 비교" in response.text
+    assert 'id="chunk-policy-compare-form"' in response.text
+    assert "/api/search/compare/chunk-policies" in response.text
+    assert "heading_1000_200" in response.text
 
 
 def test_search_history_page_renders_filters_and_log_table(

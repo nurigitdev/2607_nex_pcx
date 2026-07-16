@@ -521,6 +521,7 @@ SEARCH_LOG_EXPORT_VERSION = 1
 SEARCH_EXPERIMENT_REPORT_VERSION = 1
 SEARCH_COMPARE_FILE_TYPES = (".md", ".pdf", ".docx", ".hwpx", ".pptx", ".xlsx")
 SEARCH_COMPARE_SCOPE_OPTIONS = ("mine", "team", "managed_org", "company")
+MAX_SEARCH_CHUNK_POLICY_COMPARE_POLICIES = 8
 
 
 class SearchCompareRequest(BaseModel):
@@ -530,6 +531,21 @@ class SearchCompareRequest(BaseModel):
     top_k: int = Field(default=5, ge=1)
     profiles: list[str] | None = None
     chunk_policy_name: str | None = None
+    document_group: str | None = None
+    file_type: str | None = None
+    allow_mock_fallback: bool = True
+
+
+class SearchChunkPolicyCompareRequest(BaseModel):
+    query_text: str
+    actor_user_id: int
+    requested_search_scope: str = "company"
+    top_k: int = Field(default=5, ge=1)
+    profiles: list[str] | None = None
+    chunk_policy_names: list[str] = Field(
+        min_length=2,
+        max_length=MAX_SEARCH_CHUNK_POLICY_COMPARE_POLICIES,
+    )
     document_group: str | None = None
     file_type: str | None = None
     allow_mock_fallback: bool = True
@@ -3188,10 +3204,17 @@ def search_compare_profile_payload(profile: SearchCompareProfileResult) -> dict[
     }
 
 
-def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
+def search_compare_profile_status_counts(
+    profiles: tuple[SearchCompareProfileResult, ...],
+) -> dict[str, int]:
     profile_status_counts: dict[str, int] = {"succeeded": 0, "failed": 0}
-    for profile in result.profiles:
+    for profile in profiles:
         profile_status_counts[profile.status] = profile_status_counts.get(profile.status, 0) + 1
+    return profile_status_counts
+
+
+def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
+    profile_status_counts = search_compare_profile_status_counts(result.profiles)
     return {
         "search_log_id": result.search_log_id,
         "query_text": result.query_text,
@@ -3208,6 +3231,38 @@ def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
         "profile_status_counts": profile_status_counts,
         "profile_failure_count": profile_status_counts.get("failed", 0),
         "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
+    }
+
+
+def search_chunk_policy_compare_run_payload(
+    chunk_policy_name: str,
+    result: SearchCompareResult,
+) -> dict[str, object]:
+    result_items = [item for profile in result.profiles for item in profile.results]
+    unique_chunk_ids = sorted({item.vector_result.chunk_id for item in result_items})
+    top_result = max(
+        result_items,
+        key=lambda item: item.vector_result.score,
+        default=None,
+    )
+    profile_status_counts = search_compare_profile_status_counts(result.profiles)
+    return {
+        "chunk_policy_name": chunk_policy_name,
+        "search_log_id": result.search_log_id,
+        "search_log_url": f"/search/logs?search_log_id={result.search_log_id}",
+        "result_count": len(result_items),
+        "unique_chunk_count": len(unique_chunk_ids),
+        "unique_chunk_ids": unique_chunk_ids,
+        "top_score": top_result.vector_result.score if top_result is not None else None,
+        "top_result": (
+            vector_search_result_payload(top_result.vector_result)
+            if top_result is not None
+            else None
+        ),
+        "profile_status_counts": profile_status_counts,
+        "profile_failure_count": profile_status_counts.get("failed", 0),
+        "total_elapsed_ms": result.total_elapsed_ms,
+        "search_result": search_compare_payload(result),
     }
 
 
@@ -9789,6 +9844,104 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(content=search_compare_payload(result))
+
+    @app.post("/api/search/compare/chunk-policies")
+    def api_search_compare_chunk_policies(
+        payload: SearchChunkPolicyCompareRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        chunk_policy_names = [name.strip() for name in payload.chunk_policy_names]
+        if any(not name for name in chunk_policy_names):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="chunk_policy_names must not contain blank values.",
+            )
+        if len(set(chunk_policy_names)) != len(chunk_policy_names):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="chunk_policy_names must be unique.",
+            )
+
+        known_policy_names = {
+            policy.chunk_policy_name
+            for policy in list_chunk_policy_summaries(settings.database_url)
+        }
+        unknown_policy_names = [
+            name for name in chunk_policy_names if name not in known_policy_names
+        ]
+        if unknown_policy_names:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Unknown chunk_policy_names: "
+                    f"{', '.join(sorted(unknown_policy_names))}"
+                ),
+            )
+
+        started_at = perf_counter()
+        try:
+            runs = [
+                search_chunk_policy_compare_run_payload(
+                    chunk_policy_name,
+                    run_search_compare(
+                        settings.database_url,
+                        SearchCompareInput(
+                            query_text=payload.query_text,
+                            actor_user_id=payload.actor_user_id,
+                            requested_search_scope=payload.requested_search_scope,
+                            top_k=payload.top_k,
+                            profiles=(
+                                tuple(payload.profiles)
+                                if payload.profiles is not None
+                                else None
+                            ),
+                            chunk_policy_name=chunk_policy_name,
+                            document_group=payload.document_group,
+                            file_type=payload.file_type,
+                            allow_mock_fallback=payload.allow_mock_fallback,
+                        ),
+                        fallback_runtime_config=(
+                            embedding_provider_runtime_config_from_settings(settings)
+                        ),
+                    ),
+                )
+                for chunk_policy_name in chunk_policy_names
+            ]
+        except (
+            InvalidEmbeddingProviderError,
+            InvalidQueryEmbeddingError,
+            InvalidSearchCompareError,
+            InvalidPermissionError,
+            InvalidVectorSearchError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        chunk_id_sets = [set(run["unique_chunk_ids"]) for run in runs]
+        shared_chunk_ids = sorted(
+            set.intersection(*chunk_id_sets) if chunk_id_sets else set()
+        )
+        return JSONResponse(
+            content={
+                "query_text": payload.query_text,
+                "actor_user_id": payload.actor_user_id,
+                "requested_search_scope": payload.requested_search_scope,
+                "top_k": payload.top_k,
+                "profiles": payload.profiles or [],
+                "document_group": payload.document_group,
+                "file_type": payload.file_type,
+                "policy_count": len(runs),
+                "shared_chunk_count": len(shared_chunk_ids),
+                "shared_chunk_ids": shared_chunk_ids,
+                "total_elapsed_ms": max(0, int((perf_counter() - started_at) * 1000)),
+                "runs": runs,
+            },
+        )
 
     @app.get("/api/search/results/{search_log_result_id}/source-context")
     def api_get_search_result_source_context(search_log_result_id: int) -> JSONResponse:
