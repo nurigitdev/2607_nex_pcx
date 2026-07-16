@@ -3370,8 +3370,16 @@ main.container-fluid {
   align-items: center;
   border-top: 1px solid var(--pcx-border);
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   justify-content: flex-end;
   padding-top: 0.75rem;
+}
+
+.search-readiness-action-status {
+  color: var(--pcx-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .search-runtime-panel {

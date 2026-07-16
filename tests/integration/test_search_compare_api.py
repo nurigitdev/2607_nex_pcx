@@ -569,21 +569,17 @@ def test_search_result_source_context_api_returns_chunk_trace(
 ) -> None:
     ids = _seed_ids(migrated_database_url)
     document_group = f"slice-255-{uuid4()}"
-    file_id, search_log_result_id, current_chunk_id = (
-        _create_search_result_source_context_fixture(
-            migrated_database_url,
-            owner_user_id=ids["alice.member"],
-            owner_org_unit_id=ids["NeX Company"],
-            document_group=document_group,
-        )
+    file_id, search_log_result_id, current_chunk_id = _create_search_result_source_context_fixture(
+        migrated_database_url,
+        owner_user_id=ids["alice.member"],
+        owner_org_unit_id=ids["NeX Company"],
+        document_group=document_group,
     )
     app = create_app(Settings(database_url=migrated_database_url))
 
     try:
         with TestClient(app) as client:
-            response = client.get(
-                f"/api/search/results/{search_log_result_id}/source-context"
-            )
+            response = client.get(f"/api/search/results/{search_log_result_id}/source-context")
             missing_response = client.get("/api/search/results/999999999/source-context")
             invalid_response = client.get("/api/search/results/-1/source-context")
 
@@ -1006,9 +1002,9 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             ]
             == "compare_mvp"
         )
-        query_runtime_metadata = logs_by_id[body["search_log_id"]][
-            "reproducibility_summary"
-        ]["query_runtime_metadata"]
+        query_runtime_metadata = logs_by_id[body["search_log_id"]]["reproducibility_summary"][
+            "query_runtime_metadata"
+        ]
         assert query_runtime_metadata["adapter"] == "query_embedding_bridge"
         assert query_runtime_metadata["query_embedding_bridge"] is True
         assert query_runtime_metadata["query_embedding_profile_count"] == 2
@@ -1021,13 +1017,12 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             "bge_m3_1024",
         }
         assert (
-            query_runtime_metadata["profile_query_embeddings"]["kure_v1_1024"]["dimension"]
-            == 1024
+            query_runtime_metadata["profile_query_embeddings"]["kure_v1_1024"]["dimension"] == 1024
         )
         assert (
-            query_runtime_metadata["profile_query_embeddings"]["kure_v1_1024"][
-                "runtime_metadata"
-            ]["query_embedding_input_type"]
+            query_runtime_metadata["profile_query_embeddings"]["kure_v1_1024"]["runtime_metadata"][
+                "query_embedding_input_type"
+            ]
             == "query"
         )
         assert detail_response.status_code == 200
@@ -1150,7 +1145,7 @@ def test_search_compare_readiness_api_flags_incomplete_profile_policy_coverage(
                         %s,
                         'bge_m3_1024',
                         'failed',
-                        3,
+                        1,
                         'READINESS_FIXTURE_FAILURE',
                         'readiness fixture failed',
                         now(),
@@ -1213,10 +1208,44 @@ def test_search_compare_readiness_api_flags_incomplete_profile_policy_coverage(
                     "document_group": document_group,
                 },
             )
+            reconcile_response = client.post(
+                "/api/search/compare/readiness/reconcile-coverage",
+                json={
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "profile_name": "bge_m3_1024",
+                    "chunk_policy_name": "heading_512_64",
+                    "document_group": document_group,
+                    "file_type": ".md",
+                },
+            )
+            reconcile_repeat_response = client.post(
+                "/api/search/compare/readiness/reconcile-coverage",
+                json={
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "profile_name": "bge_m3_1024",
+                    "chunk_policy_name": "heading_512_64",
+                    "document_group": document_group,
+                    "file_type": ".md",
+                },
+            )
+            reconcile_bad_response = client.post(
+                "/api/search/compare/readiness/reconcile-coverage",
+                json={
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "profile_name": "bge_m3_1024",
+                    "chunk_policy_name": " ",
+                    "document_group": document_group,
+                },
+            )
 
         body = response.json()
         all_policy_body = all_policy_response.json()
         policy_body = policy_response.json()
+        reconcile_body = reconcile_response.json()
+        reconcile_repeat_body = reconcile_repeat_response.json()
         profiles = {profile["profile_name"]: profile for profile in body["profiles"]}
         policy_profiles = {
             (profile["chunk_policy_name"], profile["profile_name"]): profile
@@ -1233,13 +1262,9 @@ def test_search_compare_readiness_api_flags_incomplete_profile_policy_coverage(
         assert profiles["kure_v1_1024"]["coverage_url"].startswith(
             "/admin/multi-policy-ingestion-coverage?"
         )
-        assert "chunk_policy_name=heading_512_64" in profiles["kure_v1_1024"][
-            "coverage_url"
-        ]
+        assert "chunk_policy_name=heading_512_64" in profiles["kure_v1_1024"]["coverage_url"]
         assert "profile_name=kure_v1_1024" in profiles["kure_v1_1024"]["coverage_url"]
-        assert f"document_group={document_group}" in profiles["kure_v1_1024"][
-            "coverage_url"
-        ]
+        assert f"document_group={document_group}" in profiles["kure_v1_1024"]["coverage_url"]
         assert profiles["bge_m3_1024"]["status"] == "failed"
         assert profiles["bge_m3_1024"]["failed_count"] == 1
         assert all_policy_response.status_code == 200
@@ -1248,13 +1273,30 @@ def test_search_compare_readiness_api_flags_incomplete_profile_policy_coverage(
         assert all_policy_body["profiles"][0]["coverage_url"] is None
         assert policy_response.status_code == 200
         assert policy_body["policy_count"] == 2
-        assert policy_profiles[("heading_1000_200", "kure_v1_1024")]["status"] == (
-            "not_chunked"
-        )
+        assert policy_profiles[("heading_1000_200", "kure_v1_1024")]["status"] == ("not_chunked")
         assert conflicting_policy_response.status_code == 400
         assert "cannot be used together" in conflicting_policy_response.json()["detail"]
         assert unsupported_profile_response.status_code == 400
         assert "Unsupported embedding profiles" in unsupported_profile_response.json()["detail"]
+        assert reconcile_response.status_code == 200
+        assert reconcile_body["profile_name"] == "bge_m3_1024"
+        assert reconcile_body["chunk_policy_name"] == "heading_512_64"
+        assert reconcile_body["chunk_count"] == 2
+        assert reconcile_body["missing_job_count"] == 1
+        assert reconcile_body["created_job_count"] == 1
+        assert reconcile_body["failed_job_count"] == 1
+        assert reconcile_body["retryable_failed_job_count"] == 1
+        assert reconcile_body["retried_job_count"] == 1
+        assert reconcile_body["created_jobs"][0]["runtime_metadata"]["reconcile_source"] == (
+            "search_compare_readiness"
+        )
+        assert reconcile_repeat_response.status_code == 200
+        assert reconcile_repeat_body["missing_job_count"] == 0
+        assert reconcile_repeat_body["created_job_count"] == 0
+        assert reconcile_repeat_body["failed_job_count"] == 0
+        assert reconcile_repeat_body["retried_job_count"] == 0
+        assert reconcile_bad_response.status_code == 400
+        assert "chunk_policy_name must not be blank" in reconcile_bad_response.json()["detail"]
     finally:
         _cleanup_files(migrated_database_url, [ready_file_id, failed_file_id])
 
@@ -1628,9 +1670,7 @@ def test_search_runtime_failures_api_lists_and_filters_profile_failures(
 
         assert response.status_code == 200
         body = response.json()
-        failures_by_log_id = {
-            failure["search_log_id"]: failure for failure in body["failures"]
-        }
+        failures_by_log_id = {failure["search_log_id"]: failure for failure in body["failures"]}
         assert first_log.search_log_id in failures_by_log_id
         assert second_log.search_log_id in failures_by_log_id
         assert failures_by_log_id[first_log.search_log_id]["profile_name"] == "bge_m3_1024"
@@ -1638,17 +1678,14 @@ def test_search_runtime_failures_api_lists_and_filters_profile_failures(
             "query_embedding_failed"
         )
         assert failures_by_log_id[first_log.search_log_id]["elapsed_ms"] == 250
-        assert failures_by_log_id[first_log.search_log_id]["actor_display_name"] == (
-            "Alice Member"
-        )
+        assert failures_by_log_id[first_log.search_log_id]["actor_display_name"] == ("Alice Member")
         assert failures_by_log_id[first_log.search_log_id]["search_log_url"] == (
             f"/search/logs?search_log_id={first_log.search_log_id}"
         )
         assert filtered_response.status_code == 200
         filtered_failures = filtered_response.json()["failures"]
         assert any(
-            failure["search_log_id"] == first_log.search_log_id
-            for failure in filtered_failures
+            failure["search_log_id"] == first_log.search_log_id for failure in filtered_failures
         )
         assert all(failure["profile_name"] == "bge_m3_1024" for failure in filtered_failures)
         assert invalid_limit_response.status_code == 400
@@ -1746,18 +1783,14 @@ def test_search_latency_outliers_api_lists_slow_search_logs(
 
         assert response.status_code == 200
         body = response.json()
-        outliers_by_log_id = {
-            outlier["search_log_id"]: outlier for outlier in body["outliers"]
-        }
+        outliers_by_log_id = {outlier["search_log_id"]: outlier for outlier in body["outliers"]}
         assert body["min_total_elapsed_ms"] == 1000
         assert slow_log.search_log_id in outliers_by_log_id
         assert fast_log.search_log_id not in outliers_by_log_id
         assert outliers_by_log_id[slow_log.search_log_id]["total_elapsed_ms"] == 1750
         assert outliers_by_log_id[slow_log.search_log_id]["profile_count"] == 2
         assert outliers_by_log_id[slow_log.search_log_id]["failed_profile_count"] == 1
-        assert outliers_by_log_id[slow_log.search_log_id]["actor_display_name"] == (
-            "Alice Member"
-        )
+        assert outliers_by_log_id[slow_log.search_log_id]["actor_display_name"] == ("Alice Member")
         assert low_threshold_response.status_code == 200
         low_threshold_ids = {
             outlier["search_log_id"] for outlier in low_threshold_response.json()["outliers"]

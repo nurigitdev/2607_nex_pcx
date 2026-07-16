@@ -9,6 +9,7 @@ from app.core.search_compare import (
     SEARCH_COMPARE_PROFILE_STATUS_FAILED,
     SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED,
     InvalidSearchCompareError,
+    SearchCompareCoverageReconcileInput,
     SearchCompareInput,
     SearchCompareReadinessInput,
     SearchCompareReadinessProfile,
@@ -17,6 +18,7 @@ from app.core.search_compare import (
     SearchPermissionMatrixInput,
     _coverage_percent,
     _readiness_status,
+    _validate_coverage_reconcile_input,
     _validate_readiness_input,
     run_permission_search_matrix,
     run_search_compare,
@@ -208,6 +210,78 @@ def test_validate_readiness_input_normalizes_optional_values() -> None:
     assert validated.profiles == ("kure_v1_1024",)
     assert validated.chunk_policy_names == ("heading_512_64",)
     assert validated.file_type == ".md"
+
+
+@pytest.mark.parametrize(
+    ("reconcile_input", "message"),
+    [
+        (
+            SearchCompareCoverageReconcileInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                profile_name="kure_v1_1024",
+                chunk_policy_name="heading_512_64",
+                max_jobs=0,
+            ),
+            "max_jobs must be greater than 0",
+        ),
+        (
+            SearchCompareCoverageReconcileInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                profile_name="kure_v1_1024",
+                chunk_policy_name="heading_512_64",
+                max_jobs=501,
+            ),
+            "max_jobs must be less than or equal to 500",
+        ),
+        (
+            SearchCompareCoverageReconcileInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                profile_name=" ",
+                chunk_policy_name="heading_512_64",
+            ),
+            "profile_name",
+        ),
+        (
+            SearchCompareCoverageReconcileInput(
+                actor_user_id=1,
+                requested_search_scope="company",
+                profile_name="kure_v1_1024",
+                chunk_policy_name=" ",
+            ),
+            "chunk_policy_name",
+        ),
+    ],
+)
+def test_validate_coverage_reconcile_input_rejects_invalid_values(
+    reconcile_input: SearchCompareCoverageReconcileInput,
+    message: str,
+) -> None:
+    with pytest.raises(InvalidSearchCompareError, match=message):
+        _validate_coverage_reconcile_input(reconcile_input)
+
+
+def test_validate_coverage_reconcile_input_normalizes_search_filters() -> None:
+    validated = _validate_coverage_reconcile_input(
+        SearchCompareCoverageReconcileInput(
+            actor_user_id=1,
+            requested_search_scope=" company ",
+            profile_name=" kure_v1_1024 ",
+            chunk_policy_name=" heading_512_64 ",
+            document_group=" default ",
+            file_type=" .md ",
+            max_jobs=25,
+        )
+    )
+
+    assert validated.requested_search_scope == "company"
+    assert validated.profile_name == "kure_v1_1024"
+    assert validated.chunk_policy_name == "heading_512_64"
+    assert validated.document_group == "default"
+    assert validated.file_type == ".md"
+    assert validated.max_jobs == 25
 
 
 def test_search_compare_readiness_result_summarizes_profiles() -> None:
@@ -434,7 +508,5 @@ def test_run_search_compare_returns_profile_failure_without_aborting(monkeypatch
     assert metadata["profile_status_counts"] == {"succeeded": 1, "failed": 1}
     assert metadata["profile_failure_count"] == 1
     assert set(metadata["profile_query_embeddings"]) == {"kure_v1_1024"}
-    assert metadata["profile_failures"]["bge_m3_1024"]["error_message"] == (
-        "provider unavailable"
-    )
+    assert metadata["profile_failures"]["bge_m3_1024"]["error_message"] == ("provider unavailable")
     assert captured_allow_mock_fallback == [False, False]

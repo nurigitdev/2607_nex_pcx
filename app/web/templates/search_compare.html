@@ -505,6 +505,10 @@
     partial: "{{ t('search_compare.readiness_partial') }}",
     missingStatus: "{{ t('search_compare.readiness_missing_status') }}",
     openCoverage: "{{ t('search_compare.readiness_open_coverage') }}",
+    reconcileCoverage: "{{ t('search_compare.readiness_reconcile_coverage') }}",
+    reconcileRunning: "{{ t('search_compare.readiness_reconcile_running') }}",
+    reconcileComplete: "{{ t('search_compare.readiness_reconcile_complete') }}",
+    reconcileFailed: "{{ t('search_compare.readiness_reconcile_failed') }}",
   };
   const sourceContextLabels = {
     show: "{{ t('search_compare.show_source_context') }}",
@@ -667,6 +671,49 @@
     return "attention";
   };
 
+  const canReconcileReadinessProfile = (profile) =>
+    Boolean(profile.chunk_policy_name)
+    && !profile.ready
+    && (
+      Number(profile.missing_embedding_count || 0) > 0
+      || Number(profile.failed_count || 0) > 0
+    );
+
+  const reconcileReadinessProfileCoverage = async (profile, button, statusEl) => {
+    button.disabled = true;
+    statusEl.textContent = readinessLabels.reconcileRunning;
+    try {
+      const response = await fetch("/api/search/compare/readiness/reconcile-coverage", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          actor_user_id: Number(new FormData(form).get("actor_user_id")),
+          requested_search_scope: fieldValue("requested_search_scope") || "company",
+          profile_name: profile.profile_name,
+          chunk_policy_name: profile.chunk_policy_name,
+          document_group: fieldValue("document_group"),
+          file_type: fieldValue("file_type"),
+          max_jobs: 500,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(body.detail || readinessLabels.reconcileFailed);
+      }
+      const message = readinessLabels.reconcileComplete
+        .replace("{created_count}", formatInteger(body.created_job_count))
+        .replace("{retried_count}", formatInteger(body.retried_job_count));
+      statusEl.textContent = message;
+      readinessSummary.textContent = message;
+      await loadReadiness({loadingText: readinessLabels.reconcileRunning});
+    } catch (error) {
+      const message = error instanceof Error ? error.message : readinessLabels.reconcileFailed;
+      statusEl.textContent = message;
+      readinessSummary.textContent = message;
+      button.disabled = false;
+    }
+  };
+
   const renderReadinessCard = (profile) => {
     const status = readinessStatusClass(profile.status);
     const card = document.createElement("article");
@@ -706,14 +753,29 @@
     );
 
     card.append(header, body);
-    if (profile.coverage_url) {
+    if (profile.coverage_url || canReconcileReadinessProfile(profile)) {
       const actions = document.createElement("div");
       actions.className = "search-readiness-actions";
-      const link = document.createElement("a");
-      link.className = "btn btn-sm btn-outline-primary";
-      link.href = profile.coverage_url;
-      link.textContent = readinessLabels.openCoverage;
-      actions.append(link);
+      if (profile.coverage_url) {
+        const link = document.createElement("a");
+        link.className = "btn btn-sm btn-outline-primary";
+        link.href = profile.coverage_url;
+        link.textContent = readinessLabels.openCoverage;
+        actions.append(link);
+      }
+      if (canReconcileReadinessProfile(profile)) {
+        const statusEl = document.createElement("span");
+        statusEl.className = "search-readiness-action-status";
+        statusEl.setAttribute("aria-live", "polite");
+        const button = document.createElement("button");
+        button.className = "btn btn-sm btn-primary";
+        button.type = "button";
+        button.textContent = readinessLabels.reconcileCoverage;
+        button.addEventListener("click", () => {
+          reconcileReadinessProfileCoverage(profile, button, statusEl);
+        });
+        actions.append(button, statusEl);
+      }
       card.append(actions);
     }
     return card;

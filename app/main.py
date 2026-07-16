@@ -434,6 +434,8 @@ from app.core.pipeline_jobs import (
 from app.core.query_embeddings import InvalidQueryEmbeddingError
 from app.core.search_compare import (
     InvalidSearchCompareError,
+    SearchCompareCoverageReconcileInput,
+    SearchCompareCoverageReconcileResult,
     SearchCompareInput,
     SearchCompareProfileResult,
     SearchCompareReadinessInput,
@@ -445,6 +447,7 @@ from app.core.search_compare import (
     SearchPermissionMatrixInput,
     SearchPermissionMatrixResult,
     get_search_compare_readiness,
+    reconcile_search_compare_policy_coverage,
     run_permission_search_matrix,
     run_search_compare,
 )
@@ -574,6 +577,16 @@ class SearchCompareReadinessRequest(BaseModel):
     chunk_policy_names: list[str] | None = None
     document_group: str | None = None
     file_type: str | None = None
+
+
+class SearchCompareReadinessCoverageReconcileRequest(BaseModel):
+    actor_user_id: int = Field(ge=1)
+    requested_search_scope: str = "company"
+    profile_name: str
+    chunk_policy_name: str
+    document_group: str | None = None
+    file_type: str | None = None
+    max_jobs: int = Field(default=500, ge=1, le=500)
 
 
 class SearchProfileRetryRequest(BaseModel):
@@ -2400,8 +2413,7 @@ def multi_policy_ingestion_coverage_detail_payload(
         },
         "profile": embedding_coverage_profile_cell_payload(detail.profile),
         "chunks": [
-            multi_policy_ingestion_coverage_chunk_detail_payload(chunk)
-            for chunk in detail.chunks
+            multi_policy_ingestion_coverage_chunk_detail_payload(chunk) for chunk in detail.chunks
         ],
     }
 
@@ -3486,6 +3498,29 @@ def search_compare_readiness_payload(
             )
             for profile in readiness.profiles
         ],
+    }
+
+
+def search_compare_coverage_reconcile_payload(
+    result: SearchCompareCoverageReconcileResult,
+) -> dict[str, object]:
+    return {
+        "actor_user_id": result.actor_user_id,
+        "requested_search_scope": result.requested_search_scope,
+        "effective_search_scope": result.effective_search_scope,
+        "profile_name": result.profile_name,
+        "chunk_policy_name": result.chunk_policy_name,
+        "document_group": result.document_group,
+        "file_type": result.file_type,
+        "chunk_count": result.chunk_count,
+        "existing_job_count": result.existing_job_count,
+        "missing_job_count": result.missing_job_count,
+        "created_job_count": result.created_job_count,
+        "failed_job_count": result.failed_job_count,
+        "retryable_failed_job_count": result.retryable_failed_job_count,
+        "retried_job_count": result.retried_job_count,
+        "created_jobs": [embedding_job_payload(job) for job in result.created_jobs],
+        "retried_jobs": [embedding_job_payload(job) for job in result.retried_jobs],
     }
 
 
@@ -6283,9 +6318,7 @@ def chunk_source_trace_preview_payload(
         else:
             unlinked_chunks.append(chunk)
 
-    traced_block_count = sum(
-        1 for block in blocks if chunks_by_block_id.get(block.block_id)
-    )
+    traced_block_count = sum(1 for block in blocks if chunks_by_block_id.get(block.block_id))
     policy_names = sorted({chunk.chunk_policy_name for chunk in chunks})
     return {
         "selected_artifact_id": artifact.artifact_id if artifact is not None else None,
@@ -6303,9 +6336,7 @@ def chunk_source_trace_preview_payload(
             {
                 "block": document_block_payload(block),
                 "chunk_count": len(chunks_by_block_id[block.block_id]),
-                "chunks": [
-                    chunk_payload(chunk) for chunk in chunks_by_block_id[block.block_id]
-                ],
+                "chunks": [chunk_payload(chunk) for chunk in chunks_by_block_id[block.block_id]],
             }
             for block in blocks
         ],
@@ -6675,11 +6706,7 @@ def extraction_quality_check_payload(
             )
 
     selected_run = next(
-        (
-            run
-            for run in extraction_runs
-            if run.extraction_run_id == artifact.extraction_run_id
-        ),
+        (run for run in extraction_runs if run.extraction_run_id == artifact.extraction_run_id),
         None,
     )
     if selected_run is not None:
@@ -6784,11 +6811,7 @@ def extraction_quality_snapshot_input_from_context(
     block_summary = document_block_summary_payload(blocks)
     quality_check = extraction_quality_check_payload(artifact, blocks, extraction_runs)
     selected_run = next(
-        (
-            run
-            for run in extraction_runs
-            if run.extraction_run_id == artifact.extraction_run_id
-        ),
+        (run for run in extraction_runs if run.extraction_run_id == artifact.extraction_run_id),
         None,
     )
     return ExtractionQualitySnapshotInput(
@@ -10322,6 +10345,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=search_compare_readiness_payload(readiness))
 
+    @app.post("/api/search/compare/readiness/reconcile-coverage")
+    def api_search_compare_readiness_reconcile_coverage(
+        payload: SearchCompareReadinessCoverageReconcileRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            result = reconcile_search_compare_policy_coverage(
+                settings.database_url,
+                SearchCompareCoverageReconcileInput(
+                    actor_user_id=payload.actor_user_id,
+                    requested_search_scope=payload.requested_search_scope,
+                    profile_name=payload.profile_name,
+                    chunk_policy_name=payload.chunk_policy_name,
+                    document_group=payload.document_group,
+                    file_type=payload.file_type,
+                    max_jobs=payload.max_jobs,
+                ),
+            )
+        except (InvalidSearchCompareError, InvalidPermissionError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=search_compare_coverage_reconcile_payload(result))
+
     @app.post("/api/search/compare")
     def api_search_compare(payload: SearchCompareRequest) -> JSONResponse:
         if not settings.database_url:
@@ -10391,8 +10442,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    "Unknown chunk_policy_names: "
-                    f"{', '.join(sorted(unknown_policy_names))}"
+                    "Unknown chunk_policy_names: " f"{', '.join(sorted(unknown_policy_names))}"
                 ),
             )
 
@@ -10409,9 +10459,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             requested_search_scope=payload.requested_search_scope,
                             top_k=payload.top_k,
                             profiles=(
-                                tuple(payload.profiles)
-                                if payload.profiles is not None
-                                else None
+                                tuple(payload.profiles) if payload.profiles is not None else None
                             ),
                             chunk_policy_name=chunk_policy_name,
                             document_group=payload.document_group,
@@ -10436,9 +10484,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         chunk_id_sets = [set(run["unique_chunk_ids"]) for run in runs]
-        shared_chunk_ids = sorted(
-            set.intersection(*chunk_id_sets) if chunk_id_sets else set()
-        )
+        shared_chunk_ids = sorted(set.intersection(*chunk_id_sets) if chunk_id_sets else set())
         return JSONResponse(
             content={
                 "query_text": payload.query_text,
@@ -10973,9 +11019,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             content={
                 "min_count": min_count,
-                "records": [
-                    search_duplicate_fingerprint_payload(record) for record in records
-                ],
+                "records": [search_duplicate_fingerprint_payload(record) for record in records],
             }
         )
 
@@ -12555,12 +12599,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             artifact_id=selected_artifact_id,
                             block_ids={block.block_id for block in document_blocks},
                         )
-                    extraction_quality_snapshot_summary = (
-                        get_extraction_quality_snapshot_summary(
-                            settings.database_url,
-                            document_id,
-                            artifact_id=selected_artifact_id,
-                        )
+                    extraction_quality_snapshot_summary = get_extraction_quality_snapshot_summary(
+                        settings.database_url,
+                        document_id,
+                        artifact_id=selected_artifact_id,
                     )
             except (
                 InvalidDocumentInventoryError,
@@ -13009,9 +13051,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_user_id_value: int | None = None
         scope_value = requested_search_scope.strip() if requested_search_scope else None
         document_group_value = document_group.strip() if document_group else None
-        provider_mode_filter_value = (
-            provider_mode_filter.strip() if provider_mode_filter else None
-        )
+        provider_mode_filter_value = provider_mode_filter.strip() if provider_mode_filter else None
         fingerprint_value = normalize_search_fingerprint(fingerprint)
         if scope_value == "":
             scope_value = None

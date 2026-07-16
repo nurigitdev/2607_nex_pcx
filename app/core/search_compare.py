@@ -7,7 +7,13 @@ from time import perf_counter
 from typing import Any
 
 from app.core.database import connect
-from app.core.embedding_jobs import list_active_embedding_profiles
+from app.core.embedding_jobs import (
+    EmbeddingJobInput,
+    EmbeddingJobRecord,
+    create_embedding_job_in_connection,
+    list_active_embedding_profiles,
+    retry_embedding_job_in_connection,
+)
 from app.core.embedding_providers import (
     EmbeddingProviderRuntimeConfig,
     build_embedding_provider_from_runtime_config,
@@ -63,6 +69,37 @@ class SearchCompareReadinessInput:
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+
+
+@dataclass(frozen=True)
+class SearchCompareCoverageReconcileInput:
+    actor_user_id: int
+    requested_search_scope: str
+    profile_name: str
+    chunk_policy_name: str
+    document_group: str | None = None
+    file_type: str | None = None
+    max_jobs: int = 500
+
+
+@dataclass(frozen=True)
+class SearchCompareCoverageReconcileResult:
+    actor_user_id: int
+    requested_search_scope: str
+    effective_search_scope: str
+    profile_name: str
+    chunk_policy_name: str
+    document_group: str | None
+    file_type: str | None
+    chunk_count: int
+    existing_job_count: int
+    missing_job_count: int
+    created_job_count: int
+    failed_job_count: int
+    retryable_failed_job_count: int
+    retried_job_count: int
+    created_jobs: tuple[EmbeddingJobRecord, ...]
+    retried_jobs: tuple[EmbeddingJobRecord, ...]
 
 
 @dataclass(frozen=True)
@@ -409,6 +446,41 @@ def _coverage_percent(*, chunk_count: int, embedded_chunk_count: int) -> Decimal
     )
 
 
+def _validate_coverage_reconcile_input(
+    reconcile_input: SearchCompareCoverageReconcileInput,
+) -> SearchCompareCoverageReconcileInput:
+    if reconcile_input.max_jobs <= 0:
+        raise InvalidSearchCompareError("max_jobs must be greater than 0")
+    if reconcile_input.max_jobs > 500:
+        raise InvalidSearchCompareError("max_jobs must be less than or equal to 500")
+    profile_name = _validate_nonblank(reconcile_input.profile_name, "profile_name")
+    chunk_policy_name = _validate_nonblank(
+        reconcile_input.chunk_policy_name,
+        "chunk_policy_name",
+    )
+    readiness_input = _validate_readiness_input(
+        SearchCompareReadinessInput(
+            actor_user_id=reconcile_input.actor_user_id,
+            requested_search_scope=reconcile_input.requested_search_scope,
+            profiles=(profile_name or reconcile_input.profile_name,),
+            chunk_policy_name=chunk_policy_name,
+            document_group=reconcile_input.document_group,
+            file_type=reconcile_input.file_type,
+        ),
+    )
+    return SearchCompareCoverageReconcileInput(
+        actor_user_id=readiness_input.actor_user_id,
+        requested_search_scope=readiness_input.requested_search_scope,
+        profile_name=(
+            readiness_input.profiles[0] if readiness_input.profiles else profile_name or ""
+        ),
+        chunk_policy_name=readiness_input.chunk_policy_name or chunk_policy_name or "",
+        document_group=readiness_input.document_group,
+        file_type=readiness_input.file_type,
+        max_jobs=reconcile_input.max_jobs,
+    )
+
+
 def _fetch_readiness_profiles(
     database_url: str,
     profiles: tuple[str, ...] | None,
@@ -607,6 +679,148 @@ def get_search_compare_readiness(
     )
 
 
+def reconcile_search_compare_policy_coverage(
+    database_url: str,
+    reconcile_input: SearchCompareCoverageReconcileInput,
+) -> SearchCompareCoverageReconcileResult:
+    validated = _validate_coverage_reconcile_input(reconcile_input)
+    profile_name = _fetch_readiness_profiles(database_url, (validated.profile_name,))[0]
+    chunk_policy_name = _fetch_readiness_chunk_policies(
+        database_url,
+        SearchCompareReadinessInput(
+            actor_user_id=validated.actor_user_id,
+            requested_search_scope=validated.requested_search_scope,
+            chunk_policy_name=validated.chunk_policy_name,
+        ),
+    )[0]
+    if chunk_policy_name is None:
+        raise InvalidSearchCompareError("chunk_policy_name is required")
+    permission_filter = resolve_permission_search_filter(
+        database_url,
+        actor_user_id=validated.actor_user_id,
+        requested_search_scope=validated.requested_search_scope,
+    )
+    readiness_input = SearchCompareReadinessInput(
+        actor_user_id=validated.actor_user_id,
+        requested_search_scope=validated.requested_search_scope,
+        document_group=validated.document_group,
+        file_type=validated.file_type,
+    )
+    where_sql, filter_params = _readiness_filters(
+        readiness_input,
+        permission_filter,
+        chunk_policy_name,
+    )
+
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT
+                    count(c.chunk_id)::int AS chunk_count,
+                    count(ej.job_id)::int AS existing_job_count,
+                    count(c.chunk_id) FILTER (WHERE ej.job_id IS NULL)::int
+                        AS missing_job_count,
+                    count(ej.job_id) FILTER (WHERE ej.status = 'failed')::int
+                        AS failed_job_count,
+                    count(ej.job_id) FILTER (
+                        WHERE ej.status = 'failed' AND ej.attempts < ej.max_attempts
+                    )::int AS retryable_failed_job_count
+                FROM chunks c
+                JOIN documents d ON d.document_id = c.document_id
+                JOIN files f ON f.file_id = d.file_id
+                LEFT JOIN embedding_jobs ej
+                  ON ej.chunk_id = c.chunk_id
+                 AND ej.profile_name = %s
+                WHERE {where_sql}
+                """,
+                (profile_name, *filter_params),
+            )
+            summary = dict(cursor.fetchone())
+            cursor.execute(
+                f"""
+                SELECT c.chunk_id
+                FROM chunks c
+                JOIN documents d ON d.document_id = c.document_id
+                JOIN files f ON f.file_id = d.file_id
+                LEFT JOIN embedding_jobs ej
+                  ON ej.chunk_id = c.chunk_id
+                 AND ej.profile_name = %s
+                WHERE {where_sql}
+                  AND ej.job_id IS NULL
+                ORDER BY d.document_id ASC, c.chunk_seq ASC, c.chunk_id ASC
+                LIMIT %s
+                """,
+                (profile_name, *filter_params, validated.max_jobs),
+            )
+            missing_chunk_ids = [int(row["chunk_id"]) for row in cursor.fetchall()]
+            cursor.execute(
+                f"""
+                SELECT ej.job_id
+                FROM chunks c
+                JOIN documents d ON d.document_id = c.document_id
+                JOIN files f ON f.file_id = d.file_id
+                JOIN embedding_jobs ej
+                  ON ej.chunk_id = c.chunk_id
+                 AND ej.profile_name = %s
+                WHERE {where_sql}
+                  AND ej.status = 'failed'
+                  AND ej.attempts < ej.max_attempts
+                ORDER BY d.document_id ASC, c.chunk_seq ASC, c.chunk_id ASC, ej.job_id ASC
+                LIMIT %s
+                """,
+                (profile_name, *filter_params, validated.max_jobs),
+            )
+            retryable_job_ids = [int(row["job_id"]) for row in cursor.fetchall()]
+
+        created_jobs = tuple(
+            result.job
+            for chunk_id in missing_chunk_ids
+            if (
+                result := create_embedding_job_in_connection(
+                    connection,
+                    EmbeddingJobInput(
+                        chunk_id=chunk_id,
+                        profile_name=profile_name,
+                        runtime_metadata={
+                            "reconcile_source": "search_compare_readiness",
+                            "chunk_policy_name": chunk_policy_name,
+                            "actor_user_id": validated.actor_user_id,
+                            "requested_search_scope": permission_filter.requested_search_scope,
+                            "effective_search_scope": permission_filter.effective_search_scope,
+                            "document_group": validated.document_group,
+                            "file_type": validated.file_type,
+                        },
+                    ),
+                )
+            ).created
+        )
+        retried_jobs = tuple(
+            job
+            for job_id in retryable_job_ids
+            if (job := retry_embedding_job_in_connection(connection, job_id)) is not None
+        )
+
+    return SearchCompareCoverageReconcileResult(
+        actor_user_id=validated.actor_user_id,
+        requested_search_scope=permission_filter.requested_search_scope,
+        effective_search_scope=permission_filter.effective_search_scope,
+        profile_name=profile_name,
+        chunk_policy_name=chunk_policy_name,
+        document_group=validated.document_group,
+        file_type=validated.file_type,
+        chunk_count=int(summary["chunk_count"] or 0),
+        existing_job_count=int(summary["existing_job_count"] or 0),
+        missing_job_count=int(summary["missing_job_count"] or 0),
+        created_job_count=len(created_jobs),
+        failed_job_count=int(summary["failed_job_count"] or 0),
+        retryable_failed_job_count=int(summary["retryable_failed_job_count"] or 0),
+        retried_job_count=len(retried_jobs),
+        created_jobs=created_jobs,
+        retried_jobs=retried_jobs,
+    )
+
+
 def _document_visibility_filters(
     search_input: SearchCompareInput,
 ) -> tuple[str, list[object]]:
@@ -720,8 +934,9 @@ def _with_permission_explainability(
 
 
 def _profile_status_counts(
-    profile_results: tuple[_RawSearchCompareProfileResult, ...]
-    | tuple[SearchCompareProfileResult, ...],
+    profile_results: (
+        tuple[_RawSearchCompareProfileResult, ...] | tuple[SearchCompareProfileResult, ...]
+    ),
 ) -> dict[str, int]:
     counts = {
         SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED: 0,
