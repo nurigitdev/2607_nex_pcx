@@ -1,3 +1,4 @@
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from app.core.extraction_runtime import ExtractionRuntimeArtifact, ExtractionRun
 from app.core.file_metadata import FileMetadataRecord
 from app.core.pipeline_jobs import PipelineJobRecord
 from app.core.pipeline_worker import (
+    DEFAULT_PIPELINE_CHUNK_POLICY_NAMES,
     ERROR_CODE_INVALID_JOB_INPUT,
     ERROR_CODE_MARKDOWN_PIPELINE_ERROR,
     ERROR_CODE_STORED_FILE_NOT_FOUND,
@@ -115,7 +117,43 @@ def test_process_next_markdown_pipeline_job_returns_idle_when_queue_is_empty(mon
 
     assert result.processed is False
     assert result.job is None
+    assert tuple(
+        policy_result.chunk_policy_name for policy_result in result.policy_results
+    ) == DEFAULT_PIPELINE_CHUNK_POLICY_NAMES
+    assert Counter(policy_result.chunk_count for policy_result in result.policy_results) == {0: 3}
     assert result.message == "No queued pipeline job is available"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"chunk_policy_names": []}, "must not be empty"),
+        ({"chunk_policy_names": ["heading_512_64", " "]}, "blank values"),
+        ({"chunk_policy_names": ["heading_512_64", "heading_512_64"]}, "unique"),
+        ({"chunk_policy_name": "missing_policy"}, "Unsupported chunk policy"),
+    ],
+)
+def test_process_next_markdown_pipeline_job_rejects_invalid_chunk_policy_selection(
+    monkeypatch,
+    kwargs,
+    message: str,
+) -> None:
+    claim_calls = {"count": 0}
+
+    def fake_claim(*args, **kwargs):
+        claim_calls["count"] += 1
+        return None
+
+    monkeypatch.setattr("app.core.pipeline_worker.claim_next_pipeline_job", fake_claim)
+
+    with pytest.raises(ValueError, match=message):
+        process_next_markdown_pipeline_job(
+            "postgresql://example/db",
+            worker_name="unit-test-worker",
+            **kwargs,
+        )
+
+    assert claim_calls["count"] == 0
 
 
 def test_process_next_markdown_pipeline_job_fails_unsupported_job_type(monkeypatch) -> None:

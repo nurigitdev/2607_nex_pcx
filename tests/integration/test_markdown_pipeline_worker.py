@@ -1,3 +1,4 @@
+from collections import Counter
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -10,7 +11,7 @@ from openpyxl import Workbook
 from pptx import Presentation
 from pptx.util import Inches
 
-from app.core.chunks import list_document_chunks
+from app.core.chunks import DEFAULT_CHUNK_POLICY_NAME, list_document_chunks
 from app.core.database import connect, fetch_one
 from app.core.embedding_jobs import list_embedding_jobs
 from app.core.file_uploads import store_upload
@@ -20,7 +21,10 @@ from app.core.ingestion_artifacts import (
     list_document_extraction_runs,
 )
 from app.core.pipeline_jobs import list_pipeline_job_events
-from app.core.pipeline_worker import process_next_markdown_pipeline_job
+from app.core.pipeline_worker import (
+    DEFAULT_PIPELINE_CHUNK_POLICY_NAMES,
+    process_next_markdown_pipeline_job,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -38,6 +42,13 @@ def prioritize_job(database_url: str, job_id: int) -> None:
                 "UPDATE pipeline_jobs SET priority = 0 WHERE job_id = %s",
                 (job_id,),
             )
+
+
+def assert_policy_chunk_counts(chunks, expected_chunks_per_policy: int) -> None:
+    assert Counter(chunk.chunk_policy_name for chunk in chunks) == {
+        policy_name: expected_chunks_per_policy
+        for policy_name in DEFAULT_PIPELINE_CHUNK_POLICY_NAMES
+    }
 
 
 def make_minimal_pdf(lines: list[str]) -> bytes:
@@ -198,12 +209,23 @@ This section should become another heading-aware chunk.
         assert result.job.status == "succeeded"
         assert result.job.stage == "completed"
         assert result.job.progress_percent == 100
-        assert result.chunk_count == 2
-        assert result.embedding_job_count == 8
+        assert result.chunk_count == 6
+        assert result.embedding_job_count == 24
+        assert {
+            policy_result.chunk_policy_name: policy_result.chunk_count
+            for policy_result in result.policy_results
+        } == {
+            policy_name: 2 for policy_name in DEFAULT_PIPELINE_CHUNK_POLICY_NAMES
+        }
 
         chunks = list_document_chunks(
             migrated_database_url,
             upload_result.file.document_id,
+        )
+        default_chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
         )
         extraction_runs = list_document_extraction_runs(
             migrated_database_url,
@@ -243,9 +265,10 @@ This section should become another heading-aware chunk.
             upload_result.pipeline_job.job_id,
         )
 
-        assert [chunk.chunk_seq for chunk in chunks] == [0, 1]
-        assert chunks[0].chunk_text.startswith("# Slice 017")
-        assert chunks[1].heading_path == ("Slice 017", "Details")
+        assert_policy_chunk_counts(chunks, 2)
+        assert [chunk.chunk_seq for chunk in default_chunks] == [0, 1]
+        assert default_chunks[0].chunk_text.startswith("# Slice 017")
+        assert default_chunks[1].heading_path == ("Slice 017", "Details")
         assert extraction_runs[0].status == "succeeded"
         assert extraction_runs[0].extraction_profile_name == "local_markdown_default"
         assert extraction_artifacts[0].artifact_type == "normalized_markdown"
@@ -255,13 +278,13 @@ This section should become another heading-aware chunk.
             "heading",
             "paragraph",
         ]
-        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
-        assert chunks[0].block_id == document_blocks[0].block_id
-        assert chunks[0].metadata["block_ids"] == [
+        assert default_chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert default_chunks[0].block_id == document_blocks[0].block_id
+        assert default_chunks[0].metadata["block_ids"] == [
             document_blocks[0].block_id,
             document_blocks[1].block_id,
         ]
-        assert len(embedding_jobs) == 8
+        assert len(embedding_jobs) == 24
         assert {job.profile_name for job in embedding_jobs} == {
             "kure_v1_1024",
             "bge_m3_1024",
@@ -280,6 +303,59 @@ This section should become another heading-aware chunk.
             "progress",
             "stage_succeeded",
         }
+    finally:
+        cleanup_checksum(migrated_database_url, checksum)
+
+
+def test_markdown_pipeline_worker_can_limit_processing_to_one_chunk_policy(
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    unique_text = uuid4().hex
+    content = f"""# Single Policy
+
+Markdown pipeline worker single policy integration test {unique_text}.
+""".encode()
+    checksum = sha256(content).hexdigest()
+
+    try:
+        upload_result = store_upload(
+            database_url=migrated_database_url,
+            upload_stream=BytesIO(content),
+            original_file_name="slice-259-single-policy-worker.md",
+            storage_dir=tmp_path,
+            mime_type="text/markdown",
+            document_group="slice-259",
+            security_level="internal",
+            uploaded_by="integration-test",
+        )
+        assert upload_result.pipeline_job is not None
+        prioritize_job(migrated_database_url, upload_result.pipeline_job.job_id)
+
+        result = process_next_markdown_pipeline_job(
+            migrated_database_url,
+            worker_name="slice-259-single-policy-worker",
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
+        )
+
+        chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+        )
+        embedding_jobs = [
+            job
+            for chunk in chunks
+            for job in list_embedding_jobs(migrated_database_url, chunk_id=chunk.chunk_id)
+        ]
+
+        assert result.processed is True
+        assert result.job is not None
+        assert result.job.status == "succeeded"
+        assert result.chunk_count == 1
+        assert result.embedding_job_count == 4
+        assert result.policy_results[0].chunk_policy_name == DEFAULT_CHUNK_POLICY_NAME
+        assert {chunk.chunk_policy_name for chunk in chunks} == {DEFAULT_CHUNK_POLICY_NAME}
+        assert len(embedding_jobs) == 4
     finally:
         cleanup_checksum(migrated_database_url, checksum)
 
@@ -315,12 +391,17 @@ def test_markdown_pipeline_worker_extracts_docx_paragraphs_and_tables(
         assert result.job is not None
         assert result.job.job_id == upload_result.pipeline_job.job_id
         assert result.job.status == "succeeded"
-        assert result.chunk_count == 2
-        assert result.embedding_job_count == 8
+        assert result.chunk_count == 6
+        assert result.embedding_job_count == 24
 
         chunks = list_document_chunks(
             migrated_database_url,
             upload_result.file.document_id,
+        )
+        default_chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
         )
         extraction_runs = list_document_extraction_runs(
             migrated_database_url,
@@ -369,11 +450,12 @@ def test_markdown_pipeline_worker_extracts_docx_paragraphs_and_tables(
         ]
         assert document_blocks[0].content_markdown == "# Slice 223 DOCX"
         assert document_blocks[3].metadata["source"] == "docx"
-        assert chunks[0].chunk_text.startswith("# Slice 223 DOCX")
-        assert chunks[1].heading_path == ("Slice 223 DOCX", "Measurements")
-        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
-        assert chunks[0].block_id == document_blocks[0].block_id
-        assert len(embedding_jobs) == 8
+        assert_policy_chunk_counts(chunks, 2)
+        assert default_chunks[0].chunk_text.startswith("# Slice 223 DOCX")
+        assert default_chunks[1].heading_path == ("Slice 223 DOCX", "Measurements")
+        assert default_chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert default_chunks[0].block_id == document_blocks[0].block_id
+        assert len(embedding_jobs) == 24
         assert {job.status for job in embedding_jobs} == {"pending"}
         assert file_row["parser_name"] == "local_docx"
         assert file_row["parser_version"] == "0.1.0"
@@ -415,12 +497,17 @@ def test_markdown_pipeline_worker_extracts_pptx_slides_and_tables(
         assert result.job is not None
         assert result.job.job_id == upload_result.pipeline_job.job_id
         assert result.job.status == "succeeded"
-        assert result.chunk_count == 1
-        assert result.embedding_job_count == 4
+        assert result.chunk_count == 3
+        assert result.embedding_job_count == 12
 
         chunks = list_document_chunks(
             migrated_database_url,
             upload_result.file.document_id,
+        )
+        default_chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
         )
         extraction_runs = list_document_extraction_runs(
             migrated_database_url,
@@ -471,10 +558,11 @@ def test_markdown_pipeline_worker_extracts_pptx_slides_and_tables(
         assert [block.slide_no for block in document_blocks] == [1, 1, 1]
         assert document_blocks[0].content_markdown == "# Slice 224 PPTX"
         assert document_blocks[2].metadata["source"] == "pptx"
-        assert chunks[0].chunk_text.startswith("# Slice 224 PPTX")
-        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
-        assert chunks[0].block_id == document_blocks[0].block_id
-        assert len(embedding_jobs) == 4
+        assert_policy_chunk_counts(chunks, 1)
+        assert default_chunks[0].chunk_text.startswith("# Slice 224 PPTX")
+        assert default_chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert default_chunks[0].block_id == document_blocks[0].block_id
+        assert len(embedding_jobs) == 12
         assert {job.status for job in embedding_jobs} == {"pending"}
         assert file_row["parser_name"] == "local_pptx"
         assert file_row["parser_version"] == "0.1.0"
@@ -516,12 +604,17 @@ def test_markdown_pipeline_worker_extracts_xlsx_sheets_and_tables(
         assert result.job is not None
         assert result.job.job_id == upload_result.pipeline_job.job_id
         assert result.job.status == "succeeded"
-        assert result.chunk_count == 1
-        assert result.embedding_job_count == 4
+        assert result.chunk_count == 3
+        assert result.embedding_job_count == 12
 
         chunks = list_document_chunks(
             migrated_database_url,
             upload_result.file.document_id,
+        )
+        default_chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
         )
         extraction_runs = list_document_extraction_runs(
             migrated_database_url,
@@ -572,10 +665,11 @@ def test_markdown_pipeline_worker_extracts_xlsx_sheets_and_tables(
         assert document_blocks[0].content_markdown == "# Slice 225 Metrics"
         assert document_blocks[1].metadata["source"] == "xlsx"
         assert document_blocks[1].cell_range == "A1:B3"
-        assert chunks[0].chunk_text.startswith("# Slice 225 Metrics")
-        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
-        assert chunks[0].block_id == document_blocks[0].block_id
-        assert len(embedding_jobs) == 4
+        assert_policy_chunk_counts(chunks, 1)
+        assert default_chunks[0].chunk_text.startswith("# Slice 225 Metrics")
+        assert default_chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert default_chunks[0].block_id == document_blocks[0].block_id
+        assert len(embedding_jobs) == 12
         assert {job.status for job in embedding_jobs} == {"pending"}
         assert file_row["parser_name"] == "local_xlsx"
         assert file_row["parser_version"] == "0.1.0"
@@ -617,12 +711,17 @@ def test_markdown_pipeline_worker_extracts_hwpx_paragraphs_and_tables(
         assert result.job is not None
         assert result.job.job_id == upload_result.pipeline_job.job_id
         assert result.job.status == "succeeded"
-        assert result.chunk_count == 1
-        assert result.embedding_job_count == 4
+        assert result.chunk_count == 3
+        assert result.embedding_job_count == 12
 
         chunks = list_document_chunks(
             migrated_database_url,
             upload_result.file.document_id,
+        )
+        default_chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
         )
         extraction_runs = list_document_extraction_runs(
             migrated_database_url,
@@ -668,10 +767,11 @@ def test_markdown_pipeline_worker_extracts_hwpx_paragraphs_and_tables(
         assert [block.block_type for block in document_blocks] == ["paragraph", "table"]
         assert document_blocks[0].content_markdown.startswith("HWPX pipeline integration")
         assert document_blocks[1].metadata["source"] == "hwpx"
-        assert chunks[0].chunk_text.startswith("HWPX pipeline integration")
-        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
-        assert chunks[0].block_id == document_blocks[0].block_id
-        assert len(embedding_jobs) == 4
+        assert_policy_chunk_counts(chunks, 1)
+        assert default_chunks[0].chunk_text.startswith("HWPX pipeline integration")
+        assert default_chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert default_chunks[0].block_id == document_blocks[0].block_id
+        assert len(embedding_jobs) == 12
         assert {job.status for job in embedding_jobs} == {"pending"}
         assert file_row["parser_name"] == "local_hwpx"
         assert file_row["parser_version"] == "0.1.0"
@@ -719,12 +819,17 @@ def test_markdown_pipeline_worker_extracts_pdf_text_layer(
         assert result.job is not None
         assert result.job.job_id == upload_result.pipeline_job.job_id
         assert result.job.status == "succeeded"
-        assert result.chunk_count == 1
-        assert result.embedding_job_count == 4
+        assert result.chunk_count == 3
+        assert result.embedding_job_count == 12
 
         chunks = list_document_chunks(
             migrated_database_url,
             upload_result.file.document_id,
+        )
+        default_chunks = list_document_chunks(
+            migrated_database_url,
+            upload_result.file.document_id,
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
         )
         extraction_runs = list_document_extraction_runs(
             migrated_database_url,
@@ -767,10 +872,11 @@ def test_markdown_pipeline_worker_extracts_pdf_text_layer(
         assert extraction_artifacts[0].metadata["ocr_enabled"] is False
         assert [block.page_no for block in document_blocks] == [1]
         assert document_blocks[0].metadata["source"] == "pdf_text_layer"
-        assert chunks[0].chunk_text.startswith("Slice 222 PDF")
-        assert chunks[0].artifact_id == extraction_artifacts[0].artifact_id
-        assert chunks[0].block_id == document_blocks[0].block_id
-        assert len(embedding_jobs) == 4
+        assert_policy_chunk_counts(chunks, 1)
+        assert default_chunks[0].chunk_text.startswith("Slice 222 PDF")
+        assert default_chunks[0].artifact_id == extraction_artifacts[0].artifact_id
+        assert default_chunks[0].block_id == document_blocks[0].block_id
+        assert len(embedding_jobs) == 12
         assert {job.status for job in embedding_jobs} == {"pending"}
         assert file_row["parser_name"] == "local_pdf_text"
         assert file_row["parser_version"] == "0.1.0"

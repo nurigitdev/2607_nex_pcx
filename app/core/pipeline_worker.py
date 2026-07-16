@@ -1,10 +1,16 @@
 """Pipeline worker MVP for local document ingestion."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.core.chunking import chunk_document_blocks, get_chunk_policy
-from app.core.chunks import DEFAULT_CHUNK_POLICY_NAME, replace_document_chunks_in_connection
+from app.core.chunking import (
+    DEFAULT_CHUNK_POLICIES,
+    ChunkPolicy,
+    chunk_document_blocks,
+    get_chunk_policy,
+)
+from app.core.chunks import replace_document_chunks_in_connection
 from app.core.database import connect
 from app.core.embedding_jobs import (
     create_embedding_jobs_for_chunk_in_connection,
@@ -36,6 +42,7 @@ from app.core.pipeline_jobs import (
 )
 
 MARKDOWN_PIPELINE_TOTAL_UNITS = 5
+DEFAULT_PIPELINE_CHUNK_POLICY_NAMES = tuple(DEFAULT_CHUNK_POLICIES)
 ERROR_CODE_INVALID_JOB_INPUT = "INVALID_JOB_INPUT"
 ERROR_CODE_STORED_FILE_NOT_FOUND = "STORED_FILE_NOT_FOUND"
 ERROR_CODE_UNSUPPORTED_FILE_TYPE = "UNSUPPORTED_FILE_TYPE"
@@ -44,11 +51,19 @@ ERROR_CODE_MARKDOWN_PIPELINE_ERROR = "MARKDOWN_PIPELINE_ERROR"
 
 
 @dataclass(frozen=True)
+class MarkdownPipelinePolicyResult:
+    chunk_policy_name: str
+    chunk_count: int
+    embedding_job_count: int
+
+
+@dataclass(frozen=True)
 class MarkdownPipelineWorkerResult:
     processed: bool
     job: PipelineJobRecord | None
     chunk_count: int = 0
     embedding_job_count: int = 0
+    policy_results: tuple[MarkdownPipelinePolicyResult, ...] = ()
     message: str | None = None
 
 
@@ -57,16 +72,28 @@ def process_next_markdown_pipeline_job(
     *,
     worker_name: str,
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
-    chunk_policy_name: str = DEFAULT_CHUNK_POLICY_NAME,
+    chunk_policy_name: str | None = None,
+    chunk_policy_names: Sequence[str] | None = None,
 ) -> MarkdownPipelineWorkerResult:
     """Claim and process one queued local document ingestion job."""
 
-    policy = get_chunk_policy(chunk_policy_name)
+    policies = _resolve_chunk_policies(
+        chunk_policy_name=chunk_policy_name,
+        chunk_policy_names=chunk_policy_names,
+    )
     job = claim_next_pipeline_job(database_url, worker_name, lease_seconds=lease_seconds)
     if job is None:
         return MarkdownPipelineWorkerResult(
             processed=False,
             job=None,
+            policy_results=tuple(
+                MarkdownPipelinePolicyResult(
+                    chunk_policy_name=policy.chunk_policy_name,
+                    chunk_count=0,
+                    embedding_job_count=0,
+                )
+                for policy in policies
+            ),
             message="No queued pipeline job is available",
         )
 
@@ -128,7 +155,10 @@ def process_next_markdown_pipeline_job(
             extraction_profile_name=handler.profile_name,
             mime_type=file_record.mime_type,
             detected_file_type=file_record.file_ext.lstrip(".") or None,
-            options={"pipeline_worker": worker_name},
+            options={
+                "pipeline_worker": worker_name,
+                "chunk_policy_names": [policy.chunk_policy_name for policy in policies],
+            },
         )
         runtime_result = run_local_extraction(extraction_request)
         update_pipeline_progress(
@@ -187,38 +217,55 @@ def process_next_markdown_pipeline_job(
                     f"Persisted {len(persisted_extraction.blocks)} extracted document blocks"
                 ),
             )
-            chunk_inputs = chunk_document_blocks(
-                list(persisted_extraction.blocks),
-                document_id=file_record.document_id,
-                policy=policy,
-                parser_name=handler.parser_name,
-                parser_version=handler.parser_version,
-            )
+            active_profiles = list_active_embedding_profiles_in_connection(connection)
+            active_profile_names = [profile.profile_name for profile in active_profiles]
+            chunks = []
+            embedding_job_results = []
+            policy_results = []
+
+            for policy in policies:
+                chunk_inputs = chunk_document_blocks(
+                    list(persisted_extraction.blocks),
+                    document_id=file_record.document_id,
+                    policy=policy,
+                    parser_name=handler.parser_name,
+                    parser_version=handler.parser_version,
+                )
+                policy_chunks = replace_document_chunks_in_connection(
+                    connection,
+                    file_record.document_id,
+                    chunk_inputs,
+                    chunk_policy_name=policy.chunk_policy_name,
+                )
+                policy_embedding_job_results = [
+                    result
+                    for chunk in policy_chunks
+                    for result in create_embedding_jobs_for_chunk_in_connection(
+                        connection,
+                        chunk.chunk_id,
+                        profile_names=active_profile_names,
+                    )
+                ]
+                chunks.extend(policy_chunks)
+                embedding_job_results.extend(policy_embedding_job_results)
+                policy_results.append(
+                    MarkdownPipelinePolicyResult(
+                        chunk_policy_name=policy.chunk_policy_name,
+                        chunk_count=len(policy_chunks),
+                        embedding_job_count=len(policy_embedding_job_results),
+                    )
+                )
+
             update_pipeline_progress_in_connection(
                 connection,
                 job.job_id,
                 processed_units=3,
                 total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
                 stage="chunking",
-                current_message=f"Prepared {len(chunk_inputs)} chunks",
+                current_message=(
+                    f"Prepared {len(chunks)} chunks across {len(policy_results)} chunk policies"
+                ),
             )
-            chunks = replace_document_chunks_in_connection(
-                connection,
-                file_record.document_id,
-                chunk_inputs,
-                chunk_policy_name=policy.chunk_policy_name,
-            )
-            active_profiles = list_active_embedding_profiles_in_connection(connection)
-            active_profile_names = [profile.profile_name for profile in active_profiles]
-            embedding_job_results = [
-                result
-                for chunk in chunks
-                for result in create_embedding_jobs_for_chunk_in_connection(
-                    connection,
-                    chunk.chunk_id,
-                    profile_names=active_profile_names,
-                )
-            ]
             mark_file_parse_succeeded_in_connection(
                 connection,
                 file_record.file_id,
@@ -234,7 +281,7 @@ def process_next_markdown_pipeline_job(
                 stage="embedding",
                 current_message=(
                     f"Queued {len(embedding_job_results)} embedding jobs "
-                    f"for {len(chunks)} chunks"
+                    f"for {len(chunks)} chunks across {len(policy_results)} chunk policies"
                 ),
             )
             final_job = mark_pipeline_succeeded_in_connection(
@@ -242,7 +289,8 @@ def process_next_markdown_pipeline_job(
                 job.job_id,
                 message=(
                     f"Document ingestion completed with {len(chunks)} chunks "
-                    f"and {len(embedding_job_results)} embedding jobs"
+                    f"and {len(embedding_job_results)} embedding jobs "
+                    f"across {len(policy_results)} chunk policies"
                 ),
             )
 
@@ -255,6 +303,7 @@ def process_next_markdown_pipeline_job(
             job=final_job,
             chunk_count=len(chunks),
             embedding_job_count=len(embedding_job_results),
+            policy_results=tuple(policy_results),
             message="Document ingestion completed",
         )
     except _FailClaimedJob as exc:
@@ -317,6 +366,29 @@ def _load_claimed_job_file(
             "Pipeline job document_id does not match file metadata",
         )
     return file_record
+
+
+def _resolve_chunk_policies(
+    *,
+    chunk_policy_name: str | None,
+    chunk_policy_names: Sequence[str] | None,
+) -> tuple[ChunkPolicy, ...]:
+    if chunk_policy_names is not None:
+        raw_policy_names = list(chunk_policy_names)
+        if not raw_policy_names:
+            raise ValueError("chunk_policy_names must not be empty")
+    elif chunk_policy_name is not None:
+        raw_policy_names = [chunk_policy_name]
+    else:
+        raw_policy_names = list(DEFAULT_PIPELINE_CHUNK_POLICY_NAMES)
+
+    normalized_names = [name.strip() for name in raw_policy_names]
+    if any(not name for name in normalized_names):
+        raise ValueError("chunk_policy_names must not contain blank values")
+    if len(set(normalized_names)) != len(normalized_names):
+        raise ValueError("chunk_policy_names must be unique")
+
+    return tuple(get_chunk_policy(name) for name in normalized_names)
 
 
 def _fail_claimed_job(
