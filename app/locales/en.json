@@ -401,6 +401,7 @@
     "readiness_embedded": "Stored Vectors",
     "readiness_missing": "Missing Vectors",
     "readiness_jobs": "Job Status",
+    "readiness_open_coverage": "Coverage Detail",
     "provider_mode": "Provider Mode",
     "require_real_provider": "Require real provider",
     "require_real_provider_help": "Records a profile failure instead of mock results when no active route or remote fallback is available.",

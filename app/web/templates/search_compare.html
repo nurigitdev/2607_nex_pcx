@@ -504,6 +504,7 @@
     running: "{{ t('status.running') }}",
     partial: "{{ t('search_compare.readiness_partial') }}",
     missingStatus: "{{ t('search_compare.readiness_missing_status') }}",
+    openCoverage: "{{ t('search_compare.readiness_open_coverage') }}",
   };
   const sourceContextLabels = {
     show: "{{ t('search_compare.show_source_context') }}",
@@ -705,6 +706,16 @@
     );
 
     card.append(header, body);
+    if (profile.coverage_url) {
+      const actions = document.createElement("div");
+      actions.className = "search-readiness-actions";
+      const link = document.createElement("a");
+      link.className = "btn btn-sm btn-outline-primary";
+      link.href = profile.coverage_url;
+      link.textContent = readinessLabels.openCoverage;
+      actions.append(link);
+      card.append(actions);
+    }
     return card;
   };
 

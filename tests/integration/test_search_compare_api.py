@@ -1230,11 +1230,22 @@ def test_search_compare_readiness_api_flags_incomplete_profile_policy_coverage(
         assert body["coverage_label"] == "50.00%"
         assert profiles["kure_v1_1024"]["status"] == "partial"
         assert profiles["kure_v1_1024"]["missing_embedding_count"] == 1
+        assert profiles["kure_v1_1024"]["coverage_url"].startswith(
+            "/admin/multi-policy-ingestion-coverage?"
+        )
+        assert "chunk_policy_name=heading_512_64" in profiles["kure_v1_1024"][
+            "coverage_url"
+        ]
+        assert "profile_name=kure_v1_1024" in profiles["kure_v1_1024"]["coverage_url"]
+        assert f"document_group={document_group}" in profiles["kure_v1_1024"][
+            "coverage_url"
+        ]
         assert profiles["bge_m3_1024"]["status"] == "failed"
         assert profiles["bge_m3_1024"]["failed_count"] == 1
         assert all_policy_response.status_code == 200
         assert all_policy_body["chunk_policy_names"] == ["all"]
         assert all_policy_body["profiles"][0]["chunk_policy_name"] is None
+        assert all_policy_body["profiles"][0]["coverage_url"] is None
         assert policy_response.status_code == 200
         assert policy_body["policy_count"] == 2
         assert policy_profiles[("heading_1000_200", "kure_v1_1024")]["status"] == (

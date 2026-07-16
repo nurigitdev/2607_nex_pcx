@@ -3416,6 +3416,8 @@ def search_compare_profile_status_counts(
 
 def search_compare_readiness_profile_payload(
     profile: SearchCompareReadinessProfile,
+    *,
+    coverage_url: str | None = None,
 ) -> dict[str, object]:
     return {
         "profile_name": profile.profile_name,
@@ -3440,7 +3442,23 @@ def search_compare_readiness_profile_payload(
             if profile.average_embedding_elapsed_ms is not None
             else None
         ),
+        "coverage_url": coverage_url,
     }
+
+
+def search_compare_readiness_coverage_url(
+    readiness: SearchCompareReadinessResult,
+    profile: SearchCompareReadinessProfile,
+) -> str | None:
+    if profile.chunk_policy_name is None:
+        return None
+    query_params = {
+        "chunk_policy_name": profile.chunk_policy_name,
+        "profile_name": profile.profile_name,
+    }
+    if readiness.document_group:
+        query_params["document_group"] = readiness.document_group
+    return f"/admin/multi-policy-ingestion-coverage?{urlencode(query_params)}"
 
 
 def search_compare_readiness_payload(
@@ -3462,7 +3480,10 @@ def search_compare_readiness_payload(
         "coverage_label": _percent_label(readiness.coverage_percent),
         "ready": readiness.ready,
         "profiles": [
-            search_compare_readiness_profile_payload(profile)
+            search_compare_readiness_profile_payload(
+                profile,
+                coverage_url=search_compare_readiness_coverage_url(readiness, profile),
+            )
             for profile in readiness.profiles
         ],
     }

@@ -3366,6 +3366,14 @@ main.container-fluid {
   gap: 0.35rem;
 }
 
+.search-readiness-actions {
+  align-items: center;
+  border-top: 1px solid var(--pcx-border);
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.75rem;
+}
+
 .search-runtime-panel {
   border: 1px solid var(--pcx-border);
   border-radius: 8px;
