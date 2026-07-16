@@ -122,11 +122,13 @@ from app.core.embedding_jobs import (
     EmbeddingJobRecord,
     EmbeddingProfileRecord,
     InvalidEmbeddingJobError,
+    MissingEmbeddingJobReconcileResult,
     get_embedding_job,
     get_embedding_job_backlog_summary,
     list_active_embedding_profiles,
     list_embedding_jobs,
     list_stale_embedding_jobs,
+    reconcile_missing_embedding_jobs_for_document_policy_profile,
     release_stale_embedding_job_lease,
     retry_embedding_job,
 )
@@ -560,6 +562,13 @@ class SearchChunkPolicyCompareRequest(BaseModel):
 
 class SearchProfileRetryRequest(BaseModel):
     profile_name: str
+
+
+class MissingEmbeddingJobReconcileRequest(BaseModel):
+    document_id: int = Field(ge=1)
+    chunk_policy_name: str
+    profile_name: str
+    max_jobs: int = Field(default=500, ge=1, le=500)
 
 
 class SearchRuntimeFailureRetryItemRequest(BaseModel):
@@ -2371,6 +2380,21 @@ def multi_policy_ingestion_coverage_detail_payload(
             multi_policy_ingestion_coverage_chunk_detail_payload(chunk)
             for chunk in detail.chunks
         ],
+    }
+
+
+def missing_embedding_job_reconcile_result_payload(
+    result: MissingEmbeddingJobReconcileResult,
+) -> dict[str, object]:
+    return {
+        "document_id": result.document_id,
+        "chunk_policy_name": result.chunk_policy_name,
+        "profile_name": result.profile_name,
+        "chunk_count": result.chunk_count,
+        "existing_job_count": result.existing_job_count,
+        "missing_job_count": result.missing_job_count,
+        "created_job_count": result.created_job_count,
+        "created_jobs": [embedding_job_payload(job) for job in result.created_jobs],
     }
 
 
@@ -9498,6 +9522,80 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=multi_policy_ingestion_coverage_detail_payload(detail))
 
+    @app.post("/api/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs")
+    def api_reconcile_multi_policy_missing_embedding_jobs(
+        payload: MissingEmbeddingJobReconcileRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            result = reconcile_missing_embedding_jobs_for_document_policy_profile(
+                settings.database_url,
+                document_id=payload.document_id,
+                chunk_policy_name=payload.chunk_policy_name,
+                profile_name=payload.profile_name,
+                max_jobs=payload.max_jobs,
+            )
+        except InvalidEmbeddingJobError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=missing_embedding_job_reconcile_result_payload(result))
+
+    @app.post("/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs")
+    def multi_policy_missing_embedding_jobs_reconcile_action(
+        document_id: int = Form(...),
+        detail_chunk_policy_name: str = Form(...),
+        detail_profile_name: str = Form(...),
+        parse_status: str = Form(""),
+        document_group: str = Form(""),
+        profile_name: str = Form(""),
+        chunk_policy_name: str = Form(""),
+        limit: int = Form(100),
+        lang: str = Form(""),
+    ) -> RedirectResponse:
+        redirect_params: dict[str, object] = {
+            "detail_document_id": document_id,
+            "detail_chunk_policy_name": detail_chunk_policy_name,
+            "detail_profile_name": detail_profile_name,
+            "limit": limit,
+        }
+        for key, value in {
+            "parse_status": parse_status,
+            "document_group": document_group,
+            "profile_name": profile_name,
+            "chunk_policy_name": chunk_policy_name,
+            "lang": lang,
+        }.items():
+            if value:
+                redirect_params[key] = value
+
+        if not settings.database_url:
+            redirect_params["reconcile_error"] = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                result = reconcile_missing_embedding_jobs_for_document_policy_profile(
+                    settings.database_url,
+                    document_id=document_id,
+                    chunk_policy_name=detail_chunk_policy_name,
+                    profile_name=detail_profile_name,
+                )
+                redirect_params["reconcile_created"] = result.created_job_count
+                redirect_params["reconcile_missing"] = result.missing_job_count
+            except InvalidEmbeddingJobError as exc:
+                redirect_params["reconcile_error"] = str(exc)
+
+        return RedirectResponse(
+            url=(
+                "/admin/multi-policy-ingestion-coverage?"
+                f"{urlencode(redirect_params)}#coverage-detail"
+            ),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
     @app.get("/api/admin/embedding-jobs/stale-leases")
     def api_list_stale_embedding_job_leases(
         profile_name: str | None = None,
@@ -13079,6 +13177,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         detail_document_id: int | None = None,
         detail_chunk_policy_name: str | None = None,
         detail_profile_name: str | None = None,
+        reconcile_created: int | None = None,
+        reconcile_missing: int | None = None,
+        reconcile_error: str | None = None,
         limit: int = 100,
     ) -> HTMLResponse:
         matrix: MultiPolicyIngestionCoverageMatrix | None = None
@@ -13161,6 +13262,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_detail_document_id=detail_document_id,
                 selected_detail_chunk_policy_name=detail_chunk_policy_name or "",
                 selected_detail_profile_name=detail_profile_name or "",
+                reconcile_created=reconcile_created,
+                reconcile_missing=reconcile_missing,
+                reconcile_error=reconcile_error or "",
                 selected_limit=limit,
                 error_message=error_message,
                 detail_error_message=detail_error_message,

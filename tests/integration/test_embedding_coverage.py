@@ -34,6 +34,8 @@ pytestmark = pytest.mark.integration
 
 COMPLETE_PROFILE = "bge_m3_1024"
 FAILED_PROFILE = "kure_v1_1024"
+MISSING_PROFILE = "qwen3_4b_1000"
+SECOND_MISSING_PROFILE = "qwen3_4b_2560"
 LARGE_POLICY = "heading_1000_200"
 LONG_POLICY = "heading_1500_200"
 
@@ -342,6 +344,49 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
                     "profile_name": COMPLETE_PROFILE,
                 },
             )
+            missing_detail_api_response = client.get(
+                "/api/admin/multi-policy-ingestion-coverage/detail",
+                params={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "profile_name": MISSING_PROFILE,
+                },
+            )
+            reconcile_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs",
+                json={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "profile_name": MISSING_PROFILE,
+                },
+            )
+            reconcile_repeat_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs",
+                json={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "profile_name": MISSING_PROFILE,
+                },
+            )
+            reconcile_bad_response = client.post(
+                "/api/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs",
+                json={
+                    "document_id": fixture["document_id"],
+                    "chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "profile_name": "missing_profile",
+                },
+            )
+            reconcile_page_response = client.post(
+                "/admin/multi-policy-ingestion-coverage/reconcile-missing-jobs",
+                data={
+                    "document_id": fixture["document_id"],
+                    "detail_chunk_policy_name": DEFAULT_CHUNK_POLICY_NAME,
+                    "detail_profile_name": SECOND_MISSING_PROFILE,
+                    "document_group": fixture["document_group"],
+                    "limit": "100",
+                    "lang": "ko",
+                },
+            )
             missing_detail_response = client.get(
                 "/api/admin/multi-policy-ingestion-coverage/detail",
                 params={
@@ -388,6 +433,12 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
             chunk_policy_name=LONG_POLICY,
             profile_name=COMPLETE_PROFILE,
         )
+        reconciled_detail = get_multi_policy_ingestion_coverage_detail(
+            migrated_database_url,
+            document_id=int(fixture["document_id"]),
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
+            profile_name=MISSING_PROFILE,
+        )
         default_cells = {
             cell.profile_name: cell for cell in rows_by_policy[DEFAULT_CHUNK_POLICY_NAME].profiles
         }
@@ -400,6 +451,9 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
             for cell in payload_rows[DEFAULT_CHUNK_POLICY_NAME]["profiles"]
         }
         detail_payload = detail_api_response.json()
+        missing_detail_payload = missing_detail_api_response.json()
+        reconcile_payload = reconcile_response.json()
+        reconcile_repeat_payload = reconcile_repeat_response.json()
 
         assert matrix.summary.document_count == 1
         assert matrix.summary.policy_count >= 3
@@ -422,6 +476,9 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
         assert not_chunked_detail is not None
         assert not_chunked_detail.profile.status == "not_chunked"
         assert not_chunked_detail.chunks == ()
+        assert reconciled_detail is not None
+        assert reconciled_detail.profile.status == "pending"
+        assert reconciled_detail.profile.job_count == 2
         assert api_response.status_code == 200
         assert payload["summary"]["document_count"] == 1
         assert payload["summary"]["policy_count"] >= 3
@@ -430,6 +487,19 @@ def test_multi_policy_ingestion_coverage_matrix_repository_api_and_page(
         assert detail_payload["profile"]["status"] == "complete"
         assert detail_payload["chunks"][0]["vector_present"] is True
         assert detail_payload["chunks"][0]["job_status"] == "succeeded"
+        assert missing_detail_api_response.status_code == 200
+        assert missing_detail_payload["profile"]["status"] == "missing"
+        assert missing_detail_payload["chunks"][0]["job_id"] is None
+        assert reconcile_response.status_code == 200
+        assert reconcile_payload["missing_job_count"] == 2
+        assert reconcile_payload["created_job_count"] == 2
+        assert reconcile_payload["created_jobs"][0]["status"] == "pending"
+        assert reconcile_repeat_response.status_code == 200
+        assert reconcile_repeat_payload["missing_job_count"] == 0
+        assert reconcile_repeat_payload["created_job_count"] == 0
+        assert reconcile_bad_response.status_code == 400
+        assert reconcile_page_response.status_code == 200
+        assert "누락 Job 생성 완료" in reconcile_page_response.text
         assert missing_detail_response.status_code == 404
         assert bad_detail_response.status_code == 400
         assert policy_filtered_api_response.status_code == 200

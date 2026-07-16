@@ -7,6 +7,7 @@ from typing import Any
 from psycopg import Connection
 from psycopg.types.json import Json
 
+from app.core.chunk_policies import _validate_policy_name
 from app.core.database import connect
 from app.core.pipeline_jobs import DEFAULT_LEASE_SECONDS
 
@@ -118,6 +119,18 @@ class EmbeddingJobBacklogSummary:
             + self.exhausted_failed_count
             + self.stale_running_count
         )
+
+
+@dataclass(frozen=True)
+class MissingEmbeddingJobReconcileResult:
+    document_id: int
+    chunk_policy_name: str
+    profile_name: str
+    chunk_count: int
+    existing_job_count: int
+    missing_job_count: int
+    created_job_count: int
+    created_jobs: tuple[EmbeddingJobRecord, ...]
 
 
 class InvalidEmbeddingJobError(ValueError):
@@ -560,6 +573,125 @@ def create_embedding_jobs_for_chunk(
             connection,
             chunk_id,
             profile_names=profile_names,
+        )
+
+
+def reconcile_missing_embedding_jobs_for_document_policy_profile_in_connection(
+    connection: Connection,
+    *,
+    document_id: int,
+    chunk_policy_name: str,
+    profile_name: str,
+    max_jobs: int = 500,
+) -> MissingEmbeddingJobReconcileResult:
+    _require_positive_id(document_id, "document_id")
+    validated_policy_name = _validate_policy_name(chunk_policy_name)
+    validated_profile_name = _validate_profile_name(profile_name)
+    if validated_profile_name is None:
+        raise InvalidEmbeddingJobError("profile_name is required")
+    _validate_limit(max_jobs)
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT 1 FROM documents WHERE document_id = %s", (document_id,))
+        if cursor.fetchone() is None:
+            raise InvalidEmbeddingJobError("document_id was not found")
+
+        cursor.execute(
+            "SELECT 1 FROM chunk_policies WHERE chunk_policy_name = %s",
+            (validated_policy_name,),
+        )
+        if cursor.fetchone() is None:
+            raise InvalidEmbeddingJobError("chunk_policy_name was not found")
+
+        cursor.execute(
+            """
+            SELECT 1
+            FROM embedding_profiles
+            WHERE profile_name = %s
+              AND is_active
+            """,
+            (validated_profile_name,),
+        )
+        if cursor.fetchone() is None:
+            raise InvalidEmbeddingJobError("active profile_name was not found")
+
+        cursor.execute(
+            """
+            SELECT
+                count(c.chunk_id)::int AS chunk_count,
+                count(ej.job_id)::int AS existing_job_count,
+                count(c.chunk_id) FILTER (WHERE ej.job_id IS NULL)::int AS missing_job_count
+            FROM chunks c
+            LEFT JOIN embedding_jobs ej
+              ON ej.chunk_id = c.chunk_id
+             AND ej.profile_name = %s
+            WHERE c.document_id = %s
+              AND c.chunk_policy_name = %s
+            """,
+            (validated_profile_name, document_id, validated_policy_name),
+        )
+        summary = dict(cursor.fetchone())
+
+        cursor.execute(
+            """
+            SELECT c.chunk_id
+            FROM chunks c
+            LEFT JOIN embedding_jobs ej
+              ON ej.chunk_id = c.chunk_id
+             AND ej.profile_name = %s
+            WHERE c.document_id = %s
+              AND c.chunk_policy_name = %s
+              AND ej.job_id IS NULL
+            ORDER BY c.chunk_seq ASC, c.chunk_id ASC
+            LIMIT %s
+            """,
+            (validated_profile_name, document_id, validated_policy_name, max_jobs),
+        )
+        missing_chunk_ids = [int(row["chunk_id"]) for row in cursor.fetchall()]
+
+    created_results = [
+        create_embedding_job_in_connection(
+            connection,
+            EmbeddingJobInput(
+                chunk_id=chunk_id,
+                profile_name=validated_profile_name,
+                runtime_metadata={
+                    "reconcile_source": "multi_policy_ingestion_coverage",
+                    "chunk_policy_name": validated_policy_name,
+                },
+            ),
+        )
+        for chunk_id in missing_chunk_ids
+    ]
+    created_jobs = tuple(result.job for result in created_results if result.created)
+
+    return MissingEmbeddingJobReconcileResult(
+        document_id=document_id,
+        chunk_policy_name=validated_policy_name,
+        profile_name=validated_profile_name,
+        chunk_count=int(summary["chunk_count"] or 0),
+        existing_job_count=int(summary["existing_job_count"] or 0),
+        missing_job_count=int(summary["missing_job_count"] or 0),
+        created_job_count=len(created_jobs),
+        created_jobs=created_jobs,
+    )
+
+
+def reconcile_missing_embedding_jobs_for_document_policy_profile(
+    database_url: str,
+    *,
+    document_id: int,
+    chunk_policy_name: str,
+    profile_name: str,
+    max_jobs: int = 500,
+) -> MissingEmbeddingJobReconcileResult:
+    with connect(database_url) as connection:
+        return reconcile_missing_embedding_jobs_for_document_policy_profile_in_connection(
+            connection,
+            document_id=document_id,
+            chunk_policy_name=chunk_policy_name,
+            profile_name=profile_name,
+            max_jobs=max_jobs,
         )
 
 

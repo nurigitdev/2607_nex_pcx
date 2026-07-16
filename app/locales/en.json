@@ -356,7 +356,10 @@
     "char_count": "Char",
     "elapsed_ms": "ms",
     "no_job": "No job",
-    "no_detail_chunks": "No chunk details to display."
+    "no_detail_chunks": "No chunk details to display.",
+    "reconcile_missing_jobs": "Create Missing Jobs",
+    "reconcile_done": "Missing job reconcile completed",
+    "reconcile_failed": "Missing job reconcile failed"
   },
   "search_compare": {
     "chunk_policy": "Chunk Policy",
