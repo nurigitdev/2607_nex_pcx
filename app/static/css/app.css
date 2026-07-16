@@ -3191,6 +3191,10 @@ main.container-fluid {
   border-left: 4px solid #ef4444;
 }
 
+.search-runtime-card-not_available {
+  background: #f8fafc;
+  border-left: 4px solid #94a3b8;
+}
 
 .search-runtime-card-header {
   align-items: center;
@@ -3222,6 +3226,10 @@ main.container-fluid {
   color: #991b1b;
 }
 
+.search-runtime-badge-not_available {
+  background: #e2e8f0;
+  color: #475569;
+}
 
 .search-runtime-rows,
 .search-runtime-failure {

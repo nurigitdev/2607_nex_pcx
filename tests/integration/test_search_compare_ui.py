@@ -125,9 +125,31 @@ def test_search_history_detail_renders_permission_explainability(
             top_k=5,
             profiles=("kure_v1_1024", "bge_m3_1024"),
             query_runtime_metadata={
-                "adapter": "mock",
+                "adapter": "query_embedding_bridge",
                 "search_mode": "history_reproducibility",
-                "query_instruction": "none",
+                "query_embedding_bridge": True,
+                "profile_status_counts": {"succeeded": 1, "failed": 1},
+                "profile_failure_count": 1,
+                "profile_query_embeddings": {
+                    "kure_v1_1024": {
+                        "profile_name": "kure_v1_1024",
+                        "dimension": 1024,
+                        "provider_type": "remote",
+                        "provider_model_id": "nlpai-lab/KURE-v1",
+                        "provider_elapsed_ms": 128,
+                        "total_elapsed_ms": 142,
+                        "runtime_source": "route",
+                    }
+                },
+                "profile_failures": {
+                    "bge_m3_1024": {
+                        "profile_name": "bge_m3_1024",
+                        "status": "failed",
+                        "error_code": "query_embedding_failed",
+                        "error_message": "Remote provider request failed",
+                        "elapsed_ms": 176,
+                    }
+                },
             },
             total_elapsed_ms=12,
             created_by_user_id=user_id,
@@ -226,7 +248,13 @@ def test_search_history_detail_renders_permission_explainability(
         assert "cosine" in response.text
         assert "bge_m3_1024" in response.text
         assert "history_reproducibility" in response.text
-        assert "query_instruction" in response.text
+        assert "검색 이력 Runtime 상태" in response.text
+        assert 'id="search-history-runtime-panel"' in response.text
+        assert "nlpai-lab/KURE-v1" in response.text
+        assert "Remote provider request failed" in response.text
+        assert "query_embedding_failed" in response.text
+        assert "성공 1" in response.text
+        assert "실패 1" in response.text
         assert "JSON Export" in response.text
         assert "CSV Export" in response.text
         assert "Report Export" in response.text

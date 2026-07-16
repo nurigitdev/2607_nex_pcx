@@ -453,6 +453,120 @@
   </section>
   {% endif %}
 
+  {% set profile_query_embeddings = runtime_metadata.get("profile_query_embeddings", {}) if runtime_metadata.get("profile_query_embeddings", {}) is mapping else {} %}
+  {% set profile_failures = runtime_metadata.get("profile_failures", {}) if runtime_metadata.get("profile_failures", {}) is mapping else {} %}
+  {% set profile_status_counts = runtime_metadata.get("profile_status_counts", {}) if runtime_metadata.get("profile_status_counts", {}) is mapping else {} %}
+  {% if runtime_metadata.get("query_embedding_bridge") or profile_query_embeddings or profile_failures %}
+  <section class="search-runtime-panel bg-white p-3" id="search-history-runtime-panel">
+    <div class="search-runtime-header">
+      <div>
+        <h2 class="h5 mb-1">{{ t("search_runtime.history_title") }}</h2>
+        <p class="text-secondary mb-0">{{ t("search_runtime.history_subtitle") }}</p>
+      </div>
+      <div class="search-runtime-counts">
+        <span class="search-runtime-count search-runtime-count-succeeded">
+          {{ t("search_runtime.succeeded") }} {{ profile_status_counts.get("succeeded", profile_query_embeddings | length) }}
+        </span>
+        <span class="search-runtime-count search-runtime-count-failed">
+          {{ t("search_runtime.failed") }} {{ profile_status_counts.get("failed", profile_failures | length) }}
+        </span>
+      </div>
+    </div>
+
+    <div class="search-runtime-grid">
+      {% for profile in selected_log.search_log.profiles %}
+      {% set success_metadata = profile_query_embeddings.get(profile) %}
+      {% set failure_metadata = profile_failures.get(profile) %}
+      {% set profile_status = "failed" if failure_metadata else ("succeeded" if success_metadata else "not_available") %}
+      <article class="search-runtime-card search-runtime-card-{{ profile_status }}">
+        <div class="search-runtime-card-header">
+          <h3 class="h6 mb-0">{{ profile }}</h3>
+          <span class="search-runtime-badge search-runtime-badge-{{ profile_status }}">
+            {% if profile_status == "failed" %}
+            {{ t("search_runtime.failed") }}
+            {% elif profile_status == "succeeded" %}
+            {{ t("search_runtime.succeeded") }}
+            {% else %}
+            {{ t("search_runtime.not_available") }}
+            {% endif %}
+          </span>
+        </div>
+        <div class="search-runtime-rows">
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.provider") }}</span>
+            <strong>{{ success_metadata.get("provider_type") if success_metadata else t("permissions.none") }}</strong>
+          </div>
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.model") }}</span>
+            <strong>
+              {% if success_metadata %}
+              {{ success_metadata.get("provider_model_id") or success_metadata.get("model_id") or profile }}
+              {% else %}
+              {{ profile }}
+              {% endif %}
+            </strong>
+          </div>
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.dimension") }}</span>
+            <strong>{{ success_metadata.get("dimension") if success_metadata else t("permissions.none") }}</strong>
+          </div>
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.runtime_source") }}</span>
+            <strong>{{ success_metadata.get("runtime_source") if success_metadata else t("permissions.none") }}</strong>
+          </div>
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.provider_latency") }}</span>
+            <strong>
+              {% if success_metadata and success_metadata.get("provider_elapsed_ms") is not none %}
+              {{ success_metadata.get("provider_elapsed_ms") }} ms
+              {% else %}
+              {{ t("permissions.none") }}
+              {% endif %}
+            </strong>
+          </div>
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.profile_latency") }}</span>
+            <strong>
+              {% if failure_metadata and failure_metadata.get("elapsed_ms") is not none %}
+              {{ failure_metadata.get("elapsed_ms") }} ms
+              {% elif success_metadata and success_metadata.get("total_elapsed_ms") is not none %}
+              {{ success_metadata.get("total_elapsed_ms") }} ms
+              {% else %}
+              {{ t("permissions.none") }}
+              {% endif %}
+            </strong>
+          </div>
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.total_latency") }}</span>
+            <strong>
+              {% if success_metadata and success_metadata.get("total_elapsed_ms") is not none %}
+              {{ success_metadata.get("total_elapsed_ms") }} ms
+              {% else %}
+              {{ t("permissions.none") }}
+              {% endif %}
+            </strong>
+          </div>
+        </div>
+        {% if failure_metadata %}
+        <div class="search-runtime-failure">
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.error_code") }}</span>
+            <strong>{{ failure_metadata.get("error_code") or t("permissions.none") }}</strong>
+          </div>
+          <div class="search-runtime-row">
+            <span class="text-secondary">{{ t("search_runtime.error_message") }}</span>
+            <strong>{{ failure_metadata.get("error_message") or t("permissions.none") }}</strong>
+          </div>
+        </div>
+        {% elif not success_metadata %}
+        <div class="text-secondary small">{{ t("search_runtime.no_profile_status") }}</div>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   <section class="search-reproducibility-panel bg-white p-3">
     <div class="search-reproducibility-header">
       <div>

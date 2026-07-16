@@ -1091,9 +1091,12 @@
   "search_runtime": {
     "title": "검색 Runtime 상태",
     "subtitle": "Profile별 query embedding provider, latency, failure를 확인합니다.",
+    "history_title": "검색 이력 Runtime 상태",
+    "history_subtitle": "저장된 검색 로그 기준으로 profile별 query embedding provider, latency, failure를 확인합니다.",
     "status": "상태",
     "succeeded": "성공",
     "failed": "실패",
+    "not_available": "미기록",
     "provider": "Provider",
     "model": "Model",
     "dimension": "차원",
@@ -1104,6 +1107,7 @@
     "error_code": "Error Code",
     "error_message": "Error Message",
     "no_metadata": "Runtime metadata 없음",
+    "no_profile_status": "이 profile의 runtime status metadata가 없습니다.",
     "no_results_after_success": "검색은 성공했지만 결과가 없습니다."
   },
   "search_reproducibility": {

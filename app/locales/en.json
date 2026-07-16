@@ -1091,9 +1091,12 @@
   "search_runtime": {
     "title": "Search Runtime Status",
     "subtitle": "Inspect query embedding provider, latency, and failure per profile.",
+    "history_title": "Search History Runtime Status",
+    "history_subtitle": "Inspect the saved query embedding provider, latency, and failure per profile.",
     "status": "Status",
     "succeeded": "Succeeded",
     "failed": "Failed",
+    "not_available": "Not recorded",
     "provider": "Provider",
     "model": "Model",
     "dimension": "Dimension",
@@ -1104,6 +1107,7 @@
     "error_code": "Error Code",
     "error_message": "Error Message",
     "no_metadata": "No runtime metadata",
+    "no_profile_status": "No runtime status metadata was recorded for this profile.",
     "no_results_after_success": "Search succeeded, but no results were found."
   },
   "search_reproducibility": {
