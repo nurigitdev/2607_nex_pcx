@@ -45,6 +45,34 @@
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
 
+{% if extraction_rerun_feedback %}
+{% set rerun_alert_class = "alert-success" if extraction_rerun_feedback.ok else "alert-warning" if not extraction_rerun_feedback.error_message else "alert-danger" %}
+<div class="alert {{ rerun_alert_class }}" role="alert">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div>
+      <strong>
+        {% if extraction_rerun_feedback.ok %}
+        {{ t("ingestion_artifacts.rerun_success") }}
+        {% else %}
+        {{ t("ingestion_artifacts.rerun_failed") }}
+        {% endif %}
+      </strong>
+      {% if extraction_rerun_feedback.error_message %}
+      <span class="ms-2">{{ extraction_rerun_feedback.error_message }}</span>
+      {% endif %}
+    </div>
+    <div class="d-flex flex-wrap gap-2 small">
+      {% if extraction_rerun_feedback.run_id %}
+      <span>{{ t("ingestion_artifacts.run") }} #{{ extraction_rerun_feedback.run_id }}</span>
+      {% endif %}
+      <span>{{ t("ingestion_artifacts.status") }} {{ extraction_rerun_feedback.status }}</span>
+      <span>{{ t("ingestion_artifacts.artifacts") }} {{ extraction_rerun_feedback.artifact_count }}</span>
+      <span>{{ t("ingestion_artifacts.blocks") }} {{ extraction_rerun_feedback.block_count }}</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if document %}
 <section class="document-detail-grid mb-4">
   <div class="metric-card bg-white p-3">
@@ -209,6 +237,42 @@
   </div>
 
   <div class="col-12 col-xl-7">
+    <section class="metric-card bg-white p-3 mb-3">
+      <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">{{ t("ingestion_artifacts.rerun_extraction") }}</h2>
+          <div class="text-secondary">{{ t("ingestion_artifacts.rerun_extraction_help") }}</div>
+        </div>
+      </div>
+      <form class="row g-2 align-items-end" action="/documents/{{ document.document_id }}/extraction-rerun" method="post">
+        {% if selected_artifact_id %}
+        <input type="hidden" name="selected_artifact_id" value="{{ selected_artifact_id }}">
+        {% endif %}
+        <div class="col-12 col-md-5">
+          <label class="form-label" for="extraction_profile_name">{{ t("ingestion_artifacts.rerun_profile_override") }}</label>
+          <input
+            class="form-control"
+            id="extraction_profile_name"
+            name="extraction_profile_name"
+            placeholder="{{ t("ingestion_artifacts.rerun_profile_placeholder") }}"
+          >
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label" for="requested_by">{{ t("ingestion_artifacts.rerun_requested_by") }}</label>
+          <input
+            class="form-control"
+            id="requested_by"
+            name="requested_by"
+            value="operator"
+            placeholder="{{ t("ingestion_artifacts.rerun_requested_by_placeholder") }}"
+          >
+        </div>
+        <div class="col-12 col-md-3">
+          <button class="btn btn-primary w-100" type="submit">{{ t("ingestion_artifacts.rerun_submit") }}</button>
+        </div>
+      </form>
+    </section>
+
     <section class="metric-card bg-white p-3 mb-3">
       <div class="d-flex align-items-start justify-content-between gap-3 mb-3">
         <div>

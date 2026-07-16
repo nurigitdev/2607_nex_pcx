@@ -13,7 +13,7 @@ from time import perf_counter
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -5792,6 +5792,51 @@ def extraction_rerun_response_payload(
     }
 
 
+def extraction_rerun_feedback_payload(
+    *,
+    run_id: int | None = None,
+    status_value: str | None = None,
+    artifact_count: int | None = None,
+    block_count: int | None = None,
+    error_message: str | None = None,
+) -> dict[str, object] | None:
+    if error_message:
+        return {
+            "ok": False,
+            "status": "failed",
+            "run_id": run_id,
+            "artifact_count": artifact_count or 0,
+            "block_count": block_count or 0,
+            "error_message": error_message,
+        }
+    normalized_status = (status_value or "").strip()
+    if run_id is None or not normalized_status:
+        return None
+    return {
+        "ok": normalized_status == "succeeded",
+        "status": normalized_status,
+        "run_id": run_id,
+        "artifact_count": artifact_count or 0,
+        "block_count": block_count or 0,
+        "error_message": None,
+    }
+
+
+def document_artifacts_redirect_url(
+    document_id: int,
+    params: dict[str, object | None],
+) -> str:
+    query = urlencode(
+        [
+            (key, str(value))
+            for key, value in params.items()
+            if value is not None and str(value) != ""
+        ]
+    )
+    suffix = f"?{query}" if query else ""
+    return f"/documents/{document_id}/artifacts{suffix}"
+
+
 def extraction_artifact_payload(artifact: ExtractionArtifactRecord) -> dict[str, object]:
     content_text = artifact.content_text or ""
     return {
@@ -11156,6 +11201,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         document_id: int,
         artifact_id: int | None = None,
+        rerun_run_id: int | None = None,
+        rerun_status: str | None = None,
+        rerun_artifact_count: int | None = None,
+        rerun_block_count: int | None = None,
+        rerun_error: str | None = None,
     ) -> HTMLResponse:
         document: DocumentInventoryItem | None = None
         extraction_runs: list[ExtractionRunRecord] = []
@@ -11265,6 +11315,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if extraction_quality_snapshot_summary is not None
                     else None
                 ),
+                extraction_rerun_feedback=extraction_rerun_feedback_payload(
+                    run_id=rerun_run_id,
+                    status_value=rerun_status,
+                    artifact_count=rerun_artifact_count,
+                    block_count=rerun_block_count,
+                    error_message=rerun_error,
+                ),
                 chunk_source_trace_preview=chunk_source_trace_preview_payload(
                     selected_artifact,
                     document_blocks,
@@ -11273,6 +11330,76 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_artifact_id=selected_artifact_id,
                 error_message=error_message,
             ),
+        )
+
+    @app.post("/documents/{document_id}/extraction-rerun")
+    def submit_document_extraction_rerun(
+        document_id: int,
+        extraction_profile_name: str | None = Form(None),
+        requested_by: str | None = Form("extraction-rerun-ui"),
+        selected_artifact_id: int | None = Form(None),
+    ) -> RedirectResponse:
+        redirect_params: dict[str, object | None] = {
+            "artifact_id": selected_artifact_id,
+        }
+
+        if not settings.database_url:
+            redirect_params["rerun_error"] = "NEX_PCX_DATABASE_URL is not configured."
+            return RedirectResponse(
+                document_artifacts_redirect_url(document_id, redirect_params),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+        try:
+            document = get_document_inventory_item(settings.database_url, document_id)
+            if document is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Document not found.",
+                )
+            file_record = get_file_metadata(settings.database_url, document.file_id)
+            if file_record is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="File metadata not found for document.",
+                )
+            extraction_request = build_extraction_rerun_request(
+                document=document,
+                file_record=file_record,
+                payload=ExtractionRerunRequest(
+                    extraction_profile_name=extraction_profile_name,
+                    requested_by=requested_by,
+                    options={"ui_action": "document_artifacts_page"},
+                ),
+            )
+            runtime_result = run_local_extraction(extraction_request)
+            persisted = persist_extraction_runtime_result(
+                settings.database_url,
+                extraction_request,
+                runtime_result,
+            )
+            if persisted.artifacts:
+                redirect_params["artifact_id"] = persisted.artifacts[0].artifact_id
+            redirect_params.update(
+                {
+                    "rerun_run_id": persisted.run.extraction_run_id,
+                    "rerun_status": persisted.run.status,
+                    "rerun_artifact_count": len(persisted.artifacts),
+                    "rerun_block_count": len(persisted.blocks),
+                }
+            )
+        except HTTPException as exc:
+            redirect_params["rerun_error"] = str(exc.detail)
+        except (
+            InvalidDocumentInventoryError,
+            InvalidFileMetadataError,
+            InvalidIngestionArtifactError,
+        ) as exc:
+            redirect_params["rerun_error"] = str(exc)
+
+        return RedirectResponse(
+            document_artifacts_redirect_url(document_id, redirect_params),
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @app.post("/documents/{document_id}/permissions", response_class=HTMLResponse)

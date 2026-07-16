@@ -226,6 +226,15 @@ def test_document_ingestion_artifact_api_and_page(
                     "options": {"reason": "slice-235"},
                 },
             )
+            ui_rerun_response = client.post(
+                f"/documents/{document_id}/extraction-rerun",
+                data={
+                    "requested_by": "ui-test",
+                    "selected_artifact_id": str(artifact_id),
+                },
+                follow_redirects=False,
+            )
+            ui_feedback_response = client.get(ui_rerun_response.headers["location"])
             page_response = client.get(
                 f"/documents/{document_id}/artifacts",
                 params={"lang": "ko", "artifact_id": artifact_id},
@@ -361,9 +370,18 @@ def test_document_ingestion_artifact_api_and_page(
         assert rerun_payload["artifact_count"] == 1
         assert rerun_payload["block_count"] == 2
         assert rerun_payload["artifacts"][0]["content_preview"].startswith("# Artifact API")
+        assert ui_rerun_response.status_code == 303
+        assert "/documents/" in ui_rerun_response.headers["location"]
+        assert "rerun_run_id=" in ui_rerun_response.headers["location"]
+        assert "rerun_status=succeeded" in ui_rerun_response.headers["location"]
+        assert ui_feedback_response.status_code == 200
+        assert "재추출 완료" in ui_feedback_response.text
+        assert "ui-test" in ui_feedback_response.text
         assert page_response.status_code == 200
         assert "Artifact API" in page_response.text
         assert "Blocks" in page_response.text
+        assert "재추출 실행" in page_response.text
+        assert "자동 선택" in page_response.text
         assert "Artifact 내보내기" in page_response.text
         assert "Bundle JSON" in page_response.text
         assert "정규화 텍스트 Preview" in page_response.text
@@ -405,15 +423,37 @@ def test_document_extraction_rerun_api_persists_failed_run_for_missing_source(
                 f"/api/documents/{document_id + 999_999_999}/extraction-rerun",
                 json={},
             )
+            ui_blank_profile_response = client.post(
+                f"/documents/{document_id}/extraction-rerun",
+                data={"extraction_profile_name": " "},
+                follow_redirects=False,
+            )
+            ui_blank_profile_feedback_response = client.get(
+                ui_blank_profile_response.headers["location"]
+            )
             rerun_response = client.post(
                 f"/api/documents/{document_id}/extraction-rerun",
                 json={"requested_by": "missing-source-test"},
+            )
+            ui_missing_source_response = client.post(
+                f"/documents/{document_id}/extraction-rerun",
+                data={"requested_by": "ui-missing-source"},
+                follow_redirects=False,
+            )
+            ui_missing_source_feedback_response = client.get(
+                ui_missing_source_response.headers["location"]
             )
 
         payload = rerun_response.json()
 
         assert blank_profile_response.status_code == 400
         assert missing_document_response.status_code == 404
+        assert ui_blank_profile_response.status_code == 303
+        assert "rerun_error=" in ui_blank_profile_response.headers["location"]
+        assert "재추출 실패" in ui_blank_profile_feedback_response.text
+        assert "extraction_profile_name must not be blank" in (
+            ui_blank_profile_feedback_response.text
+        )
         assert rerun_response.status_code == 201
         assert payload["run"]["status"] == "failed"
         assert payload["run"]["error_code"] == "LOCAL_SOURCE_NOT_FOUND"
@@ -423,6 +463,11 @@ def test_document_extraction_rerun_api_persists_failed_run_for_missing_source(
         assert payload["extraction_request"]["options"]["rerun_request"][
             "requested_by"
         ] == "missing-source-test"
+        assert ui_missing_source_response.status_code == 303
+        assert "rerun_status=failed" in ui_missing_source_response.headers["location"]
+        assert ui_missing_source_feedback_response.status_code == 200
+        assert "재추출 실패" in ui_missing_source_feedback_response.text
+        assert "LOCAL_SOURCE_NOT_FOUND" not in ui_missing_source_feedback_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)
 

@@ -23,11 +23,13 @@ from app.main import (
     ExtractionRerunRequest,
     build_extraction_rerun_request,
     chunk_source_trace_preview_payload,
+    document_artifacts_redirect_url,
     document_block_summary_payload,
     extraction_artifact_export_payload,
     extraction_artifact_preview_payload,
     extraction_quality_check_payload,
     extraction_quality_snapshot_input_from_context,
+    extraction_rerun_feedback_payload,
     extraction_quality_snapshot_payload,
     extraction_quality_snapshot_summary_payload,
 )
@@ -275,6 +277,50 @@ def test_resolve_extraction_rerun_profile_name_rejects_invalid_values() -> None:
             make_file_metadata_record(file_ext=".zip"),
             None,
         )
+
+
+def test_extraction_rerun_feedback_payload_formats_success_and_error() -> None:
+    success_payload = extraction_rerun_feedback_payload(
+        run_id=12,
+        status_value="succeeded",
+        artifact_count=1,
+        block_count=3,
+    )
+    failed_payload = extraction_rerun_feedback_payload(
+        error_message="Source file missing",
+    )
+
+    assert success_payload == {
+        "ok": True,
+        "status": "succeeded",
+        "run_id": 12,
+        "artifact_count": 1,
+        "block_count": 3,
+        "error_message": None,
+    }
+    assert failed_payload == {
+        "ok": False,
+        "status": "failed",
+        "run_id": None,
+        "artifact_count": 0,
+        "block_count": 0,
+        "error_message": "Source file missing",
+    }
+    assert extraction_rerun_feedback_payload(status_value="succeeded") is None
+
+
+def test_document_artifacts_redirect_url_omits_empty_values() -> None:
+    url = document_artifacts_redirect_url(
+        4,
+        {
+            "artifact_id": 10,
+            "rerun_status": "succeeded",
+            "rerun_error": "",
+            "empty": None,
+        },
+    )
+
+    assert url == "/documents/4/artifacts?artifact_id=10&rerun_status=succeeded"
 
 
 def test_percent_value_formats_decimal_and_numeric_values_to_two_places() -> None:
