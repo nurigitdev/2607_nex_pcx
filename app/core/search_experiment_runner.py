@@ -10,7 +10,12 @@ from app.core.embedding_providers import (
     build_embedding_provider_from_runtime_config,
 )
 from app.core.query_embeddings import QueryEmbeddingProviderBuilder
-from app.core.search_compare import SearchCompareInput, SearchCompareResult, run_search_compare
+from app.core.search_compare import (
+    SEARCH_COMPARE_PROFILE_STATUS_FAILED,
+    SearchCompareInput,
+    SearchCompareResult,
+    run_search_compare,
+)
 from app.core.search_experiments import (
     SearchExperimentProfileRunInput,
     SearchExperimentRunInput,
@@ -212,16 +217,24 @@ def execute_search_experiment(
                 experiment_run_id=run.experiment_run_id,
                 profile_name=profile_result.profile_name,
                 search_log_id=search_result.search_log_id,
-                status="succeeded",
+                status=(
+                    "failed"
+                    if profile_result.status == SEARCH_COMPARE_PROFILE_STATUS_FAILED
+                    else "succeeded"
+                ),
                 result_count=summary.retained_result_count,
                 top_score=summary.top_score,
                 average_score=summary.average_score,
                 elapsed_ms=summary.elapsed_ms,
                 runtime_metadata={
+                    "profile_status": profile_result.status,
+                    "profile_error_code": profile_result.error_code,
+                    "query_runtime_metadata": profile_result.query_runtime_metadata,
                     "raw_result_count": summary.raw_result_count,
                     "score_threshold": strategy_selection.score_threshold,
                     "excluded_by_threshold_count": summary.excluded_by_threshold_count,
                 },
+                error_message=profile_result.error_message,
             ),
         )
         summaries.append(summary)

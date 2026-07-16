@@ -463,6 +463,12 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
             == body["permission_summary"]
         )
         assert set(profile_results) == {"kure_v1_1024", "bge_m3_1024"}
+        assert body["profile_status_counts"] == {"succeeded": 2, "failed": 0}
+        assert body["profile_failure_count"] == 0
+        assert all(profile["status"] == "succeeded" for profile in body["profiles"])
+        assert all(profile["error_code"] is None for profile in body["profiles"])
+        assert all(profile["error_message"] is None for profile in body["profiles"])
+        assert all(profile["query_runtime_metadata"] for profile in body["profiles"])
         assert result_chunk_ids == {visible_chunk_id}
         assert hidden_chunk_id not in result_chunk_ids
         assert result_count["count"] == 2
@@ -722,6 +728,52 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert bad_export_response.json() == {"detail": "format must be json or csv."}
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
+
+
+def test_search_compare_api_returns_profile_failure_for_provider_errors(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    app = create_app(
+        Settings(
+            database_url=migrated_database_url,
+            embedding_provider_mode="remote",
+            remote_embedding_provider_url="http://127.0.0.1:9",
+            remote_embedding_provider_timeout_seconds=0.01,
+        )
+    )
+    search_log_id: int | None = None
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/search/compare",
+                json={
+                    "query_text": "provider failure fixture",
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "top_k": 5,
+                    "profiles": ["kure_v1_1024"],
+                    "document_group": f"provider-failure-{uuid4()}",
+                },
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        search_log_id = body["search_log_id"]
+        profile = body["profiles"][0]
+
+        assert body["profile_status_counts"] == {"succeeded": 0, "failed": 1}
+        assert body["profile_failure_count"] == 1
+        assert profile["profile_name"] == "kure_v1_1024"
+        assert profile["status"] == "failed"
+        assert profile["error_code"] == "query_embedding_failed"
+        assert "Remote provider request failed" in profile["error_message"]
+        assert profile["results"] == []
+        assert profile["query_runtime_metadata"]["error_code"] == "query_embedding_failed"
+    finally:
+        if search_log_id is not None:
+            _delete_search_logs(migrated_database_url, [search_log_id])
 
 
 def test_search_compare_api_handles_invalid_scope(

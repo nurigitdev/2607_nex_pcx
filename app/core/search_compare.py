@@ -1,6 +1,6 @@
 """Search compare service for profile-by-profile vector retrieval."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Any
 
@@ -12,8 +12,8 @@ from app.core.embedding_providers import (
 )
 from app.core.permissions import PermissionSearchFilter, resolve_permission_search_filter
 from app.core.query_embeddings import (
+    InvalidQueryEmbeddingError,
     QueryEmbeddingProviderBuilder,
-    QueryEmbeddingResult,
     embed_query_for_profile,
     query_embedding_runtime_metadata,
 )
@@ -23,10 +23,19 @@ from app.core.search_logs import (
     create_search_log,
     create_search_log_results,
 )
-from app.core.vector_search import VectorSearchInput, VectorSearchResult, search_similar_chunks
+from app.core.vector_search import (
+    InvalidVectorSearchError,
+    VectorSearchInput,
+    VectorSearchResult,
+    search_similar_chunks,
+)
 
 MAX_PERMISSION_MATRIX_ENTRIES = 12
 ACCESS_SCOPE_ORDER = ("personal", "team", "org_tree", "company")
+SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED = "succeeded"
+SEARCH_COMPARE_PROFILE_STATUS_FAILED = "failed"
+SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED = "query_embedding_failed"
+SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED = "vector_search_failed"
 
 
 @dataclass(frozen=True)
@@ -52,6 +61,10 @@ class SearchCompareProfileResult:
     profile_name: str
     elapsed_ms: int
     results: tuple[SearchCompareResultItem, ...]
+    status: str = SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED
+    error_code: str | None = None
+    error_message: str | None = None
+    query_runtime_metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -108,6 +121,21 @@ class SearchPermissionMatrixResult:
 
 class InvalidSearchCompareError(ValueError):
     """Raised when search compare input is invalid before reaching repositories."""
+
+
+@dataclass(frozen=True)
+class _RawSearchCompareProfileResult:
+    profile_name: str
+    elapsed_ms: int
+    results: tuple[VectorSearchResult, ...]
+    status: str
+    error_code: str | None = None
+    error_message: str | None = None
+    query_runtime_metadata: dict[str, object] = field(default_factory=dict)
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED
 
 
 def _validate_nonblank(value: str | None, field_name: str) -> str | None:
@@ -323,34 +351,112 @@ def _with_permission_explainability(
     return replace(permission_filter, metadata=metadata)
 
 
+def _profile_status_counts(
+    profile_results: tuple[_RawSearchCompareProfileResult, ...]
+    | tuple[SearchCompareProfileResult, ...],
+) -> dict[str, int]:
+    counts = {
+        SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED: 0,
+        SEARCH_COMPARE_PROFILE_STATUS_FAILED: 0,
+    }
+    for profile_result in profile_results:
+        counts[profile_result.status] = counts.get(profile_result.status, 0) + 1
+    return counts
+
+
+def _profile_failure_metadata(
+    profile_name: str,
+    *,
+    error_code: str,
+    error_message: str,
+    elapsed_ms: int,
+) -> dict[str, object]:
+    return {
+        "profile_name": profile_name,
+        "status": SEARCH_COMPARE_PROFILE_STATUS_FAILED,
+        "error_code": error_code,
+        "error_message": error_message,
+        "elapsed_ms": elapsed_ms,
+    }
+
+
 def _search_compare_query_runtime_metadata(
-    query_embedding_results: dict[str, QueryEmbeddingResult],
+    profile_results: tuple[_RawSearchCompareProfileResult, ...],
 ) -> dict[str, object]:
     profiles = {
-        profile_name: query_embedding_runtime_metadata(result)
-        for profile_name, result in query_embedding_results.items()
+        profile_result.profile_name: profile_result.query_runtime_metadata
+        for profile_result in profile_results
+        if profile_result.succeeded
+    }
+    profile_failures = {
+        profile_result.profile_name: _profile_failure_metadata(
+            profile_result.profile_name,
+            error_code=profile_result.error_code or "unknown_error",
+            error_message=profile_result.error_message or "Unknown profile failure",
+            elapsed_ms=profile_result.elapsed_ms,
+        )
+        for profile_result in profile_results
+        if not profile_result.succeeded
     }
     provider_types = sorted(
         {
-            result.provider_type
-            for result in query_embedding_results.values()
+            str(profile_metadata["provider_type"])
+            for profile_metadata in profiles.values()
+            if profile_metadata.get("provider_type") is not None
         }
     )
     runtime_sources = sorted(
         {
-            result.runtime_source
-            for result in query_embedding_results.values()
+            str(profile_metadata["runtime_source"])
+            for profile_metadata in profiles.values()
+            if profile_metadata.get("runtime_source") is not None
         }
     )
+    status_counts = _profile_status_counts(profile_results)
     return {
         "adapter": "query_embedding_bridge",
         "search_mode": "compare_mvp",
         "query_embedding_bridge": True,
-        "query_embedding_profile_count": len(query_embedding_results),
+        "selected_profile_count": len(profile_results),
+        "query_embedding_profile_count": len(profiles),
+        "query_embedding_success_count": len(profiles),
+        "profile_status_counts": status_counts,
+        "profile_failure_count": status_counts.get(SEARCH_COMPARE_PROFILE_STATUS_FAILED, 0),
         "query_embedding_provider_types": provider_types,
         "query_embedding_runtime_sources": runtime_sources,
         "profile_query_embeddings": profiles,
+        "profile_failures": profile_failures,
     }
+
+
+def _profile_error_code(exc: Exception) -> str:
+    if isinstance(exc, InvalidQueryEmbeddingError):
+        return SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED
+    return SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED
+
+
+def _failed_profile_result(
+    profile_name: str,
+    *,
+    started_at: float,
+    exc: Exception,
+) -> _RawSearchCompareProfileResult:
+    elapsed_ms = max(0, int((perf_counter() - started_at) * 1000))
+    error_code = _profile_error_code(exc)
+    return _RawSearchCompareProfileResult(
+        profile_name=profile_name,
+        elapsed_ms=elapsed_ms,
+        results=(),
+        status=SEARCH_COMPARE_PROFILE_STATUS_FAILED,
+        error_code=error_code,
+        error_message=str(exc),
+        query_runtime_metadata=_profile_failure_metadata(
+            profile_name,
+            error_code=error_code,
+            error_message=str(exc),
+            elapsed_ms=elapsed_ms,
+        ),
+    )
 
 
 def run_search_compare(
@@ -377,40 +483,50 @@ def run_search_compare(
     )
 
     started_at = perf_counter()
-    raw_profile_results: list[tuple[str, int, tuple[VectorSearchResult, ...]]] = []
-    query_embedding_results: dict[str, QueryEmbeddingResult] = {}
+    raw_profile_results: list[_RawSearchCompareProfileResult] = []
     for profile_name in profiles:
         profile_started_at = perf_counter()
-        query_embedding = embed_query_for_profile(
-            database_url,
-            query_text=validated.query_text,
-            profile_name=profile_name,
-            fallback_runtime_config=fallback_config,
-            provider_builder=query_embedding_provider_builder,
-            trace_id=f"search-compare:{validated.actor_user_id}:{profile_name}",
-        )
-        query_embedding_results[profile_name] = query_embedding
-        results = search_similar_chunks(
-            database_url,
-            VectorSearchInput(
+        try:
+            query_embedding = embed_query_for_profile(
+                database_url,
                 query_text=validated.query_text,
                 profile_name=profile_name,
-                top_k=validated.top_k,
-                query_embedding=query_embedding.embedding,
-                chunk_policy_name=validated.chunk_policy_name,
-                document_group=validated.document_group,
-                file_type=validated.file_type,
-                permission_filter=permission_filter,
-            ),
-        )
-        raw_profile_results.append(
-            (
-                profile_name,
-                max(0, int((perf_counter() - profile_started_at) * 1000)),
-                tuple(results),
+                fallback_runtime_config=fallback_config,
+                provider_builder=query_embedding_provider_builder,
+                trace_id=f"search-compare:{validated.actor_user_id}:{profile_name}",
             )
-        )
+            results = search_similar_chunks(
+                database_url,
+                VectorSearchInput(
+                    query_text=validated.query_text,
+                    profile_name=profile_name,
+                    top_k=validated.top_k,
+                    query_embedding=query_embedding.embedding,
+                    chunk_policy_name=validated.chunk_policy_name,
+                    document_group=validated.document_group,
+                    file_type=validated.file_type,
+                    permission_filter=permission_filter,
+                ),
+            )
+            raw_profile_results.append(
+                _RawSearchCompareProfileResult(
+                    profile_name=profile_name,
+                    elapsed_ms=max(0, int((perf_counter() - profile_started_at) * 1000)),
+                    results=tuple(results),
+                    status=SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED,
+                    query_runtime_metadata=query_embedding_runtime_metadata(query_embedding),
+                )
+            )
+        except (InvalidQueryEmbeddingError, InvalidVectorSearchError) as exc:
+            raw_profile_results.append(
+                _failed_profile_result(
+                    profile_name,
+                    started_at=profile_started_at,
+                    exc=exc,
+                )
+            )
 
+    raw_profile_results_tuple = tuple(raw_profile_results)
     total_elapsed_ms = max(0, int((perf_counter() - started_at) * 1000))
     search_log = create_search_log(
         database_url,
@@ -428,7 +544,7 @@ def run_search_compare(
             similarity_metric="cosine",
             profiles=profiles,
             query_runtime_metadata=_search_compare_query_runtime_metadata(
-                query_embedding_results,
+                raw_profile_results_tuple,
             ),
             total_elapsed_ms=total_elapsed_ms,
             created_by_user_id=validated.actor_user_id,
@@ -437,15 +553,15 @@ def run_search_compare(
     result_inputs = [
         SearchLogResultInput(
             search_log_id=search_log.search_log_id,
-            profile_name=profile_name,
+            profile_name=profile_result.profile_name,
             rank=result.rank,
             chunk_id=result.chunk_id,
             distance=result.distance,
             score=result.score,
-            profile_elapsed_ms=elapsed_ms,
+            profile_elapsed_ms=profile_result.elapsed_ms,
         )
-        for profile_name, elapsed_ms, results in raw_profile_results
-        for result in results
+        for profile_result in raw_profile_results_tuple
+        for result in profile_result.results
     ]
     stored_results = []
     if result_inputs:
@@ -454,17 +570,21 @@ def run_search_compare(
     result_id_iter = iter(stored_results)
     profile_results = [
         SearchCompareProfileResult(
-            profile_name=profile_name,
-            elapsed_ms=elapsed_ms,
+            profile_name=profile_result.profile_name,
+            elapsed_ms=profile_result.elapsed_ms,
             results=tuple(
                 SearchCompareResultItem(
                     search_log_result_id=next(result_id_iter).search_log_result_id,
                     vector_result=result,
                 )
-                for result in results
+                for result in profile_result.results
             ),
+            status=profile_result.status,
+            error_code=profile_result.error_code,
+            error_message=profile_result.error_message,
+            query_runtime_metadata=profile_result.query_runtime_metadata,
         )
-        for profile_name, elapsed_ms, results in raw_profile_results
+        for profile_result in raw_profile_results_tuple
     ]
 
     return SearchCompareResult(

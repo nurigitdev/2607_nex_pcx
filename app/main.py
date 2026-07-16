@@ -3138,7 +3138,11 @@ def vector_search_result_payload(result: VectorSearchResult) -> dict[str, object
 def search_compare_profile_payload(profile: SearchCompareProfileResult) -> dict[str, object]:
     return {
         "profile_name": profile.profile_name,
+        "status": profile.status,
+        "error_code": profile.error_code,
+        "error_message": profile.error_message,
         "elapsed_ms": profile.elapsed_ms,
+        "query_runtime_metadata": profile.query_runtime_metadata,
         "results": [
             {
                 **vector_search_result_payload(result.vector_result),
@@ -3150,6 +3154,9 @@ def search_compare_profile_payload(profile: SearchCompareProfileResult) -> dict[
 
 
 def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
+    profile_status_counts: dict[str, int] = {"succeeded": 0, "failed": 0}
+    for profile in result.profiles:
+        profile_status_counts[profile.status] = profile_status_counts.get(profile.status, 0) + 1
     return {
         "search_log_id": result.search_log_id,
         "query_text": result.query_text,
@@ -3163,6 +3170,8 @@ def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
         ),
         "top_k": result.top_k,
         "total_elapsed_ms": result.total_elapsed_ms,
+        "profile_status_counts": profile_status_counts,
+        "profile_failure_count": profile_status_counts.get("failed", 0),
         "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
     }
 
