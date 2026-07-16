@@ -282,6 +282,10 @@ def test_search_history_detail_renders_permission_explainability(
         assert "검색 Latency Outlier Triage" in response.text
         assert "GET /api/search/logs/latency-outliers" in response.text
         assert "1250 ms" in response.text
+        assert "검색 Operations Summary" in response.text
+        assert "GET /api/search/logs/operations-summary" in response.text
+        assert "Runtime Failure" in response.text
+        assert "Duplicate 그룹" in response.text
         assert "검색 No Result Triage" in response.text
         assert "GET /api/search/logs/no-results" in response.text
         assert "검색 Duplicate Fingerprint Triage" in response.text

@@ -10,7 +10,12 @@ from app.core.embedding_vectors import (
     generate_mock_embedding,
     store_chunk_embedding,
 )
-from app.core.search_logs import SearchLogInput, create_search_log
+from app.core.search_logs import (
+    SearchLogInput,
+    SearchLogResultInput,
+    create_search_log,
+    create_search_log_results,
+)
 from app.main import create_app
 
 pytestmark = pytest.mark.integration
@@ -1311,6 +1316,128 @@ def test_search_duplicate_fingerprints_api_groups_repeated_conditions(
                 different_top_k_log.search_log_id,
             ],
         )
+
+
+def test_search_operations_summary_api_returns_recent_signal_deltas(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+    document_group = f"operations-summary-{uuid4()}"
+    file_id, chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="Operations summary result fixture",
+        owner_user_id=ids["alice.member"],
+        owner_org_unit_id=ids["Business Team"],
+        access_scope="team",
+        chunk_text="operations summary chunk",
+        document_group=document_group,
+    )
+
+    with TestClient(app) as client:
+        baseline_response = client.get("/api/search/logs/operations-summary")
+    assert baseline_response.status_code == 200
+    baseline = baseline_response.json()["operations_summary"]
+
+    result_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Operations summary repeated condition",
+            normalized_query_text="operations summary repeated condition",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="team",
+            permission_filter_metadata={"visible_document_count": 1},
+            document_group=document_group,
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
+            top_k=5,
+            profiles=("kure_v1_1024",),
+            query_runtime_metadata={
+                "profile_status_counts": {"succeeded": 1, "failed": 0},
+            },
+            total_elapsed_ms=1200,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+    create_search_log_results(
+        migrated_database_url,
+        [
+            SearchLogResultInput(
+                search_log_id=result_log.search_log_id,
+                profile_name="kure_v1_1024",
+                rank=1,
+                chunk_id=chunk_id,
+                score=0.94,
+                profile_elapsed_ms=33,
+            )
+        ],
+    )
+    no_result_log = create_search_log(
+        migrated_database_url,
+        SearchLogInput(
+            query_text="Operations summary repeated condition",
+            normalized_query_text="operations summary repeated condition",
+            actor_user_id=ids["alice.member"],
+            requested_search_scope="company",
+            effective_search_scope="team",
+            permission_filter_metadata={"visible_document_count": 1},
+            document_group=document_group,
+            file_type=".md",
+            chunk_policy_name="heading_512_64",
+            top_k=5,
+            profiles=("kure_v1_1024",),
+            query_runtime_metadata={
+                "profile_failures": {
+                    "kure_v1_1024": {
+                        "error_code": "query_embedding_failed",
+                        "error_message": "provider failed",
+                    }
+                },
+                "profile_status_counts": {"succeeded": 0, "failed": 1},
+            },
+            total_elapsed_ms=1500,
+            created_by_user_id=ids["alice.member"],
+        ),
+    )
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/search/logs/operations-summary",
+                params={"lookback_hours": 24, "min_total_elapsed_ms": 1000},
+            )
+            invalid_lookback_response = client.get(
+                "/api/search/logs/operations-summary",
+                params={"lookback_hours": 0},
+            )
+            invalid_threshold_response = client.get(
+                "/api/search/logs/operations-summary",
+                params={"min_total_elapsed_ms": -1},
+            )
+
+        assert response.status_code == 200
+        summary = response.json()["operations_summary"]
+        assert summary["lookback_hours"] == 24
+        assert summary["min_total_elapsed_ms"] == 1000
+        assert summary["search_count"] == baseline["search_count"] + 2
+        assert summary["result_row_count"] == baseline["result_row_count"] + 1
+        assert summary["no_result_count"] == baseline["no_result_count"] + 1
+        assert summary["runtime_failure_count"] == baseline["runtime_failure_count"] + 1
+        assert summary["latency_outlier_count"] == baseline["latency_outlier_count"] + 2
+        assert summary["duplicate_fingerprint_count"] == (
+            baseline["duplicate_fingerprint_count"] + 1
+        )
+        assert summary["max_duplicate_count"] >= 2
+        assert summary["average_total_elapsed_ms"] is not None
+        assert "T" not in summary["latest_search_at_label"]
+        assert invalid_lookback_response.status_code == 400
+        assert "lookback_hours" in invalid_lookback_response.json()["detail"]
+        assert invalid_threshold_response.status_code == 400
+        assert "min_total_elapsed_ms" in invalid_threshold_response.json()["detail"]
+    finally:
+        _delete_search_logs(migrated_database_url, [no_result_log.search_log_id])
+        _cleanup_files(migrated_database_url, [file_id])
 
 
 def test_search_compare_api_handles_invalid_scope(

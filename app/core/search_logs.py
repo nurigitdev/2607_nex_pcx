@@ -291,6 +291,21 @@ class SearchDuplicateFingerprintRecord:
 
 
 @dataclass(frozen=True)
+class SearchOperationsSummaryRecord:
+    lookback_hours: int
+    min_total_elapsed_ms: int
+    search_count: int
+    result_row_count: int
+    no_result_count: int
+    runtime_failure_count: int
+    latency_outlier_count: int
+    duplicate_fingerprint_count: int
+    max_duplicate_count: int
+    average_total_elapsed_ms: float | None
+    latest_search_at: datetime | None
+
+
+@dataclass(frozen=True)
 class SearchLogResultDetailRecord:
     search_log_result: SearchLogResultRecord
     document_id: int
@@ -653,6 +668,22 @@ def _row_to_search_duplicate_fingerprint_record(
     )
 
 
+def _row_to_search_operations_summary_record(row: dict[str, Any]) -> SearchOperationsSummaryRecord:
+    return SearchOperationsSummaryRecord(
+        lookback_hours=int(row["lookback_hours"]),
+        min_total_elapsed_ms=int(row["min_total_elapsed_ms"]),
+        search_count=int(row["search_count"] or 0),
+        result_row_count=int(row["result_row_count"] or 0),
+        no_result_count=int(row["no_result_count"] or 0),
+        runtime_failure_count=int(row["runtime_failure_count"] or 0),
+        latency_outlier_count=int(row["latency_outlier_count"] or 0),
+        duplicate_fingerprint_count=int(row["duplicate_fingerprint_count"] or 0),
+        max_duplicate_count=int(row["max_duplicate_count"] or 0),
+        average_total_elapsed_ms=_optional_float(row["average_total_elapsed_ms"]),
+        latest_search_at=row["latest_search_at"],
+    )
+
+
 def _row_to_search_feedback_profile_summary_record(
     row: dict[str, Any],
 ) -> SearchFeedbackProfileSummaryRecord:
@@ -763,6 +794,14 @@ def _validate_min_duplicate_count(min_count: int) -> int:
     if min_count > 1000:
         raise InvalidSearchLogError("min_count must be less than or equal to 1000")
     return min_count
+
+
+def _validate_search_operations_lookback_hours(lookback_hours: int) -> int:
+    if lookback_hours <= 0:
+        raise InvalidSearchLogError("lookback_hours must be greater than 0")
+    if lookback_hours > 720:
+        raise InvalidSearchLogError("lookback_hours must be less than or equal to 720")
+    return lookback_hours
 
 
 def _parse_bool(value: str, default: bool) -> bool:
@@ -1369,6 +1408,92 @@ def list_search_duplicate_fingerprints(
             )
             rows = cursor.fetchall()
     return [_row_to_search_duplicate_fingerprint_record(dict(row)) for row in rows]
+
+
+def get_search_operations_summary(
+    database_url: str,
+    *,
+    lookback_hours: int = 24,
+    min_total_elapsed_ms: int = 1000,
+) -> SearchOperationsSummaryRecord:
+    validated_lookback_hours = _validate_search_operations_lookback_hours(lookback_hours)
+    validated_threshold = _validate_min_total_elapsed_ms(min_total_elapsed_ms)
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH scoped_logs AS (
+                    SELECT
+                        sl.*,
+                        count(slr.search_log_result_id) AS result_count,
+                        COALESCE(
+                            sl.query_runtime_metadata -> 'profile_failures',
+                            '{}'::jsonb
+                        ) <> '{}'::jsonb AS has_runtime_failure,
+                        md5(
+                            jsonb_build_object(
+                                'normalized_query_text',
+                                COALESCE(
+                                    sl.normalized_query_text,
+                                    lower(btrim(sl.query_text))
+                                ),
+                                'actor_user_id', sl.actor_user_id,
+                                'requested_search_scope', sl.requested_search_scope,
+                                'effective_search_scope', sl.effective_search_scope,
+                                'permission_filter_metadata',
+                                sl.permission_filter_metadata,
+                                'document_group', sl.document_group,
+                                'file_type', sl.file_type,
+                                'chunk_policy_name', sl.chunk_policy_name,
+                                'top_k', sl.top_k,
+                                'similarity_metric', sl.similarity_metric,
+                                'profiles', sl.profiles
+                            )::text
+                        ) AS condition_fingerprint
+                    FROM search_logs sl
+                    LEFT JOIN search_log_results slr ON slr.search_log_id = sl.search_log_id
+                    WHERE sl.created_at >= now() - (%s::int * interval '1 hour')
+                    GROUP BY sl.search_log_id
+                ),
+                duplicate_groups AS (
+                    SELECT condition_fingerprint, count(*) AS duplicate_count
+                    FROM scoped_logs
+                    GROUP BY condition_fingerprint
+                    HAVING count(*) >= 2
+                )
+                SELECT
+                    %s::int AS lookback_hours,
+                    %s::int AS min_total_elapsed_ms,
+                    count(*) AS search_count,
+                    COALESCE(sum(result_count), 0) AS result_row_count,
+                    count(*) FILTER (WHERE result_count = 0) AS no_result_count,
+                    count(*) FILTER (WHERE has_runtime_failure) AS runtime_failure_count,
+                    count(*) FILTER (
+                        WHERE total_elapsed_ms IS NOT NULL
+                          AND total_elapsed_ms >= %s
+                    ) AS latency_outlier_count,
+                    (
+                        SELECT count(*)
+                        FROM duplicate_groups
+                    ) AS duplicate_fingerprint_count,
+                    (
+                        SELECT COALESCE(max(duplicate_count), 0)
+                        FROM duplicate_groups
+                    ) AS max_duplicate_count,
+                    avg(total_elapsed_ms) FILTER (WHERE total_elapsed_ms IS NOT NULL)
+                        AS average_total_elapsed_ms,
+                    max(created_at) AS latest_search_at
+                FROM scoped_logs
+                """,
+                (
+                    validated_lookback_hours,
+                    validated_lookback_hours,
+                    validated_threshold,
+                    validated_threshold,
+                ),
+            )
+            row = cursor.fetchone()
+    return _row_to_search_operations_summary_record(dict(row))
 
 
 def get_search_log_result(

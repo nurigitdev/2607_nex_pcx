@@ -161,6 +161,72 @@
   </form>
 </section>
 
+<section class="metric-card bg-white p-3 mb-4 search-operations-summary-panel">
+  <div class="search-runtime-triage-header">
+    <div>
+      <h2 class="h5 mb-1">{{ t("search_operations.title") }}</h2>
+      <p class="text-secondary mb-0">
+        {{ t("search_operations.subtitle") }}
+        {% if operations_summary %}
+        · {{ operations_summary.lookback_hours }}h / {{ operations_summary.min_total_elapsed_ms }}ms
+        {% endif %}
+      </p>
+    </div>
+    <span class="badge text-bg-light">GET /api/search/logs/operations-summary</span>
+  </div>
+  {% if operations_summary %}
+  <div class="search-operations-summary-grid mt-3">
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.searches") }}</span>
+      <strong>{{ operations_summary.search_count }}</strong>
+    </div>
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.results") }}</span>
+      <strong>{{ operations_summary.result_row_count }}</strong>
+    </div>
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.no_results") }}</span>
+      <strong>{{ operations_summary.no_result_count }}</strong>
+    </div>
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.runtime_failures") }}</span>
+      <strong>{{ operations_summary.runtime_failure_count }}</strong>
+    </div>
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.latency_outliers") }}</span>
+      <strong>{{ operations_summary.latency_outlier_count }}</strong>
+    </div>
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.duplicate_groups") }}</span>
+      <strong>{{ operations_summary.duplicate_fingerprint_count }}</strong>
+      <small>{{ t("search_operations.max_duplicate") }} {{ operations_summary.max_duplicate_count }}</small>
+    </div>
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.average_latency") }}</span>
+      <strong>
+        {% if operations_summary.average_total_elapsed_ms is not none %}
+        {{ "%.1f"|format(operations_summary.average_total_elapsed_ms) }} ms
+        {% else %}
+        {{ t("permissions.none") }}
+        {% endif %}
+      </strong>
+    </div>
+    <div class="search-operations-summary-item">
+      <span>{{ t("search_operations.latest") }}</span>
+      <strong>
+        {% if operations_summary.latest_search_at %}
+        {{ operations_summary.latest_search_at.strftime("%Y-%m-%d %H:%M:%S") }}
+        {% else %}
+        {{ t("permissions.none") }}
+        {% endif %}
+      </strong>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-secondary mt-3">{{ t("search_operations.empty") }}</div>
+  {% endif %}
+</section>
+
 <section class="metric-card bg-white p-3 mb-4 search-runtime-triage-panel">
   <div class="search-runtime-triage-header">
     <div>

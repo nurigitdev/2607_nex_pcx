@@ -473,6 +473,7 @@ from app.core.search_logs import (
     SearchLogRetentionSettingsInput,
     SearchLogReviewMetadataInput,
     SearchNoResultRecord,
+    SearchOperationsSummaryRecord,
     SearchResultFeedbackInput,
     SearchResultFeedbackRecord,
     SearchRuntimeFailureRecord,
@@ -481,6 +482,7 @@ from app.core.search_logs import (
     get_search_log,
     get_search_log_detail,
     get_search_log_result,
+    get_search_operations_summary,
     list_search_duplicate_fingerprints,
     list_search_feedback_comments,
     list_search_latency_outliers,
@@ -4272,6 +4274,25 @@ def search_duplicate_fingerprint_payload(
         "latest_created_at": _datetime_response(record.latest_created_at),
         "latest_created_at_label": _datetime_label(record.latest_created_at),
         "latest_search_log_url": f"/search/logs?search_log_id={record.latest_search_log_id}",
+    }
+
+
+def search_operations_summary_payload(
+    summary: SearchOperationsSummaryRecord,
+) -> dict[str, object]:
+    return {
+        "lookback_hours": summary.lookback_hours,
+        "min_total_elapsed_ms": summary.min_total_elapsed_ms,
+        "search_count": summary.search_count,
+        "result_row_count": summary.result_row_count,
+        "no_result_count": summary.no_result_count,
+        "runtime_failure_count": summary.runtime_failure_count,
+        "latency_outlier_count": summary.latency_outlier_count,
+        "duplicate_fingerprint_count": summary.duplicate_fingerprint_count,
+        "max_duplicate_count": summary.max_duplicate_count,
+        "average_total_elapsed_ms": summary.average_total_elapsed_ms,
+        "latest_search_at": _datetime_response(summary.latest_search_at),
+        "latest_search_at_label": _datetime_label(summary.latest_search_at),
     }
 
 
@@ -10124,6 +10145,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/search/logs/operations-summary")
+    def api_get_search_operations_summary(
+        lookback_hours: int = 24,
+        min_total_elapsed_ms: int = 1000,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            summary = get_search_operations_summary(
+                settings.database_url,
+                lookback_hours=lookback_hours,
+                min_total_elapsed_ms=min_total_elapsed_ms,
+            )
+        except InvalidSearchLogError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "operations_summary": search_operations_summary_payload(summary),
+            }
+        )
+
     @app.post("/api/search/logs/runtime-failures/retry")
     def api_retry_search_runtime_failures(
         payload: SearchRuntimeFailureRetryRequest,
@@ -12113,6 +12160,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         latency_outliers: list[SearchLatencyOutlierRecord] = []
         no_result_logs: list[SearchNoResultRecord] = []
         duplicate_fingerprints: list[SearchDuplicateFingerprintRecord] = []
+        operations_summary: SearchOperationsSummaryRecord | None = None
         selected_log: SearchLogDetailRecord | None = None
         selected_log_comparison: dict[str, object] | None = None
         retention_settings = SearchLogRetentionSettings()
@@ -12151,6 +12199,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 no_result_logs = list_search_no_result_logs(
                     settings.database_url,
                     limit=8,
+                )
+                operations_summary = get_search_operations_summary(
+                    settings.database_url,
+                    lookback_hours=24,
+                    min_total_elapsed_ms=1000,
                 )
                 duplicate_fingerprints = list_search_duplicate_fingerprints(
                     settings.database_url,
@@ -12196,6 +12249,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 latency_outliers=latency_outliers,
                 no_result_logs=no_result_logs,
                 duplicate_fingerprints=duplicate_fingerprints,
+                operations_summary=operations_summary,
                 selected_log=selected_log,
                 selected_log_comparison=selected_log_comparison,
                 selected_log_reproducibility=(

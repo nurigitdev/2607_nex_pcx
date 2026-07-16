@@ -1173,6 +1173,20 @@
     "open_latest": "Open Latest",
     "empty": "No repeated search conditions."
   },
+  "search_operations": {
+    "title": "Search Operations Summary",
+    "subtitle": "Summarizes recent search operations signals.",
+    "searches": "Searches",
+    "results": "Result Rows",
+    "no_results": "No Result",
+    "runtime_failures": "Runtime Failure",
+    "latency_outliers": "Latency Outlier",
+    "duplicate_groups": "Duplicate Groups",
+    "max_duplicate": "Max",
+    "average_latency": "Avg Latency",
+    "latest": "Latest Search",
+    "empty": "Search operations summary is unavailable."
+  },
   "search_reproducibility": {
     "title": "Search Reproducibility Metadata",
     "subtitle": "Stored values for explaining and repeating this search experiment under the same conditions",
