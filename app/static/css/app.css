@@ -2573,11 +2573,21 @@ main.container-fluid {
   align-items: end;
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(18rem, 2fr) repeat(5, minmax(8rem, 1fr)) auto;
+  grid-template-columns: minmax(18rem, 2fr) repeat(6, minmax(8rem, 1fr)) auto;
 }
 
 .search-query-field {
   min-width: 0;
+}
+
+.search-provider-mode-field {
+  min-width: 11rem;
+}
+
+.search-provider-mode-check {
+  align-items: center;
+  display: flex;
+  min-height: 2.375rem;
 }
 
 .search-profile-field {

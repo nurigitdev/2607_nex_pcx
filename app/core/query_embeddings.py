@@ -17,6 +17,7 @@ from app.core.embedding_provider_routes import (
     list_embedding_provider_routes,
 )
 from app.core.embedding_providers import (
+    MOCK_EMBEDDING_PROVIDER_TYPE,
     REMOTE_EMBEDDING_PROVIDER_TYPE,
     EmbeddingProvider,
     EmbeddingProviderRequest,
@@ -67,6 +68,7 @@ def embed_query_for_profile(
     provider_builder: QueryEmbeddingProviderBuilder = build_embedding_provider_from_runtime_config,
     route_candidates_selector: QueryEmbeddingRouteCandidatesSelector | None = None,
     trace_id: str | None = None,
+    allow_mock_fallback: bool = True,
 ) -> QueryEmbeddingResult:
     """Generate one query embedding using an active provider route or fallback config."""
 
@@ -95,6 +97,13 @@ def embed_query_for_profile(
                 route,
                 fallback_runtime_config=fallback_config,
             )
+            if (
+                not allow_mock_fallback
+                and runtime_config.mode == MOCK_EMBEDDING_PROVIDER_TYPE
+            ):
+                raise InvalidEmbeddingProviderError(
+                    "Mock query embedding fallback is disabled for this search run"
+                )
             provider = provider_builder(runtime_config)
             started_at = perf_counter()
             response = provider.embed(

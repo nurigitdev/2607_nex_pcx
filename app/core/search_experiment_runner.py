@@ -48,6 +48,7 @@ class SearchExperimentExecutionInput:
     runtime_metadata: dict[str, Any] = field(default_factory=dict)
     created_by: str | None = None
     created_by_user_id: int | None = None
+    allow_mock_fallback: bool = True
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,8 @@ def execute_search_experiment(
             runtime_metadata={
                 **execution_input.runtime_metadata,
                 "strategy_runtime_parameters": strategy_selection.runtime_parameters,
+                "allow_mock_fallback": execution_input.allow_mock_fallback,
+                "real_provider_required": not execution_input.allow_mock_fallback,
             },
             created_by=execution_input.created_by,
             created_by_user_id=execution_input.created_by_user_id,
@@ -185,6 +188,7 @@ def execute_search_experiment(
                 chunk_policy_name=execution_input.chunk_policy_name,
                 document_group=execution_input.document_group,
                 file_type=execution_input.file_type,
+                allow_mock_fallback=execution_input.allow_mock_fallback,
             ),
             fallback_runtime_config=fallback_runtime_config,
             query_embedding_provider_builder=query_embedding_provider_builder,

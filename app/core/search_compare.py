@@ -48,6 +48,7 @@ class SearchCompareInput:
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    allow_mock_fallback: bool = True
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ class SearchPermissionMatrixInput:
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    allow_mock_fallback: bool = True
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,7 @@ def _validate_search_compare_input(search_input: SearchCompareInput) -> SearchCo
         chunk_policy_name=_validate_nonblank(search_input.chunk_policy_name, "chunk_policy_name"),
         document_group=_validate_nonblank(search_input.document_group, "document_group"),
         file_type=_validate_nonblank(search_input.file_type, "file_type"),
+        allow_mock_fallback=search_input.allow_mock_fallback,
     )
 
 
@@ -217,6 +220,7 @@ def _validate_permission_matrix_input(
             chunk_policy_name=matrix_input.chunk_policy_name,
             document_group=matrix_input.document_group,
             file_type=matrix_input.file_type,
+            allow_mock_fallback=matrix_input.allow_mock_fallback,
         )
     )
     return SearchPermissionMatrixInput(
@@ -227,6 +231,7 @@ def _validate_permission_matrix_input(
         chunk_policy_name=common.chunk_policy_name,
         document_group=common.document_group,
         file_type=common.file_type,
+        allow_mock_fallback=common.allow_mock_fallback,
     )
 
 
@@ -382,6 +387,8 @@ def _profile_failure_metadata(
 
 def _search_compare_query_runtime_metadata(
     profile_results: tuple[_RawSearchCompareProfileResult, ...],
+    *,
+    allow_mock_fallback: bool,
 ) -> dict[str, object]:
     profiles = {
         profile_result.profile_name: profile_result.query_runtime_metadata
@@ -417,6 +424,8 @@ def _search_compare_query_runtime_metadata(
         "adapter": "query_embedding_bridge",
         "search_mode": "compare_mvp",
         "query_embedding_bridge": True,
+        "allow_mock_fallback": allow_mock_fallback,
+        "real_provider_required": not allow_mock_fallback,
         "selected_profile_count": len(profile_results),
         "query_embedding_profile_count": len(profiles),
         "query_embedding_success_count": len(profiles),
@@ -494,6 +503,7 @@ def run_search_compare(
                 fallback_runtime_config=fallback_config,
                 provider_builder=query_embedding_provider_builder,
                 trace_id=f"search-compare:{validated.actor_user_id}:{profile_name}",
+                allow_mock_fallback=validated.allow_mock_fallback,
             )
             results = search_similar_chunks(
                 database_url,
@@ -545,6 +555,7 @@ def run_search_compare(
             profiles=profiles,
             query_runtime_metadata=_search_compare_query_runtime_metadata(
                 raw_profile_results_tuple,
+                allow_mock_fallback=validated.allow_mock_fallback,
             ),
             total_elapsed_ms=total_elapsed_ms,
             created_by_user_id=validated.actor_user_id,
@@ -635,6 +646,7 @@ def run_permission_search_matrix(
                 chunk_policy_name=validated.chunk_policy_name,
                 document_group=validated.document_group,
                 file_type=validated.file_type,
+                allow_mock_fallback=validated.allow_mock_fallback,
             ),
             fallback_runtime_config=fallback_runtime_config,
             query_embedding_provider_builder=query_embedding_provider_builder,

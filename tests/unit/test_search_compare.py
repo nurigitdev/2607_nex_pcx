@@ -154,8 +154,10 @@ def test_run_permission_search_matrix_rejects_invalid_input_before_db(
 
 def test_run_search_compare_returns_profile_failure_without_aborting(monkeypatch) -> None:
     captured_search_log_input = None
+    captured_allow_mock_fallback: list[bool] = []
 
     def fake_embed_query_for_profile(*args, profile_name: str, **kwargs):
+        captured_allow_mock_fallback.append(kwargs["allow_mock_fallback"])
         if profile_name == "bge_m3_1024":
             raise InvalidQueryEmbeddingError("provider unavailable")
         return _query_embedding_result(profile_name)
@@ -210,6 +212,7 @@ def test_run_search_compare_returns_profile_failure_without_aborting(monkeypatch
             actor_user_id=1,
             requested_search_scope="company",
             profiles=("kure_v1_1024", "bge_m3_1024"),
+            allow_mock_fallback=False,
         ),
     )
 
@@ -224,6 +227,8 @@ def test_run_search_compare_returns_profile_failure_without_aborting(monkeypatch
     assert captured_search_log_input is not None
     metadata = captured_search_log_input.query_runtime_metadata
     assert metadata["selected_profile_count"] == 2
+    assert metadata["allow_mock_fallback"] is False
+    assert metadata["real_provider_required"] is True
     assert metadata["query_embedding_success_count"] == 1
     assert metadata["profile_status_counts"] == {"succeeded": 1, "failed": 1}
     assert metadata["profile_failure_count"] == 1
@@ -231,3 +236,4 @@ def test_run_search_compare_returns_profile_failure_without_aborting(monkeypatch
     assert metadata["profile_failures"]["bge_m3_1024"]["error_message"] == (
         "provider unavailable"
     )
+    assert captured_allow_mock_fallback == [False, False]

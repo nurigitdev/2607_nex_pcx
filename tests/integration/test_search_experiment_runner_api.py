@@ -159,6 +159,7 @@ def test_search_experiment_run_api_executes_experiment(
                     "document_group": document_group,
                     "file_type": ".md",
                     "runtime_metadata": {"slice": 168},
+                    "allow_mock_fallback": True,
                 },
             )
             body = response.json()
@@ -176,6 +177,8 @@ def test_search_experiment_run_api_executes_experiment(
         assert experiment_run["result_count"] == 2
         assert experiment_run["strategy_name"] == "vector_cosine_threshold"
         assert experiment_run["runtime_metadata"]["slice"] == 168
+        assert experiment_run["runtime_metadata"]["allow_mock_fallback"] is True
+        assert experiment_run["runtime_metadata"]["real_provider_required"] is False
         assert body["strategy"]["score_threshold"] == 0.0
         assert body["search_result"]["search_log_id"] > 0
         assert [item["retained_result_count"] for item in body["profile_summaries"]] == [1, 1]

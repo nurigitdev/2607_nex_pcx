@@ -86,6 +86,34 @@ def test_embed_query_for_profile_uses_mock_fallback_without_routes() -> None:
     assert payload["runtime_metadata"]["embedding_table_name"] == "chunk_embeddings_kure_v1_1024"
 
 
+def test_embed_query_for_profile_can_disable_mock_fallback_without_routes() -> None:
+    with pytest.raises(InvalidQueryEmbeddingError, match="Mock query embedding fallback"):
+        embed_query_for_profile(
+            "postgresql://unused",
+            query_text="reimbursement policy",
+            profile_name="kure_v1_1024",
+            route_candidates_selector=lambda _database_url, _profile_name: [],
+            allow_mock_fallback=False,
+        )
+
+
+def test_embed_query_for_profile_can_disable_mock_provider_route() -> None:
+    route = make_route(
+        provider_name="mock-route",
+        provider_mode="mock",
+        provider_base_url=None,
+    )
+
+    with pytest.raises(InvalidQueryEmbeddingError, match="Mock query embedding fallback"):
+        embed_query_for_profile(
+            "postgresql://unused",
+            query_text="reimbursement policy",
+            profile_name="kure_v1_1024",
+            route_candidates_selector=lambda _database_url, _profile_name: [route],
+            allow_mock_fallback=False,
+        )
+
+
 def test_embed_query_for_profile_uses_active_route_headers_and_query_contract(monkeypatch) -> None:
     route = make_route(
         runtime_metadata={

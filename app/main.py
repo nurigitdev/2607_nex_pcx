@@ -524,6 +524,7 @@ class SearchCompareRequest(BaseModel):
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    allow_mock_fallback: bool = True
 
 
 class SearchProfileRetryRequest(BaseModel):
@@ -552,6 +553,7 @@ class SearchPermissionMatrixRequest(BaseModel):
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    allow_mock_fallback: bool = True
 
 
 class SearchExperimentRunRequest(BaseModel):
@@ -569,6 +571,7 @@ class SearchExperimentRunRequest(BaseModel):
     runtime_metadata: dict[str, object] = Field(default_factory=dict)
     created_by: str | None = "search-experiment-api"
     created_by_user_id: int | None = Field(default=None, ge=1)
+    allow_mock_fallback: bool = True
 
 
 class SearchFeedbackRequest(BaseModel):
@@ -4128,6 +4131,8 @@ def search_compare_prefill_payload(
         "chunk_policy_name": (query_params.get("chunk_policy_name") or "").strip(),
         "profiles": profiles,
         "profile_selection_explicit": bool(query_params.getlist("profiles")),
+        "require_real_provider": (query_params.get("require_real_provider") or "").lower()
+        in {"1", "true", "yes", "on"},
     }
 
 
@@ -9634,6 +9639,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     chunk_policy_name=payload.chunk_policy_name,
                     document_group=payload.document_group,
                     file_type=payload.file_type,
+                    allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
@@ -9693,6 +9699,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     runtime_metadata=payload.runtime_metadata,
                     created_by=payload.created_by,
                     created_by_user_id=payload.created_by_user_id,
+                    allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
@@ -10001,6 +10008,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     chunk_policy_name=payload.chunk_policy_name,
                     document_group=payload.document_group,
                     file_type=payload.file_type,
+                    allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )

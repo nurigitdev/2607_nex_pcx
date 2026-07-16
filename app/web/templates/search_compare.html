@@ -119,6 +119,23 @@
       </select>
     </div>
 
+    <div class="search-provider-mode-field">
+      <label class="form-label">{{ t("search_compare.provider_mode") }}</label>
+      <label class="form-check search-provider-mode-check">
+        <input
+          class="form-check-input"
+          id="require_real_provider"
+          name="require_real_provider"
+          type="checkbox"
+          value="1"
+          {% if search_prefill.require_real_provider %}checked{% endif %}
+          {% if not database_configured %}disabled{% endif %}
+        >
+        <span class="form-check-label">{{ t("search_compare.require_real_provider") }}</span>
+      </label>
+      <div class="form-text">{{ t("search_compare.require_real_provider_help") }}</div>
+    </div>
+
     <fieldset class="search-profile-field">
       <legend class="form-label">Profiles</legend>
       <div class="search-profile-list">
@@ -897,6 +914,7 @@
       chunk_policy_name: fieldValue("chunk_policy_name"),
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
+      allow_mock_fallback: !new FormData(form).has("require_real_provider"),
       entries: entries.map((entry) => ({
         actor_user_id: entry.actor_user_id,
         requested_search_scope: entry.requested_search_scope,
@@ -1199,6 +1217,7 @@
       chunk_policy_name: fieldValue("chunk_policy_name"),
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
+      allow_mock_fallback: !formData.has("require_real_provider"),
     };
 
     submitButton.disabled = true;

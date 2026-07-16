@@ -328,6 +328,11 @@
     "status_missing": "누락",
     "status_not_chunked": "Chunk 없음"
   },
+  "search_compare": {
+    "provider_mode": "Provider 모드",
+    "require_real_provider": "실제 provider만 사용",
+    "require_real_provider_help": "활성 route 또는 remote fallback이 없으면 mock 결과 대신 profile 실패로 기록합니다."
+  },
   "search_experiments": {
     "title": "검색 실험 Run",
     "subtitle": "embedding profile과 검색 전략별 실행 결과를 비교합니다.",
