@@ -173,7 +173,9 @@ def test_dgx_ingestion_benchmark_history_api_and_ui(
         assert detail_response.status_code == 200
         assert detail_payload["benchmark"]["run"]["benchmark_run_key"] == run_key
         assert detail_payload["benchmark"]["run"]["total_elapsed_seconds"] == 3.7567
-        assert detail_payload["benchmark"]["profiles"][0]["provider_route_name"] == "bge-dgx-primary"
+        assert (
+            detail_payload["benchmark"]["profiles"][0]["provider_route_name"] == "bge-dgx-primary"
+        )
         assert detail_payload["benchmark"]["jobs"][0]["message"] == "Remote BGE embedding stored"
         assert page_response.status_code == 200
         assert "DGX Ingestion Benchmark 이력" in page_response.text

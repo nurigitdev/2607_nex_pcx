@@ -15,12 +15,12 @@ from app.core.ingestion_artifacts import (
     InvalidIngestionArtifactError,
 )
 from app.main import (
-    _extraction_artifact_export_filename,
+    ExtractionRerunRequest,
     _chunks_for_source_trace,
+    _extraction_artifact_export_filename,
     _percent_label,
     _percent_value,
     _resolve_extraction_rerun_profile_name,
-    ExtractionRerunRequest,
     build_extraction_rerun_request,
     chunk_source_trace_preview_payload,
     document_artifacts_redirect_url,
@@ -29,9 +29,9 @@ from app.main import (
     extraction_artifact_preview_payload,
     extraction_quality_check_payload,
     extraction_quality_snapshot_input_from_context,
-    extraction_rerun_feedback_payload,
     extraction_quality_snapshot_payload,
     extraction_quality_snapshot_summary_payload,
+    extraction_rerun_feedback_payload,
 )
 
 NOW = datetime(2026, 7, 15, tzinfo=UTC)
@@ -403,9 +403,7 @@ def test_extraction_artifact_export_payload_formats_supported_json_exports() -> 
     assert blocks_payload["blocks"][0]["block_id"] == 1
     assert metadata_payload["metadata"] == {"parser_name": "markdown"}
     assert quality_payload["quality_check"]["status"] == "passed"
-    assert bundle_payload["selected_artifact"]["content_text"].startswith(
-        "# Quality Fixture"
-    )
+    assert bundle_payload["selected_artifact"]["content_text"].startswith("# Quality Fixture")
     assert bundle_payload["extraction_runs"][0]["status"] == "succeeded"
 
 

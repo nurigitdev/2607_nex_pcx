@@ -88,7 +88,9 @@ def _benchmark_input(
         total_worker_elapsed_ms=total_worker_elapsed_ms,
         fixture_file_id=source_job_base + 200,
         fixture_document_id=source_job_base + 201,
-        fixture_chunk_ids=tuple(source_job_base + 100 + index for index in range(expected_job_count)),
+        fixture_chunk_ids=tuple(
+            source_job_base + 100 + index for index in range(expected_job_count)
+        ),
         plan_payload={"provider": provider, "profile": profile_name},
         fixture_payload={"chunk_count": expected_job_count},
         report_payload={"passed": True, "vector_count": expected_job_count},
