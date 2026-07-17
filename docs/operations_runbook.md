@@ -5,6 +5,7 @@ and recovering a NeX_PCX environment. It complements the provider-specific
 procedure in `docs/provider_operations_playbook.md`.
 App-host service templates are documented in `docs/service_process_startup.md`.
 Backup and restore rehearsal is documented in `docs/backup_restore_smoke.md`.
+HTTP go-live smoke checks are documented in `docs/go_live_smoke.md`.
 
 ## Scope
 
@@ -155,27 +156,37 @@ Recommended provider route base URLs for the current DGX development server:
    Add `--restore-database-url` when an empty restore target is prepared. The
    runner blocks when the restore URL matches the source database URL.
 
-13. Open the readiness screens.
+13. Run the HTTP go-live smoke runner.
+
+   ```bash
+   ./.venv/bin/python scripts/run_go_live_smoke.py \
+     --app-url http://127.0.0.1:8000 \
+     --json-output artifacts/go_live_smoke.json \
+     --markdown-output artifacts/go_live_smoke.md \
+     --pretty
+   ```
+
+14. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-14. Start one or more pipeline workers.
+15. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py \
      --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-15. Start one or more embedding workers with route-aware provider selection.
+16. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-16. Confirm queues drain and new search data is visible.
+17. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -268,6 +279,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/backup_restore_smoke.json
   artifacts/backup_restore_smoke.md
+  ```
+
+- Go-live HTTP smoke JSON and Markdown:
+
+  ```bash
+  artifacts/go_live_smoke.json
+  artifacts/go_live_smoke.md
   ```
 
 - Git commit SHA and deployment timestamp.

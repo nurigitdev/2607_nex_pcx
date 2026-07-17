@@ -258,6 +258,16 @@ Generate a backup and restore smoke manifest:
   --pretty
 ```
 
+Run the read-only go-live HTTP smoke:
+
+```bash
+./.venv/bin/python scripts/run_go_live_smoke.py \
+  --app-url http://127.0.0.1:8000 \
+  --json-output artifacts/go_live_smoke.json \
+  --markdown-output artifacts/go_live_smoke.md \
+  --pretty
+```
+
 Validate the startup checklist from the command line:
 
 ```bash
