@@ -303,6 +303,10 @@ from app.core.file_metadata import (
     get_file_metadata,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
+from app.core.go_live_readiness import (
+    build_go_live_readiness_report,
+    go_live_readiness_report_payload,
+)
 from app.core.golden_batch_metric_snapshots import (
     GoldenBatchMetricSnapshotComparison,
     GoldenBatchMetricSnapshotDetail,
@@ -7415,6 +7419,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content={"failure_detail": dashboard_failure_detail_payload(detail)})
 
+    @app.get("/api/admin/go-live-readiness")
+    def api_get_go_live_readiness() -> JSONResponse:
+        report = build_go_live_readiness_report(settings)
+        return JSONResponse(
+            content={"go_live_readiness": go_live_readiness_report_payload(report)}
+        )
+
     @app.get("/api/chunk-policies")
     def api_list_chunk_policies() -> JSONResponse:
         if not settings.database_url:
@@ -12424,6 +12435,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 evaluation_dashboard=evaluation_dashboard,
                 embedding_backlog=embedding_backlog,
                 error_message=error_message,
+            ),
+        )
+
+    @app.get("/admin/go-live-readiness", response_class=HTMLResponse)
+    def go_live_readiness_page(request: Request) -> HTMLResponse:
+        report = build_go_live_readiness_report(settings)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "go_live_readiness.html",
+            template_context(
+                request,
+                go_live_readiness=go_live_readiness_report_payload(report),
             ),
         )
 

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("go_live.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("go_live.subtitle") }}</p>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <div class="dashboard-last-updated">
+      <span class="metric-label">{{ t("go_live.checked_at") }}</span>
+      <strong>{{ go_live_readiness.checked_at_label }}</strong>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/go-live-readiness">{{ t("dashboard.refresh_now") }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/api/admin/go-live-readiness">{{ t("common.api") }}</a>
+  </div>
+</div>
+
+<section class="go-live-summary go-live-summary-{{ go_live_readiness.status }} metric-card bg-white p-3 mb-4" data-go-live-readiness>
+  <div class="dashboard-health-heading">
+    <div>
+      <div class="metric-label">{{ t("go_live.overall_status") }}</div>
+      <div class="dashboard-health-title">
+        <span class="badge go-live-status-badge go-live-status-{{ go_live_readiness.status }}">
+          {{ t("go_live.status_" ~ go_live_readiness.status) }}
+        </span>
+        <strong>{{ t("go_live.summary_" ~ go_live_readiness.status) }}</strong>
+      </div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="/">{{ t("nav.dashboard") }}</a>
+  </div>
+
+  <div class="go-live-count-grid mt-3">
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("go_live.passed") }}</span>
+      <strong>{{ go_live_readiness.passed_count }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("go_live.warning") }}</span>
+      <strong>{{ go_live_readiness.warning_count }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("go_live.failed") }}</span>
+      <strong>{{ go_live_readiness.failed_count }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("go_live.skipped") }}</span>
+      <strong>{{ go_live_readiness.skipped_count }}</strong>
+    </div>
+  </div>
+</section>
+
+<div class="go-live-section-stack">
+  {% for section in go_live_readiness.sections %}
+  <section class="metric-card bg-white p-0 overflow-hidden">
+    <div class="dashboard-panel-header p-3">
+      <div>
+        <h2 class="h5 mb-1">{{ t("go_live.section_" ~ section.code) }}</h2>
+        <div class="text-secondary">{{ t("go_live.section_" ~ section.code ~ "_help") }}</div>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        {% if section.failed_count %}
+        <span class="badge text-bg-danger">{{ t("go_live.failed") }} {{ section.failed_count }}</span>
+        {% endif %}
+        {% if section.warning_count %}
+        <span class="badge text-bg-warning">{{ t("go_live.warning") }} {{ section.warning_count }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 go-live-check-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t("go_live.check") }}</th>
+            <th scope="col">{{ t("go_live.status") }}</th>
+            <th scope="col">{{ t("go_live.detail") }}</th>
+            <th scope="col">{{ t("go_live.metadata") }}</th>
+            <th scope="col">{{ t("go_live.action") }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for check in section.checks %}
+          <tr>
+            <td>
+              <strong>{{ t("go_live.check_" ~ check.code) }}</strong>
+              <div class="small text-secondary">{{ t("go_live.check_" ~ check.code ~ "_help") }}</div>
+            </td>
+            <td>
+              <span class="badge go-live-check-badge go-live-check-{{ check.status }}">
+                {{ t("go_live.check_status_" ~ check.status) }}
+              </span>
+            </td>
+            <td class="text-break">{{ check.detail }}</td>
+            <td>
+              {% if check.metadata %}
+              <dl class="go-live-metadata mb-0">
+                {% for key, value in check.metadata.items() %}
+                <div>
+                  <dt>{{ key }}</dt>
+                  <dd>{{ value }}</dd>
+                </div>
+                {% endfor %}
+              </dl>
+              {% else %}
+              <span class="text-secondary">-</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if check.action_url %}
+              <a class="btn btn-outline-secondary btn-sm" href="{{ check.action_url }}">{{ t("go_live.open") }}</a>
+              {% else %}
+              <span class="text-secondary">-</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}
