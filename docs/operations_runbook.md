@@ -101,7 +101,20 @@ Recommended provider route base URLs for the current DGX development server:
    ./.venv/bin/python scripts/preflight_provider_routes.py
    ```
 
-9. Run the startup validation runner.
+9. Run the runtime configuration audit.
+
+   ```bash
+   ./.venv/bin/python scripts/audit_runtime_config.py \
+     --project-root /home/tprover/2607_nex_pcx \
+     --json-output artifacts/runtime_config_audit.json \
+     --markdown-output artifacts/runtime_config_audit.md \
+     --pretty
+   ```
+
+   Use `--strict` when warnings should fail the operator gate. Database URLs are
+   masked in both JSON and Markdown output.
+
+10. Run the startup validation runner.
 
    ```bash
    ./.venv/bin/python scripts/validate_operations_startup.py \
@@ -114,7 +127,7 @@ Recommended provider route base URLs for the current DGX development server:
    `--run-provider-preflight` for a dry operator check that does not create
    provider health or contract snapshots.
 
-10. Export the go-live evidence snapshot.
+11. Export the go-live evidence snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_go_live_evidence.py \
@@ -128,27 +141,27 @@ Recommended provider route base URLs for the current DGX development server:
    The JSON file is intended for automated review. The Markdown file is intended
    for an operator handoff note. Database credentials are masked in both files.
 
-11. Open the readiness screens.
+12. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-12. Start one or more pipeline workers.
+13. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py \
      --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-13. Start one or more embedding workers with route-aware provider selection.
+14. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-14. Confirm queues drain and new search data is visible.
+15. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -227,6 +240,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/shutdown_drain_check.json
   artifacts/shutdown_drain_check.md
+  ```
+
+- Runtime configuration audit JSON and Markdown:
+
+  ```bash
+  artifacts/runtime_config_audit.json
+  artifacts/runtime_config_audit.md
   ```
 
 - Git commit SHA and deployment timestamp.

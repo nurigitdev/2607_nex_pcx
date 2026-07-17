@@ -239,6 +239,15 @@ Generate app-host env/systemd startup templates:
   --pretty
 ```
 
+Audit runtime configuration before startup validation:
+
+```bash
+./.venv/bin/python scripts/audit_runtime_config.py \
+  --json-output artifacts/runtime_config_audit.json \
+  --markdown-output artifacts/runtime_config_audit.md \
+  --pretty
+```
+
 Validate the startup checklist from the command line:
 
 ```bash
