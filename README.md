@@ -248,6 +248,15 @@ Audit runtime configuration before startup validation:
   --pretty
 ```
 
+Verify operational retention settings and cleanup dry-run previews:
+
+```bash
+./.venv/bin/python scripts/verify_operational_retention.py \
+  --json-output artifacts/operational_retention_verification.json \
+  --markdown-output artifacts/operational_retention_verification.md \
+  --pretty
+```
+
 Generate a backup and restore smoke manifest:
 
 ```bash

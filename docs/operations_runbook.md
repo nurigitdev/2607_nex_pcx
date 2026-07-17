@@ -6,6 +6,8 @@ procedure in `docs/provider_operations_playbook.md`.
 App-host service templates are documented in `docs/service_process_startup.md`.
 Backup and restore rehearsal is documented in `docs/backup_restore_smoke.md`.
 HTTP go-live smoke checks are documented in `docs/go_live_smoke.md`.
+Operational retention verification is documented in
+`docs/operational_retention_cleanup.md`.
 
 ## Scope
 
@@ -143,7 +145,19 @@ Recommended provider route base URLs for the current DGX development server:
    The JSON file is intended for automated review. The Markdown file is intended
    for an operator handoff note. Database credentials are masked in both files.
 
-12. Generate the backup and restore smoke report.
+12. Verify operational retention and cleanup dry-run previews.
+
+   ```bash
+   ./.venv/bin/python scripts/verify_operational_retention.py \
+     --json-output artifacts/operational_retention_verification.json \
+     --markdown-output artifacts/operational_retention_verification.md \
+     --pretty
+   ```
+
+   Use `--strict` when retention warnings should fail the startup gate. The
+   runner does not delete database rows or artifact files.
+
+13. Generate the backup and restore smoke report.
 
    ```bash
    ./.venv/bin/python scripts/run_backup_restore_smoke.py \
@@ -156,7 +170,7 @@ Recommended provider route base URLs for the current DGX development server:
    Add `--restore-database-url` when an empty restore target is prepared. The
    runner blocks when the restore URL matches the source database URL.
 
-13. Run the HTTP go-live smoke runner.
+14. Run the HTTP go-live smoke runner.
 
    ```bash
    ./.venv/bin/python scripts/run_go_live_smoke.py \
@@ -166,27 +180,27 @@ Recommended provider route base URLs for the current DGX development server:
      --pretty
    ```
 
-14. Open the readiness screens.
+15. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-15. Start one or more pipeline workers.
+16. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py \
      --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-16. Start one or more embedding workers with route-aware provider selection.
+17. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-17. Confirm queues drain and new search data is visible.
+18. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -238,6 +252,8 @@ Recommended provider route base URLs for the current DGX development server:
 - Review recent operational failures on the dashboard.
 - Review stale embedding leases and retry failed embedding jobs when the cause
   has been fixed.
+- Run `scripts/verify_operational_retention.py` and review dry-run cleanup
+  counts before executing any destructive cleanup.
 - Confirm extraction artifact quality for newly uploaded file types.
 - Run a small known query from `/search` against all active profiles.
 
@@ -286,6 +302,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/go_live_smoke.json
   artifacts/go_live_smoke.md
+  ```
+
+- Operational retention verification JSON and Markdown:
+
+  ```bash
+  artifacts/operational_retention_verification.json
+  artifacts/operational_retention_verification.md
   ```
 
 - Git commit SHA and deployment timestamp.
