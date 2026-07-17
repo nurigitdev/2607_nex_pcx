@@ -142,21 +142,34 @@ Recommended provider route base URLs for the current DGX development server:
 ## Shutdown Checklist
 
 1. Pause scheduled ingestion, scheduled preflight, and manual worker starts.
-2. Let running workers finish their current batch when possible.
-3. Stop embedding workers before stopping remote embedding providers.
-4. Stop pipeline workers after current extraction/chunking jobs finish.
-5. Stop the main web application.
-6. Stop remote providers on the DGX host in this order:
+2. Run the shutdown drain check runner and save the evidence.
+
+   ```bash
+   ./.venv/bin/python scripts/check_shutdown_drain.py \
+     --json-output artifacts/shutdown_drain_check.json \
+     --markdown-output artifacts/shutdown_drain_check.md \
+     --pretty
+   ```
+
+   - `ready`: queues are drained and shutdown can proceed.
+   - `warning`: no running blockers exist, but queued/pending or retryable work remains.
+   - `blocked`: running, stale running, or exhausted failure signals must be handled first.
+
+3. Let running workers finish their current batch when possible.
+4. Stop embedding workers before stopping remote embedding providers.
+5. Stop pipeline workers after current extraction/chunking jobs finish.
+6. Stop the main web application.
+7. Stop remote providers on the DGX host in this order:
    - Qwen provider on port `9103`
    - BGE provider on port `9102`
    - KURE provider on port `9101`
-7. Capture final operator evidence:
+8. Capture final operator evidence:
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
    - `/admin/logs`
-8. Record any unfinished job IDs before maintenance begins.
+9. Record any unfinished job IDs before maintenance begins.
 
 ## Daily Operations Checklist
 
@@ -191,6 +204,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/go_live_evidence.json
   artifacts/go_live_evidence.md
+  ```
+
+- Shutdown drain check JSON and Markdown:
+
+  ```bash
+  artifacts/shutdown_drain_check.json
+  artifacts/shutdown_drain_check.md
   ```
 
 - Git commit SHA and deployment timestamp.

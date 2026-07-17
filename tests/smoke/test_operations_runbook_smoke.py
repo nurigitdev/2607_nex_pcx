@@ -10,6 +10,7 @@ def test_operations_runbook_page_loads_document_source(client) -> None:
     assert "Startup Checklist" in response.text
     assert "scripts/validate_operations_startup.py" in response.text
     assert "scripts/export_go_live_evidence.py" in response.text
+    assert "scripts/check_shutdown_drain.py" in response.text
     assert "Shutdown Checklist" in response.text
     assert 'href="/admin/operations-runbook"' in response.text
 

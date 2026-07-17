@@ -246,6 +246,15 @@ Export go-live evidence for operator handoff:
   --pretty
 ```
 
+Check queue drain status before planned shutdown:
+
+```bash
+./.venv/bin/python scripts/check_shutdown_drain.py \
+  --json-output artifacts/shutdown_drain_check.json \
+  --markdown-output artifacts/shutdown_drain_check.md \
+  --pretty
+```
+
 Runtime provider selection is controlled by:
 
 - `NEX_PCX_EMBEDDING_PROVIDER_MODE`: `mock` by default, or `remote`
