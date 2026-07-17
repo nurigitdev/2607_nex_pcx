@@ -8,6 +8,7 @@ def test_operations_runbook_page_loads_document_source(client) -> None:
     assert "docs/operations_runbook.md" in response.text
     assert "NeX_PCX Operations Runbook" in response.text
     assert "Startup Checklist" in response.text
+    assert "scripts/validate_operations_startup.py" in response.text
     assert "Shutdown Checklist" in response.text
     assert 'href="/admin/operations-runbook"' in response.text
 

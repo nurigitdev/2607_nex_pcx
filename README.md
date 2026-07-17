@@ -226,6 +226,15 @@ contract snapshot, sample set, and alert acknowledgement workflow. See
 shutdown, daily check, and recovery checklist that ties the application, workers,
 database, and remote providers together.
 
+Validate the startup checklist from the command line:
+
+```bash
+./.venv/bin/python scripts/validate_operations_startup.py \
+  --app-url http://127.0.0.1:8000 \
+  --run-provider-preflight \
+  --pretty
+```
+
 Runtime provider selection is controlled by:
 
 - `NEX_PCX_EMBEDDING_PROVIDER_MODE`: `mock` by default, or `remote`

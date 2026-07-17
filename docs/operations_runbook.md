@@ -86,26 +86,39 @@ Recommended provider route base URLs for the current DGX development server:
    ./.venv/bin/python scripts/preflight_provider_routes.py
    ```
 
-8. Open the readiness screens.
+8. Run the startup validation runner.
+
+   ```bash
+   ./.venv/bin/python scripts/validate_operations_startup.py \
+     --app-url http://127.0.0.1:8000 \
+     --run-provider-preflight \
+     --pretty
+   ```
+
+   Use `--strict` when warnings should fail the startup gate. Omit
+   `--run-provider-preflight` for a dry operator check that does not create
+   provider health or contract snapshots.
+
+9. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-9. Start one or more pipeline workers.
+10. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py --chunk-policy-names heading_512_64,heading_1000_200,heading_1500_200
    ```
 
-10. Start one or more embedding workers with route-aware provider selection.
+11. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-11. Confirm queues drain and new search data is visible.
+12. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
