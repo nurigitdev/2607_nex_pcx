@@ -12,6 +12,8 @@ Emergency recovery commands are indexed in
 `docs/emergency_recovery_commands.md`.
 Operator handoff bundles are documented in
 `docs/operator_handoff_bundle.md`.
+Release tag/version snapshots are documented in
+`docs/release_tag_version_snapshot.md`.
 
 ## Scope
 
@@ -208,27 +210,39 @@ Recommended provider route base URLs for the current DGX development server:
    `artifacts/operator_handoff/latest/handoff.md` before declaring go-live
    complete.
 
-17. Open the readiness screens.
+17. Export the release version snapshot.
+
+   ```bash
+   ./.venv/bin/python scripts/export_release_version_snapshot.py \
+     --json-output artifacts/release_version_snapshot.json \
+     --markdown-output artifacts/release_version_snapshot.md \
+     --pretty
+   ```
+
+   Review the generated tag commands. Create and push the annotated release tag
+   only after the worktree is clean and the deployed commit is confirmed.
+
+18. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-18. Start one or more pipeline workers.
+19. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py \
      --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-19. Start one or more embedding workers with route-aware provider selection.
+20. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-20. Confirm queues drain and new search data is visible.
+21. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -353,6 +367,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/operator_handoff/latest/manifest.json
   artifacts/operator_handoff/latest/handoff.md
+  ```
+
+- Release version snapshot JSON and Markdown:
+
+  ```bash
+  artifacts/release_version_snapshot.json
+  artifacts/release_version_snapshot.md
   ```
 
 - Git commit SHA and deployment timestamp.
