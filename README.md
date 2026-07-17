@@ -235,6 +235,17 @@ Validate the startup checklist from the command line:
   --pretty
 ```
 
+Export go-live evidence for operator handoff:
+
+```bash
+./.venv/bin/python scripts/export_go_live_evidence.py \
+  --app-url http://127.0.0.1:8000 \
+  --run-provider-preflight \
+  --json-output artifacts/go_live_evidence.json \
+  --markdown-output artifacts/go_live_evidence.md \
+  --pretty
+```
+
 Runtime provider selection is controlled by:
 
 - `NEX_PCX_EMBEDDING_PROVIDER_MODE`: `mock` by default, or `remote`

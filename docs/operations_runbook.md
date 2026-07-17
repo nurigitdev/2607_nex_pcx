@@ -99,26 +99,40 @@ Recommended provider route base URLs for the current DGX development server:
    `--run-provider-preflight` for a dry operator check that does not create
    provider health or contract snapshots.
 
-9. Open the readiness screens.
+9. Export the go-live evidence snapshot.
+
+   ```bash
+   ./.venv/bin/python scripts/export_go_live_evidence.py \
+     --app-url http://127.0.0.1:8000 \
+     --run-provider-preflight \
+     --json-output artifacts/go_live_evidence.json \
+     --markdown-output artifacts/go_live_evidence.md \
+     --pretty
+   ```
+
+   The JSON file is intended for automated review. The Markdown file is intended
+   for an operator handoff note. Database credentials are masked in both files.
+
+10. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-10. Start one or more pipeline workers.
+11. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py --chunk-policy-names heading_512_64,heading_1000_200,heading_1500_200
    ```
 
-11. Start one or more embedding workers with route-aware provider selection.
+12. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-12. Confirm queues drain and new search data is visible.
+13. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -171,6 +185,13 @@ Recommended provider route base URLs for the current DGX development server:
 7. Retry failed embedding jobs only after provider readiness is green.
 
 ## Evidence To Keep
+
+- Go-live evidence JSON and Markdown:
+
+  ```bash
+  artifacts/go_live_evidence.json
+  artifacts/go_live_evidence.md
+  ```
 
 - Git commit SHA and deployment timestamp.
 - Alembic head revision.
