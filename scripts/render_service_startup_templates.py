@@ -42,6 +42,14 @@ def main() -> int:
         default=list(DEFAULT_CHUNK_POLICY_NAMES),
     )
     parser.add_argument(
+        "--user-systemd",
+        action="store_true",
+        help=(
+            "Render user-level systemd units. User/group and system-only "
+            "hardening directives are omitted, and units install to default.target."
+        ),
+    )
+    parser.add_argument(
         "--write",
         action="store_true",
         help="Write env/systemd/readme files. Without this flag the command prints JSON only.",
@@ -64,6 +72,7 @@ def main() -> int:
         environment_name=args.environment_name,
         restart_seconds=args.restart_seconds,
         chunk_policy_names=tuple(args.chunk_policy_names),
+        user_systemd=args.user_systemd,
     )
     written_files = write_service_startup_templates(plan) if args.write else ()
     payload = {

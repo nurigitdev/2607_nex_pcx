@@ -45,6 +45,24 @@ deployment/systemd/nex-pcx-embedding-worker.service
 deployment/README.md
 ```
 
+If the application host does not allow system-level unit installation, render
+user-level systemd units instead:
+
+```bash
+./.venv/bin/python scripts/render_service_startup_templates.py \
+  --workdir /home/tprover/2607_nex_pcx \
+  --user nexpcx \
+  --output-dir deployment \
+  --user-systemd \
+  --write \
+  --pretty
+```
+
+Install user units with `systemctl --user daemon-reload` and
+`systemctl --user enable --now <unit>`. For reboot/logout-resilient operation,
+an administrator should enable lingering for the service account or install the
+reviewed units as system-level services.
+
 ## Required Review Before Install
 
 - Replace the placeholder `NEX_PCX_DATABASE_URL` with the production database URL
@@ -58,7 +76,8 @@ deployment/README.md
 
 1. Install the reviewed environment file.
 2. Install or copy the reviewed unit files to the host systemd directory.
-3. Run `systemctl daemon-reload`.
+3. Run `systemctl daemon-reload` for system units or
+   `systemctl --user daemon-reload` for user units.
 4. Start `nex-pcx-web.service`.
 5. Run `scripts/validate_operations_startup.py --app-url http://127.0.0.1:8000`.
 6. Start `nex-pcx-pipeline-worker.service`.

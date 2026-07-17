@@ -86,3 +86,34 @@ def test_main_writes_templates_and_json_output(monkeypatch, tmp_path) -> None:
     assert str(output_dir / "env" / "nex-pcx.env") in payload["written_files"]
     assert (output_dir / "systemd" / "nex-pcx-web.service").exists()
     assert (output_dir / "README.md").exists()
+
+
+def test_main_writes_user_systemd_templates(monkeypatch, tmp_path) -> None:
+    output_dir = tmp_path / "deployment"
+    json_output = tmp_path / "artifacts" / "service-startup-user.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "render_service_startup_templates.py",
+            "--workdir",
+            str(tmp_path / "repo"),
+            "--user",
+            "operator",
+            "--output-dir",
+            str(output_dir),
+            "--user-systemd",
+            "--write",
+            "--json-output",
+            str(json_output),
+        ],
+    )
+
+    exit_code = render_service_startup_templates.main()
+    payload = json.loads(json_output.read_text(encoding="utf-8"))
+    unit_text = (output_dir / "systemd" / "nex-pcx-web.service").read_text(encoding="utf-8")
+
+    assert exit_code == 0
+    assert payload["user_systemd"] is True
+    assert "User=" not in unit_text
+    assert "WantedBy=default.target" in unit_text

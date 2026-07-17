@@ -34,6 +34,7 @@ def test_build_plan_contains_web_and_worker_services(tmp_path) -> None:
     assert plan.services[1].restart == "always"
     assert "--port 8080" in plan.services[0].shell_command
     assert "--chunk-policy-names small large" in plan.services[1].shell_command
+    assert payload["user_systemd"] is False
     assert payload["environment"]["NEX_PCX_DATABASE_URL"] == "***"
 
 
@@ -55,6 +56,27 @@ def test_render_env_and_systemd_templates_include_expected_controls(tmp_path) ->
     assert "Restart=on-failure" in unit_text
     assert "PrivateTmp=true" in unit_text
     assert "nex-pcx-web.service" in readme
+
+
+def test_render_user_systemd_templates_omit_system_only_controls(tmp_path) -> None:
+    plan = build_service_startup_template_plan(
+        workdir=str(tmp_path / "repo"),
+        user="svc",
+        output_dir=str(tmp_path / "deployment"),
+        user_systemd=True,
+    )
+
+    unit_text = render_systemd_unit(plan, plan.services[0])
+    readme = render_operator_readme(plan)
+
+    assert "User=" not in unit_text
+    assert "Group=" not in unit_text
+    assert "After=network-online.target" not in unit_text
+    assert "NoNewPrivileges=true" not in unit_text
+    assert "PrivateTmp=true" not in unit_text
+    assert "WantedBy=default.target" in unit_text
+    assert "systemctl --user daemon-reload" in readme
+    assert "Systemd scope: `user`" in readme
 
 
 def test_write_service_startup_templates_creates_env_units_and_readme(tmp_path) -> None:

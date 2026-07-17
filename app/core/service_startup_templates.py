@@ -45,6 +45,7 @@ class ServiceStartupTemplatePlan:
     env_file: str
     systemd_dir: str
     log_dir: str
+    user_systemd: bool
     environment: dict[str, str]
     services: tuple[ServiceTemplate, ...]
 
@@ -64,6 +65,7 @@ def build_service_startup_template_plan(
     environment_name: str = "production",
     restart_seconds: int = DEFAULT_RESTART_SECONDS,
     chunk_policy_names: tuple[str, ...] = DEFAULT_CHUNK_POLICY_NAMES,
+    user_systemd: bool = False,
 ) -> ServiceStartupTemplatePlan:
     selected_workdir = _normalize_path(workdir, name="workdir")
     selected_output_dir = _normalize_path(
@@ -131,9 +133,7 @@ def build_service_startup_template_plan(
             ),
             restart="always",
             restart_seconds=selected_restart_seconds,
-            unit_file=str(
-                Path(systemd_dir) / f"{DEFAULT_PIPELINE_WORKER_SERVICE_NAME}.service"
-            ),
+            unit_file=str(Path(systemd_dir) / f"{DEFAULT_PIPELINE_WORKER_SERVICE_NAME}.service"),
         ),
         ServiceTemplate(
             service_name=DEFAULT_EMBEDDING_WORKER_SERVICE_NAME,
@@ -149,9 +149,7 @@ def build_service_startup_template_plan(
             ),
             restart="always",
             restart_seconds=selected_restart_seconds,
-            unit_file=str(
-                Path(systemd_dir) / f"{DEFAULT_EMBEDDING_WORKER_SERVICE_NAME}.service"
-            ),
+            unit_file=str(Path(systemd_dir) / f"{DEFAULT_EMBEDDING_WORKER_SERVICE_NAME}.service"),
         ),
     )
     return ServiceStartupTemplatePlan(
@@ -162,6 +160,7 @@ def build_service_startup_template_plan(
         env_file=env_file,
         systemd_dir=systemd_dir,
         log_dir=log_dir,
+        user_systemd=user_systemd,
         environment=environment,
         services=services,
     )
@@ -178,28 +177,54 @@ def render_env_file(plan: ServiceStartupTemplatePlan) -> str:
 
 
 def render_systemd_unit(plan: ServiceStartupTemplatePlan, service: ServiceTemplate) -> str:
+    unit_lines = [
+        "[Unit]",
+        f"Description={service.description}",
+    ]
+    if not plan.user_systemd:
+        unit_lines.extend(
+            [
+                "After=network-online.target postgresql.service",
+                "Wants=network-online.target",
+            ]
+        )
+    service_lines = [
+        "[Service]",
+        "Type=simple",
+    ]
+    if not plan.user_systemd:
+        service_lines.extend(
+            [
+                f"User={plan.user}",
+                f"Group={plan.group}",
+            ]
+        )
+    service_lines.extend(
+        [
+            f"WorkingDirectory={plan.workdir}",
+            f"EnvironmentFile={plan.env_file}",
+            f"ExecStart={service.shell_command}",
+            f"Restart={service.restart}",
+            f"RestartSec={service.restart_seconds}",
+            "KillSignal=SIGTERM",
+            "TimeoutStopSec=60",
+        ]
+    )
+    if not plan.user_systemd:
+        service_lines.extend(
+            [
+                "NoNewPrivileges=true",
+                "PrivateTmp=true",
+            ]
+        )
+    install_target = "default.target" if plan.user_systemd else "multi-user.target"
     return (
-        "[Unit]\n"
-        f"Description={service.description}\n"
-        "After=network-online.target postgresql.service\n"
-        "Wants=network-online.target\n"
-        "\n"
-        "[Service]\n"
-        "Type=simple\n"
-        f"User={plan.user}\n"
-        f"Group={plan.group}\n"
-        f"WorkingDirectory={plan.workdir}\n"
-        f"EnvironmentFile={plan.env_file}\n"
-        f"ExecStart={service.shell_command}\n"
-        f"Restart={service.restart}\n"
-        f"RestartSec={service.restart_seconds}\n"
-        "KillSignal=SIGTERM\n"
-        "TimeoutStopSec=60\n"
-        "NoNewPrivileges=true\n"
-        "PrivateTmp=true\n"
-        "\n"
-        "[Install]\n"
-        "WantedBy=multi-user.target\n"
+        "\n".join(unit_lines)
+        + "\n\n"
+        + "\n".join(service_lines)
+        + "\n\n"
+        + "[Install]\n"
+        + f"WantedBy={install_target}\n"
     )
 
 
@@ -214,6 +239,7 @@ def render_operator_readme(plan: ServiceStartupTemplatePlan) -> str:
         f"- Environment file: `{plan.env_file}`",
         f"- Systemd directory: `{plan.systemd_dir}`",
         f"- Suggested log directory: `{plan.log_dir}`",
+        f"- Systemd scope: `{'user' if plan.user_systemd else 'system'}`",
         "",
         "## Services",
         "",
@@ -234,7 +260,8 @@ def render_operator_readme(plan: ServiceStartupTemplatePlan) -> str:
             "",
             "1. Replace placeholder values in the environment file.",
             "2. Copy unit files into the systemd unit directory used by the host.",
-            "3. Run `systemctl daemon-reload`.",
+            "3. Run `systemctl --user daemon-reload` for user units or "
+            "`systemctl daemon-reload` for system units.",
             "4. Start the web service first, then pipeline and embedding workers.",
             "5. Run `scripts/validate_operations_startup.py --strict` after start.",
             "",
@@ -278,8 +305,7 @@ def service_startup_template_plan_payload(
         ],
         "env_preview": render_env_file(plan),
         "systemd_previews": {
-            service.unit_name: render_systemd_unit(plan, service)
-            for service in plan.services
+            service.unit_name: render_systemd_unit(plan, service) for service in plan.services
         },
         "operator_readme_preview": render_operator_readme(plan),
     }

@@ -65,6 +65,8 @@ Recommended provider route base URLs for the current DGX development server:
 
    Review `deployment/env/nex-pcx.env` and the generated systemd units before
    installing them. Keep environment files with real credentials out of git.
+   Use `--user-systemd` when the app host must run units under
+   `systemctl --user` instead of the system unit directory.
 
 2. Move to the application directory and activate the virtual environment.
 
