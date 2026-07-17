@@ -8,6 +8,8 @@ Backup and restore rehearsal is documented in `docs/backup_restore_smoke.md`.
 HTTP go-live smoke checks are documented in `docs/go_live_smoke.md`.
 Operational retention verification is documented in
 `docs/operational_retention_cleanup.md`.
+Emergency recovery commands are indexed in
+`docs/emergency_recovery_commands.md`.
 
 ## Scope
 
@@ -180,27 +182,39 @@ Recommended provider route base URLs for the current DGX development server:
      --pretty
    ```
 
-15. Open the readiness screens.
+15. Generate the emergency recovery command index.
+
+   ```bash
+   ./.venv/bin/python scripts/render_emergency_recovery_index.py \
+     --json-output artifacts/emergency_recovery_index.json \
+     --markdown-output artifacts/emergency_recovery_index.md \
+     --pretty
+   ```
+
+   Keep this index near the operator during go-live so incident recovery
+   commands are available without searching through the full runbook.
+
+16. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-16. Start one or more pipeline workers.
+17. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py \
      --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-17. Start one or more embedding workers with route-aware provider selection.
+18. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-18. Confirm queues drain and new search data is visible.
+19. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -266,6 +280,8 @@ Recommended provider route base URLs for the current DGX development server:
 5. Reopen `/admin/go-live-readiness`.
 6. Recover stale leases before retrying failed jobs.
 7. Retry failed embedding jobs only after provider readiness is green.
+8. Use `artifacts/emergency_recovery_index.md` for the exact command sequence
+   and stop conditions for the active incident type.
 
 ## Evidence To Keep
 
@@ -302,6 +318,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/go_live_smoke.json
   artifacts/go_live_smoke.md
+  ```
+
+- Emergency recovery index JSON and Markdown:
+
+  ```bash
+  artifacts/emergency_recovery_index.json
+  artifacts/emergency_recovery_index.md
   ```
 
 - Operational retention verification JSON and Markdown:
