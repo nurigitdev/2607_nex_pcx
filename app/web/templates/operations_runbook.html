@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4" data-operations-runbook-page>
+  <div>
+    <h1 class="h3 mb-1">{{ t("operations_runbook.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("operations_runbook.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="/admin/go-live-readiness">{{ t("operations_runbook.back_to_readiness") }}</a>
+    <a class="btn btn-outline-secondary" href="/admin/embedding-provider-routes/playbook">{{ t("operations_runbook.provider_playbook") }}</a>
+  </div>
+</div>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("operations_runbook.quick_check") }}</h2>
+      <div class="text-secondary">{{ t("operations_runbook.quick_check_help") }}</div>
+    </div>
+    <span class="badge text-bg-light border">{{ runbook_source }}</span>
+  </div>
+  <div class="document-detail-grid p-3 border-top">
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("operations_runbook.startup") }}</div>
+      <p class="mb-3 text-secondary">{{ t("operations_runbook.startup_help") }}</p>
+      <a class="btn btn-sm btn-outline-primary" href="/admin/go-live-readiness">{{ t("operations_runbook.open_go_live") }}</a>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("operations_runbook.provider_preflight") }}</div>
+      <p class="mb-3 text-secondary">{{ t("operations_runbook.provider_preflight_help") }}</p>
+      <a class="btn btn-sm btn-outline-primary" href="/admin/embedding-provider-routes">{{ t("operations_runbook.open_routes") }}</a>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("operations_runbook.worker_monitors") }}</div>
+      <p class="mb-3 text-secondary">{{ t("operations_runbook.worker_monitors_help") }}</p>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-sm btn-outline-primary" href="/admin/jobs">{{ t("nav.jobs") }}</a>
+        <a class="btn btn-sm btn-outline-primary" href="/admin/embedding-jobs">{{ t("nav.embeddings") }}</a>
+      </div>
+    </div>
+    <div class="bg-white p-3 border rounded-2">
+      <div class="metric-label">{{ t("operations_runbook.shutdown") }}</div>
+      <p class="mb-3 text-secondary">{{ t("operations_runbook.shutdown_help") }}</p>
+      <a class="btn btn-sm btn-outline-primary" href="/admin/logs">{{ t("operations_runbook.open_logs") }}</a>
+    </div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("operations_runbook.source") }}</h2>
+      <div class="text-secondary">{{ t("operations_runbook.source_help") }}</div>
+    </div>
+  </div>
+  <div class="p-3 border-top">
+    <pre class="provider-playbook-source mb-0">{{ runbook_markdown }}</pre>
+  </div>
+</section>
+{% endblock %}

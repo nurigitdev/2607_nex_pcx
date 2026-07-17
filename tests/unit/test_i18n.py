@@ -9,6 +9,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
 
     assert korean("nav.dashboard") == "대시보드"
     assert english("nav.dashboard") == "Dashboard"
+    assert korean("nav.operations_runbook") == "운영 Runbook"
+    assert english("operations_runbook.title") == "Operations Runbook"
     assert korean("nav.permissions") == "권한"
     assert english("permissions.title") == "Permission Simulation"
     assert korean("upload_permissions.fieldset") == "권한 Metadata"

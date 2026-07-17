@@ -221,7 +221,10 @@ stable request/response contract. See `docs/embedding_provider_architecture.md` 
 initial provider boundary and metadata requirements,
 `docs/gpu_embedding_provider_deployment.md` for the deployment checklist, and
 `docs/provider_operations_playbook.md` for the provider route preflight, readiness,
-contract snapshot, sample set, and alert acknowledgement workflow.
+contract snapshot, sample set, and alert acknowledgement workflow. See
+`docs/operations_runbook.md` or `/admin/operations-runbook` for the startup,
+shutdown, daily check, and recovery checklist that ties the application, workers,
+database, and remote providers together.
 
 Runtime provider selection is controlled by:
 

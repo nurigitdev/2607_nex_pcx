@@ -7,6 +7,7 @@
   "nav": {
     "dashboard": "대시보드",
     "go_live_readiness": "운영 준비도",
+    "operations_runbook": "운영 Runbook",
     "dashboard_settings": "Dashboard 설정",
     "upload": "업로드",
     "documents": "문서",
@@ -36,6 +37,27 @@
     "inactive": "비활성",
     "yes": "예",
     "no": "아니오"
+  },
+  "operations_runbook": {
+    "title": "운영 Runbook",
+    "subtitle": "시동, 정지, 일일 점검, 장애 초동 대응 절차를 한 화면에서 확인합니다.",
+    "back_to_readiness": "운영 준비도",
+    "provider_playbook": "Provider Playbook",
+    "quick_check": "운영 체크리스트",
+    "quick_check_help": "운영자가 자주 사용하는 시동, provider 점검, worker 모니터, 정지 동선입니다.",
+    "startup": "시동 절차",
+    "startup_help": "환경 변수, 마이그레이션, 앱 기동, readiness 확인 순서입니다.",
+    "provider_preflight": "Provider Preflight",
+    "provider_preflight_help": "Remote embedding provider route readiness를 확인하고 snapshot을 남깁니다.",
+    "worker_monitors": "Worker 모니터",
+    "worker_monitors_help": "Pipeline과 embedding queue 상태를 확인합니다.",
+    "shutdown": "정지 절차",
+    "shutdown_help": "Worker, 앱, provider를 순서대로 정지하고 최종 상태를 기록합니다.",
+    "open_go_live": "준비도 열기",
+    "open_routes": "Route 열기",
+    "open_logs": "로그 열기",
+    "source": "Runbook 원문",
+    "source_help": "아래 내용은 docs/operations_runbook.md에서 직접 불러옵니다."
   },
   "ingestion_artifacts": {
     "title": "추출 Artifact",

@@ -529,6 +529,7 @@ from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=BASE_DIR / "web" / "templates")
 PROVIDER_OPERATIONS_PLAYBOOK_PATH = BASE_DIR.parent / "docs" / "provider_operations_playbook.md"
+OPERATIONS_RUNBOOK_PATH = BASE_DIR.parent / "docs" / "operations_runbook.md"
 UPLOAD_FILE_FORM = File(...)
 DOCUMENT_GROUP_FORM = Form("default")
 SECURITY_LEVEL_FORM = Form("internal")
@@ -2803,6 +2804,10 @@ def embedding_provider_route_operations_status(
 
 def read_provider_operations_playbook_markdown() -> str:
     return PROVIDER_OPERATIONS_PLAYBOOK_PATH.read_text(encoding="utf-8")
+
+
+def read_operations_runbook_markdown() -> str:
+    return OPERATIONS_RUNBOOK_PATH.read_text(encoding="utf-8")
 
 
 def embedding_provider_preflight_run_payload(
@@ -12447,6 +12452,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             template_context(
                 request,
                 go_live_readiness=go_live_readiness_report_payload(report),
+            ),
+        )
+
+    @app.get("/admin/operations-runbook", response_class=HTMLResponse)
+    def operations_runbook_page(request: Request) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request,
+            "operations_runbook.html",
+            template_context(
+                request,
+                runbook_markdown=read_operations_runbook_markdown(),
+                runbook_source="docs/operations_runbook.md",
             ),
         )
 

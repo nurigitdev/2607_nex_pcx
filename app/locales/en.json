@@ -7,6 +7,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "go_live_readiness": "Go-Live Readiness",
+    "operations_runbook": "Operations Runbook",
     "dashboard_settings": "Dashboard Settings",
     "upload": "Upload",
     "documents": "Documents",
@@ -36,6 +37,27 @@
     "inactive": "Inactive",
     "yes": "Yes",
     "no": "No"
+  },
+  "operations_runbook": {
+    "title": "Operations Runbook",
+    "subtitle": "Startup, shutdown, daily checks, and first-response recovery procedure.",
+    "back_to_readiness": "Go-Live Readiness",
+    "provider_playbook": "Provider Playbook",
+    "quick_check": "Operations Checklist",
+    "quick_check_help": "Common operator paths for startup, provider checks, worker monitors, and shutdown.",
+    "startup": "Startup Checklist",
+    "startup_help": "Environment, migration, app launch, and readiness validation sequence.",
+    "provider_preflight": "Provider Preflight",
+    "provider_preflight_help": "Confirm remote embedding provider route readiness and persist snapshots.",
+    "worker_monitors": "Worker Monitors",
+    "worker_monitors_help": "Review pipeline and embedding queue state.",
+    "shutdown": "Shutdown Checklist",
+    "shutdown_help": "Stop workers, app, and providers in order, then capture final state.",
+    "open_go_live": "Open Readiness",
+    "open_routes": "Open Routes",
+    "open_logs": "Open Logs",
+    "source": "Source Runbook",
+    "source_help": "The content below is loaded directly from docs/operations_runbook.md."
   },
   "ingestion_artifacts": {
     "title": "Ingestion Artifacts",
