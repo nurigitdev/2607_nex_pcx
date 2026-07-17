@@ -193,11 +193,36 @@
       <h2 class="h5 mb-1">{{ t("search_compare.readiness_title") }}</h2>
       <p class="text-secondary mb-0">{{ t("search_compare.readiness_subtitle") }}</p>
     </div>
-    <div
-      class="search-readiness-summary"
-      id="search-readiness-summary"
-      aria-live="polite"
-    ></div>
+    <div class="search-readiness-control-panel">
+      <div
+        class="search-readiness-summary"
+        id="search-readiness-summary"
+        aria-live="polite"
+      ></div>
+      <div class="search-readiness-refresh-controls">
+        <button
+          class="btn btn-sm btn-outline-secondary"
+          id="search-readiness-refresh-now"
+          type="button"
+          {% if not database_configured %}disabled{% endif %}
+        >
+          {{ t("search_compare.readiness_refresh_now") }}
+        </button>
+        <button
+          class="btn btn-sm btn-outline-secondary"
+          id="search-readiness-auto-refresh-toggle"
+          type="button"
+          {% if not database_configured %}disabled{% endif %}
+        >
+          {{ t("search_compare.readiness_auto_refresh_start") }}
+        </button>
+      </div>
+      <div
+        class="search-readiness-refresh-status"
+        id="search-readiness-refresh-status"
+        aria-live="polite"
+      ></div>
+    </div>
   </div>
   <div
     class="search-readiness-grid"
@@ -403,6 +428,11 @@
   const readinessPanel = document.getElementById("search-readiness-panel");
   const readinessSummary = document.getElementById("search-readiness-summary");
   const readinessGrid = document.getElementById("search-readiness-grid");
+  const readinessRefreshNow = document.getElementById("search-readiness-refresh-now");
+  const readinessAutoRefreshToggle = document.getElementById(
+    "search-readiness-auto-refresh-toggle",
+  );
+  const readinessRefreshStatus = document.getElementById("search-readiness-refresh-status");
   const permissionSummaryPanel = document.getElementById("search-permission-summary");
   const permissionSummaryGrid = document.getElementById("search-permission-summary-grid");
   const matrixForm = document.getElementById("permission-matrix-form");
@@ -421,6 +451,11 @@
   const canLoadFeedbackSummary = {{ "true" if database_configured else "false" }};
   const matrixLimit = 12;
   const policyCompareLimit = 8;
+  const readinessAutoRefreshIntervalMs = 5000;
+  const readinessAutoRefreshMaxTicks = 6;
+  let readinessAutoRefreshTimer = null;
+  let readinessAutoRefreshRemaining = 0;
+  let readinessAutoRefreshRunning = false;
   const feedbackOptions = [
     {label: "Correct", value: "correct"},
     {label: "Partial", value: "partial"},
@@ -509,6 +544,16 @@
     reconcileRunning: "{{ t('search_compare.readiness_reconcile_running') }}",
     reconcileComplete: "{{ t('search_compare.readiness_reconcile_complete') }}",
     reconcileFailed: "{{ t('search_compare.readiness_reconcile_failed') }}",
+    refreshNow: "{{ t('search_compare.readiness_refresh_now') }}",
+    refreshChecking: "{{ t('search_compare.readiness_refresh_checking') }}",
+    refreshComplete: "{{ t('search_compare.readiness_refresh_complete') }}",
+    autoRefreshStart: "{{ t('search_compare.readiness_auto_refresh_start') }}",
+    autoRefreshStop: "{{ t('search_compare.readiness_auto_refresh_stop') }}",
+    autoRefreshStarted: "{{ t('search_compare.readiness_auto_refresh_started') }}",
+    autoRefreshProgress: "{{ t('search_compare.readiness_auto_refresh_progress') }}",
+    autoRefreshReady: "{{ t('search_compare.readiness_auto_refresh_ready') }}",
+    autoRefreshFinished: "{{ t('search_compare.readiness_auto_refresh_finished') }}",
+    autoRefreshStopped: "{{ t('search_compare.readiness_auto_refresh_stopped') }}",
   };
   const sourceContextLabels = {
     show: "{{ t('search_compare.show_source_context') }}",
@@ -671,6 +716,81 @@
     return "attention";
   };
 
+  const setReadinessRefreshStatus = (message) => {
+    if (readinessRefreshStatus) {
+      readinessRefreshStatus.textContent = message || "";
+    }
+  };
+
+  const updateReadinessAutoRefreshButton = () => {
+    if (!readinessAutoRefreshToggle) {
+      return;
+    }
+    readinessAutoRefreshToggle.textContent = readinessAutoRefreshRunning
+      ? readinessLabels.autoRefreshStop
+      : readinessLabels.autoRefreshStart;
+  };
+
+  const stopReadinessAutoRefresh = (message = "") => {
+    if (readinessAutoRefreshTimer) {
+      clearTimeout(readinessAutoRefreshTimer);
+      readinessAutoRefreshTimer = null;
+    }
+    readinessAutoRefreshRunning = false;
+    readinessAutoRefreshRemaining = 0;
+    updateReadinessAutoRefreshButton();
+    if (message) {
+      setReadinessRefreshStatus(message);
+    }
+  };
+
+  const readinessAutoRefreshMessage = () =>
+    readinessLabels.autoRefreshProgress.replace(
+      "{remaining_count}",
+      formatInteger(readinessAutoRefreshRemaining),
+    );
+
+  const runReadinessAutoRefreshTick = async () => {
+    if (!readinessAutoRefreshRunning) {
+      return;
+    }
+    setReadinessRefreshStatus(readinessLabels.refreshChecking);
+    const payload = await loadReadiness({
+      loadingText: readinessLabels.refreshChecking,
+      preserveContent: true,
+      updateRefreshStatus: false,
+    });
+    if (!readinessAutoRefreshRunning) {
+      return;
+    }
+    if (payload?.ready) {
+      stopReadinessAutoRefresh(readinessLabels.autoRefreshReady);
+      return;
+    }
+    readinessAutoRefreshRemaining -= 1;
+    if (readinessAutoRefreshRemaining <= 0) {
+      stopReadinessAutoRefresh(readinessLabels.autoRefreshFinished);
+      return;
+    }
+    setReadinessRefreshStatus(readinessAutoRefreshMessage());
+    readinessAutoRefreshTimer = setTimeout(
+      runReadinessAutoRefreshTick,
+      readinessAutoRefreshIntervalMs,
+    );
+  };
+
+  const startReadinessAutoRefresh = (message = readinessLabels.autoRefreshStarted) => {
+    stopReadinessAutoRefresh();
+    readinessAutoRefreshRunning = true;
+    readinessAutoRefreshRemaining = readinessAutoRefreshMaxTicks;
+    updateReadinessAutoRefreshButton();
+    setReadinessRefreshStatus(message);
+    readinessAutoRefreshTimer = setTimeout(
+      runReadinessAutoRefreshTick,
+      readinessAutoRefreshIntervalMs,
+    );
+  };
+
   const canReconcileReadinessProfile = (profile) =>
     Boolean(profile.chunk_policy_name)
     && !profile.ready
@@ -705,7 +825,11 @@
         .replace("{retried_count}", formatInteger(body.retried_job_count));
       statusEl.textContent = message;
       readinessSummary.textContent = message;
-      await loadReadiness({loadingText: readinessLabels.reconcileRunning});
+      await loadReadiness({
+        loadingText: readinessLabels.reconcileRunning,
+        updateRefreshStatus: false,
+      });
+      startReadinessAutoRefresh(readinessLabels.autoRefreshStarted);
     } catch (error) {
       const message = error instanceof Error ? error.message : readinessLabels.reconcileFailed;
       statusEl.textContent = message;
@@ -829,7 +953,9 @@
     }
     readinessPanel.hidden = false;
     readinessSummary.textContent = options.loadingText || "Checking";
-    readinessGrid.replaceChildren();
+    if (!options.preserveContent) {
+      readinessGrid.replaceChildren();
+    }
     try {
       const response = await fetch("/api/search/compare/readiness", {
         method: "POST",
@@ -840,13 +966,22 @@
       if (!response.ok) {
         readinessSummary.textContent =
           body.detail || readinessLabels.unavailable;
+        if (options.updateRefreshStatus !== false) {
+          setReadinessRefreshStatus(readinessLabels.unavailable);
+        }
         return null;
       }
       renderReadiness(body);
+      if (options.updateRefreshStatus !== false) {
+        setReadinessRefreshStatus(readinessLabels.refreshComplete);
+      }
       return body;
     } catch (error) {
       readinessSummary.textContent =
         error instanceof Error ? error.message : readinessLabels.unavailable;
+      if (options.updateRefreshStatus !== false) {
+        setReadinessRefreshStatus(readinessLabels.unavailable);
+      }
       return null;
     }
   };
@@ -1926,10 +2061,26 @@
     runPolicyCompare();
   });
 
+  readinessRefreshNow?.addEventListener("click", async () => {
+    stopReadinessAutoRefresh();
+    setReadinessRefreshStatus(readinessLabels.refreshChecking);
+    await loadReadiness({loadingText: readinessLabels.refreshChecking});
+  });
+
+  readinessAutoRefreshToggle?.addEventListener("click", () => {
+    if (readinessAutoRefreshRunning) {
+      stopReadinessAutoRefresh(readinessLabels.autoRefreshStopped);
+      return;
+    }
+    startReadinessAutoRefresh(readinessLabels.autoRefreshStarted);
+  });
+
   form.addEventListener("change", () => {
+    stopReadinessAutoRefresh();
     loadReadiness();
   });
   policyCompareForm?.addEventListener("change", () => {
+    stopReadinessAutoRefresh();
     const chunkPolicyNames = selectedPolicyCompareNames();
     if (chunkPolicyNames.length >= 2) {
       loadReadiness({chunkPolicyNames});

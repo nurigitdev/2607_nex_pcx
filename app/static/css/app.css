@@ -3325,6 +3325,29 @@ main.container-fluid {
   font-weight: 700;
 }
 
+.search-readiness-control-panel {
+  align-items: flex-end;
+  display: grid;
+  gap: 0.4rem;
+  justify-items: end;
+  min-width: min(100%, 24rem);
+}
+
+.search-readiness-refresh-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.search-readiness-refresh-status {
+  color: var(--pcx-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  min-height: 1rem;
+  text-align: right;
+}
+
 .search-readiness-grid {
   display: grid;
   gap: 0.75rem;

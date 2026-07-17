@@ -63,9 +63,14 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert "/api/search/compare/chunk-policies" in response.text
     assert "heading_1000_200" in response.text
     assert 'id="search-readiness-panel"' in response.text
+    assert 'id="search-readiness-refresh-now"' in response.text
+    assert 'id="search-readiness-auto-refresh-toggle"' in response.text
+    assert 'id="search-readiness-refresh-status"' in response.text
     assert "검색 준비 상태" in response.text
     assert "Coverage 상세" in response.text
     assert "Coverage 보정" in response.text
+    assert "자동 갱신" in response.text
+    assert "준비 상태 갱신 중" in response.text
     assert "/api/search/compare/readiness" in response.text
     assert "/api/search/compare/readiness/reconcile-coverage" in response.text
 
