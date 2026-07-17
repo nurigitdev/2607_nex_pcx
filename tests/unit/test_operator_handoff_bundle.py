@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.core.operator_handoff_bundle import (
+    DEFAULT_HANDOFF_EVIDENCE_PATHS,
     export_operator_handoff_bundle,
     operator_handoff_bundle_payload,
     payload_to_json,
@@ -79,3 +80,14 @@ def test_export_operator_handoff_bundle_no_copy_keeps_checksum_without_inclusion
     assert payload["files"][0]["exists"] is True
     assert payload["files"][0]["included"] is False
     assert payload["files"][0]["copied_path"] is None
+
+
+def test_default_handoff_evidence_paths_include_production_evidence_docs() -> None:
+    assert "docs/production_database_revision_alignment.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
+    assert "docs/production_provider_route_settings.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
+    assert "docs/production_remote_provider_startup_evidence.md" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)
+    assert "docs/production_remote_provider_user_systemd_evidence.md" in (
+        DEFAULT_HANDOFF_EVIDENCE_PATHS
+    )
+    assert "docs/production_app_host_startup_evidence.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
+    assert "docs/production_operator_handoff_bundle_evidence.md" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)

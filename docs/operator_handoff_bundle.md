@@ -29,6 +29,12 @@ artifacts/operator_handoff/latest/evidence/
 
 ## Default Evidence List
 
+- `docs/production_database_revision_alignment.md`
+- `docs/production_provider_route_settings.md`
+- `docs/production_remote_provider_startup_evidence.md`
+- `docs/production_remote_provider_user_systemd_evidence.md`
+- `docs/production_app_host_startup_evidence.md`
+- `docs/production_operator_handoff_bundle_evidence.md`
 - `artifacts/go_live_evidence.json`
 - `artifacts/go_live_evidence.md`
 - `artifacts/shutdown_drain_check.json`
