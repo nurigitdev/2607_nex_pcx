@@ -4,6 +4,7 @@ This runbook is the operator-facing checklist for starting, validating, stopping
 and recovering a NeX_PCX environment. It complements the provider-specific
 procedure in `docs/provider_operations_playbook.md`.
 App-host service templates are documented in `docs/service_process_startup.md`.
+Backup and restore rehearsal is documented in `docs/backup_restore_smoke.md`.
 
 ## Scope
 
@@ -141,27 +142,40 @@ Recommended provider route base URLs for the current DGX development server:
    The JSON file is intended for automated review. The Markdown file is intended
    for an operator handoff note. Database credentials are masked in both files.
 
-12. Open the readiness screens.
+12. Generate the backup and restore smoke report.
+
+   ```bash
+   ./.venv/bin/python scripts/run_backup_restore_smoke.py \
+     --backup-dir artifacts/backups/latest \
+     --json-output artifacts/backup_restore_smoke.json \
+     --markdown-output artifacts/backup_restore_smoke.md \
+     --pretty
+   ```
+
+   Add `--restore-database-url` when an empty restore target is prepared. The
+   runner blocks when the restore URL matches the source database URL.
+
+13. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-13. Start one or more pipeline workers.
+14. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py \
      --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-14. Start one or more embedding workers with route-aware provider selection.
+15. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-15. Confirm queues drain and new search data is visible.
+16. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -247,6 +261,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/runtime_config_audit.json
   artifacts/runtime_config_audit.md
+  ```
+
+- Backup and restore smoke JSON and Markdown:
+
+  ```bash
+  artifacts/backup_restore_smoke.json
+  artifacts/backup_restore_smoke.md
   ```
 
 - Git commit SHA and deployment timestamp.

@@ -248,6 +248,16 @@ Audit runtime configuration before startup validation:
   --pretty
 ```
 
+Generate a backup and restore smoke manifest:
+
+```bash
+./.venv/bin/python scripts/run_backup_restore_smoke.py \
+  --backup-dir artifacts/backups/latest \
+  --json-output artifacts/backup_restore_smoke.json \
+  --markdown-output artifacts/backup_restore_smoke.md \
+  --pretty
+```
+
 Validate the startup checklist from the command line:
 
 ```bash
