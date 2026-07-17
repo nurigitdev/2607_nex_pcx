@@ -10,6 +10,8 @@ Operational retention verification is documented in
 `docs/operational_retention_cleanup.md`.
 Emergency recovery commands are indexed in
 `docs/emergency_recovery_commands.md`.
+Operator handoff bundles are documented in
+`docs/operator_handoff_bundle.md`.
 
 ## Scope
 
@@ -194,27 +196,39 @@ Recommended provider route base URLs for the current DGX development server:
    Keep this index near the operator during go-live so incident recovery
    commands are available without searching through the full runbook.
 
-16. Open the readiness screens.
+16. Export the operator handoff bundle.
+
+   ```bash
+   ./.venv/bin/python scripts/export_operator_handoff_bundle.py \
+     --output-dir artifacts/operator_handoff/latest \
+     --pretty
+   ```
+
+   The command exits with `1` when required evidence is missing. Review
+   `artifacts/operator_handoff/latest/handoff.md` before declaring go-live
+   complete.
+
+17. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-17. Start one or more pipeline workers.
+18. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py \
      --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-18. Start one or more embedding workers with route-aware provider selection.
+19. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-19. Confirm queues drain and new search data is visible.
+20. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -332,6 +346,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/operational_retention_verification.json
   artifacts/operational_retention_verification.md
+  ```
+
+- Operator handoff bundle manifest and Markdown:
+
+  ```bash
+  artifacts/operator_handoff/latest/manifest.json
+  artifacts/operator_handoff/latest/handoff.md
   ```
 
 - Git commit SHA and deployment timestamp.
