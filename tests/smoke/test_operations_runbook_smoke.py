@@ -10,6 +10,7 @@ def test_operations_runbook_page_loads_document_source(client) -> None:
     assert "docs/service_process_startup.md" in response.text
     assert "docs/backup_restore_smoke.md" in response.text
     assert "docs/go_live_smoke.md" in response.text
+    assert "docs/production_environment_validation.md" in response.text
     assert "docs/operational_retention_cleanup.md" in response.text
     assert "docs/emergency_recovery_commands.md" in response.text
     assert "docs/operator_handoff_bundle.md" in response.text
@@ -17,6 +18,7 @@ def test_operations_runbook_page_loads_document_source(client) -> None:
     assert "Startup Checklist" in response.text
     assert "scripts/render_service_startup_templates.py" in response.text
     assert "scripts/audit_runtime_config.py" in response.text
+    assert "scripts/validate_production_environment.py" in response.text
     assert "scripts/verify_operational_retention.py" in response.text
     assert "scripts/run_backup_restore_smoke.py" in response.text
     assert "scripts/run_go_live_smoke.py" in response.text

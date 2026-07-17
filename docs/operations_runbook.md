@@ -6,6 +6,8 @@ procedure in `docs/provider_operations_playbook.md`.
 App-host service templates are documented in `docs/service_process_startup.md`.
 Backup and restore rehearsal is documented in `docs/backup_restore_smoke.md`.
 HTTP go-live smoke checks are documented in `docs/go_live_smoke.md`.
+Production environment final validation is documented in
+`docs/production_environment_validation.md`.
 Operational retention verification is documented in
 `docs/operational_retention_cleanup.md`.
 Emergency recovery commands are indexed in
@@ -124,7 +126,21 @@ Recommended provider route base URLs for the current DGX development server:
    Use `--strict` when warnings should fail the operator gate. Database URLs are
    masked in both JSON and Markdown output.
 
-10. Run the startup validation runner.
+10. Run the production environment final validation.
+
+   ```bash
+   ./.venv/bin/python scripts/validate_production_environment.py \
+     --expected-database-name nex_pcx_app \
+     --app-url http://127.0.0.1:8000 \
+     --json-output artifacts/production_environment_validation.json \
+     --markdown-output artifacts/production_environment_validation.md \
+     --pretty
+   ```
+
+   Add `--run-provider-preflight` only when this validation should persist
+   provider health and contract snapshots.
+
+11. Run the startup validation runner.
 
    ```bash
    ./.venv/bin/python scripts/validate_operations_startup.py \
@@ -137,7 +153,7 @@ Recommended provider route base URLs for the current DGX development server:
    `--run-provider-preflight` for a dry operator check that does not create
    provider health or contract snapshots.
 
-11. Export the go-live evidence snapshot.
+12. Export the go-live evidence snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_go_live_evidence.py \
@@ -151,7 +167,7 @@ Recommended provider route base URLs for the current DGX development server:
    The JSON file is intended for automated review. The Markdown file is intended
    for an operator handoff note. Database credentials are masked in both files.
 
-12. Verify operational retention and cleanup dry-run previews.
+13. Verify operational retention and cleanup dry-run previews.
 
    ```bash
    ./.venv/bin/python scripts/verify_operational_retention.py \
@@ -163,7 +179,7 @@ Recommended provider route base URLs for the current DGX development server:
    Use `--strict` when retention warnings should fail the startup gate. The
    runner does not delete database rows or artifact files.
 
-13. Generate the backup and restore smoke report.
+14. Generate the backup and restore smoke report.
 
    ```bash
    ./.venv/bin/python scripts/run_backup_restore_smoke.py \
@@ -176,7 +192,7 @@ Recommended provider route base URLs for the current DGX development server:
    Add `--restore-database-url` when an empty restore target is prepared. The
    runner blocks when the restore URL matches the source database URL.
 
-14. Run the HTTP go-live smoke runner.
+15. Run the HTTP go-live smoke runner.
 
    ```bash
    ./.venv/bin/python scripts/run_go_live_smoke.py \
@@ -186,7 +202,7 @@ Recommended provider route base URLs for the current DGX development server:
      --pretty
    ```
 
-15. Generate the emergency recovery command index.
+16. Generate the emergency recovery command index.
 
    ```bash
    ./.venv/bin/python scripts/render_emergency_recovery_index.py \
@@ -198,7 +214,7 @@ Recommended provider route base URLs for the current DGX development server:
    Keep this index near the operator during go-live so incident recovery
    commands are available without searching through the full runbook.
 
-16. Export the operator handoff bundle.
+17. Export the operator handoff bundle.
 
    ```bash
    ./.venv/bin/python scripts/export_operator_handoff_bundle.py \
@@ -210,7 +226,7 @@ Recommended provider route base URLs for the current DGX development server:
    `artifacts/operator_handoff/latest/handoff.md` before declaring go-live
    complete.
 
-17. Export the release version snapshot.
+18. Export the release version snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_release_version_snapshot.py \
@@ -222,27 +238,27 @@ Recommended provider route base URLs for the current DGX development server:
    Review the generated tag commands. Create and push the annotated release tag
    only after the worktree is clean and the deployed commit is confirmed.
 
-18. Open the readiness screens.
+19. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-19. Start one or more pipeline workers.
+20. Start one or more pipeline workers.
 
    ```bash
    ./.venv/bin/python scripts/process_pipeline_job.py \
      --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-20. Start one or more embedding workers with route-aware provider selection.
+21. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-21. Confirm queues drain and new search data is visible.
+22. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
@@ -332,6 +348,13 @@ Recommended provider route base URLs for the current DGX development server:
   ```bash
   artifacts/runtime_config_audit.json
   artifacts/runtime_config_audit.md
+  ```
+
+- Production environment validation JSON and Markdown:
+
+  ```bash
+  artifacts/production_environment_validation.json
+  artifacts/production_environment_validation.md
   ```
 
 - Backup and restore smoke JSON and Markdown:

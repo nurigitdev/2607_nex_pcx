@@ -251,6 +251,17 @@ Audit runtime configuration before startup validation:
   --pretty
 ```
 
+Validate final production environment readiness:
+
+```bash
+./.venv/bin/python scripts/validate_production_environment.py \
+  --expected-database-name nex_pcx_app \
+  --app-url http://127.0.0.1:8000 \
+  --json-output artifacts/production_environment_validation.json \
+  --markdown-output artifacts/production_environment_validation.md \
+  --pretty
+```
+
 Verify operational retention settings and cleanup dry-run previews:
 
 ```bash
