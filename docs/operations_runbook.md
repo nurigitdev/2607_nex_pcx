@@ -95,13 +95,30 @@ Recommended provider route base URLs for the current DGX development server:
    ./.venv/bin/uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
    ```
 
-6. Confirm application health.
+6. For a controlled pre-CX run, foreground operation is acceptable when an
+   operator keeps the session alive and acknowledges that there is no automatic
+   restart after failure, logout, or reboot. Validate that foreground mode is
+   the active operating assumption:
+
+   ```bash
+   ./.venv/bin/python scripts/validate_foreground_operations.py \
+     --app-url http://127.0.0.1:8000 \
+     --acknowledge-no-auto-restart \
+     --json-output artifacts/foreground_operations_validation.json \
+     --markdown-output artifacts/foreground_operations_validation.md \
+     --pretty
+   ```
+
+   A `warning` status is expected in foreground mode because the no-auto-restart
+   limitation is explicitly recorded. Treat `blocked` as a stop signal.
+
+7. Confirm application health.
 
    ```bash
    curl -fsS http://127.0.0.1:8000/healthz
    ```
 
-7. Confirm remote provider health from the application host.
+8. Confirm remote provider health from the application host.
 
    ```bash
    curl -fsS http://192.168.20.243:9101/healthz
@@ -109,13 +126,13 @@ Recommended provider route base URLs for the current DGX development server:
    curl -fsS http://192.168.20.243:9103/healthz
    ```
 
-8. Run provider route preflight and store snapshots.
+9. Run provider route preflight and store snapshots.
 
    ```bash
    ./.venv/bin/python scripts/preflight_provider_routes.py
    ```
 
-9. Run the runtime configuration audit.
+10. Run the runtime configuration audit.
 
    ```bash
    ./.venv/bin/python scripts/audit_runtime_config.py \
@@ -128,7 +145,7 @@ Recommended provider route base URLs for the current DGX development server:
    Use `--strict` when warnings should fail the operator gate. Database URLs are
    masked in both JSON and Markdown output.
 
-10. Run the production environment final validation.
+11. Run the production environment final validation.
 
    ```bash
    ./.venv/bin/python scripts/validate_production_environment.py \
@@ -142,7 +159,7 @@ Recommended provider route base URLs for the current DGX development server:
    Add `--run-provider-preflight` only when this validation should persist
    provider health and contract snapshots.
 
-11. Run the startup validation runner.
+12. Run the startup validation runner.
 
    ```bash
    ./.venv/bin/python scripts/validate_operations_startup.py \
@@ -175,7 +192,7 @@ Recommended provider route base URLs for the current DGX development server:
    a controlled maintenance window; it restarts `nex-pcx-web.service` and then
    verifies `/healthz` plus `/openapi.json` identity.
 
-12. Export the go-live evidence snapshot.
+13. Export the go-live evidence snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_go_live_evidence.py \
@@ -189,7 +206,7 @@ Recommended provider route base URLs for the current DGX development server:
    The JSON file is intended for automated review. The Markdown file is intended
    for an operator handoff note. Database credentials are masked in both files.
 
-13. Verify operational retention and cleanup dry-run previews.
+14. Verify operational retention and cleanup dry-run previews.
 
    ```bash
    ./.venv/bin/python scripts/verify_operational_retention.py \
@@ -201,7 +218,7 @@ Recommended provider route base URLs for the current DGX development server:
    Use `--strict` when retention warnings should fail the startup gate. The
    runner does not delete database rows or artifact files.
 
-14. Generate the backup and restore smoke report.
+15. Generate the backup and restore smoke report.
 
    ```bash
    ./.venv/bin/python scripts/run_backup_restore_smoke.py \

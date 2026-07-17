@@ -38,6 +38,9 @@ artifacts/operator_handoff/latest/evidence/
 - `docs/production_app_identity_validation_evidence.md`
 - `docs/production_port_cutover_evidence.md`
 - `docs/production_app_host_service_restart_evidence.md`
+- `docs/production_foreground_operations_evidence.md`
+- `artifacts/foreground_operations_validation.json`
+- `artifacts/foreground_operations_validation.md`
 - `artifacts/app_host_service_restart_validation.json`
 - `artifacts/app_host_service_restart_validation.md`
 - `artifacts/production_environment_validation.json`

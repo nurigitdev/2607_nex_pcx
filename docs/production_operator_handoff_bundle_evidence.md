@@ -53,8 +53,8 @@ The bundle export command was run with the NeX-PCX validation URL:
 Result:
 
 - Bundle directory: `artifacts/operator_handoff/latest`
-- Source evidence files: `27`
-- Included files: `27`
+- Source evidence files: `30`
+- Included files: `30`
 - Missing required files: `0`
 - Provider host: `192.168.20.243`
 - App URL used for handoff evidence: `http://127.0.0.1:8000`
@@ -71,6 +71,9 @@ The default handoff evidence list now includes:
 - `docs/production_app_identity_validation_evidence.md`
 - `docs/production_port_cutover_evidence.md`
 - `docs/production_app_host_service_restart_evidence.md`
+- `docs/production_foreground_operations_evidence.md`
+- `artifacts/foreground_operations_validation.json`
+- `artifacts/foreground_operations_validation.md`
 - `artifacts/app_host_service_restart_validation.json`
 - `artifacts/app_host_service_restart_validation.md`
 - `artifacts/production_environment_validation.json`
@@ -78,6 +81,7 @@ The default handoff evidence list now includes:
 
 ## Operator Note
 
-Port `8000` has been verified for NeX-PCX ownership, but Slice 290 records the
-current app-host managed service restart validation as `blocked` until reviewed
-systemd units are installed and rechecked.
+Port `8000` has been verified for NeX-PCX ownership. Slice 291 records
+foreground operation as the accepted supervised pre-CX mode; Slice 290 service
+restart validation remains a later hardening check until reviewed systemd units
+are installed and rechecked.

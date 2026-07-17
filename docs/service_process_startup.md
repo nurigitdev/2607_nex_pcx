@@ -103,6 +103,29 @@ Use `--scope system` for system-level units. The command is read-only by
 default. During a controlled maintenance window, add `--restart-web` to restart
 `nex-pcx-web.service` and immediately verify health plus application identity.
 
+## Foreground Operation Mode
+
+When service registration is intentionally deferred, start the web app in a
+foreground terminal and record that operating assumption explicitly:
+
+```bash
+./.venv/bin/uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
+```
+
+In a second terminal, run:
+
+```bash
+./.venv/bin/python scripts/validate_foreground_operations.py \
+  --app-url http://127.0.0.1:8000 \
+  --acknowledge-no-auto-restart \
+  --json-output artifacts/foreground_operations_validation.json \
+  --markdown-output artifacts/foreground_operations_validation.md \
+  --pretty
+```
+
+The expected status is `warning`, because foreground mode has no automatic
+restart guarantee. Treat `blocked` as a stop signal.
+
 ## Suggested Stop Order
 
 1. Pause scheduled ingestion and preflight.
