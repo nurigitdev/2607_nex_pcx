@@ -254,7 +254,19 @@ Recommended provider route base URLs for the current DGX development server:
    `warning` is acceptable when all required evidence passes and the only
    warning comes from foreground operation or deferred service hardening.
 
-18. Generate the emergency recovery command index.
+18. Render the foreground worker command plan before processing queue work.
+
+   ```bash
+   ./.venv/bin/python scripts/render_foreground_worker_plan.py \
+     --json-output artifacts/foreground_worker_plan.json \
+     --markdown-output artifacts/foreground_worker_plan.md \
+     --pretty
+   ```
+
+   Review the generated bounded commands before running pipeline or embedding
+   workers in a supervised terminal.
+
+19. Generate the emergency recovery command index.
 
    ```bash
    ./.venv/bin/python scripts/render_emergency_recovery_index.py \
@@ -266,7 +278,7 @@ Recommended provider route base URLs for the current DGX development server:
    Keep this index near the operator during go-live so incident recovery
    commands are available without searching through the full runbook.
 
-19. Export the operator handoff bundle.
+20. Export the operator handoff bundle.
 
    ```bash
    ./.venv/bin/python scripts/export_operator_handoff_bundle.py \
@@ -278,7 +290,7 @@ Recommended provider route base URLs for the current DGX development server:
    `artifacts/operator_handoff/latest/handoff.md` before declaring go-live
    complete.
 
-20. Export the release version snapshot.
+21. Export the release version snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_release_version_snapshot.py \

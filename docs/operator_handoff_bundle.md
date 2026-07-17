@@ -40,10 +40,13 @@ artifacts/operator_handoff/latest/evidence/
 - `docs/production_app_host_service_restart_evidence.md`
 - `docs/production_foreground_operations_evidence.md`
 - `docs/production_foreground_go_live_summary_evidence.md`
+- `docs/production_foreground_worker_plan_evidence.md`
 - `artifacts/foreground_operations_validation.json`
 - `artifacts/foreground_operations_validation.md`
 - `artifacts/foreground_go_live_summary.json`
 - `artifacts/foreground_go_live_summary.md`
+- `artifacts/foreground_worker_plan.json`
+- `artifacts/foreground_worker_plan.md`
 - `artifacts/app_host_service_restart_validation.json`
 - `artifacts/app_host_service_restart_validation.md`
 - `artifacts/production_environment_validation.json`
