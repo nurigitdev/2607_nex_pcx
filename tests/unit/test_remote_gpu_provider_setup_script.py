@@ -93,6 +93,29 @@ def test_remote_gpu_provider_setup_renders_systemd_unit() -> None:
     assert "NoNewPrivileges=true" in unit_text
 
 
+def test_remote_gpu_provider_setup_renders_user_systemd_unit() -> None:
+    plan = setup_remote_gpu_provider.build_setup_plan(
+        get_embedding_provider_preset("bge"),
+        route_host="192.168.20.243",
+        provider_model_id="dgx-spark-bge-m3-2026-07",
+    )
+
+    unit_text = setup_remote_gpu_provider.render_systemd_unit(plan, user_systemd=True)
+
+    assert "Description=NeX-PCX embedding provider (bge)" in unit_text
+    assert "User=nexpcx" not in unit_text
+    assert "Group=nexpcx" not in unit_text
+    assert "network-online.target" not in unit_text
+    assert "NoNewPrivileges=true" not in unit_text
+    assert "PrivateTmp=true" not in unit_text
+    assert "WantedBy=default.target" in unit_text
+    assert "WorkingDirectory=/home/nexpcx/2607_nex_pcx" in unit_text
+    assert (
+        "ExecStart=/home/nexpcx/2607_nex_pcx/.venv/bin/python -m uvicorn "
+        "app.embedding_provider_service:app --host 0.0.0.0 --port 9102"
+    ) in unit_text
+
+
 def test_remote_gpu_provider_setup_writes_files(tmp_path: Path) -> None:
     plan = setup_remote_gpu_provider.build_setup_plan(
         get_embedding_provider_preset("qwen"),
@@ -112,6 +135,24 @@ def test_remote_gpu_provider_setup_writes_files(tmp_path: Path) -> None:
     )
     assert "qwen3_4b_1000,qwen3_4b_2560" in env_file.read_text(encoding="utf-8")
     assert "nex-pcx-embedding-provider-qwen" in str(unit_file)
+
+
+def test_remote_gpu_provider_setup_writes_user_systemd_file(tmp_path: Path) -> None:
+    plan = setup_remote_gpu_provider.build_setup_plan(
+        get_embedding_provider_preset("qwen"),
+        workdir=str(tmp_path / "2607_nex_pcx"),
+        env_dir=str(tmp_path / "env"),
+        systemd_dir=str(tmp_path / "systemd-user"),
+        route_host="192.168.20.243",
+        provider_model_id="dgx-spark-qwen3-embedding-4b-2026-07",
+    )
+
+    _, unit_file = setup_remote_gpu_provider.write_plan_files(plan, user_systemd=True)
+
+    unit_text = unit_file.read_text(encoding="utf-8")
+    assert "User=" not in unit_text
+    assert "Group=" not in unit_text
+    assert "PrivateTmp=true" not in unit_text
 
 
 def test_remote_gpu_provider_setup_cli_prints_json_plan() -> None:
@@ -148,6 +189,40 @@ def test_remote_gpu_provider_setup_cli_prints_json_plan() -> None:
         "--port",
         "9103",
     ]
+
+
+def test_remote_gpu_provider_setup_cli_writes_user_systemd(tmp_path: Path) -> None:
+    env_dir = tmp_path / "env"
+    systemd_dir = tmp_path / "systemd-user"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/setup_remote_gpu_provider.py",
+            "--provider",
+            "qwen",
+            "--route-host",
+            "192.168.20.243",
+            "--provider-model-id",
+            "dgx-spark-qwen3-embedding-4b-2026-07",
+            "--env-dir",
+            str(env_dir),
+            "--systemd-dir",
+            str(systemd_dir),
+            "--user-systemd",
+            "--write-files",
+            "--json",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    payload = json.loads(result.stdout)
+    unit_file = systemd_dir / "nex-pcx-embedding-provider-qwen.service"
+
+    assert payload["wrote_files"] is True
+    assert unit_file.exists()
+    assert "User=" not in unit_file.read_text(encoding="utf-8")
 
 
 def test_remote_gpu_provider_setup_cli_rejects_invalid_route_url() -> None:

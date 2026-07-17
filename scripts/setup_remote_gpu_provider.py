@@ -211,37 +211,46 @@ def render_env_file(plan: RemoteGpuProviderSetupPlan) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_systemd_unit(plan: RemoteGpuProviderSetupPlan) -> str:
+def render_systemd_unit(plan: RemoteGpuProviderSetupPlan, *, user_systemd: bool = False) -> str:
+    unit_dependencies = (
+        "" if user_systemd else "After=network-online.target\nWants=network-online.target\n"
+    )
+    service_identity = "" if user_systemd else (f"User={plan.user}\n" f"Group={plan.group}\n")
+    service_hardening = "" if user_systemd else "NoNewPrivileges=true\nPrivateTmp=true\n"
+    install_target = "default.target" if user_systemd else "multi-user.target"
     return (
         "[Unit]\n"
         f"Description=NeX-PCX embedding provider ({plan.provider})\n"
-        "After=network-online.target\n"
-        "Wants=network-online.target\n"
+        f"{unit_dependencies}"
         "\n"
         "[Service]\n"
         "Type=simple\n"
-        f"User={plan.user}\n"
-        f"Group={plan.group}\n"
+        f"{service_identity}"
         f"WorkingDirectory={plan.workdir}\n"
         f"EnvironmentFile={plan.env_file}\n"
         f"ExecStart={_quote_command(plan.launch_plan.command)}\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
-        "NoNewPrivileges=true\n"
-        "PrivateTmp=true\n"
+        f"{service_hardening}"
         "\n"
         "[Install]\n"
-        "WantedBy=multi-user.target\n"
+        f"WantedBy={install_target}\n"
     )
 
 
-def write_plan_files(plan: RemoteGpuProviderSetupPlan) -> tuple[Path, Path]:
+def write_plan_files(
+    plan: RemoteGpuProviderSetupPlan,
+    *,
+    user_systemd: bool = False,
+) -> tuple[Path, Path]:
     env_file = Path(plan.env_file)
     systemd_unit_file = Path(plan.systemd_unit_file)
     env_file.parent.mkdir(parents=True, exist_ok=True)
     systemd_unit_file.parent.mkdir(parents=True, exist_ok=True)
     env_file.write_text(render_env_file(plan), encoding="utf-8")
-    systemd_unit_file.write_text(render_systemd_unit(plan), encoding="utf-8")
+    systemd_unit_file.write_text(
+        render_systemd_unit(plan, user_systemd=user_systemd), encoding="utf-8"
+    )
     return env_file, systemd_unit_file
 
 
@@ -292,6 +301,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--group", default=None)
     parser.add_argument("--env-dir", default=None)
     parser.add_argument("--systemd-dir", default=None)
+    parser.add_argument(
+        "--user-systemd",
+        action="store_true",
+        help="Render a unit suitable for systemctl --user instead of system-level systemd.",
+    )
     parser.add_argument("--write-files", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -319,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
 
     wrote_files = False
     if args.write_files:
-        write_plan_files(plan)
+        write_plan_files(plan, user_systemd=args.user_systemd)
         wrote_files = True
 
     if args.json:

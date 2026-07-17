@@ -155,6 +155,29 @@ journalctl -u nex-pcx-embedding-provider-qwen.service -n 100 --no-pager
 
 Repeat for `kure` and `bge` after their generated service files are reviewed.
 
+If the GPU account does not have passwordless sudo, generate user-level systemd
+units instead:
+
+```bash
+./.venv/bin/python scripts/setup_remote_gpu_provider.py \
+  --provider qwen \
+  --route-host 192.168.20.243 \
+  --provider-model-id local-qwen3-embedding-4b \
+  --env-dir /home/nexpcx/2607_nex_pcx/deployment/env \
+  --systemd-dir /home/nexpcx/.config/systemd/user \
+  --user-systemd \
+  --write-files
+
+systemctl --user daemon-reload
+systemctl --user enable --now nex-pcx-embedding-provider-qwen.service
+systemctl --user status nex-pcx-embedding-provider-qwen.service --no-pager
+```
+
+User-level systemd units are useful for an operator-owned GPU host, but they
+depend on the user's systemd manager. If `loginctl show-user nexpcx -p Linger`
+returns `Linger=no`, ask an administrator to enable lingering or install the
+system-level units before relying on automatic restart after logout or reboot.
+
 For a quick foreground smoke run without systemd:
 
 ```bash
