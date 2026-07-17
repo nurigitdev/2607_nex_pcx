@@ -266,7 +266,19 @@ Recommended provider route base URLs for the current DGX development server:
    Review the generated bounded commands before running pipeline or embedding
    workers in a supervised terminal.
 
-19. Generate the emergency recovery command index.
+19. Render the final foreground handoff checklist.
+
+   ```bash
+   ./.venv/bin/python scripts/summarize_foreground_final_handoff.py \
+     --json-output artifacts/foreground_final_handoff.json \
+     --markdown-output artifacts/foreground_final_handoff.md \
+     --pretty
+   ```
+
+   A `warning` status is acceptable for supervised foreground operation when
+   failed checks are zero. A `blocked` status must stop handoff.
+
+20. Generate the emergency recovery command index.
 
    ```bash
    ./.venv/bin/python scripts/render_emergency_recovery_index.py \
@@ -278,7 +290,7 @@ Recommended provider route base URLs for the current DGX development server:
    Keep this index near the operator during go-live so incident recovery
    commands are available without searching through the full runbook.
 
-20. Export the operator handoff bundle.
+21. Export the operator handoff bundle.
 
    ```bash
    ./.venv/bin/python scripts/export_operator_handoff_bundle.py \
@@ -290,7 +302,7 @@ Recommended provider route base URLs for the current DGX development server:
    `artifacts/operator_handoff/latest/handoff.md` before declaring go-live
    complete.
 
-21. Export the release version snapshot.
+22. Export the release version snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_release_version_snapshot.py \

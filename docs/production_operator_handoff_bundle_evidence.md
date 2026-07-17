@@ -53,8 +53,8 @@ The bundle export command was run with the NeX-PCX validation URL:
 Result:
 
 - Bundle directory: `artifacts/operator_handoff/latest`
-- Source evidence files: `36`
-- Included files: `36`
+- Source evidence files: `39`
+- Included files: `39`
 - Missing required files: `0`
 - Provider host: `192.168.20.243`
 - App URL used for handoff evidence: `http://127.0.0.1:8000`
@@ -74,12 +74,15 @@ The default handoff evidence list now includes:
 - `docs/production_foreground_operations_evidence.md`
 - `docs/production_foreground_go_live_summary_evidence.md`
 - `docs/production_foreground_worker_plan_evidence.md`
+- `docs/production_foreground_final_handoff_evidence.md`
 - `artifacts/foreground_operations_validation.json`
 - `artifacts/foreground_operations_validation.md`
 - `artifacts/foreground_go_live_summary.json`
 - `artifacts/foreground_go_live_summary.md`
 - `artifacts/foreground_worker_plan.json`
 - `artifacts/foreground_worker_plan.md`
+- `artifacts/foreground_final_handoff.json`
+- `artifacts/foreground_final_handoff.md`
 - `artifacts/app_host_service_restart_validation.json`
 - `artifacts/app_host_service_restart_validation.md`
 - `artifacts/production_environment_validation.json`
