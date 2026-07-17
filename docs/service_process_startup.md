@@ -82,7 +82,26 @@ reviewed units as system-level services.
 5. Run `scripts/validate_operations_startup.py --app-url http://127.0.0.1:8000`.
 6. Start `nex-pcx-pipeline-worker.service`.
 7. Start `nex-pcx-embedding-worker.service`.
-8. Export go-live evidence after the first readiness pass.
+8. Run `scripts/validate_app_host_service_restart.py` to confirm systemd can
+   see the installed units, they are active, and restart policies are configured.
+9. Export go-live evidence after the first readiness pass.
+
+## Restart Survival Validation
+
+Run the app-host restart validation runner after installing reviewed units:
+
+```bash
+./.venv/bin/python scripts/validate_app_host_service_restart.py \
+  --scope user \
+  --app-url http://127.0.0.1:8000 \
+  --json-output artifacts/app_host_service_restart_validation.json \
+  --markdown-output artifacts/app_host_service_restart_validation.md \
+  --pretty
+```
+
+Use `--scope system` for system-level units. The command is read-only by
+default. During a controlled maintenance window, add `--restart-web` to restart
+`nex-pcx-web.service` and immediately verify health plus application identity.
 
 ## Suggested Stop Order
 

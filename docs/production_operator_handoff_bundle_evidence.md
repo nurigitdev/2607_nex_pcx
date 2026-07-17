@@ -45,7 +45,7 @@ The bundle export command was run with the NeX-PCX validation URL:
 ./.venv/bin/python scripts/export_operator_handoff_bundle.py \
   --workdir /home/tprover/2607_nex_pcx \
   --output-dir artifacts/operator_handoff/latest \
-  --app-url http://127.0.0.1:18080 \
+  --app-url http://127.0.0.1:8000 \
   --provider-host 192.168.20.243 \
   --pretty
 ```
@@ -53,11 +53,11 @@ The bundle export command was run with the NeX-PCX validation URL:
 Result:
 
 - Bundle directory: `artifacts/operator_handoff/latest`
-- Source evidence files: `24`
-- Included files: `24`
+- Source evidence files: `27`
+- Included files: `27`
 - Missing required files: `0`
 - Provider host: `192.168.20.243`
-- App URL used for smoke evidence: `http://127.0.0.1:18080`
+- App URL used for handoff evidence: `http://127.0.0.1:8000`
 
 ## Included Production Evidence Docs
 
@@ -70,11 +70,14 @@ The default handoff evidence list now includes:
 - `docs/production_app_host_startup_evidence.md`
 - `docs/production_app_identity_validation_evidence.md`
 - `docs/production_port_cutover_evidence.md`
+- `docs/production_app_host_service_restart_evidence.md`
+- `artifacts/app_host_service_restart_validation.json`
+- `artifacts/app_host_service_restart_validation.md`
 - `artifacts/production_environment_validation.json`
 - `artifacts/production_environment_validation.md`
 
 ## Operator Note
 
-Before binding NeX-PCX to production port `8000`, stop or move the process
-currently serving `Hermes Agent Hub` on that port. Re-run go-live smoke and the
-handoff bundle export with the final production URL after the port is reassigned.
+Port `8000` has been verified for NeX-PCX ownership, but Slice 290 records the
+current app-host managed service restart validation as `blocked` until reviewed
+systemd units are installed and rechecked.

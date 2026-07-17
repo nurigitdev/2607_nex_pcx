@@ -157,6 +157,24 @@ Recommended provider route base URLs for the current DGX development server:
    runner checks both `/healthz` and `/openapi.json` so another FastAPI process
    cannot pass as NeX-PCX by exposing only a compatible health endpoint.
 
+   After the app-host units are installed, verify managed-service restart
+   readiness. The default mode is read-only and confirms that systemd can see
+   the web and worker units, that they are active, and that restart policies are
+   configured:
+
+   ```bash
+   ./.venv/bin/python scripts/validate_app_host_service_restart.py \
+     --scope user \
+     --app-url http://127.0.0.1:8000 \
+     --json-output artifacts/app_host_service_restart_validation.json \
+     --markdown-output artifacts/app_host_service_restart_validation.md \
+     --pretty
+   ```
+
+   Use `--scope system` for system-level units. Use `--restart-web` only during
+   a controlled maintenance window; it restarts `nex-pcx-web.service` and then
+   verifies `/healthz` plus `/openapi.json` identity.
+
 12. Export the go-live evidence snapshot.
 
    ```bash
