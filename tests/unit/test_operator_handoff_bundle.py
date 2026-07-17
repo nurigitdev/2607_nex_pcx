@@ -92,3 +92,6 @@ def test_default_handoff_evidence_paths_include_production_evidence_docs() -> No
     assert "docs/production_app_host_startup_evidence.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "docs/production_operator_handoff_bundle_evidence.md" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)
     assert "docs/production_app_identity_validation_evidence.md" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)
+    assert "docs/production_port_cutover_evidence.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
+    assert "artifacts/production_environment_validation.json" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)
+    assert "artifacts/production_environment_validation.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS

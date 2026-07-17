@@ -36,6 +36,9 @@ artifacts/operator_handoff/latest/evidence/
 - `docs/production_app_host_startup_evidence.md`
 - `docs/production_operator_handoff_bundle_evidence.md`
 - `docs/production_app_identity_validation_evidence.md`
+- `docs/production_port_cutover_evidence.md`
+- `artifacts/production_environment_validation.json`
+- `artifacts/production_environment_validation.md`
 - `artifacts/go_live_evidence.json`
 - `artifacts/go_live_evidence.md`
 - `artifacts/shutdown_drain_check.json`
