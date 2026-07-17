@@ -231,7 +231,7 @@ Recommended provider route base URLs for the current DGX development server:
    Add `--restore-database-url` when an empty restore target is prepared. The
    runner blocks when the restore URL matches the source database URL.
 
-15. Run the HTTP go-live smoke runner.
+16. Run the HTTP go-live smoke runner.
 
    ```bash
    ./.venv/bin/python scripts/run_go_live_smoke.py \
@@ -241,7 +241,20 @@ Recommended provider route base URLs for the current DGX development server:
      --pretty
    ```
 
-16. Generate the emergency recovery command index.
+17. Summarize foreground go-live evidence after the foreground validation and
+   core evidence files have been generated.
+
+   ```bash
+   ./.venv/bin/python scripts/summarize_foreground_go_live.py \
+     --json-output artifacts/foreground_go_live_summary.json \
+     --markdown-output artifacts/foreground_go_live_summary.md \
+     --pretty
+   ```
+
+   `warning` is acceptable when all required evidence passes and the only
+   warning comes from foreground operation or deferred service hardening.
+
+18. Generate the emergency recovery command index.
 
    ```bash
    ./.venv/bin/python scripts/render_emergency_recovery_index.py \
@@ -253,7 +266,7 @@ Recommended provider route base URLs for the current DGX development server:
    Keep this index near the operator during go-live so incident recovery
    commands are available without searching through the full runbook.
 
-17. Export the operator handoff bundle.
+19. Export the operator handoff bundle.
 
    ```bash
    ./.venv/bin/python scripts/export_operator_handoff_bundle.py \
@@ -265,7 +278,7 @@ Recommended provider route base URLs for the current DGX development server:
    `artifacts/operator_handoff/latest/handoff.md` before declaring go-live
    complete.
 
-18. Export the release version snapshot.
+20. Export the release version snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_release_version_snapshot.py \
