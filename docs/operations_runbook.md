@@ -3,6 +3,7 @@
 This runbook is the operator-facing checklist for starting, validating, stopping,
 and recovering a NeX_PCX environment. It complements the provider-specific
 procedure in `docs/provider_operations_playbook.md`.
+App-host service templates are documented in `docs/service_process_startup.md`.
 
 ## Scope
 
@@ -39,14 +40,28 @@ Recommended provider route base URLs for the current DGX development server:
 
 ## Startup Checklist
 
-1. Move to the application directory and activate the virtual environment.
+1. Generate and review app-host service templates when bootstrapping a host.
+
+   ```bash
+   ./.venv/bin/python scripts/render_service_startup_templates.py \
+     --workdir /home/tprover/2607_nex_pcx \
+     --user nexpcx \
+     --output-dir deployment \
+     --write \
+     --pretty
+   ```
+
+   Review `deployment/env/nex-pcx.env` and the generated systemd units before
+   installing them. Keep environment files with real credentials out of git.
+
+2. Move to the application directory and activate the virtual environment.
 
    ```bash
    cd /home/tprover/2607_nex_pcx
    source .venv/bin/activate
    ```
 
-2. Confirm runtime values are present.
+3. Confirm runtime values are present.
 
    ```bash
    test -n "${NEX_PCX_DATABASE_URL:-}"
@@ -54,25 +69,25 @@ Recommended provider route base URLs for the current DGX development server:
    test -n "${NEX_PCX_MODELS_DIR:-}"
    ```
 
-3. Apply database migrations.
+4. Apply database migrations.
 
    ```bash
    bash scripts/migrate.sh upgrade head
    ```
 
-4. Start the main web application.
+5. Start the main web application.
 
    ```bash
    ./.venv/bin/uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
    ```
 
-5. Confirm application health.
+6. Confirm application health.
 
    ```bash
    curl -fsS http://127.0.0.1:8000/healthz
    ```
 
-6. Confirm remote provider health from the application host.
+7. Confirm remote provider health from the application host.
 
    ```bash
    curl -fsS http://192.168.20.243:9101/healthz
@@ -80,13 +95,13 @@ Recommended provider route base URLs for the current DGX development server:
    curl -fsS http://192.168.20.243:9103/healthz
    ```
 
-7. Run provider route preflight and store snapshots.
+8. Run provider route preflight and store snapshots.
 
    ```bash
    ./.venv/bin/python scripts/preflight_provider_routes.py
    ```
 
-8. Run the startup validation runner.
+9. Run the startup validation runner.
 
    ```bash
    ./.venv/bin/python scripts/validate_operations_startup.py \
@@ -99,7 +114,7 @@ Recommended provider route base URLs for the current DGX development server:
    `--run-provider-preflight` for a dry operator check that does not create
    provider health or contract snapshots.
 
-9. Export the go-live evidence snapshot.
+10. Export the go-live evidence snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_go_live_evidence.py \
@@ -113,26 +128,27 @@ Recommended provider route base URLs for the current DGX development server:
    The JSON file is intended for automated review. The Markdown file is intended
    for an operator handoff note. Database credentials are masked in both files.
 
-10. Open the readiness screens.
+11. Open the readiness screens.
 
    - `/admin/go-live-readiness`
    - `/admin/embedding-provider-routes`
    - `/admin/jobs`
    - `/admin/embedding-jobs`
 
-11. Start one or more pipeline workers.
+12. Start one or more pipeline workers.
 
    ```bash
-   ./.venv/bin/python scripts/process_pipeline_job.py --chunk-policy-names heading_512_64,heading_1000_200,heading_1500_200
+   ./.venv/bin/python scripts/process_pipeline_job.py \
+     --chunk-policy-names heading_512_64 heading_1000_200 heading_1500_200
    ```
 
-12. Start one or more embedding workers with route-aware provider selection.
+13. Start one or more embedding workers with route-aware provider selection.
 
     ```bash
     ./.venv/bin/python scripts/process_embedding_job.py --provider-source route --require-route-readiness --limit 20
     ```
 
-13. Confirm queues drain and new search data is visible.
+14. Confirm queues drain and new search data is visible.
 
     - Check `/admin/jobs` for pipeline job state.
     - Check `/admin/embedding-jobs` for embedding job state.
