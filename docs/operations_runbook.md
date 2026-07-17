@@ -153,7 +153,9 @@ Recommended provider route base URLs for the current DGX development server:
 
    Use `--strict` when warnings should fail the startup gate. Omit
    `--run-provider-preflight` for a dry operator check that does not create
-   provider health or contract snapshots.
+   provider health or contract snapshots. When `--app-url` is supplied, the
+   runner checks both `/healthz` and `/openapi.json` so another FastAPI process
+   cannot pass as NeX-PCX by exposing only a compatible health endpoint.
 
 12. Export the go-live evidence snapshot.
 

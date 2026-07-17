@@ -35,6 +35,7 @@ artifacts/operator_handoff/latest/evidence/
 - `docs/production_remote_provider_user_systemd_evidence.md`
 - `docs/production_app_host_startup_evidence.md`
 - `docs/production_operator_handoff_bundle_evidence.md`
+- `docs/production_app_identity_validation_evidence.md`
 - `artifacts/go_live_evidence.json`
 - `artifacts/go_live_evidence.md`
 - `artifacts/shutdown_drain_check.json`

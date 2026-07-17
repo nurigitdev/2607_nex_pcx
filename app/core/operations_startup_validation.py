@@ -106,6 +106,13 @@ def build_operations_startup_validation_report(
             timeout_seconds=selected_options.health_timeout_seconds,
         )
     )
+    checks.append(
+        _app_identity_check(
+            selected_options.app_base_url,
+            expected_app_name=settings.app_name,
+            timeout_seconds=selected_options.health_timeout_seconds,
+        )
+    )
     checks.append(_go_live_readiness_check(settings))
     checks.append(
         _provider_preflight_check(
@@ -287,6 +294,54 @@ def _app_healthz_check(
     )
 
 
+def _app_identity_check(
+    app_base_url: str | None,
+    *,
+    expected_app_name: str,
+    timeout_seconds: float,
+) -> OperationsStartupValidationCheck:
+    if not app_base_url:
+        return OperationsStartupValidationCheck(
+            code="app_identity",
+            status=STARTUP_CHECK_SKIPPED,
+            detail="Application identity check is skipped because --app-url was not provided.",
+        )
+    normalized_base_url = app_base_url.rstrip("/")
+    identity_url = f"{normalized_base_url}/openapi.json"
+    try:
+        payload = _fetch_json(identity_url, timeout_seconds=timeout_seconds)
+    except Exception as exc:
+        return OperationsStartupValidationCheck(
+            code="app_identity",
+            status=STARTUP_CHECK_FAILED,
+            detail=f"Application identity check failed: {exc}",
+            metadata={"url": identity_url, "error": str(exc)},
+        )
+
+    title = _dict(payload.get("info")).get("title")
+    if title == expected_app_name:
+        return OperationsStartupValidationCheck(
+            code="app_identity",
+            status=STARTUP_CHECK_PASSED,
+            detail=f"Application identity matches {expected_app_name}.",
+            metadata={
+                "url": identity_url,
+                "expected_app_name": expected_app_name,
+                "title": title,
+            },
+        )
+    return OperationsStartupValidationCheck(
+        code="app_identity",
+        status=STARTUP_CHECK_FAILED,
+        detail=("Application identity did not match expected app name " f"{expected_app_name}."),
+        metadata={
+            "url": identity_url,
+            "expected_app_name": expected_app_name,
+            "title": title,
+        },
+    )
+
+
 def _fetch_json(url: str, *, timeout_seconds: float) -> dict[str, Any]:
     import httpx
 
@@ -297,6 +352,10 @@ def _fetch_json(url: str, *, timeout_seconds: float) -> dict[str, Any]:
         msg = "Health response was not a JSON object"
         raise RuntimeError(msg)
     return payload
+
+
+def _dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _go_live_readiness_check(settings: Settings) -> OperationsStartupValidationCheck:

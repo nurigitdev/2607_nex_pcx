@@ -57,6 +57,7 @@ def install_successful_dependencies(
     head_revisions: tuple[str, ...] = ("head-one",),
     go_live_status: str = "ready",
     app_payload: dict[str, object] | None = None,
+    identity_payload: dict[str, object] | None = None,
     preflight_payload: dict[str, object] | None = None,
 ) -> None:
     monkeypatch.setattr(
@@ -70,25 +71,27 @@ def install_successful_dependencies(
         "build_go_live_readiness_report",
         lambda settings: make_go_live_report(go_live_status),
     )
-    monkeypatch.setattr(
-        startup,
-        "_fetch_json",
-        lambda url, *, timeout_seconds: app_payload
-        if app_payload is not None
-        else {"status": "ok", "service": "NeX_PCX"},
-    )
+
+    def fetch_json(url: str, *, timeout_seconds: float) -> dict[str, object]:
+        if url.endswith("/openapi.json"):
+            return identity_payload or {"info": {"title": "NeX_PCX"}}
+        return app_payload if app_payload is not None else {"status": "ok"}
+
+    monkeypatch.setattr(startup, "_fetch_json", fetch_json)
     monkeypatch.setattr(
         startup,
         "run_embedding_provider_route_preflight",
-        lambda database_url, **kwargs: preflight_payload
-        if preflight_payload is not None
-        else {
-            "route_count": 2,
-            "passed_count": 2,
-            "failed_count": 0,
-            "profile_name": kwargs.get("profile_name"),
-            "active_only": kwargs.get("active_only"),
-        },
+        lambda database_url, **kwargs: (
+            preflight_payload
+            if preflight_payload is not None
+            else {
+                "route_count": 2,
+                "passed_count": 2,
+                "failed_count": 0,
+                "profile_name": kwargs.get("profile_name"),
+                "active_only": kwargs.get("active_only"),
+            }
+        ),
     )
 
 
@@ -111,6 +114,7 @@ def test_startup_validation_blocks_when_database_url_is_missing(monkeypatch) -> 
     assert checks["database_connectivity"] == startup.STARTUP_CHECK_SKIPPED
     assert checks["alembic_revision"] == startup.STARTUP_CHECK_SKIPPED
     assert checks["app_healthz"] == startup.STARTUP_CHECK_SKIPPED
+    assert checks["app_identity"] == startup.STARTUP_CHECK_SKIPPED
     assert checks["provider_route_preflight"] == startup.STARTUP_CHECK_SKIPPED
 
 
@@ -135,13 +139,12 @@ def test_startup_validation_passes_full_startup_path(monkeypatch) -> None:
     assert checks["database_connectivity"] == startup.STARTUP_CHECK_PASSED
     assert checks["alembic_revision"] == startup.STARTUP_CHECK_PASSED
     assert checks["app_healthz"] == startup.STARTUP_CHECK_PASSED
+    assert checks["app_identity"] == startup.STARTUP_CHECK_PASSED
     assert checks["go_live_readiness"] == startup.STARTUP_CHECK_PASSED
     assert checks["provider_route_preflight"] == startup.STARTUP_CHECK_PASSED
     assert payload["passed_count"] == report.passed_count
     preflight = next(
-        check
-        for check in payload["checks"]
-        if check["code"] == "provider_route_preflight"
+        check for check in payload["checks"] if check["code"] == "provider_route_preflight"
     )
     assert preflight["metadata"]["profile_name"] == "kure_v1"
     assert preflight["metadata"]["active_only"] is False
@@ -158,7 +161,30 @@ def test_startup_validation_warns_when_go_live_has_warnings(monkeypatch) -> None
     assert report.status == startup.STARTUP_STATUS_WARNING
     assert checks["go_live_readiness"] == startup.STARTUP_CHECK_WARNING
     assert checks["app_healthz"] == startup.STARTUP_CHECK_SKIPPED
+    assert checks["app_identity"] == startup.STARTUP_CHECK_SKIPPED
     assert checks["provider_route_preflight"] == startup.STARTUP_CHECK_SKIPPED
+
+
+def test_startup_validation_blocks_when_app_identity_does_not_match(monkeypatch) -> None:
+    install_successful_dependencies(
+        monkeypatch,
+        identity_payload={"info": {"title": "Hermes Agent Hub"}},
+    )
+
+    report = startup.build_operations_startup_validation_report(
+        Settings(database_url="postgresql://example/db"),
+        options=startup.OperationsStartupValidationOptions(
+            app_base_url="http://127.0.0.1:8000",
+        ),
+    )
+    payload = startup.operations_startup_validation_report_payload(report)
+    checks = check_by_code(report)
+    identity_check = next(check for check in payload["checks"] if check["code"] == "app_identity")
+
+    assert report.status == startup.STARTUP_STATUS_BLOCKED
+    assert checks["app_healthz"] == startup.STARTUP_CHECK_PASSED
+    assert checks["app_identity"] == startup.STARTUP_CHECK_FAILED
+    assert identity_check["metadata"]["title"] == "Hermes Agent Hub"
 
 
 def test_startup_validation_blocks_for_revision_app_and_preflight_failures(monkeypatch) -> None:

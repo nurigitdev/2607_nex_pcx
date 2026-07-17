@@ -29,7 +29,7 @@ route health and contract snapshots during this validation.
 | Database target | `--expected-database-name` must match when supplied |
 | Provider mode | `NEX_PCX_EMBEDDING_PROVIDER_MODE` should be `remote` |
 | Route readiness | `NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS` should be `true` |
-| App URL | `/healthz` is checked when `--app-url` is supplied |
+| App URL | `/healthz` and `/openapi.json` app identity are checked when `--app-url` is supplied |
 
 For local rehearsal, use `--allow-non-production`,
 `--allow-non-remote-provider`, or `--allow-route-readiness-disabled`. Those
