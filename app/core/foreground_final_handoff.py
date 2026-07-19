@@ -23,6 +23,12 @@ DEFAULT_FINAL_HANDOFF_EVIDENCE = (
         ("planned", "exited"),
     ),
     (
+        "foreground_production_shutdown",
+        "artifacts/foreground_production_shutdown.json",
+        ("stopped",),
+        ("planned", "no_process"),
+    ),
+    (
         "foreground_operations_validation",
         "artifacts/foreground_operations_validation.json",
         ("ready",),

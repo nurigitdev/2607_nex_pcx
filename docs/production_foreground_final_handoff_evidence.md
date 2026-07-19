@@ -7,6 +7,7 @@ The checklist validates:
 
 - foreground operation evidence
 - foreground production launch evidence
+- foreground production shutdown evidence
 - foreground go-live summary evidence
 - bounded foreground worker command plan
 - operator handoff bundle manifest

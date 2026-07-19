@@ -370,7 +370,21 @@ Recommended provider route base URLs for the current DGX development server:
 3. Let running workers finish their current batch when possible.
 4. Stop embedding workers before stopping remote embedding providers.
 5. Stop pipeline workers after current extraction/chunking jobs finish.
-6. Stop the main web application.
+6. Stop the main web application with foreground shutdown evidence.
+
+   ```bash
+   ./.venv/bin/python scripts/stop_foreground_production_app.py \
+     --json-output artifacts/foreground_production_shutdown.json \
+     --markdown-output artifacts/foreground_production_shutdown.md \
+     --pid-file artifacts/foreground_production_launch.pid \
+     --log-file artifacts/foreground_production_shutdown.log \
+     --pretty
+   ```
+
+   Run with `--dry-run` first when verifying the PID file and command guard.
+   The actual stop sends `SIGTERM` only when the PID belongs to the expected
+   NeX-PCX foreground Uvicorn process.
+
 7. Stop remote providers on the DGX host in this order:
    - Qwen provider on port `9103`
    - BGE provider on port `9102`
