@@ -24,6 +24,7 @@ summarize_foreground_final_handoff = _load_summarize_foreground_final_handoff_mo
 
 
 def test_main_writes_foreground_final_handoff_outputs(monkeypatch, tmp_path) -> None:
+    _write_json(tmp_path / "artifacts" / "foreground_production_launch.json", {"status": "planned"})
     _write_json(
         tmp_path / "artifacts" / "foreground_operations_validation.json", {"status": "ready"}
     )
@@ -65,7 +66,7 @@ def test_main_writes_foreground_final_handoff_outputs(monkeypatch, tmp_path) -> 
 
     assert exit_code == 0
     assert payload["status"] == "warning"
-    assert payload["warning_count"] == 1
+    assert payload["warning_count"] == 2
     assert "Foreground Final Handoff Checklist" in markdown_output.read_text(encoding="utf-8")
 
 

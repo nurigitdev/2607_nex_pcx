@@ -6,6 +6,7 @@ pre-CX go-live mode.
 The checklist validates:
 
 - foreground operation evidence
+- foreground production launch evidence
 - foreground go-live summary evidence
 - bounded foreground worker command plan
 - operator handoff bundle manifest

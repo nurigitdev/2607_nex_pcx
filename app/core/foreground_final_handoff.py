@@ -17,6 +17,12 @@ FINAL_HANDOFF_STATUS_BLOCKED = "blocked"
 
 DEFAULT_FINAL_HANDOFF_EVIDENCE = (
     (
+        "foreground_production_launch",
+        "artifacts/foreground_production_launch.json",
+        ("running",),
+        ("planned", "exited"),
+    ),
+    (
         "foreground_operations_validation",
         "artifacts/foreground_operations_validation.json",
         ("ready",),

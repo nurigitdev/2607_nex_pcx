@@ -89,11 +89,21 @@ Recommended provider route base URLs for the current DGX development server:
    bash scripts/migrate.sh upgrade head
    ```
 
-5. Start the main web application.
+5. Start the main web application with foreground launch evidence.
 
    ```bash
-   ./.venv/bin/uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000
+   ./.venv/bin/python scripts/run_foreground_production_app.py \
+     --json-output artifacts/foreground_production_launch.json \
+     --markdown-output artifacts/foreground_production_launch.md \
+     --pid-file artifacts/foreground_production_launch.pid \
+     --log-file artifacts/foreground_production_launch.log \
+     --pretty
    ```
+
+   Run this in a supervised terminal. The runner writes the process ID and log
+   path before keeping Uvicorn attached to the foreground session. Use
+   `--dry-run` first when you only want to verify the command and evidence
+   paths.
 
 6. For a controlled pre-CX run, foreground operation is acceptable when an
    operator keeps the session alive and acknowledges that there is no automatic

@@ -96,6 +96,7 @@ def test_default_handoff_evidence_paths_include_production_evidence_docs() -> No
     assert "docs/production_app_host_service_restart_evidence.md" in (
         DEFAULT_HANDOFF_EVIDENCE_PATHS
     )
+    assert "docs/production_foreground_launch_evidence.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "docs/production_foreground_operations_evidence.md" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)
     assert "docs/production_foreground_go_live_summary_evidence.md" in (
         DEFAULT_HANDOFF_EVIDENCE_PATHS
@@ -104,6 +105,8 @@ def test_default_handoff_evidence_paths_include_production_evidence_docs() -> No
     assert "docs/production_foreground_final_handoff_evidence.md" in (
         DEFAULT_HANDOFF_EVIDENCE_PATHS
     )
+    assert "artifacts/foreground_production_launch.json" in DEFAULT_HANDOFF_EVIDENCE_PATHS
+    assert "artifacts/foreground_production_launch.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "artifacts/foreground_operations_validation.json" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)
     assert "artifacts/foreground_operations_validation.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "artifacts/foreground_go_live_summary.json" in DEFAULT_HANDOFF_EVIDENCE_PATHS
