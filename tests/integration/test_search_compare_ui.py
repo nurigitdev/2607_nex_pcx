@@ -40,6 +40,13 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert "Alice Member / alice.member" in response.text
     assert "kure_v1_1024" in response.text
     assert "bge_m3_1024" in response.text
+    assert 'value="bm25_keyword"' in response.text
+    assert "BM25 Keyword" in response.text
+    assert 'data-profile-kind="keyword"' in response.text
+    assert "selectedEmbeddingProfiles" in response.text
+    assert "keywordProfileNames" in response.text
+    assert 'makeCell("strategy"' in response.text
+    assert '"terms"' in response.text
     assert 'id="search-compare-form"' in response.text
     assert 'id="search-results"' in response.text
     assert 'id="search-runtime-panel"' in response.text

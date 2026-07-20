@@ -2786,6 +2786,23 @@ main.container-fluid {
   padding: 0.35rem 0.625rem;
 }
 
+.search-profile-option-keyword {
+  background: #ecfdf5;
+  border-color: #99f6e4;
+  color: #134e4a;
+}
+
+.search-profile-option-name,
+.search-profile-option-code {
+  overflow-wrap: anywhere;
+}
+
+.search-profile-option-code {
+  color: var(--pcx-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .search-form-actions {
   display: flex;
   justify-content: flex-end;

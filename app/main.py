@@ -28,6 +28,7 @@ from app.core.admin_logging import (
     list_provider_route_change_logs,
     log_event,
 )
+from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
 from app.core.chunk_policies import (
     ChunkPolicySummaryRecord,
     InvalidChunkPolicyManagementError,
@@ -3416,6 +3417,10 @@ def vector_search_result_payload(result: VectorSearchResult) -> dict[str, object
         payload["retrieval_strategy"] = result.retrieval_strategy
     if hasattr(result, "score_components"):
         payload["score_components"] = result.score_components
+    if hasattr(result, "matched_term_count"):
+        payload["matched_term_count"] = result.matched_term_count
+    if hasattr(result, "document_length"):
+        payload["document_length"] = result.document_length
     return payload
 
 
@@ -12884,6 +12889,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     profile.profile_name
                     for profile in list_active_embedding_profiles(settings.database_url)
                 ]
+                if BM25_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(BM25_SEARCH_PROFILE_NAME)
                 chunk_policy_options = list_chunk_policy_summaries(settings.database_url)
             except Exception as exc:
                 error_message = str(exc)

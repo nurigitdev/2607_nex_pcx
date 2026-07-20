@@ -153,7 +153,11 @@
       <legend class="form-label">Profiles</legend>
       <div class="search-profile-list">
         {% for profile in profile_options %}
-        <label class="search-profile-option">
+        {% set is_keyword_profile = profile == "bm25_keyword" %}
+        <label
+          class="search-profile-option{% if is_keyword_profile %} search-profile-option-keyword{% endif %}"
+          data-profile-kind="{% if is_keyword_profile %}keyword{% else %}embedding{% endif %}"
+        >
           <input
             class="form-check-input"
             type="checkbox"
@@ -164,7 +168,12 @@
             {% endif %}
             {% if not database_configured %}disabled{% endif %}
           >
-          <span>{{ profile }}</span>
+          {% if is_keyword_profile %}
+          <span class="search-profile-option-name">BM25 Keyword</span>
+          <span class="search-profile-option-code">{{ profile }}</span>
+          {% else %}
+          <span class="search-profile-option-name">{{ profile }}</span>
+          {% endif %}
         </label>
         {% endfor %}
       </div>
@@ -619,6 +628,9 @@
 
   const selectedProfiles = () =>
     new FormData(form).getAll("profiles").filter(Boolean);
+  const keywordProfileNames = new Set(["bm25_keyword"]);
+  const selectedEmbeddingProfiles = () =>
+    selectedProfiles().filter((profile) => !keywordProfileNames.has(profile));
 
   const selectedPolicyCompareNames = () => Array.from(
     policyCompareForm?.querySelectorAll(
@@ -923,7 +935,7 @@
 
   const readinessPayload = (chunkPolicyNames = null) => {
     const formData = new FormData(form);
-    const profiles = selectedProfiles();
+    const profiles = selectedEmbeddingProfiles();
     if (!profiles.length) {
       return null;
     }
@@ -1919,12 +1931,34 @@
 
     const meta = document.createElement("div");
     meta.className = "search-result-meta";
-    meta.append(
+    const distanceText =
+      result.distance === null || result.distance === undefined
+        ? "-"
+        : Number(result.distance).toFixed(4);
+    const scoreComponents = result.score_components || {};
+    const matchedTermCount =
+      result.matched_term_count ?? scoreComponents.matched_term_count ?? null;
+    const queryTerms = Array.isArray(scoreComponents.query_terms)
+      ? scoreComponents.query_terms.join(", ")
+      : "";
+    const metaRows = [
       makeCell("result", String(result.search_log_result_id)),
       makeCell("chunk", String(result.chunk_id)),
-      makeCell("distance", Number(result.distance).toFixed(4)),
-      makeCell("path", (result.heading_path || []).join(" / ")),
-    );
+      makeCell("strategy", result.retrieval_strategy || result.search_profile_name),
+      makeCell("distance", distanceText),
+    ];
+    if (matchedTermCount !== null || queryTerms) {
+      metaRows.push(
+        makeCell(
+          "terms",
+          matchedTermCount === null || matchedTermCount === undefined
+            ? queryTerms
+            : `${matchedTermCount}${queryTerms ? ` / ${queryTerms}` : ""}`,
+        ),
+      );
+    }
+    metaRows.push(makeCell("path", (result.heading_path || []).join(" / ")));
+    meta.append(...metaRows);
 
     item.append(
       header,

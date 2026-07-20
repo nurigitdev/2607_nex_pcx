@@ -1210,6 +1210,8 @@ def test_search_compare_api_returns_bm25_keyword_profile_results(
         assert result["chunk_id"] != hidden_chunk_id
         assert result["distance"] is None
         assert result["retrieval_strategy"] == "bm25_keyword"
+        assert result["matched_term_count"] == 3
+        assert result["document_length"] == pytest.approx(5.0)
         assert result["score_components"]["query_terms"] == ["anchor", "bm25", "keyword"]
         assert body["profile_status_counts"] == {"succeeded": 1, "failed": 0}
         assert log_row["strategy_name"] == "bm25_keyword"
