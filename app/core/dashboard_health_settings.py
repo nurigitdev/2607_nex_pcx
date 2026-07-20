@@ -63,8 +63,7 @@ SIGNAL_CODE_BY_SETTING_NAME = {
     for signal_code, setting_name, _ in DASHBOARD_HEALTH_THRESHOLD_SETTING_DEFINITIONS
 }
 DEFAULT_DASHBOARD_HEALTH_THRESHOLDS = {
-    signal_code: 1
-    for signal_code, _, _ in DASHBOARD_HEALTH_THRESHOLD_SETTING_DEFINITIONS
+    signal_code: 1 for signal_code, _, _ in DASHBOARD_HEALTH_THRESHOLD_SETTING_DEFINITIONS
 }
 
 
@@ -138,9 +137,7 @@ def update_dashboard_health_threshold_settings(
 ) -> DashboardHealthThresholdSettings:
     validated = validate_dashboard_health_threshold_settings_input(settings_input)
     rows = []
-    for signal_code, setting_name, description in (
-        DASHBOARD_HEALTH_THRESHOLD_SETTING_DEFINITIONS
-    ):
+    for signal_code, setting_name, description in DASHBOARD_HEALTH_THRESHOLD_SETTING_DEFINITIONS:
         rows.append(
             (
                 setting_name,
@@ -177,9 +174,7 @@ def reset_dashboard_health_threshold_settings(
 ) -> DashboardHealthThresholdSettings:
     return update_dashboard_health_threshold_settings(
         database_url,
-        DashboardHealthThresholdSettingsInput(
-            thresholds=dict(DEFAULT_DASHBOARD_HEALTH_THRESHOLDS)
-        ),
+        DashboardHealthThresholdSettingsInput(thresholds=dict(DEFAULT_DASHBOARD_HEALTH_THRESHOLDS)),
     )
 
 

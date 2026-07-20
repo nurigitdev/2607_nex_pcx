@@ -17,7 +17,7 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "Core Metrics" in response.text
     assert "마지막 갱신" in response.text
     assert "자동 갱신" in response.text
-    assert 'data-dashboard-refresh' in response.text
+    assert "data-dashboard-refresh" in response.text
     assert 'data-refresh-seconds="0"' in response.text
     assert "/?refresh_seconds=30" in response.text
     assert "스냅샷 내보내기" in response.text
@@ -81,7 +81,7 @@ def test_dashboard_settings_page_shows_configuration_message(client) -> None:
     assert response.status_code == 200
     assert "Dashboard 설정" in response.text
     assert "운영 상태 Threshold" in response.text
-    assert 'data-dashboard-threshold-settings' in response.text
+    assert "data-dashboard-threshold-settings" in response.text
     assert 'data-settings-url="/api/dashboard/health-thresholds"' in response.text
     assert 'data-reset-url="/api/dashboard/health-thresholds/reset"' in response.text
     assert 'data-threshold-code="pipeline_retryable"' in response.text

@@ -113,9 +113,7 @@ def test_document_ingestion_artifact_api_and_page(
                 block_id=second_block.block_id,
                 chunk_seq=1,
                 chunk_text=(
-                    second_block.content_markdown
-                    or second_block.content_text
-                    or "paragraph"
+                    second_block.content_markdown or second_block.content_text or "paragraph"
                 ),
                 content_markdown=second_block.content_markdown,
                 heading_path=second_block.heading_path,
@@ -294,9 +292,10 @@ def test_document_ingestion_artifact_api_and_page(
         assert chunk_source_trace_payload["trace"]["summary"]["block_count"] == 2
         assert chunk_source_trace_payload["trace"]["summary"]["chunk_count"] >= 1
         assert chunk_source_trace_payload["trace"]["summary"]["traced_block_count"] >= 1
-        assert chunk_source_trace_payload["trace"]["block_traces"][0]["block"][
-            "block_type"
-        ] == "heading"
+        assert (
+            chunk_source_trace_payload["trace"]["block_traces"][0]["block"]["block_type"]
+            == "heading"
+        )
         assert missing_chunk_source_trace_response.status_code == 404
         assert invalid_chunk_source_trace_response.status_code == 400
         assert quality_response.status_code == 200
@@ -332,14 +331,10 @@ def test_document_ingestion_artifact_api_and_page(
         assert markdown_export_response.status_code == 200
         assert markdown_export_response.headers["content-type"].startswith("text/markdown")
         assert "document-" in markdown_export_response.headers["content-disposition"]
-        assert markdown_export_response.headers["content-disposition"].endswith(
-            "-markdown.md\""
-        )
+        assert markdown_export_response.headers["content-disposition"].endswith('-markdown.md"')
         assert markdown_export_response.text.startswith("# Artifact API")
         assert blocks_export_response.status_code == 200
-        assert blocks_export_response.headers["content-disposition"].endswith(
-            "-blocks_json.json\""
-        )
+        assert blocks_export_response.headers["content-disposition"].endswith('-blocks_json.json"')
         assert blocks_export_payload["block_summary"]["block_count"] == 2
         assert [block["block_type"] for block in blocks_export_payload["blocks"]] == [
             "heading",
@@ -363,9 +358,10 @@ def test_document_ingestion_artifact_api_and_page(
         )
         assert rerun_payload["extraction_request"]["provider_mode"] == "local"
         assert rerun_payload["extraction_request"]["options"]["reason"] == "slice-235"
-        assert rerun_payload["extraction_request"]["options"]["rerun_request"][
-            "requested_by"
-        ] == "api-test"
+        assert (
+            rerun_payload["extraction_request"]["options"]["rerun_request"]["requested_by"]
+            == "api-test"
+        )
         assert rerun_payload["run"]["status"] == "succeeded"
         assert rerun_payload["artifact_count"] == 1
         assert rerun_payload["block_count"] == 2
@@ -460,9 +456,10 @@ def test_document_extraction_rerun_api_persists_failed_run_for_missing_source(
         assert payload["run"]["error_count"] == 1
         assert payload["artifact_count"] == 0
         assert payload["block_count"] == 0
-        assert payload["extraction_request"]["options"]["rerun_request"][
-            "requested_by"
-        ] == "missing-source-test"
+        assert (
+            payload["extraction_request"]["options"]["rerun_request"]["requested_by"]
+            == "missing-source-test"
+        )
         assert ui_missing_source_response.status_code == 303
         assert "rerun_status=failed" in ui_missing_source_response.headers["location"]
         assert ui_missing_source_feedback_response.status_code == 200

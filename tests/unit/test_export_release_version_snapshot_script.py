@@ -14,9 +14,7 @@ from app.core.release_version_snapshot import (
 
 def _load_export_release_version_snapshot_module():
     script_path = (
-        Path(__file__).resolve().parents[2]
-        / "scripts"
-        / "export_release_version_snapshot.py"
+        Path(__file__).resolve().parents[2] / "scripts" / "export_release_version_snapshot.py"
     )
     spec = importlib.util.spec_from_file_location(
         "export_release_version_snapshot_script",
@@ -103,9 +101,7 @@ def test_main_handles_warning_exit_codes(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         export_release_version_snapshot,
         "build_release_version_snapshot",
-        lambda *, workdir, release_version, tag_prefix: make_snapshot(
-            RELEASE_STATUS_WARNING
-        ),
+        lambda *, workdir, release_version, tag_prefix: make_snapshot(RELEASE_STATUS_WARNING),
     )
     monkeypatch.setattr(sys, "argv", ["export_release_version_snapshot.py"])
 

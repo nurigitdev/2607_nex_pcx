@@ -498,9 +498,7 @@ def test_evaluation_dashboard_summary_api_and_page(
 
         with TestClient(app) as client:
             core_metrics_response = client.get("/api/dashboard/core-metrics")
-            operational_health_response = client.get(
-                "/api/dashboard/operational-health"
-            )
+            operational_health_response = client.get("/api/dashboard/operational-health")
             dashboard_export_json_response = client.get(
                 "/api/dashboard/export",
                 params={
@@ -569,19 +567,13 @@ def test_evaluation_dashboard_summary_api_and_page(
                     "refresh_seconds": 30,
                 },
             )
-            threshold_settings_response = client.get(
-                "/api/dashboard/health-thresholds"
-            )
+            threshold_settings_response = client.get("/api/dashboard/health-thresholds")
             threshold_update_response = client.put(
                 "/api/dashboard/health-thresholds",
                 json={"thresholds": {"pipeline_retryable": 5}},
             )
-            threshold_restore_response = client.post(
-                "/api/dashboard/health-thresholds/reset"
-            )
-            dashboard_settings_page_response = client.get(
-                "/admin/dashboard-settings"
-            )
+            threshold_restore_response = client.post("/api/dashboard/health-thresholds/reset")
+            dashboard_settings_page_response = client.get("/admin/dashboard-settings")
             threshold_bad_code_response = client.put(
                 "/api/dashboard/health-thresholds",
                 json={"thresholds": {"unknown": 1}},
@@ -593,14 +585,10 @@ def test_evaluation_dashboard_summary_api_and_page(
 
         api_payload = api_response.json()["evaluations"]
         core_metrics_payload = core_metrics_response.json()["core_metrics"]
-        operational_health_payload = operational_health_response.json()[
-            "operational_health"
-        ]
+        operational_health_payload = operational_health_response.json()["operational_health"]
         dashboard_export_json = dashboard_export_json_response.json()
         pipeline_queue_payload = pipeline_queue_response.json()["pipeline_queue"]
-        throughput_latency_payload = throughput_latency_response.json()[
-            "throughput_latency"
-        ]
+        throughput_latency_payload = throughput_latency_response.json()["throughput_latency"]
         failures_payload = failures_api_response.json()["recent_failures"]
         pipeline_detail = pipeline_detail_response.json()["failure_detail"]
         embedding_detail = embedding_detail_response.json()["failure_detail"]
@@ -634,22 +622,15 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert operational_health_payload["critical_count"] >= 1
         assert operational_health_payload["warning_count"] >= 1
         assert any(
-            signal["code"] == "pipeline_stale"
-            for signal in operational_health_payload["signals"]
+            signal["code"] == "pipeline_stale" for signal in operational_health_payload["signals"]
         )
         assert dashboard_export_json_response.status_code == 200
-        assert dashboard_export_json_response.headers["content-disposition"].endswith(
-            '.json"'
-        )
+        assert dashboard_export_json_response.headers["content-disposition"].endswith('.json"')
         assert dashboard_export_json["version"] == 1
         assert dashboard_export_json["lookback_hours"] == selected_lookback_hours
         assert dashboard_export_json["operational_health"]["status"] == "critical"
-        assert dashboard_export_json["operational_health"]["thresholds"][
-            "pipeline_retryable"
-        ] == 1
-        assert dashboard_export_json["operational_health"]["signals"][0][
-            "threshold"
-        ] >= 1
+        assert dashboard_export_json["operational_health"]["thresholds"]["pipeline_retryable"] == 1
+        assert dashboard_export_json["operational_health"]["signals"][0]["threshold"] >= 1
         assert dashboard_export_json["core_metrics"]["document_count"] == (
             core_metrics.document_count
         )
@@ -666,36 +647,24 @@ def test_evaluation_dashboard_summary_api_and_page(
             summary.active_question_set_count
         )
         assert dashboard_export_csv_response.status_code == 200
-        assert dashboard_export_csv_response.headers["content-type"].startswith(
-            "text/csv"
-        )
-        assert dashboard_export_csv_response.headers["content-disposition"].endswith(
-            '.csv"'
-        )
-        assert "exported_at,lookback_hours,health_status" in (
-            dashboard_export_csv_response.text
-        )
+        assert dashboard_export_csv_response.headers["content-type"].startswith("text/csv")
+        assert dashboard_export_csv_response.headers["content-disposition"].endswith('.csv"')
+        assert "exported_at,lookback_hours,health_status" in (dashboard_export_csv_response.text)
         assert ",6,critical," in dashboard_export_csv_response.text
         assert threshold_settings_response.status_code == 200
-        assert threshold_settings_response.json()["settings"]["thresholds"][
-            "pipeline_retryable"
-        ] == 1
+        assert (
+            threshold_settings_response.json()["settings"]["thresholds"]["pipeline_retryable"] == 1
+        )
         assert threshold_update_response.status_code == 200
-        assert threshold_update_response.json()["settings"]["thresholds"][
-            "pipeline_retryable"
-        ] == 5
+        assert threshold_update_response.json()["settings"]["thresholds"]["pipeline_retryable"] == 5
         assert threshold_restore_response.status_code == 200
-        assert threshold_restore_response.json()["settings"]["thresholds"][
-            "pipeline_retryable"
-        ] == 1
+        assert (
+            threshold_restore_response.json()["settings"]["thresholds"]["pipeline_retryable"] == 1
+        )
         assert dashboard_settings_page_response.status_code == 200
         assert "Dashboard 설정" in dashboard_settings_page_response.text
-        assert "/api/dashboard/health-thresholds" in (
-            dashboard_settings_page_response.text
-        )
-        assert 'data-threshold-code="pipeline_retryable"' in (
-            dashboard_settings_page_response.text
-        )
+        assert "/api/dashboard/health-thresholds" in (dashboard_settings_page_response.text)
+        assert 'data-threshold-code="pipeline_retryable"' in (dashboard_settings_page_response.text)
         assert 'value="1"' in dashboard_settings_page_response.text
         assert threshold_bad_code_response.status_code == 400
         assert threshold_bad_value_response.status_code == 400
@@ -821,12 +790,8 @@ def test_evaluation_dashboard_summary_api_and_page(
         assert "자동 갱신" in page_response.text
         assert 'data-refresh-seconds="30"' in page_response.text
         assert "스냅샷 내보내기" in page_response.text
-        assert "/api/dashboard/export?lookback_hours=6&amp;format=json" in (
-            page_response.text
-        )
-        assert "/api/dashboard/export?lookback_hours=6&amp;format=csv" in (
-            page_response.text
-        )
+        assert "/api/dashboard/export?lookback_hours=6&amp;format=json" in (page_response.text)
+        assert "/api/dashboard/export?lookback_hours=6&amp;format=csv" in (page_response.text)
         assert "최근 6시간" in page_response.text
         assert "/?refresh_seconds=30&amp;lookback_hours=1" in page_response.text
         assert "/?lookback_hours=6&amp;refresh_seconds=60" in page_response.text

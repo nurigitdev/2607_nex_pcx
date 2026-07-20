@@ -447,9 +447,7 @@ def _policy_summary(
     rows: list[MultiPolicyIngestionCoverageRow],
 ) -> MultiPolicyIngestionCoveragePolicySummary:
     expected_embedding_count = sum(cell.chunk_count for row in rows for cell in row.profiles)
-    embedded_chunk_count = sum(
-        cell.embedded_chunk_count for row in rows for cell in row.profiles
-    )
+    embedded_chunk_count = sum(cell.embedded_chunk_count for row in rows for cell in row.profiles)
     complete_cell_count = sum(
         1 for row in rows for cell in row.profiles if cell.status == "complete"
     )
@@ -469,9 +467,7 @@ def _policy_summary(
             if row.profiles and all(cell.status == "complete" for cell in row.profiles)
         ),
         attention_document_count=sum(
-            1
-            for row in rows
-            if any(cell.status in {"failed", "partial"} for cell in row.profiles)
+            1 for row in rows if any(cell.status in {"failed", "partial"} for cell in row.profiles)
         ),
         total_chunk_count=sum(row.chunk_count for row in rows),
         expected_embedding_count=expected_embedding_count,
@@ -548,9 +544,7 @@ def _build_multi_policy_summary(
         for chunk_policy_name, policy_rows in sorted(rows_by_policy.items())
     )
     expected_embedding_count = sum(cell.chunk_count for row in rows for cell in row.profiles)
-    embedded_chunk_count = sum(
-        cell.embedded_chunk_count for row in rows for cell in row.profiles
-    )
+    embedded_chunk_count = sum(cell.embedded_chunk_count for row in rows for cell in row.profiles)
     complete_cell_count = sum(
         1 for row in rows for cell in row.profiles if cell.status == "complete"
     )

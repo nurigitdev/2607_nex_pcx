@@ -70,17 +70,13 @@ def build_emergency_recovery_index(
         workdir=selected_workdir,
         app_url=app_url.rstrip("/"),
         provider_host=provider_host,
-        commands=tuple(
-            _with_artifact_dir(command, selected_artifacts_dir) for command in commands
-        ),
+        commands=tuple(_with_artifact_dir(command, selected_artifacts_dir) for command in commands),
         scenarios=scenarios,
     )
 
 
 def emergency_recovery_index_payload(index: EmergencyRecoveryIndex) -> dict[str, object]:
-    command_payloads = {
-        command.code: _command_payload(command) for command in index.commands
-    }
+    command_payloads = {command.code: _command_payload(command) for command in index.commands}
     return {
         "version": EMERGENCY_RECOVERY_INDEX_VERSION,
         "generated_at": index.generated_at.isoformat(),
@@ -99,8 +95,7 @@ def emergency_recovery_index_payload(index: EmergencyRecoveryIndex) -> dict[str,
                 "first_check": scenario.first_check,
                 "command_codes": list(scenario.command_codes),
                 "commands": [
-                    command_payloads[command_code]
-                    for command_code in scenario.command_codes
+                    command_payloads[command_code] for command_code in scenario.command_codes
                 ],
                 "checklist": list(scenario.checklist),
                 "stop_condition": scenario.stop_condition,

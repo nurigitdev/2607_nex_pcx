@@ -90,10 +90,7 @@ def summarize_dashboard_operational_health(
             signals,
             code="pipeline_exhausted",
             severity=DASHBOARD_HEALTH_CRITICAL,
-            count=(
-                pipeline_queue.exhausted_failed_count
-                + pipeline_queue.exhausted_canceled_count
-            ),
+            count=(pipeline_queue.exhausted_failed_count + pipeline_queue.exhausted_canceled_count),
             action_url="/admin/jobs",
             threshold=_threshold_for(thresholds, "pipeline_exhausted"),
         )
@@ -101,10 +98,7 @@ def summarize_dashboard_operational_health(
             signals,
             code="pipeline_retryable",
             severity=DASHBOARD_HEALTH_WARNING,
-            count=(
-                pipeline_queue.retryable_failed_count
-                + pipeline_queue.retryable_canceled_count
-            ),
+            count=(pipeline_queue.retryable_failed_count + pipeline_queue.retryable_canceled_count),
             action_url="/admin/jobs",
             threshold=_threshold_for(thresholds, "pipeline_retryable"),
         )

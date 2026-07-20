@@ -9,9 +9,7 @@ from app.core.operator_handoff_bundle import HandoffEvidenceFile, OperatorHandof
 
 def _load_export_operator_handoff_bundle_module():
     script_path = (
-        Path(__file__).resolve().parents[2]
-        / "scripts"
-        / "export_operator_handoff_bundle.py"
+        Path(__file__).resolve().parents[2] / "scripts" / "export_operator_handoff_bundle.py"
     )
     spec = importlib.util.spec_from_file_location(
         "export_operator_handoff_bundle_script",

@@ -80,10 +80,7 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     )
     assert dgx_benchmark_run_table["table_name"] == "dgx_ingestion_benchmark_runs"
     assert extraction_artifact_table["table_name"] == "extraction_artifacts"
-    assert (
-        extraction_quality_snapshot_table["table_name"]
-        == "extraction_quality_snapshots"
-    )
+    assert extraction_quality_snapshot_table["table_name"] == "extraction_quality_snapshots"
     assert local_extraction_profile_count["count"] == 7
 
 

@@ -117,9 +117,10 @@ def test_process_next_markdown_pipeline_job_returns_idle_when_queue_is_empty(mon
 
     assert result.processed is False
     assert result.job is None
-    assert tuple(
-        policy_result.chunk_policy_name for policy_result in result.policy_results
-    ) == DEFAULT_PIPELINE_CHUNK_POLICY_NAMES
+    assert (
+        tuple(policy_result.chunk_policy_name for policy_result in result.policy_results)
+        == DEFAULT_PIPELINE_CHUNK_POLICY_NAMES
+    )
     assert Counter(policy_result.chunk_count for policy_result in result.policy_results) == {0: 3}
     assert result.message == "No queued pipeline job is available"
 

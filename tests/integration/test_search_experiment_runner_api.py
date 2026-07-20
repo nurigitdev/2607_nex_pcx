@@ -191,9 +191,10 @@ def test_search_experiment_run_api_executes_experiment(
             item["experiment_run_id"] == experiment_run["experiment_run_id"]
             for item in list_body["experiments"]
         )
-        assert detail_body["experiment_run"]["experiment_run_id"] == experiment_run[
-            "experiment_run_id"
-        ]
+        assert (
+            detail_body["experiment_run"]["experiment_run_id"]
+            == experiment_run["experiment_run_id"]
+        )
         assert [profile["result_count"] for profile in detail_body["profiles"]] == [1, 1]
     finally:
         experiment_run_id = None

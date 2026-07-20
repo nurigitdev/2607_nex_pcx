@@ -75,9 +75,7 @@ def validate_embedding_batch_run_retention_settings_input(
     settings_input: EmbeddingBatchRunRetentionSettingsInput,
 ) -> EmbeddingBatchRunRetentionSettingsInput:
     if settings_input.retention_days <= 0 or settings_input.retention_days > 3650:
-        raise InvalidEmbeddingBatchRunRetentionError(
-            "retention_days must be between 1 and 3650"
-        )
+        raise InvalidEmbeddingBatchRunRetentionError("retention_days must be between 1 and 3650")
     if settings_input.cleanup_batch_size <= 0 or settings_input.cleanup_batch_size > 100000:
         raise InvalidEmbeddingBatchRunRetentionError(
             "cleanup_batch_size must be between 1 and 100000"

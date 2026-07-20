@@ -29,9 +29,7 @@ def test_go_live_readiness_api_reports_missing_database(client) -> None:
     payload = response.json()["go_live_readiness"]
     assert payload["status"] == "blocked"
     checks = {
-        check["code"]: check
-        for section in payload["sections"]
-        for check in section["checks"]
+        check["code"]: check for section in payload["sections"] for check in section["checks"]
     }
     assert checks["database_configured"]["status"] == "failed"
     assert checks["database_connectivity"]["status"] == "skipped"

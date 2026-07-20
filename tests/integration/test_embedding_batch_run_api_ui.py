@@ -116,9 +116,7 @@ def test_embedding_batch_run_api_and_ui(
                     "limit": 20,
                 },
             )
-            detail_response = client.get(
-                f"/api/admin/embedding-batch-runs/{run.batch_run_id}"
-            )
+            detail_response = client.get(f"/api/admin/embedding-batch-runs/{run.batch_run_id}")
             throughput_response = client.get(
                 "/api/admin/embedding-batch-runs/throughput-summary",
                 params={
@@ -281,17 +279,14 @@ def test_embedding_batch_run_failed_jobs_can_retry_from_api_and_ui(
             second_retry_response = client.post(
                 f"/api/admin/embedding-batch-runs/{run.batch_run_id}/retry-failed"
             )
-            missing_response = client.post(
-                "/api/admin/embedding-batch-runs/999999999/retry-failed"
-            )
+            missing_response = client.post("/api/admin/embedding-batch-runs/999999999/retry-failed")
 
         retried_job = get_embedding_job(migrated_database_url, failed_job.job_id)
 
         assert page_response.status_code == 200
         assert "실패 Job 재시도" in page_response.text
         assert (
-            f"/api/admin/embedding-batch-runs/{run.batch_run_id}/retry-failed"
-            in page_response.text
+            f"/api/admin/embedding-batch-runs/{run.batch_run_id}/retry-failed" in page_response.text
         )
         assert retry_response.status_code == 200
         assert retry_response.json()["batch_run_id"] == run.batch_run_id

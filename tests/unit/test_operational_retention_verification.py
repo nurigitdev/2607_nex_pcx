@@ -206,9 +206,7 @@ def test_operational_retention_verification_warns_for_policy_and_old_artifacts(
         checked_at=checked_at,
     )
     payload = operational_retention_verification_report_payload(report)
-    warning_codes = {
-        check["code"] for check in payload["checks"] if check["status"] == "warning"
-    }
+    warning_codes = {check["code"] for check in payload["checks"] if check["status"] == "warning"}
 
     assert report.status == RETENTION_STATUS_WARNING
     assert "admin_log_retention" in warning_codes

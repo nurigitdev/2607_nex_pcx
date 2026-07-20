@@ -13,9 +13,7 @@ from app.core.emergency_recovery_index import (
 
 def _load_render_emergency_recovery_index_module():
     script_path = (
-        Path(__file__).resolve().parents[2]
-        / "scripts"
-        / "render_emergency_recovery_index.py"
+        Path(__file__).resolve().parents[2] / "scripts" / "render_emergency_recovery_index.py"
     )
     spec = importlib.util.spec_from_file_location(
         "render_emergency_recovery_index_script",

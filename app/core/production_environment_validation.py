@@ -308,9 +308,7 @@ def _database_guard(
         return ProductionValidationCheck(
             code="database_target",
             status=PRODUCTION_CHECK_FAILED,
-            detail=(
-                f"Database name is {database_name}; expected {expected_database_name}."
-            ),
+            detail=(f"Database name is {database_name}; expected {expected_database_name}."),
             metadata=metadata,
         )
     if database_name and database_name.endswith("_test"):

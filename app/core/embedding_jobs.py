@@ -87,11 +87,7 @@ class EmbeddingJobBacklogProfileSummary:
 
     @property
     def attention_count(self) -> int:
-        return (
-            self.retryable_failed_count
-            + self.exhausted_failed_count
-            + self.stale_running_count
-        )
+        return self.retryable_failed_count + self.exhausted_failed_count + self.stale_running_count
 
 
 @dataclass(frozen=True)
@@ -114,11 +110,7 @@ class EmbeddingJobBacklogSummary:
 
     @property
     def attention_count(self) -> int:
-        return (
-            self.retryable_failed_count
-            + self.exhausted_failed_count
-            + self.stale_running_count
-        )
+        return self.retryable_failed_count + self.exhausted_failed_count + self.stale_running_count
 
 
 @dataclass(frozen=True)
@@ -423,8 +415,7 @@ def list_stale_embedding_jobs(
 def get_embedding_job_backlog_summary(database_url: str) -> EmbeddingJobBacklogSummary:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT
                     profile_name,
                     COUNT(*)::int AS total_count,
@@ -458,8 +449,7 @@ def get_embedding_job_backlog_summary(database_url: str) -> EmbeddingJobBacklogS
                 FROM embedding_jobs
                 GROUP BY profile_name
                 ORDER BY profile_name ASC
-                """
-            )
+                """)
             rows = cursor.fetchall()
 
     profile_summaries = tuple(
@@ -475,12 +465,8 @@ def get_embedding_job_backlog_summary(database_url: str) -> EmbeddingJobBacklogS
             summary.reclaimable_stale_running_count for summary in profile_summaries
         ),
         failed_count=sum(summary.failed_count for summary in profile_summaries),
-        retryable_failed_count=sum(
-            summary.retryable_failed_count for summary in profile_summaries
-        ),
-        exhausted_failed_count=sum(
-            summary.exhausted_failed_count for summary in profile_summaries
-        ),
+        retryable_failed_count=sum(summary.retryable_failed_count for summary in profile_summaries),
+        exhausted_failed_count=sum(summary.exhausted_failed_count for summary in profile_summaries),
         succeeded_count=sum(summary.succeeded_count for summary in profile_summaries),
         skipped_count=sum(summary.skipped_count for summary in profile_summaries),
     )

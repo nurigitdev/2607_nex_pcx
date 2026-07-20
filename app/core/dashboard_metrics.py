@@ -56,8 +56,7 @@ def _float_or_none(value: object) -> float | None:
 def get_dashboard_core_metrics(database_url: str) -> DashboardCoreMetrics:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
+            cursor.execute("""
                 WITH duplicate_checksums AS (
                     SELECT sha256_checksum
                     FROM files
@@ -79,12 +78,10 @@ def get_dashboard_core_metrics(database_url: str) -> DashboardCoreMetrics:
                         AS duplicate_checksum_count,
                     (SELECT AVG(token_count) FROM chunks WHERE token_count IS NOT NULL)
                         AS average_chunk_token_count
-                """
-            )
+                """)
             totals = dict(cursor.fetchone() or {})
 
-            cursor.execute(
-                """
+            cursor.execute("""
                 WITH file_type_files AS (
                     SELECT
                         COALESCE(NULLIF(btrim(file_ext), ''), 'unknown') AS file_type,
@@ -111,12 +108,10 @@ def get_dashboard_core_metrics(database_url: str) -> DashboardCoreMetrics:
                     ON file_type_documents.file_type = file_type_files.file_type
                 ORDER BY document_count DESC, file_count DESC, file_type ASC
                 LIMIT 8
-                """
-            )
+                """)
             file_type_rows = cursor.fetchall()
 
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT
                     d.document_group,
                     COUNT(DISTINCT d.file_id)::int AS file_count,
@@ -127,12 +122,10 @@ def get_dashboard_core_metrics(database_url: str) -> DashboardCoreMetrics:
                 GROUP BY d.document_group
                 ORDER BY document_count DESC, chunk_count DESC, d.document_group ASC
                 LIMIT 8
-                """
-            )
+                """)
             document_group_rows = cursor.fetchall()
 
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT
                     chunk_policy_name,
                     COUNT(*)::int AS chunk_count,
@@ -142,8 +135,7 @@ def get_dashboard_core_metrics(database_url: str) -> DashboardCoreMetrics:
                 GROUP BY chunk_policy_name
                 ORDER BY chunk_count DESC, chunk_policy_name ASC
                 LIMIT 8
-                """
-            )
+                """)
             chunk_policy_rows = cursor.fetchall()
 
     return DashboardCoreMetrics(

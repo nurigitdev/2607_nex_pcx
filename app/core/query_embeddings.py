@@ -97,10 +97,7 @@ def embed_query_for_profile(
                 route,
                 fallback_runtime_config=fallback_config,
             )
-            if (
-                not allow_mock_fallback
-                and runtime_config.mode == MOCK_EMBEDDING_PROVIDER_TYPE
-            ):
+            if not allow_mock_fallback and runtime_config.mode == MOCK_EMBEDDING_PROVIDER_TYPE:
                 raise InvalidEmbeddingProviderError(
                     "Mock query embedding fallback is disabled for this search run"
                 )

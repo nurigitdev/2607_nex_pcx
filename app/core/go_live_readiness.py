@@ -93,10 +93,7 @@ class GoLiveReadinessReport:
 
     def _count_status(self, status: str) -> int:
         return sum(
-            1
-            for section in self.sections
-            for check in section.checks
-            if check.status == status
+            1 for section in self.sections for check in section.checks if check.status == status
         )
 
 

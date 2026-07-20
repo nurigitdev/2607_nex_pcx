@@ -86,9 +86,7 @@ def test_audit_warns_for_local_relative_paths_and_disabled_readiness(tmp_path) -
         project_root=tmp_path,
     )
     payload = runtime_config_audit_report_payload(report)
-    warning_codes = {
-        check["code"] for check in payload["checks"] if check["status"] == "warning"
-    }
+    warning_codes = {check["code"] for check in payload["checks"] if check["status"] == "warning"}
 
     assert report.status == CONFIG_AUDIT_STATUS_WARNING
     assert "environment" in warning_codes
@@ -106,9 +104,7 @@ def test_audit_warns_for_production_test_database_and_short_defer(tmp_path) -> N
         )
     )
     payload = runtime_config_audit_report_payload(report)
-    warning_codes = {
-        check["code"] for check in payload["checks"] if check["status"] == "warning"
-    }
+    warning_codes = {check["code"] for check in payload["checks"] if check["status"] == "warning"}
 
     assert report.status == CONFIG_AUDIT_STATUS_WARNING
     assert "test_database_url" in warning_codes

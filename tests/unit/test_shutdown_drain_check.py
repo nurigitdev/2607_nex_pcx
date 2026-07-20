@@ -39,12 +39,12 @@ def _pipeline_queue(**overrides: int) -> PipelineQueueSummary:
     return PipelineQueueSummary(
         stage_summaries=(),
         type_summaries=(),
-        oldest_queued_at=datetime(2026, 7, 17, 1, 2, 3, tzinfo=UTC)
-        if values["queued_count"]
-        else None,
-        oldest_stale_lease_expires_at=datetime(2026, 7, 17, 1, 3, 4, tzinfo=UTC)
-        if values["stale_running_count"]
-        else None,
+        oldest_queued_at=(
+            datetime(2026, 7, 17, 1, 2, 3, tzinfo=UTC) if values["queued_count"] else None
+        ),
+        oldest_stale_lease_expires_at=(
+            datetime(2026, 7, 17, 1, 3, 4, tzinfo=UTC) if values["stale_running_count"] else None
+        ),
         **values,
     )
 
@@ -75,12 +75,12 @@ def _embedding_backlog(**overrides: int) -> EmbeddingJobBacklogSummary:
         exhausted_failed_count=values["exhausted_failed_count"],
         succeeded_count=values["succeeded_count"],
         skipped_count=values["skipped_count"],
-        oldest_pending_at=datetime(2026, 7, 17, 2, 3, 4, tzinfo=UTC)
-        if values["pending_count"]
-        else None,
-        oldest_stale_lease_expires_at=datetime(2026, 7, 17, 2, 4, 5, tzinfo=UTC)
-        if values["stale_running_count"]
-        else None,
+        oldest_pending_at=(
+            datetime(2026, 7, 17, 2, 3, 4, tzinfo=UTC) if values["pending_count"] else None
+        ),
+        oldest_stale_lease_expires_at=(
+            datetime(2026, 7, 17, 2, 4, 5, tzinfo=UTC) if values["stale_running_count"] else None
+        ),
     )
     return EmbeddingJobBacklogSummary(profile_summaries=(profile,), **values)
 

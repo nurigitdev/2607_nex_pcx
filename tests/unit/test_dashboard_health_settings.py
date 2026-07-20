@@ -43,9 +43,7 @@ def test_validate_dashboard_health_threshold_settings_rejects_invalid_values(
 ) -> None:
     with pytest.raises(InvalidDashboardHealthThresholdSettingsError, match="threshold"):
         validate_dashboard_health_threshold_settings_input(
-            DashboardHealthThresholdSettingsInput(
-                thresholds={"pipeline_retryable": value}
-            )
+            DashboardHealthThresholdSettingsInput(thresholds={"pipeline_retryable": value})
         )
 
 

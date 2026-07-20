@@ -253,9 +253,7 @@ def _pipeline_queue_drain_check(summary: PipelineQueueSummary) -> ShutdownDrainC
 
 def _safe_embedding_queue_drain_check(database_url: str) -> ShutdownDrainCheck:
     try:
-        return _embedding_queue_drain_check(
-            get_embedding_job_backlog_summary(database_url)
-        )
+        return _embedding_queue_drain_check(get_embedding_job_backlog_summary(database_url))
     except Exception as exc:
         return ShutdownDrainCheck(
             code="embedding_queue",
@@ -343,8 +341,7 @@ def _embedding_backlog_payload(summary: EmbeddingJobBacklogSummary) -> dict[str,
         "claimable_count": summary.claimable_count,
         "attention_count": summary.attention_count,
         "profile_summaries": [
-            _embedding_profile_payload(profile)
-            for profile in summary.profile_summaries
+            _embedding_profile_payload(profile) for profile in summary.profile_summaries
         ],
     }
 

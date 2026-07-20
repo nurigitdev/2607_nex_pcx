@@ -30,9 +30,7 @@ check_shutdown_drain = _load_check_shutdown_drain_module()
 
 
 def make_report(status: str) -> ShutdownDrainReport:
-    check_status = (
-        DRAIN_CHECK_WARNING if status == DRAIN_STATUS_WARNING else DRAIN_CHECK_PASSED
-    )
+    check_status = DRAIN_CHECK_WARNING if status == DRAIN_STATUS_WARNING else DRAIN_CHECK_PASSED
     return ShutdownDrainReport(
         status=status,
         checked_at=datetime(2026, 7, 17, 4, 5, 6, tzinfo=UTC),

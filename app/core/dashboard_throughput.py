@@ -191,9 +191,7 @@ def _embedding_throughput_from_rows(
         average_batch_elapsed_ms=_rounded_float(total_row["average_batch_elapsed_ms"]),
         throughput_per_second=_rate_per_second(processed_count, elapsed_ms),
         latest_completed_at=total_row["latest_completed_at"],
-        profiles=tuple(
-            _embedding_profile_throughput_from_row(row) for row in profile_rows
-        ),
+        profiles=tuple(_embedding_profile_throughput_from_row(row) for row in profile_rows),
     )
 
 
@@ -229,18 +227,14 @@ def _search_latency_from_rows(
         search_log_count=int(total_row["search_log_count"] or 0),
         result_count=int(total_row["result_count"] or 0),
         average_total_elapsed_ms=_rounded_float(total_row["average_total_elapsed_ms"]),
-        average_profile_elapsed_ms=_rounded_float(
-            total_row["average_profile_elapsed_ms"]
-        ),
+        average_profile_elapsed_ms=_rounded_float(total_row["average_profile_elapsed_ms"]),
         latest_search_at=total_row["latest_search_at"],
         profiles=tuple(
             DashboardSearchProfileLatency(
                 profile_name=str(row["profile_name"]),
                 search_log_count=int(row["search_log_count"] or 0),
                 result_count=int(row["result_count"] or 0),
-                average_profile_elapsed_ms=_rounded_float(
-                    row["average_profile_elapsed_ms"]
-                ),
+                average_profile_elapsed_ms=_rounded_float(row["average_profile_elapsed_ms"]),
             )
             for row in profile_rows
         ),
@@ -287,8 +281,7 @@ def get_dashboard_throughput_latency_snapshot(
             pipeline_total_row = dict(cursor.fetchone() or {})
 
             stage_values = ", ".join(
-                f"({index}, '{stage}')"
-                for index, stage in enumerate(PIPELINE_STAGE_ORDER, start=1)
+                f"({index}, '{stage}')" for index, stage in enumerate(PIPELINE_STAGE_ORDER, start=1)
             )
             cursor.execute(
                 f"""

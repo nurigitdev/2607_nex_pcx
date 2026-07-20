@@ -17,9 +17,7 @@ from app.core.operational_retention_verification import (
 
 def _load_verify_operational_retention_module():
     script_path = (
-        Path(__file__).resolve().parents[2]
-        / "scripts"
-        / "verify_operational_retention.py"
+        Path(__file__).resolve().parents[2] / "scripts" / "verify_operational_retention.py"
     )
     spec = importlib.util.spec_from_file_location(
         "verify_operational_retention_script",
@@ -38,9 +36,7 @@ verify_operational_retention = _load_verify_operational_retention_module()
 
 def make_report(status: str) -> OperationalRetentionVerificationReport:
     check_status = (
-        RETENTION_CHECK_WARNING
-        if status == RETENTION_STATUS_WARNING
-        else RETENTION_CHECK_PASSED
+        RETENTION_CHECK_WARNING if status == RETENTION_STATUS_WARNING else RETENTION_CHECK_PASSED
     )
     return OperationalRetentionVerificationReport(
         status=status,

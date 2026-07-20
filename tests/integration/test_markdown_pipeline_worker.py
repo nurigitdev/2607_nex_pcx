@@ -214,9 +214,7 @@ This section should become another heading-aware chunk.
         assert {
             policy_result.chunk_policy_name: policy_result.chunk_count
             for policy_result in result.policy_results
-        } == {
-            policy_name: 2 for policy_name in DEFAULT_PIPELINE_CHUNK_POLICY_NAMES
-        }
+        } == {policy_name: 2 for policy_name in DEFAULT_PIPELINE_CHUNK_POLICY_NAMES}
 
         chunks = list_document_chunks(
             migrated_database_url,

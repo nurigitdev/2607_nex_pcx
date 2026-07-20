@@ -16,9 +16,7 @@ from app.core.production_environment_validation import (
 
 def _load_validate_production_environment_module():
     script_path = (
-        Path(__file__).resolve().parents[2]
-        / "scripts"
-        / "validate_production_environment.py"
+        Path(__file__).resolve().parents[2] / "scripts" / "validate_production_environment.py"
     )
     spec = importlib.util.spec_from_file_location(
         "validate_production_environment_script",

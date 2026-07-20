@@ -162,11 +162,7 @@ class PipelineQueueSummary:
 
     @property
     def attention_count(self) -> int:
-        return (
-            self.stale_running_count
-            + self.failed_count
-            + self.canceled_count
-        )
+        return self.stale_running_count + self.failed_count + self.canceled_count
 
 
 class InvalidPipelineJobError(ValueError):
@@ -434,8 +430,7 @@ def list_pipeline_job_events(
 def get_pipeline_queue_summary(database_url: str) -> PipelineQueueSummary:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT
                     COUNT(*)::int AS total_count,
                     COUNT(*) FILTER (WHERE status = 'queued')::int AS queued_count,
@@ -475,12 +470,10 @@ def get_pipeline_queue_summary(database_url: str) -> PipelineQueueSummary:
                           AND lease_expires_at < now()
                     ) AS oldest_stale_lease_expires_at
                 FROM pipeline_jobs
-                """
-            )
+                """)
             summary_row = dict(cursor.fetchone() or {})
 
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT
                     stage,
                     COUNT(*)::int AS total_count,
@@ -493,12 +486,10 @@ def get_pipeline_queue_summary(database_url: str) -> PipelineQueueSummary:
                 GROUP BY stage
                 ORDER BY total_count DESC, stage ASC
                 LIMIT 8
-                """
-            )
+                """)
             stage_rows = cursor.fetchall()
 
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT
                     job_type,
                     COUNT(*)::int AS total_count,
@@ -509,24 +500,19 @@ def get_pipeline_queue_summary(database_url: str) -> PipelineQueueSummary:
                 GROUP BY job_type
                 ORDER BY total_count DESC, job_type ASC
                 LIMIT 8
-                """
-            )
+                """)
             type_rows = cursor.fetchall()
 
     return PipelineQueueSummary(
         stage_summaries=tuple(
             _row_to_pipeline_queue_stage_summary(dict(row)) for row in stage_rows
         ),
-        type_summaries=tuple(
-            _row_to_pipeline_queue_type_summary(dict(row)) for row in type_rows
-        ),
+        type_summaries=tuple(_row_to_pipeline_queue_type_summary(dict(row)) for row in type_rows),
         total_count=int(summary_row["total_count"]),
         queued_count=int(summary_row["queued_count"]),
         running_count=int(summary_row["running_count"]),
         stale_running_count=int(summary_row["stale_running_count"]),
-        reclaimable_stale_running_count=int(
-            summary_row["reclaimable_stale_running_count"]
-        ),
+        reclaimable_stale_running_count=int(summary_row["reclaimable_stale_running_count"]),
         failed_count=int(summary_row["failed_count"]),
         retryable_failed_count=int(summary_row["retryable_failed_count"]),
         exhausted_failed_count=int(summary_row["exhausted_failed_count"]),

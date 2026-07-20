@@ -23,9 +23,7 @@ def test_go_live_readiness_api_reads_migrated_database(
     payload = response.json()["go_live_readiness"]
     assert payload["status"] in {"ready", "warning", "blocked"}
     checks = {
-        check["code"]: check
-        for section in payload["sections"]
-        for check in section["checks"]
+        check["code"]: check for section in payload["sections"] for check in section["checks"]
     }
     assert checks["database_configured"]["status"] == "passed"
     assert checks["database_connectivity"]["status"] == "passed"

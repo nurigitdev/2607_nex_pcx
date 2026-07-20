@@ -29,7 +29,7 @@ def _settings(tmp_path: Path, **overrides) -> Settings:
 def test_backup_restore_smoke_ready_with_tools_and_distinct_restore_url(
     monkeypatch,
     tmp_path,
-    ) -> None:
+) -> None:
     (tmp_path / "artifacts").mkdir()
     (tmp_path / "backups").mkdir()
     monkeypatch.setattr(backup_restore_smoke.shutil, "which", lambda tool: f"/usr/bin/{tool}")
@@ -96,9 +96,7 @@ def test_backup_restore_smoke_warns_for_missing_tools_optional_artifacts_and_res
         project_root=tmp_path,
     )
     payload = backup_restore_smoke_report_payload(report)
-    warning_codes = {
-        check["code"] for check in payload["checks"] if check["status"] == "warning"
-    }
+    warning_codes = {check["code"] for check in payload["checks"] if check["status"] == "warning"}
 
     assert report.status == BACKUP_SMOKE_STATUS_WARNING
     assert "pg_dump_available" in warning_codes

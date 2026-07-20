@@ -86,9 +86,7 @@ def test_search_experiments_page_renders_recent_runs_and_detail(
 
         app = create_app(Settings(database_url=migrated_database_url))
         with TestClient(app) as client:
-            response = client.get(
-                f"/search/experiments?experiment_run_id={run.experiment_run_id}"
-            )
+            response = client.get(f"/search/experiments?experiment_run_id={run.experiment_run_id}")
 
         assert response.status_code == 200
         assert "검색 실험 Run" in response.text

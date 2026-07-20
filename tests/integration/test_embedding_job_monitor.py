@@ -404,8 +404,7 @@ def test_embedding_job_monitor_shows_readiness_gate_failure(
             created.job.job_id,
             error_code="EMBEDDING_PROVIDER_ROUTE_NOT_READY",
             error_message=(
-                "No provider route passed the readiness gate "
-                "(gpu-blocked:needs_contract)"
+                "No provider route passed the readiness gate " "(gpu-blocked:needs_contract)"
             ),
             runtime_metadata={
                 "provider_route_readiness_gate": "blocked_all_routes",

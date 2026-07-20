@@ -192,9 +192,7 @@ def get_embedding_worker_batch_run(
     batch_run_id: int,
 ) -> EmbeddingWorkerBatchRunRecord | None:
     if batch_run_id <= 0:
-        raise InvalidEmbeddingWorkerBatchRunError(
-            "batch_run_id must be greater than 0"
-        )
+        raise InvalidEmbeddingWorkerBatchRunError("batch_run_id must be greater than 0")
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -237,9 +235,7 @@ def validate_embedding_worker_batch_run_input(
     stopped_reason = _validate_stopped_reason(run_input.stopped_reason)
     job_ids = _validate_job_ids(run_input.job_ids)
     if run_input.elapsed_ms is not None and run_input.elapsed_ms < 0:
-        raise InvalidEmbeddingWorkerBatchRunError(
-            "elapsed_ms must be greater than or equal to 0"
-        )
+        raise InvalidEmbeddingWorkerBatchRunError("elapsed_ms must be greater than or equal to 0")
     if (
         run_input.started_at is not None
         and run_input.completed_at is not None
@@ -285,13 +281,10 @@ def _validate_limit(limit: int) -> None:
 
 def _validate_batch_limit(limit_requested: int) -> None:
     if limit_requested <= 0:
-        raise InvalidEmbeddingWorkerBatchRunError(
-            "limit_requested must be greater than 0"
-        )
+        raise InvalidEmbeddingWorkerBatchRunError("limit_requested must be greater than 0")
     if limit_requested > MAX_EMBEDDING_WORKER_BATCH_LIMIT:
         raise InvalidEmbeddingWorkerBatchRunError(
-            "limit_requested must be less than or equal to "
-            f"{MAX_EMBEDDING_WORKER_BATCH_LIMIT}"
+            "limit_requested must be less than or equal to " f"{MAX_EMBEDDING_WORKER_BATCH_LIMIT}"
         )
 
 
@@ -318,26 +311,20 @@ def _validate_batch_counts(run_input: EmbeddingWorkerBatchRunInput) -> None:
             "processed_count plus idle_count must equal result_count"
         )
     if (
-        run_input.succeeded_count
-        + run_input.failed_count
-        + run_input.deferred_count
+        run_input.succeeded_count + run_input.failed_count + run_input.deferred_count
         > run_input.processed_count
     ):
         raise InvalidEmbeddingWorkerBatchRunError(
             "terminal and deferred counts must not exceed processed_count"
         )
     if len(run_input.job_ids) > run_input.processed_count:
-        raise InvalidEmbeddingWorkerBatchRunError(
-            "job_ids count must not exceed processed_count"
-        )
+        raise InvalidEmbeddingWorkerBatchRunError("job_ids count must not exceed processed_count")
 
 
 def _validate_provider_source(provider_source: str) -> str:
     normalized = _validate_nonblank(provider_source, "provider_source").lower()
     if normalized not in EMBEDDING_WORKER_BATCH_PROVIDER_SOURCES:
-        raise InvalidEmbeddingWorkerBatchRunError(
-            f"Unsupported provider_source: {normalized}"
-        )
+        raise InvalidEmbeddingWorkerBatchRunError(f"Unsupported provider_source: {normalized}")
     return normalized
 
 
@@ -353,9 +340,7 @@ def _validate_readiness_gate_failure_mode(mode: str) -> str:
 def _validate_stopped_reason(stopped_reason: str) -> str:
     normalized = _validate_nonblank(stopped_reason, "stopped_reason").lower()
     if normalized not in EMBEDDING_WORKER_BATCH_STOP_REASONS:
-        raise InvalidEmbeddingWorkerBatchRunError(
-            f"Unsupported stopped_reason: {normalized}"
-        )
+        raise InvalidEmbeddingWorkerBatchRunError(f"Unsupported stopped_reason: {normalized}")
     return normalized
 
 

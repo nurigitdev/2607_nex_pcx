@@ -29,9 +29,7 @@ run_go_live_smoke_script = _load_run_go_live_smoke_module()
 
 
 def make_report(status: str) -> GoLiveSmokeReport:
-    check_status = (
-        SMOKE_CHECK_WARNING if status == SMOKE_STATUS_WARNING else SMOKE_CHECK_PASSED
-    )
+    check_status = SMOKE_CHECK_WARNING if status == SMOKE_STATUS_WARNING else SMOKE_CHECK_PASSED
     return GoLiveSmokeReport(
         status=status,
         checked_at=datetime(2026, 7, 17, 10, 11, 12, tzinfo=UTC),

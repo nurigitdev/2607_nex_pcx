@@ -96,6 +96,7 @@ def install_report_builders(monkeypatch, *, startup_status: str, go_live_status:
         }.get(args),
     )
 
+
 def test_go_live_evidence_snapshot_combines_readiness_and_masks_database_url(
     monkeypatch,
     tmp_path,
