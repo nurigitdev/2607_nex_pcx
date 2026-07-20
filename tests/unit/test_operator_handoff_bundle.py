@@ -109,6 +109,9 @@ def test_default_handoff_evidence_paths_include_production_evidence_docs() -> No
     assert "docs/production_foreground_app_worker_supervisor_evidence.md" in (
         DEFAULT_HANDOFF_EVIDENCE_PATHS
     )
+    assert "docs/production_foreground_worker_runtime_visibility.md" in (
+        DEFAULT_HANDOFF_EVIDENCE_PATHS
+    )
     assert "docs/production_foreground_final_handoff_evidence.md" in (
         DEFAULT_HANDOFF_EVIDENCE_PATHS
     )

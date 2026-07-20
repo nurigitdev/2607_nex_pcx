@@ -303,6 +303,10 @@ from app.core.file_metadata import (
     get_file_metadata,
 )
 from app.core.file_uploads import InvalidUploadFileNameError, store_upload
+from app.core.foreground_worker_runtime import (
+    build_foreground_worker_runtime_report,
+    foreground_worker_runtime_report_payload,
+)
 from app.core.go_live_readiness import (
     build_go_live_readiness_report,
     go_live_readiness_report_payload,
@@ -7427,8 +7431,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/admin/go-live-readiness")
     def api_get_go_live_readiness() -> JSONResponse:
         report = build_go_live_readiness_report(settings)
+        return JSONResponse(content={"go_live_readiness": go_live_readiness_report_payload(report)})
+
+    @app.get("/api/admin/foreground-worker-runtime")
+    def api_get_foreground_worker_runtime() -> JSONResponse:
+        report = build_foreground_worker_runtime_report(BASE_DIR.parent)
         return JSONResponse(
-            content={"go_live_readiness": go_live_readiness_report_payload(report)}
+            content={"foreground_worker_runtime": foreground_worker_runtime_report_payload(report)}
         )
 
     @app.get("/api/chunk-policies")

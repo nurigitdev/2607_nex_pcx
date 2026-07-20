@@ -131,7 +131,18 @@ Recommended provider route base URLs for the current DGX development server:
    curl -fsS http://127.0.0.1:8000/healthz
    ```
 
-8. Confirm remote provider health from the application host.
+8. Confirm foreground worker runtime visibility.
+
+   ```bash
+   curl -fsS http://127.0.0.1:8000/api/admin/foreground-worker-runtime
+   ```
+
+   `ready` means supervisor evidence is running and both supervisor/web
+   processes are alive. `warning` is acceptable when only dry-run evidence is
+   present. `blocked` means stale processes or worker failures need operator
+   action.
+
+9. Confirm remote provider health from the application host.
 
    ```bash
    curl -fsS http://192.168.20.243:9101/healthz
@@ -139,13 +150,13 @@ Recommended provider route base URLs for the current DGX development server:
    curl -fsS http://192.168.20.243:9103/healthz
    ```
 
-9. Run provider route preflight and store snapshots.
+10. Run provider route preflight and store snapshots.
 
    ```bash
    ./.venv/bin/python scripts/preflight_provider_routes.py
    ```
 
-10. Run the runtime configuration audit.
+11. Run the runtime configuration audit.
 
    ```bash
    ./.venv/bin/python scripts/audit_runtime_config.py \
@@ -158,7 +169,7 @@ Recommended provider route base URLs for the current DGX development server:
    Use `--strict` when warnings should fail the operator gate. Database URLs are
    masked in both JSON and Markdown output.
 
-11. Run the production environment final validation.
+12. Run the production environment final validation.
 
    ```bash
    ./.venv/bin/python scripts/validate_production_environment.py \
@@ -172,7 +183,7 @@ Recommended provider route base URLs for the current DGX development server:
    Add `--run-provider-preflight` only when this validation should persist
    provider health and contract snapshots.
 
-12. Run the startup validation runner.
+13. Run the startup validation runner.
 
    ```bash
    ./.venv/bin/python scripts/validate_operations_startup.py \
@@ -205,7 +216,7 @@ Recommended provider route base URLs for the current DGX development server:
    a controlled maintenance window; it restarts `nex-pcx-web.service` and then
    verifies `/healthz` plus `/openapi.json` identity.
 
-13. Export the go-live evidence snapshot.
+14. Export the go-live evidence snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_go_live_evidence.py \
@@ -219,7 +230,7 @@ Recommended provider route base URLs for the current DGX development server:
    The JSON file is intended for automated review. The Markdown file is intended
    for an operator handoff note. Database credentials are masked in both files.
 
-14. Verify operational retention and cleanup dry-run previews.
+15. Verify operational retention and cleanup dry-run previews.
 
    ```bash
    ./.venv/bin/python scripts/verify_operational_retention.py \
@@ -231,7 +242,7 @@ Recommended provider route base URLs for the current DGX development server:
    Use `--strict` when retention warnings should fail the startup gate. The
    runner does not delete database rows or artifact files.
 
-15. Generate the backup and restore smoke report.
+16. Generate the backup and restore smoke report.
 
    ```bash
    ./.venv/bin/python scripts/run_backup_restore_smoke.py \
@@ -244,7 +255,7 @@ Recommended provider route base URLs for the current DGX development server:
    Add `--restore-database-url` when an empty restore target is prepared. The
    runner blocks when the restore URL matches the source database URL.
 
-16. Run the HTTP go-live smoke runner.
+17. Run the HTTP go-live smoke runner.
 
    ```bash
    ./.venv/bin/python scripts/run_go_live_smoke.py \
@@ -254,7 +265,7 @@ Recommended provider route base URLs for the current DGX development server:
      --pretty
    ```
 
-17. Summarize foreground go-live evidence after the foreground validation and
+18. Summarize foreground go-live evidence after the foreground validation and
    core evidence files have been generated.
 
    ```bash
@@ -267,7 +278,7 @@ Recommended provider route base URLs for the current DGX development server:
    `warning` is acceptable when all required evidence passes and the only
    warning comes from foreground operation or deferred service hardening.
 
-18. Render the foreground worker command plan before processing queue work.
+19. Render the foreground worker command plan before processing queue work.
 
    ```bash
    ./.venv/bin/python scripts/render_foreground_worker_plan.py \
@@ -279,7 +290,7 @@ Recommended provider route base URLs for the current DGX development server:
    Review the generated bounded commands before running pipeline or embedding
    workers in a supervised terminal.
 
-19. Run the guarded foreground worker runner when queue work must be processed
+20. Run the guarded foreground worker runner when queue work must be processed
    during foreground operation.
 
    ```bash
@@ -299,7 +310,7 @@ Recommended provider route base URLs for the current DGX development server:
    `--pipeline-limit 0`, and a small `--embedding-limit-per-profile` to process
    remaining Qwen work under supervision.
 
-20. Render the final foreground handoff checklist.
+21. Render the final foreground handoff checklist.
 
    ```bash
    ./.venv/bin/python scripts/summarize_foreground_final_handoff.py \
@@ -311,7 +322,7 @@ Recommended provider route base URLs for the current DGX development server:
    A `warning` status is acceptable for supervised foreground operation when
    failed checks are zero. A `blocked` status must stop handoff.
 
-21. Generate the emergency recovery command index.
+22. Generate the emergency recovery command index.
 
    ```bash
    ./.venv/bin/python scripts/render_emergency_recovery_index.py \
@@ -323,7 +334,7 @@ Recommended provider route base URLs for the current DGX development server:
    Keep this index near the operator during go-live so incident recovery
    commands are available without searching through the full runbook.
 
-22. Export the operator handoff bundle.
+23. Export the operator handoff bundle.
 
    ```bash
    ./.venv/bin/python scripts/export_operator_handoff_bundle.py \
@@ -335,7 +346,7 @@ Recommended provider route base URLs for the current DGX development server:
    `artifacts/operator_handoff/latest/handoff.md` before declaring go-live
    complete.
 
-23. Export the release version snapshot.
+24. Export the release version snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_release_version_snapshot.py \
