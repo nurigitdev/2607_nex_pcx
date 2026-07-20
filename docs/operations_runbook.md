@@ -276,7 +276,27 @@ Recommended provider route base URLs for the current DGX development server:
    Review the generated bounded commands before running pipeline or embedding
    workers in a supervised terminal.
 
-19. Render the final foreground handoff checklist.
+19. Run the guarded foreground worker runner when queue work must be processed
+   during foreground operation.
+
+   ```bash
+   ./.venv/bin/python scripts/run_foreground_workers.py \
+     --pipeline-limit 1 \
+     --embedding-limit-per-profile 5 \
+     --guard-health-timeout-seconds 5 \
+     --max-provider-health-elapsed-ms 5000 \
+     --json-output artifacts/foreground_worker_runner.json \
+     --markdown-output artifacts/foreground_worker_runner.md \
+     --pretty
+   ```
+
+   Run with `--dry-run` first. The default guard keeps large Qwen chunks queued
+   when the pending token count exceeds the conservative foreground limit. After
+   DGX memory and swap are stable, rerun with `--no-default-qwen-token-guard`,
+   `--pipeline-limit 0`, and a small `--embedding-limit-per-profile` to process
+   remaining Qwen work under supervision.
+
+20. Render the final foreground handoff checklist.
 
    ```bash
    ./.venv/bin/python scripts/summarize_foreground_final_handoff.py \
@@ -288,7 +308,7 @@ Recommended provider route base URLs for the current DGX development server:
    A `warning` status is acceptable for supervised foreground operation when
    failed checks are zero. A `blocked` status must stop handoff.
 
-20. Generate the emergency recovery command index.
+21. Generate the emergency recovery command index.
 
    ```bash
    ./.venv/bin/python scripts/render_emergency_recovery_index.py \
@@ -300,7 +320,7 @@ Recommended provider route base URLs for the current DGX development server:
    Keep this index near the operator during go-live so incident recovery
    commands are available without searching through the full runbook.
 
-21. Export the operator handoff bundle.
+22. Export the operator handoff bundle.
 
    ```bash
    ./.venv/bin/python scripts/export_operator_handoff_bundle.py \
@@ -312,7 +332,7 @@ Recommended provider route base URLs for the current DGX development server:
    `artifacts/operator_handoff/latest/handoff.md` before declaring go-live
    complete.
 
-22. Export the release version snapshot.
+23. Export the release version snapshot.
 
    ```bash
    ./.venv/bin/python scripts/export_release_version_snapshot.py \

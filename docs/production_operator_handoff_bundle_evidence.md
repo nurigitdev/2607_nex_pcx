@@ -36,6 +36,8 @@ the production database and the DGX provider routes:
 - `artifacts/emergency_recovery_index.md`
 - `artifacts/operational_retention_verification.json`
 - `artifacts/operational_retention_verification.md`
+- `artifacts/foreground_worker_runner.json`
+- `artifacts/foreground_worker_runner.md`
 
 ## Bundle Export
 
@@ -53,8 +55,8 @@ The bundle export command was run with the NeX-PCX validation URL:
 Result:
 
 - Bundle directory: `artifacts/operator_handoff/latest`
-- Source evidence files: `45`
-- Included files: `45`
+- Source evidence files: `48`
+- Included files: `48`
 - Missing required files: `0`
 - Provider host: `192.168.20.243`
 - App URL used for handoff evidence: `http://127.0.0.1:8000`
@@ -76,6 +78,7 @@ The default handoff evidence list now includes:
 - `docs/production_foreground_operations_evidence.md`
 - `docs/production_foreground_go_live_summary_evidence.md`
 - `docs/production_foreground_worker_plan_evidence.md`
+- `docs/production_foreground_worker_runner_evidence.md`
 - `docs/production_foreground_final_handoff_evidence.md`
 - `artifacts/foreground_production_launch.json`
 - `artifacts/foreground_production_launch.md`
@@ -87,6 +90,8 @@ The default handoff evidence list now includes:
 - `artifacts/foreground_go_live_summary.md`
 - `artifacts/foreground_worker_plan.json`
 - `artifacts/foreground_worker_plan.md`
+- `artifacts/foreground_worker_runner.json`
+- `artifacts/foreground_worker_runner.md`
 - `artifacts/foreground_final_handoff.json`
 - `artifacts/foreground_final_handoff.md`
 - `artifacts/app_host_service_restart_validation.json`

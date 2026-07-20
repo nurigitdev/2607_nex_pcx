@@ -10,6 +10,7 @@ The checklist validates:
 - foreground production shutdown evidence
 - foreground go-live summary evidence
 - bounded foreground worker command plan
+- guarded foreground worker runner evidence
 - operator handoff bundle manifest
 
 Command:
