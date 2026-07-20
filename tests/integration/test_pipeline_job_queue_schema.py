@@ -334,6 +334,48 @@ def test_pipeline_job_check_constraints(migrated_database_url: str) -> None:
             cursor.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
 
 
+def test_pipeline_job_accepts_keyword_indexing_stage(
+    migrated_database_url: str,
+) -> None:
+    file_id, document_id, user_id = _create_document(migrated_database_url)
+    with connect(migrated_database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO pipeline_jobs (
+                    job_type,
+                    file_id,
+                    document_id,
+                    requested_by_user_id,
+                    stage
+                )
+                VALUES ('document_ingestion', %s, %s, %s, 'keyword_indexing')
+                RETURNING job_id, stage
+                """,
+                (file_id, document_id, user_id),
+            )
+            job_row = cursor.fetchone()
+            cursor.execute(
+                """
+                INSERT INTO pipeline_job_events (
+                    job_id,
+                    event_type,
+                    stage,
+                    status,
+                    message
+                )
+                VALUES (%s, 'progress', 'keyword_indexing', 'running', 'BM25 refresh')
+                RETURNING stage
+                """,
+                (job_row["job_id"],),
+            )
+            event_row = cursor.fetchone()
+            cursor.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
+
+    assert job_row["stage"] == "keyword_indexing"
+    assert event_row["stage"] == "keyword_indexing"
+
+
 def test_pipeline_job_claim_query_skips_locked_rows(
     migrated_database_url: str,
 ) -> None:

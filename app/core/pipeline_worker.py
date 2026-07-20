@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.core.bm25_keyword_index import refresh_chunk_policy_keyword_index_in_connection
 from app.core.chunking import (
     DEFAULT_CHUNK_POLICIES,
     ChunkPolicy,
@@ -55,6 +56,8 @@ class MarkdownPipelinePolicyResult:
     chunk_policy_name: str
     chunk_count: int
     embedding_job_count: int
+    bm25_term_row_count: int = 0
+    bm25_statistics_row_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,8 @@ class MarkdownPipelineWorkerResult:
     job: PipelineJobRecord | None
     chunk_count: int = 0
     embedding_job_count: int = 0
+    bm25_term_row_count: int = 0
+    bm25_statistics_row_count: int = 0
     policy_results: tuple[MarkdownPipelinePolicyResult, ...] = ()
     message: str | None = None
 
@@ -222,6 +227,9 @@ def process_next_markdown_pipeline_job(
             chunks = []
             embedding_job_results = []
             policy_results = []
+            chunk_policy_summaries = []
+            bm25_term_row_count = 0
+            bm25_statistics_row_count = 0
 
             for policy in policies:
                 chunk_inputs = chunk_document_blocks(
@@ -248,11 +256,11 @@ def process_next_markdown_pipeline_job(
                 ]
                 chunks.extend(policy_chunks)
                 embedding_job_results.extend(policy_embedding_job_results)
-                policy_results.append(
-                    MarkdownPipelinePolicyResult(
-                        chunk_policy_name=policy.chunk_policy_name,
-                        chunk_count=len(policy_chunks),
-                        embedding_job_count=len(policy_embedding_job_results),
+                chunk_policy_summaries.append(
+                    (
+                        policy.chunk_policy_name,
+                        len(policy_chunks),
+                        len(policy_embedding_job_results),
                     )
                 )
 
@@ -263,7 +271,35 @@ def process_next_markdown_pipeline_job(
                 total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
                 stage="chunking",
                 current_message=(
-                    f"Prepared {len(chunks)} chunks across {len(policy_results)} chunk policies"
+                    f"Prepared {len(chunks)} chunks across "
+                    f"{len(chunk_policy_summaries)} chunk policies"
+                ),
+            )
+            for policy_name, chunk_count, embedding_job_count in chunk_policy_summaries:
+                bm25_refresh_result = refresh_chunk_policy_keyword_index_in_connection(
+                    connection,
+                    chunk_policy_name=policy_name,
+                )
+                bm25_term_row_count += bm25_refresh_result.term_row_count
+                bm25_statistics_row_count += bm25_refresh_result.statistics_row_count
+                policy_results.append(
+                    MarkdownPipelinePolicyResult(
+                        chunk_policy_name=policy_name,
+                        chunk_count=chunk_count,
+                        embedding_job_count=embedding_job_count,
+                        bm25_term_row_count=bm25_refresh_result.term_row_count,
+                        bm25_statistics_row_count=(bm25_refresh_result.statistics_row_count),
+                    )
+                )
+            update_pipeline_progress_in_connection(
+                connection,
+                job.job_id,
+                processed_units=4,
+                total_units=MARKDOWN_PIPELINE_TOTAL_UNITS,
+                stage="keyword_indexing",
+                current_message=(
+                    f"Refreshed BM25 keyword index with {bm25_term_row_count} term rows "
+                    f"and {bm25_statistics_row_count} statistics rows"
                 ),
             )
             mark_file_parse_succeeded_in_connection(
@@ -290,7 +326,9 @@ def process_next_markdown_pipeline_job(
                 message=(
                     f"Document ingestion completed with {len(chunks)} chunks "
                     f"and {len(embedding_job_results)} embedding jobs "
-                    f"across {len(policy_results)} chunk policies"
+                    f"across {len(policy_results)} chunk policies; "
+                    f"BM25 keyword index refreshed with {bm25_term_row_count} "
+                    f"term rows"
                 ),
             )
 
@@ -303,6 +341,8 @@ def process_next_markdown_pipeline_job(
             job=final_job,
             chunk_count=len(chunks),
             embedding_job_count=len(embedding_job_results),
+            bm25_term_row_count=bm25_term_row_count,
+            bm25_statistics_row_count=bm25_statistics_row_count,
             policy_results=tuple(policy_results),
             message="Document ingestion completed",
         )

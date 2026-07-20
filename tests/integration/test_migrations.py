@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260720_0030"
+HEAD_REVISION = "20260720_0031"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -86,6 +86,14 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         test_database_url,
         "SELECT to_regclass('public.chunk_keyword_terms') AS table_name",
     )
+    keyword_indexing_stage_constraint = fetch_one(
+        test_database_url,
+        """
+        SELECT pg_get_constraintdef(oid) LIKE '%%keyword_indexing%%' AS enabled
+        FROM pg_constraint
+        WHERE conname = 'pipeline_jobs_stage_check'
+        """,
+    )
 
     assert revision["version_num"] == HEAD_REVISION
     assert extension["extversion"]
@@ -102,6 +110,7 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert search_profile_table["table_name"] == "search_profiles"
     assert bm25_profile_count["count"] == 1
     assert keyword_index_table["table_name"] == "chunk_keyword_terms"
+    assert keyword_indexing_stage_constraint["enabled"] is True
 
 
 def test_alembic_downgrade_base_clears_revision(test_database_url: str) -> None:

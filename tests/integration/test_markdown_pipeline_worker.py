@@ -11,6 +11,11 @@ from openpyxl import Workbook
 from pptx import Presentation
 from pptx.util import Inches
 
+from app.core.bm25_keyword_index import (
+    list_chunk_keyword_statistics,
+    list_chunk_keyword_terms,
+    refresh_chunk_policy_keyword_index,
+)
 from app.core.chunks import DEFAULT_CHUNK_POLICY_NAME, list_document_chunks
 from app.core.database import connect, fetch_one
 from app.core.embedding_jobs import list_embedding_jobs
@@ -33,6 +38,8 @@ def cleanup_checksum(database_url: str, checksum: str) -> None:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM files WHERE sha256_checksum = %s", (checksum,))
+    for policy_name in DEFAULT_PIPELINE_CHUNK_POLICY_NAMES:
+        refresh_chunk_policy_keyword_index(database_url, chunk_policy_name=policy_name)
 
 
 def prioritize_job(database_url: str, job_id: int) -> None:
@@ -211,10 +218,16 @@ This section should become another heading-aware chunk.
         assert result.job.progress_percent == 100
         assert result.chunk_count == 6
         assert result.embedding_job_count == 24
+        assert result.bm25_term_row_count > 0
+        assert result.bm25_statistics_row_count > 0
         assert {
             policy_result.chunk_policy_name: policy_result.chunk_count
             for policy_result in result.policy_results
         } == {policy_name: 2 for policy_name in DEFAULT_PIPELINE_CHUNK_POLICY_NAMES}
+        assert all(policy_result.bm25_term_row_count > 0 for policy_result in result.policy_results)
+        assert all(
+            policy_result.bm25_statistics_row_count > 0 for policy_result in result.policy_results
+        )
 
         chunks = list_document_chunks(
             migrated_database_url,
@@ -244,6 +257,14 @@ This section should become another heading-aware chunk.
             for chunk in chunks
             for job in list_embedding_jobs(migrated_database_url, chunk_id=chunk.chunk_id)
         ]
+        default_chunk_terms = list_chunk_keyword_terms(
+            migrated_database_url,
+            chunk_id=default_chunks[0].chunk_id,
+        )
+        default_policy_statistics = list_chunk_keyword_statistics(
+            migrated_database_url,
+            chunk_policy_name=DEFAULT_CHUNK_POLICY_NAME,
+        )
         file_row = fetch_one(
             migrated_database_url,
             """
@@ -290,6 +311,12 @@ This section should become another heading-aware chunk.
             "qwen3_4b_2560",
         }
         assert {job.status for job in embedding_jobs} == {"pending"}
+        assert {term.term for term in default_chunk_terms} >= {"slice", "017"}
+        assert default_policy_statistics
+        assert all(
+            statistic.corpus_chunk_count >= len(default_chunks)
+            for statistic in default_policy_statistics
+        )
         assert file_row["parser_name"] == "markdown"
         assert file_row["parser_version"] == "0.1.0"
         assert file_row["parse_status"] == "succeeded"
@@ -351,7 +378,11 @@ Markdown pipeline worker single policy integration test {unique_text}.
         assert result.job.status == "succeeded"
         assert result.chunk_count == 1
         assert result.embedding_job_count == 4
+        assert result.bm25_term_row_count > 0
+        assert result.bm25_statistics_row_count > 0
         assert result.policy_results[0].chunk_policy_name == DEFAULT_CHUNK_POLICY_NAME
+        assert result.policy_results[0].bm25_term_row_count > 0
+        assert result.policy_results[0].bm25_statistics_row_count > 0
         assert {chunk.chunk_policy_name for chunk in chunks} == {DEFAULT_CHUNK_POLICY_NAME}
         assert len(embedding_jobs) == 4
     finally:

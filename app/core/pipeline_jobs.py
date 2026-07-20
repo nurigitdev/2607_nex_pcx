@@ -31,6 +31,7 @@ PIPELINE_JOB_STAGES = {
     "text_extraction",
     "parsing",
     "chunking",
+    "keyword_indexing",
     "embedding",
     "vector_indexing",
     "completed",

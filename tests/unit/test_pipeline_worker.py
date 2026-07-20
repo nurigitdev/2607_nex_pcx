@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.bm25_keyword_index import BM25IndexRefreshResult
 from app.core.chunks import ChunkInput
 from app.core.extraction_runtime import ExtractionRuntimeArtifact, ExtractionRuntimeResult
 from app.core.file_metadata import FileMetadataRecord
@@ -336,6 +337,17 @@ def test_process_next_markdown_pipeline_job_marks_failed_when_completion_disappe
         lambda *args, **k: [],
     )
     monkeypatch.setattr(
+        "app.core.pipeline_worker.refresh_chunk_policy_keyword_index_in_connection",
+        lambda *args, **k: BM25IndexRefreshResult(
+            chunk_policy_name="heading_512_64",
+            tokenizer_name="unicode_word_v1",
+            chunk_count=0,
+            term_row_count=0,
+            statistics_row_count=0,
+            average_document_length=Decimal("0.0000"),
+        ),
+    )
+    monkeypatch.setattr(
         "app.core.pipeline_worker.mark_file_parse_succeeded_in_connection",
         lambda *args, **k: None,
     )
@@ -353,6 +365,111 @@ def test_process_next_markdown_pipeline_job_marks_failed_when_completion_disappe
     assert result.job.status == "failed"
     assert result.job.error_code == ERROR_CODE_MARKDOWN_PIPELINE_ERROR
     assert "disappeared before completion" in result.message
+
+
+def test_process_next_markdown_pipeline_job_refreshes_bm25_after_chunking(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    source = tmp_path / "example.md"
+    source.write_text("# Example\n\nKeyword body", encoding="utf-8")
+    job = make_job()
+    patch_claim(monkeypatch, job)
+    refresh_calls: list[str] = []
+
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.get_file_metadata",
+        lambda *args: make_file(storage_path=str(source)),
+    )
+    monkeypatch.setattr("app.core.pipeline_worker.connect", lambda *args: fake_connection())
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.update_pipeline_progress", lambda *args, **k: None
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.update_pipeline_progress_in_connection",
+        lambda *args, **k: None,
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.mark_file_parse_running_in_connection",
+        lambda *args, **k: None,
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.run_local_extraction",
+        lambda *args, **k: ExtractionRuntimeResult(
+            status="succeeded",
+            artifacts=(
+                ExtractionRuntimeArtifact(
+                    artifact_type="normalized_markdown",
+                    content_text="# Example\n\nKeyword body",
+                ),
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.persist_extraction_runtime_result_in_connection",
+        lambda *args, **k: SimpleNamespace(blocks=[]),
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.chunk_document_blocks",
+        lambda *args, **k: [
+            ChunkInput(
+                document_id=20,
+                chunk_seq=0,
+                chunk_text="# Example\n\nKeyword body",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.replace_document_chunks_in_connection",
+        lambda *args, **k: [SimpleNamespace(chunk_id=501)],
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.list_active_embedding_profiles_in_connection",
+        lambda *args, **k: [],
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.create_embedding_jobs_for_chunk_in_connection",
+        lambda *args, **k: [],
+    )
+
+    def fake_refresh(*args, chunk_policy_name: str, **kwargs):
+        refresh_calls.append(chunk_policy_name)
+        return BM25IndexRefreshResult(
+            chunk_policy_name=chunk_policy_name,
+            tokenizer_name="unicode_word_v1",
+            chunk_count=1,
+            term_row_count=3,
+            statistics_row_count=3,
+            average_document_length=Decimal("3.0000"),
+        )
+
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.refresh_chunk_policy_keyword_index_in_connection",
+        fake_refresh,
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.mark_file_parse_succeeded_in_connection",
+        lambda *args, **k: None,
+    )
+    monkeypatch.setattr(
+        "app.core.pipeline_worker.mark_pipeline_succeeded_in_connection",
+        lambda *args, **k: replace(job, status="succeeded", stage="completed"),
+    )
+
+    result = process_next_markdown_pipeline_job(
+        "postgresql://example/db",
+        worker_name="unit-test-worker",
+        chunk_policy_name="heading_512_64",
+    )
+
+    assert result.processed is True
+    assert result.job is not None
+    assert result.job.status == "succeeded"
+    assert refresh_calls == ["heading_512_64"]
+    assert result.bm25_term_row_count == 3
+    assert result.bm25_statistics_row_count == 3
+    assert result.policy_results[0].bm25_term_row_count == 3
+    assert result.policy_results[0].bm25_statistics_row_count == 3
 
 
 def test_process_next_markdown_pipeline_job_fails_when_local_extraction_fails(
