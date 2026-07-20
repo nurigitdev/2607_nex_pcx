@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="job-monitor-header d-flex align-items-center justify-content-between mb-4" data-bm25-index-coverage-page>
+  <div>
+    <h1 class="h3 mb-1">{{ t("bm25_coverage.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("bm25_coverage.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="/api/admin/bm25-index-coverage">{{ t("common.api") }}</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<form class="embedding-coverage-filter bm25-coverage-filter d-flex align-items-center gap-2 mb-4" method="get">
+  <label class="form-label mb-0 text-secondary" for="parse_status">{{ t("embedding_coverage.parse") }}</label>
+  <select class="form-select form-select-sm" id="parse_status" name="parse_status" onchange="this.form.submit()">
+    <option value="" {% if not selected_parse_status %}selected{% endif %}>{{ t("embedding_coverage.all") }}</option>
+    {% for status in ["pending", "running", "succeeded", "failed"] %}
+    <option value="{{ status }}" {% if selected_parse_status == status %}selected{% endif %}>{{ t("status." ~ status) }}</option>
+    {% endfor %}
+  </select>
+
+  <label class="form-label mb-0 text-secondary" for="chunk_policy_name">{{ t("multi_policy_coverage.policy") }}</label>
+  <select class="form-select form-select-sm" id="chunk_policy_name" name="chunk_policy_name" onchange="this.form.submit()">
+    <option value="" {% if not selected_chunk_policy_name %}selected{% endif %}>{{ t("multi_policy_coverage.all_policies") }}</option>
+    {% for policy in policies %}
+    <option value="{{ policy.chunk_policy_name }}" {% if selected_chunk_policy_name == policy.chunk_policy_name %}selected{% endif %}>
+      {{ policy.chunk_policy_name }}
+      {% if policy.is_default %} · {{ t("search_compare.default_chunk_policy") }}{% endif %}
+    </option>
+    {% endfor %}
+  </select>
+
+  <label class="form-label mb-0 text-secondary" for="document_group">{{ t("embedding_coverage.group") }}</label>
+  <input
+    class="form-control form-control-sm"
+    id="document_group"
+    name="document_group"
+    type="text"
+    value="{{ selected_document_group }}"
+    placeholder="{{ t('embedding_coverage.all') }}"
+  >
+
+  <label class="form-label mb-0 text-secondary" for="tokenizer_name">{{ t("bm25_coverage.tokenizer") }}</label>
+  <input
+    class="form-control form-control-sm"
+    id="tokenizer_name"
+    name="tokenizer_name"
+    type="text"
+    value="{{ selected_tokenizer_name }}"
+  >
+
+  <label class="form-label mb-0 text-secondary" for="limit">{{ t("embedding_coverage.limit") }}</label>
+  <input
+    class="form-control form-control-sm embedding-coverage-limit"
+    id="limit"
+    name="limit"
+    min="1"
+    max="200"
+    type="number"
+    value="{{ selected_limit }}"
+  >
+  <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t("embedding_coverage.filter") }}</button>
+</form>
+
+{% if matrix %}
+<section class="embedding-coverage-summary-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_coverage.documents") }}</div>
+    <div class="metric-value fs-4">{{ matrix.summary.document_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_coverage.chunks") }}</div>
+    <div class="metric-value fs-4">{{ matrix.summary.indexed_chunk_count }} / {{ matrix.summary.total_chunk_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("bm25_coverage.term_rows") }}</div>
+    <div class="metric-value fs-4">{{ matrix.summary.term_row_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("embedding_coverage.coverage") }}</div>
+    <div class="metric-value fs-4">{{ "%.2f"|format(matrix.summary.coverage_percent) }}%</div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("bm25_coverage.freshness") }}</h2>
+      <div class="text-secondary">{{ t("bm25_coverage.freshness_help") }}</div>
+    </div>
+  </div>
+  <div class="bm25-freshness-strip border-top">
+    <div>
+      <div class="metric-label">{{ t("bm25_coverage.latest_terms") }}</div>
+      <div class="fw-semibold">
+        {{ matrix.summary.latest_term_created_at.strftime("%Y-%m-%d %H:%M:%S") if matrix.summary.latest_term_created_at else "-" }}
+      </div>
+    </div>
+    <div>
+      <div class="metric-label">{{ t("bm25_coverage.latest_statistics") }}</div>
+      <div class="fw-semibold">
+        {{ matrix.summary.latest_statistics_updated_at.strftime("%Y-%m-%d %H:%M:%S") if matrix.summary.latest_statistics_updated_at else "-" }}
+      </div>
+    </div>
+    <div>
+      <div class="metric-label">{{ t("bm25_coverage.attention_rows") }}</div>
+      <div class="fw-semibold">{{ matrix.summary.attention_row_count }}</div>
+    </div>
+    <div>
+      <div class="metric-label">{{ t("bm25_coverage.statistics_terms") }}</div>
+      <div class="fw-semibold">{{ matrix.summary.statistics_term_count }}</div>
+    </div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("bm25_coverage.policy_summary") }}</h2>
+      <div class="text-secondary">{{ t("bm25_coverage.policy_summary_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive border-top">
+    <table class="table table-sm align-middle mb-0 bm25-policy-summary-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("multi_policy_coverage.policy") }}</th>
+          <th scope="col">{{ t("embedding_coverage.coverage") }}</th>
+          <th scope="col">{{ t("embedding_coverage.chunks") }}</th>
+          <th scope="col">{{ t("bm25_coverage.term_rows") }}</th>
+          <th scope="col">{{ t("bm25_coverage.statistics_corpus") }}</th>
+          <th scope="col">{{ t("bm25_coverage.stale") }}</th>
+          <th scope="col">{{ t("embedding_coverage.missing") }}</th>
+          <th scope="col">{{ t("bm25_coverage.latest_statistics") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for policy in matrix.summary.policies %}
+        <tr>
+          <td class="text-break">{{ policy.chunk_policy_name }}</td>
+          <td>{{ "%.2f"|format(policy.coverage_percent) }}%</td>
+          <td>{{ policy.indexed_chunk_count }} / {{ policy.total_chunk_count }}</td>
+          <td>{{ policy.term_row_count }}</td>
+          <td>{{ policy.statistics_corpus_chunk_count }}</td>
+          <td>{{ policy.stale_document_count }}</td>
+          <td>{{ policy.missing_document_count }}</td>
+          <td>{{ policy.latest_statistics_updated_at.strftime("%Y-%m-%d %H:%M:%S") if policy.latest_statistics_updated_at else "-" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-4" colspan="8">{{ t("bm25_coverage.no_policies") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden">
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("bm25_coverage.matrix") }}</h2>
+      <div class="text-secondary">{{ t("bm25_coverage.matrix_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive border-top embedding-coverage-table-wrap">
+    <table class="table table-sm align-middle mb-0 embedding-coverage-table bm25-coverage-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("embedding_coverage.document") }}</th>
+          <th scope="col">{{ t("multi_policy_coverage.policy") }}</th>
+          <th scope="col">{{ t("embedding_coverage.status") }}</th>
+          <th scope="col">{{ t("embedding_coverage.coverage") }}</th>
+          <th scope="col">{{ t("bm25_coverage.term_rows") }}</th>
+          <th scope="col">{{ t("bm25_coverage.statistics") }}</th>
+          <th scope="col">{{ t("bm25_coverage.freshness") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in matrix.rows %}
+        <tr>
+          <td>
+            <a class="document-title" href="/documents/{{ row.document_id }}">
+              {{ row.document_title or row.original_file_name }}
+            </a>
+            <div class="text-secondary small">
+              #{{ row.document_id }} · {{ row.document_group }} · {{ row.access_scope }}
+            </div>
+            <div class="text-secondary small">
+              {{ row.uploaded_at.strftime("%Y-%m-%d %H:%M:%S") }}
+            </div>
+          </td>
+          <td>
+            <div class="fw-semibold text-break">{{ row.chunk_policy_name }}</div>
+            <div class="text-secondary small">{{ row.target_token_size }} / {{ row.overlap_token_size }} · {{ row.split_strategy }}</div>
+          </td>
+          <td>
+            <span class="badge embedding-coverage-badge embedding-coverage-status-{{ row.status }}">
+              {{ t("bm25_coverage.status_" ~ row.status) }}
+            </span>
+          </td>
+          <td>
+            <strong>{{ row.indexed_chunk_count }} / {{ row.chunk_count }}</strong>
+            <div class="text-secondary small">{{ "%.2f"|format(row.coverage_percent) }}%</div>
+          </td>
+          <td>
+            <strong>{{ row.term_row_count }}</strong>
+            <div class="text-secondary small">{{ row.tokenizer_name }}</div>
+          </td>
+          <td>
+            <strong>{{ row.statistics_term_count }}</strong>
+            <div class="text-secondary small">{{ t("bm25_coverage.corpus") }} {{ row.statistics_corpus_chunk_count }} / {{ row.policy_chunk_count }}</div>
+          </td>
+          <td class="text-secondary small">
+            <div>{{ t("bm25_coverage.latest_terms") }}: {{ row.latest_term_created_at.strftime("%Y-%m-%d %H:%M:%S") if row.latest_term_created_at else "-" }}</div>
+            <div>{{ t("bm25_coverage.latest_statistics") }}: {{ row.latest_statistics_updated_at.strftime("%Y-%m-%d %H:%M:%S") if row.latest_statistics_updated_at else "-" }}</div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-secondary text-center py-5" colspan="7">
+            {% if database_configured %}{{ t("bm25_coverage.no_rows") }}{% else %}{{ t("common.no_database") }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="metric-card bg-white p-5 text-center text-secondary">
+  {% if database_configured %}{{ t("bm25_coverage.no_rows") }}{% else %}{{ t("common.no_database") }}{% endif %}
+</section>
+{% endif %}
+{% endblock %}

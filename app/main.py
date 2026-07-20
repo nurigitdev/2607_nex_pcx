@@ -28,6 +28,13 @@ from app.core.admin_logging import (
     list_provider_route_change_logs,
     log_event,
 )
+from app.core.bm25_index_coverage import (
+    BM25IndexCoverageMatrix,
+    BM25IndexCoveragePolicySummary,
+    BM25IndexCoverageRow,
+    InvalidBM25IndexCoverageError,
+    get_bm25_index_coverage_matrix,
+)
 from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
 from app.core.chunk_policies import (
     ChunkPolicySummaryRecord,
@@ -2224,6 +2231,98 @@ def embedding_coverage_profile_cell_payload(
             if cell.average_embedding_elapsed_ms is not None
             else None
         ),
+    }
+
+
+def bm25_index_coverage_row_payload(row: BM25IndexCoverageRow) -> dict[str, object]:
+    return {
+        "document_id": row.document_id,
+        "file_id": row.file_id,
+        "document_title": row.document_title,
+        "original_file_name": row.original_file_name,
+        "file_ext": row.file_ext,
+        "document_group": row.document_group,
+        "parse_status": row.parse_status,
+        "access_scope": row.access_scope,
+        "uploaded_at": _datetime_response(row.uploaded_at),
+        "chunk_policy_name": row.chunk_policy_name,
+        "target_token_size": row.target_token_size,
+        "overlap_token_size": row.overlap_token_size,
+        "split_strategy": row.split_strategy,
+        "tokenizer_name": row.tokenizer_name,
+        "policy_chunk_count": row.policy_chunk_count,
+        "chunk_count": row.chunk_count,
+        "indexed_chunk_count": row.indexed_chunk_count,
+        "missing_chunk_count": row.missing_chunk_count,
+        "term_row_count": row.term_row_count,
+        "statistics_term_count": row.statistics_term_count,
+        "statistics_corpus_chunk_count": row.statistics_corpus_chunk_count,
+        "average_document_length": (
+            str(row.average_document_length) if row.average_document_length is not None else None
+        ),
+        "coverage_percent": _percent_value(row.coverage_percent),
+        "coverage_label": _percent_label(row.coverage_percent),
+        "status": row.status,
+        "latest_term_created_at": _datetime_response(row.latest_term_created_at),
+        "latest_statistics_updated_at": _datetime_response(row.latest_statistics_updated_at),
+    }
+
+
+def bm25_index_coverage_policy_summary_payload(
+    policy: BM25IndexCoveragePolicySummary,
+) -> dict[str, object]:
+    return {
+        "chunk_policy_name": policy.chunk_policy_name,
+        "tokenizer_name": policy.tokenizer_name,
+        "document_count": policy.document_count,
+        "chunked_document_count": policy.chunked_document_count,
+        "complete_document_count": policy.complete_document_count,
+        "partial_document_count": policy.partial_document_count,
+        "missing_document_count": policy.missing_document_count,
+        "stale_document_count": policy.stale_document_count,
+        "not_chunked_document_count": policy.not_chunked_document_count,
+        "total_chunk_count": policy.total_chunk_count,
+        "indexed_chunk_count": policy.indexed_chunk_count,
+        "missing_chunk_count": policy.missing_chunk_count,
+        "term_row_count": policy.term_row_count,
+        "statistics_term_count": policy.statistics_term_count,
+        "statistics_corpus_chunk_count": policy.statistics_corpus_chunk_count,
+        "coverage_percent": _percent_value(policy.coverage_percent),
+        "coverage_label": _percent_label(policy.coverage_percent),
+        "latest_term_created_at": _datetime_response(policy.latest_term_created_at),
+        "latest_statistics_updated_at": _datetime_response(policy.latest_statistics_updated_at),
+    }
+
+
+def bm25_index_coverage_matrix_payload(
+    matrix: BM25IndexCoverageMatrix,
+) -> dict[str, object]:
+    summary = matrix.summary
+    return {
+        "summary": {
+            "document_count": summary.document_count,
+            "policy_count": summary.policy_count,
+            "document_policy_count": summary.document_policy_count,
+            "total_chunk_count": summary.total_chunk_count,
+            "indexed_chunk_count": summary.indexed_chunk_count,
+            "missing_chunk_count": summary.missing_chunk_count,
+            "term_row_count": summary.term_row_count,
+            "statistics_term_count": summary.statistics_term_count,
+            "complete_row_count": summary.complete_row_count,
+            "attention_row_count": summary.attention_row_count,
+            "stale_row_count": summary.stale_row_count,
+            "missing_row_count": summary.missing_row_count,
+            "coverage_percent": _percent_value(summary.coverage_percent),
+            "coverage_label": _percent_label(summary.coverage_percent),
+            "latest_term_created_at": _datetime_response(summary.latest_term_created_at),
+            "latest_statistics_updated_at": _datetime_response(
+                summary.latest_statistics_updated_at
+            ),
+            "policies": [
+                bm25_index_coverage_policy_summary_payload(policy) for policy in summary.policies
+            ],
+        },
+        "rows": [bm25_index_coverage_row_payload(row) for row in matrix.rows],
     }
 
 
@@ -9635,6 +9734,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=embedding_coverage_matrix_payload(matrix))
 
+    @app.get("/api/admin/bm25-index-coverage")
+    def api_get_bm25_index_coverage_matrix(
+        parse_status: str | None = None,
+        document_group: str | None = None,
+        chunk_policy_name: str | None = None,
+        tokenizer_name: str = "unicode_word_v1",
+        limit: int = 100,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            matrix = get_bm25_index_coverage_matrix(
+                settings.database_url,
+                parse_status=parse_status,
+                document_group=document_group,
+                chunk_policy_name=chunk_policy_name,
+                tokenizer_name=tokenizer_name,
+                limit=limit,
+            )
+        except InvalidBM25IndexCoverageError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content=bm25_index_coverage_matrix_payload(matrix))
+
     @app.get("/api/admin/multi-policy-ingestion-coverage")
     def api_get_multi_policy_ingestion_coverage_matrix(
         parse_status: str | None = None,
@@ -13480,6 +13607,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_parse_status=parse_status or "",
                 selected_document_group=document_group or "",
                 selected_profile_name=profile_name or "",
+                selected_limit=limit,
+                error_message=error_message,
+                database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/admin/bm25-index-coverage", response_class=HTMLResponse)
+    def bm25_index_coverage_page(
+        request: Request,
+        parse_status: str | None = None,
+        document_group: str | None = None,
+        chunk_policy_name: str | None = None,
+        tokenizer_name: str = "unicode_word_v1",
+        limit: int = 100,
+    ) -> HTMLResponse:
+        matrix: BM25IndexCoverageMatrix | None = None
+        policies: list[ChunkPolicySummaryRecord] = []
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                policies = list_chunk_policy_summaries(settings.database_url)
+                matrix = get_bm25_index_coverage_matrix(
+                    settings.database_url,
+                    parse_status=parse_status,
+                    document_group=document_group,
+                    chunk_policy_name=chunk_policy_name,
+                    tokenizer_name=tokenizer_name,
+                    limit=limit,
+                )
+            except (
+                InvalidBM25IndexCoverageError,
+                InvalidChunkPolicyManagementError,
+            ) as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "bm25_index_coverage.html",
+            template_context(
+                request,
+                matrix=matrix,
+                policies=policies,
+                selected_parse_status=parse_status or "",
+                selected_document_group=document_group or "",
+                selected_chunk_policy_name=chunk_policy_name or "",
+                selected_tokenizer_name=tokenizer_name,
                 selected_limit=limit,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
