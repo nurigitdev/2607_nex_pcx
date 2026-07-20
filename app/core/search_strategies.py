@@ -6,9 +6,9 @@ from typing import Any
 
 from app.core.vector_search import MAX_TOP_K
 
-SEARCH_STRATEGY_MODES = {"vector", "hybrid", "rerank"}
+SEARCH_STRATEGY_MODES = {"vector", "keyword", "hybrid", "rerank"}
 SEARCH_STRATEGY_STAGES = {"active", "planned"}
-SEARCH_STRATEGY_SIMILARITY_METRICS = {"cosine", "l2", "inner_product"}
+SEARCH_STRATEGY_SIMILARITY_METRICS = {"cosine", "l2", "inner_product", "bm25"}
 
 
 @dataclass(frozen=True)
@@ -63,15 +63,39 @@ SEARCH_STRATEGY_REGISTRY: dict[str, SearchStrategyDefinition] = {
         supports_score_threshold=True,
         runtime_parameters={"default_score_threshold": 0.7},
     ),
+    "bm25_keyword": SearchStrategyDefinition(
+        strategy_name="bm25_keyword",
+        display_name="BM25 Keyword",
+        description="Planned BM25 keyword retrieval baseline over chunk text.",
+        mode="keyword",
+        stage="planned",
+        similarity_metric="bm25",
+        supports_score_threshold=False,
+        supports_multi_profile=False,
+        runtime_parameters={
+            "planned": True,
+            "index_source": "chunks.chunk_text",
+            "tokenizer": "unicode_word_v1",
+            "scoring": "okapi_bm25",
+            "k1": 1.2,
+            "b": 0.75,
+        },
+    ),
     "hybrid_keyword_vector": SearchStrategyDefinition(
         strategy_name="hybrid_keyword_vector",
         display_name="Hybrid Keyword + Vector",
-        description="Planned keyword/vector blended retrieval strategy.",
+        description="Planned BM25 keyword and vector blended retrieval strategy.",
         mode="hybrid",
         stage="planned",
         similarity_metric="cosine",
         supports_score_threshold=True,
-        runtime_parameters={"planned": True},
+        runtime_parameters={
+            "planned": True,
+            "keyword_strategy": "bm25_keyword",
+            "vector_strategy": "vector_cosine",
+            "fusion": "rrf",
+            "rrf_k": 60,
+        },
     ),
     "reranked_vector_cosine": SearchStrategyDefinition(
         strategy_name="reranked_vector_cosine",

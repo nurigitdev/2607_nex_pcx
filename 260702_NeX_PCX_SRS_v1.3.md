@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.7**
+**Software Requirements Specification v1.8**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.7
+문서 상태: Draft v1.8
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.7 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.8 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.7 |
+| 문서 버전 | v1.8 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -32,6 +32,7 @@
 | 1.5 | 2026-07-10 | embedding model 사전 다운로드, models bundle, 오프라인/고객사 설치 배포 정책 보강 |
 | 1.6 | 2026-07-10 | GPU embedding provider API 분리, local smoke adapter, provider runtime metadata 요구사항 보강 |
 | 1.7 | 2026-07-15 | ingestion metadata, normalized markdown artifact, document block, table/image artifact, chunk source contract 요구사항 보강 |
+| 1.8 | 2026-07-20 | BM25 keyword baseline, 검색 전략/profile 계약, embedding-only/BM25/hybrid 비교 요구사항 보강 |
 
 # 목차
 
@@ -69,7 +70,7 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 
 > **핵심 목적**
 >
-> PDF/DOCX/HWPX/PPTX/XLSX/MD 문서를 업로드하고, 동일한 chunk를 4개 embedding profile로 변환하여 PostgreSQL + pgvector에 저장한 뒤, 검색 화면에서 모델별 결과를 병렬 비교하고 정량 평가 데이터를 축적한다.
+> PDF/DOCX/HWPX/PPTX/XLSX/MD 문서를 업로드하고, 동일한 chunk를 4개 embedding profile로 변환하여 PostgreSQL + pgvector에 저장한 뒤, BM25 keyword baseline과 embedding-only/hybrid 검색 결과를 병렬 비교하고 정량 평가 데이터를 축적한다.
 
 ## 1.2 배경
 
@@ -77,11 +78,11 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 
 - 현재는 문서를 chunk 단위로 분할하고 embedding model로 vector화하여 VectorDB에 저장한다는 개념은 알고 있으나, 실제 구현 경험과 실험 데이터가 부족하다.
 
-- Embedding model, chunk size, overlap, 문서 포맷, 표/그림 처리 방식, vector index에 따라 검색 품질과 저장용량이 달라질 수 있다.
+- Embedding model, chunk size, overlap, 문서 포맷, 표/그림 처리 방식, keyword retrieval, vector index에 따라 검색 품질과 저장용량이 달라질 수 있다.
 
 - NeX-CX 본 개발 전, 계속 등장하는 embedding model과 검색 기법을 동일 기준으로 반복 비교할 수 있는 실험 환경이 필요하다.
 
-- Vector-only RAG의 환각 위험을 줄이기 위해 향후 목차/section graph 기반 보조 검색 구조도 실험할 예정이다.
+- Vector-only RAG의 환각 위험을 줄이기 위해 BM25 keyword baseline, hybrid retrieval, 목차/section graph 기반 보조 검색 구조도 실험할 예정이다.
 
 ## 1.3 범위
 
@@ -91,7 +92,7 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | 문서 처리 | 텍스트 추출, heading/section 추정, chunk 생성, chunk metadata 저장 |
 | Embedding | KURE-v1 1024, bge-m3 1024, Qwen3 1000, Qwen3 2560 profile 생성 및 저장 |
 | 비동기 처리 | 업로드 이후 텍스트 추출, parsing, chunking, embedding, vector indexing을 job queue와 worker로 처리 |
-| 검색 | 동일 query에 대한 4개 profile 병렬 검색 결과 표시 |
+| 검색 | 동일 query에 대한 4개 embedding profile, BM25 keyword baseline, hybrid 검색 결과 표시 |
 | 평가 | 검색 결과 정답/부분정답/오답 피드백 저장, 검색 로그/latency 저장 |
 | 계정/권한 | 테스트용 사용자, 조직 계층, 역할, 문서 접근 범위, query 검색 범위 metadata 저장 |
 | 품질관리 | pytest, Playwright, pytest-cov, 독립 test DB, quality gate 절차 적용 |
@@ -115,6 +116,10 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | RAG | Retrieval-Augmented Generation. 검색 결과를 LLM 답변 생성의 근거로 사용하는 방식 |
 | Embedding Profile | 특정 모델명, dimension, normalization, pooling 설정을 포함한 embedding 실행 단위 |
 | Embedding Job | 특정 chunk와 embedding profile 조합에 대해 embedding 생성, 저장, 실패/재시도를 추적하는 background 작업 단위 |
+| Search Profile | 검색 비교 화면과 검색 로그에서 하나의 결과 column/lane으로 표시되는 검색 실행 단위. embedding profile, BM25 keyword baseline, hybrid strategy를 포괄한다. |
+| Retrieval Strategy | query를 chunk 후보군과 점수로 변환하는 검색 알고리즘 선택값. vector_cosine, bm25_keyword, hybrid_keyword_vector 등을 포함한다. |
+| BM25 | Best Match 25. query term 빈도, 문서 빈도, chunk 길이를 반영하는 keyword retrieval baseline으로 사용한다. |
+| Hybrid Retrieval | BM25 keyword 결과와 embedding vector 결과를 fusion하여 단독 검색보다 안정적인 결과를 실험하는 검색 방식 |
 | Chunk | 문서 본문을 검색 가능한 단위로 분할한 텍스트 조각 |
 | Chunk Policy | chunk size, overlap, heading/table/code block 처리 방식 등을 포함하는 chunk 생성 정책 |
 | pgvector | PostgreSQL에서 vector, halfvec type 및 similarity search를 지원하는 확장 |
@@ -185,7 +190,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 
 - worker는 초기에는 단일 process/단일 concurrency로 시작하고, 이후 설정값으로 worker 수와 stage별 동시성을 늘릴 수 있어야 한다.
 
-- 검색 비교의 공정성을 위해 동일 문서, 동일 parser, 동일 chunk, 동일 query, 동일 top-k 기준으로 4개 profile을 비교한다.
+- 검색 비교의 공정성을 위해 동일 문서, 동일 parser, 동일 chunk, 동일 query, 동일 top-k 기준으로 embedding profile, BM25 keyword baseline, hybrid strategy를 비교한다.
 
 - 권한 실험의 공정성을 위해 동일 query라도 actor, requested_search_scope, effective_permission_filter를 search log에 기록한다.
 
@@ -279,7 +284,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Embedding Worker | embedding job을 점유하고 provider를 호출한 뒤 vector 저장, job 상태, runtime metadata를 기록 |
 | Embedding Provider Client | local adapter 또는 remote GPU provider API를 동일한 request/response contract로 호출 |
 | Remote Embedding Provider | GPU 서버에서 model preload, batch embedding, provider health, latency metadata를 제공 |
-| Search Service | query embedding 생성, pgvector 검색, 4개 profile 결과 병렬 반환 |
+| Search Service | query embedding 생성, BM25 keyword search, pgvector 검색, hybrid fusion, profile/strategy별 결과 병렬 반환 |
 | Statistics Service | 문서/chunk/vector/job/검색 통계 산출 |
 | Model Distribution Tooling | KURE, bge-m3, Qwen3 embedding model을 `models/` bundle로 사전 다운로드하고 설치 환경에서 검증 |
 | Quality/Test Framework | pytest, Playwright, coverage, 독립 test DB 기반 품질 검증 |
@@ -323,8 +328,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-008 | Embedding profile 관리 | 4개 embedding profile을 metadata로 관리한다. | MUST |
 | FR-009 | Profile별 embedding job | 동일 chunk를 4개 profile에 대해 background job으로 처리한다. | MUST |
 | FR-010 | pgvector 저장 | profile별 embedding table에 vector를 저장한다. | MUST |
-| FR-011 | 검색 API | query를 4개 profile로 검색하고 결과를 병렬 반환한다. | MUST |
-| FR-012 | 검색 결과 비교 UI | 4개 profile 결과를 4-column UI로 표시한다. | MUST |
+| FR-011 | 검색 API | query를 선택된 search profile 또는 retrieval strategy로 검색하고 결과를 병렬 반환한다. | MUST |
+| FR-012 | 검색 결과 비교 UI | embedding profile, BM25 baseline, hybrid 결과를 column/lane UI로 표시한다. | MUST |
 | FR-013 | 검색 피드백 저장 | 정답/부분정답/오답/중복/문맥부족 피드백을 저장한다. | MUST |
 | FR-014 | 검색 로그 저장 | query, top-k, profile별 latency, 결과 chunk를 저장한다. | MUST |
 | FR-015 | Embedding 실패 재처리 | 실패한 chunk/profile job을 재시도할 수 있어야 한다. | SHOULD |
@@ -358,6 +363,9 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-043 | Table artifact 보존 | 표는 검색용 텍스트 표현과 별도로 markdown/json/csv 중 하나 이상의 구조 artifact를 보존할 수 있어야 한다. | SHOULD |
 | FR-044 | Image artifact 보존 | 그림은 파일 위치, page/slide 위치, OCR text, caption, 주변 텍스트 metadata를 저장할 수 있어야 한다. | SHOULD |
 | FR-045 | 추출 결과 재처리 | extractor version, profile, artifact hash를 기준으로 원본 파일 재추출과 chunk 재생성이 가능해야 한다. | SHOULD |
+| FR-046 | BM25 keyword baseline | embedding 없이 chunk text와 keyword index만으로 BM25 검색 결과를 반환한다. | SHOULD |
+| FR-047 | Search profile/strategy 관리 | embedding profile, BM25, hybrid를 동일 비교 화면과 검색 로그에서 구분 가능한 search profile/strategy로 관리한다. | MUST |
+| FR-048 | Hybrid 검색 비교 | BM25 결과와 vector 결과를 fusion하여 embedding-only, BM25-only, hybrid 방식을 같은 query/golden set으로 비교한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 
@@ -403,15 +411,23 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 ## 4.5 검색 요구사항
 
-- 검색 화면은 기본적으로 4개 embedding profile 전체 비교 모드로 동작한다.
+- 검색 화면은 기본적으로 4개 embedding profile 전체 비교 모드로 동작하되, BM25 keyword baseline과 hybrid retrieval을 추가 선택할 수 있어야 한다.
 
-- 검색 조건에는 query, 문서 그룹, 파일 타입, top-k, chunk policy, similarity metric을 포함한다.
+- 검색 조건에는 query, 문서 그룹, 파일 타입, top-k, chunk policy, retrieval strategy, similarity/scoring metric을 포함한다.
 
-- 초기 MVP의 similarity metric은 cosine distance를 기본값으로 한다.
+- 초기 embedding-only 검색의 similarity metric은 cosine distance를 기본값으로 한다.
+
+- BM25 baseline은 embedding provider, embedding job, vector table을 사용하지 않고 chunks.chunk_text 기반 keyword index와 corpus statistics만 사용한다.
+
+- BM25 scoring은 Okapi BM25 기본 파라미터 k1=1.2, b=0.75를 시작점으로 하며, 후속 실험에서 tokenizer, stopword, k1, b 값을 search runtime metadata로 기록한다.
+
+- 한국어 문서는 공백/기호 기반 tokenization만으로 형태소 품질이 제한될 수 있으므로, MVP tokenizer는 재현 가능한 baseline으로 고정하고 후속 Slice에서 n-gram 또는 형태소 analyzer 개선을 실험한다.
+
+- Hybrid retrieval은 1차 MVP에서 BM25 top-N과 vector top-N을 Reciprocal Rank Fusion(RRF)으로 결합한다.
 
 - 검색 결과에는 rank, score/distance, 문서명, page/slide/sheet, heading_path, chunk preview, 피드백 버튼을 포함한다.
 
-- 서로 다른 profile의 score는 직접 비교하지 않고, 정답 chunk 순위 및 top-k 포함 여부를 중심으로 비교한다.
+- 서로 다른 search profile의 score는 직접 비교하지 않고, 정답 chunk 순위 및 top-k 포함 여부를 중심으로 비교한다.
 
 ## 4.6 Chunk policy 요구사항
 
@@ -561,6 +577,10 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - MVP의 기본 검색은 cosine distance를 사용한다. 데이터가 5만 chunk 이하인 초기 실험에서는 exact search를 우선하고, 이후 HNSW 또는 IVFFlat index를 profile별로 추가한다.
 
+- BM25 keyword baseline은 chunk text token index와 corpus statistics를 PostgreSQL에 저장하며, embedding vector와 독립적으로 재생성할 수 있어야 한다.
+
+- Search log 결과 row는 embedding profile뿐 아니라 BM25 keyword baseline과 hybrid strategy도 저장할 수 있도록 search_profile 또는 retrieval_strategy 식별자를 가져야 한다.
+
 - 권한 조건은 documents/files metadata와 join 가능한 정규화된 컬럼으로 저장하고, 검색 후보군 생성 단계에서 pre-filter로 적용한다.
 
 - DB schema 변경 시 migration과 migration regression test를 추가한다.
@@ -585,11 +605,14 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | pipeline_jobs | 문서 처리 파이프라인의 상위 job, stage, status, lease, 진행률 |
 | pipeline_job_events | pipeline job 상태 변경과 진행률 변경 이력 |
 | embedding_profiles | 모델명, dimension, storage type, runtime 설정 등 profile metadata |
+| search_profiles | 검색 비교용 profile/lane metadata. embedding profile, BM25 baseline, hybrid strategy를 포괄 |
 | embedding_jobs | chunk/profile별 embedding 작업 상태와 재시도 정보 |
 | chunk_embeddings_kure_v1_1024 | KURE-v1 1024차원 embedding 저장 |
 | chunk_embeddings_bge_m3_1024 | bge-m3 1024차원 embedding 저장 |
 | chunk_embeddings_qwen3_4b_1000 | Qwen3 1000차원 embedding 저장 |
 | chunk_embeddings_qwen3_4b_2560 | Qwen3 2560차원 halfvec embedding 저장 |
+| chunk_keyword_terms | BM25 keyword baseline용 chunk별 term frequency index |
+| chunk_keyword_statistics | BM25 keyword baseline용 corpus statistics 또는 materialized summary |
 | search_logs | 검색 query, 조건, profile별 latency 로그 |
 | search_log_results | 검색 로그별 profile/rank/chunk 결과 |
 | search_result_feedback | 검색 결과별 정답/부분정답/오답 피드백 |
@@ -1030,6 +1053,7 @@ permission_filter_metadata JSONB DEFAULT '{}'::jsonb,
 document_group TEXT,
 file_type TEXT,
 chunk_policy_name TEXT,
+strategy_name TEXT DEFAULT 'vector_cosine',
 top_k INT NOT NULL,
 similarity_metric TEXT NOT NULL DEFAULT 'cosine',
 profiles JSONB NOT NULL,
@@ -1043,11 +1067,14 @@ created_at TIMESTAMP DEFAULT now()
 CREATE TABLE search_log_results (
 search_log_result_id BIGSERIAL PRIMARY KEY,
 search_log_id BIGINT NOT NULL REFERENCES search_logs(search_log_id) ON DELETE CASCADE,
-profile_name TEXT NOT NULL REFERENCES embedding_profiles(profile_name),
+profile_name TEXT NOT NULL,
+search_profile_name TEXT,
+retrieval_strategy TEXT,
 rank INT NOT NULL,
 chunk_id BIGINT NOT NULL REFERENCES chunks(chunk_id),
 distance DOUBLE PRECISION,
 score DOUBLE PRECISION,
+score_components JSONB DEFAULT '{}'::jsonb,
 profile_elapsed_ms INT,
 created_at TIMESTAMP DEFAULT now(),
 UNIQUE (search_log_id, profile_name, rank)
@@ -1066,6 +1093,46 @@ created_at TIMESTAMP DEFAULT now()
 ```
 
 permission_filter_metadata에는 actor의 primary org, managed org subtree, 포함된 access_scope 목록, company 문서 포함 여부, filter SQL/parameter fingerprint를 저장한다.
+
+BM25와 hybrid 검색을 지원하기 위해 search_log_results.profile_name은 물리적으로 embedding_profiles에만 종속되지 않아야 한다. BM25-only 결과는 profile_name/search_profile_name을 `bm25_keyword`로 기록하고, hybrid 결과는 `hybrid_keyword_vector` 또는 fusion strategy 이름을 기록한다. score_components에는 BM25 score, vector score, RRF rank contribution, tokenizer name, k1, b 같은 세부 점수 근거를 JSONB로 저장할 수 있어야 한다.
+
+BM25 keyword index는 다음 논리 구조를 따른다.
+
+```sql
+CREATE TABLE search_profiles (
+search_profile_name TEXT PRIMARY KEY,
+profile_kind TEXT NOT NULL
+    CHECK (profile_kind IN ('embedding', 'keyword', 'hybrid')),
+embedding_profile_name TEXT REFERENCES embedding_profiles(profile_name),
+strategy_name TEXT NOT NULL,
+display_name TEXT NOT NULL,
+is_active BOOLEAN DEFAULT true,
+runtime_parameters JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now(),
+updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE chunk_keyword_terms (
+chunk_id BIGINT NOT NULL REFERENCES chunks(chunk_id) ON DELETE CASCADE,
+chunk_policy_name TEXT NOT NULL,
+term TEXT NOT NULL,
+term_frequency INT NOT NULL CHECK (term_frequency > 0),
+created_at TIMESTAMP DEFAULT now(),
+PRIMARY KEY (chunk_id, term)
+);
+
+CREATE TABLE chunk_keyword_statistics (
+chunk_policy_name TEXT NOT NULL,
+term TEXT NOT NULL,
+document_frequency INT NOT NULL CHECK (document_frequency >= 0),
+corpus_chunk_count INT NOT NULL CHECK (corpus_chunk_count >= 0),
+average_document_length NUMERIC(12, 4) NOT NULL CHECK (average_document_length >= 0),
+updated_at TIMESTAMP DEFAULT now(),
+PRIMARY KEY (chunk_policy_name, term)
+);
+```
+
+초기 BM25 indexer는 chunks.chunk_text에서 토큰을 추출해 chunk_keyword_terms를 재생성할 수 있어야 하며, statistics table은 backfill runner 또는 materialized refresh 절차로 갱신한다.
 
 ## 5.11 저장용량 산정
 
@@ -1093,7 +1160,7 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 
 - MVP에서는 고급 SPA 구조보다 FastAPI template + Bootstrap 중심의 서버 렌더링 구성을 우선한다.
 
-- 검색 결과 비교 화면에서는 4개 profile column의 시각적 정렬을 유지한다.
+- 검색 결과 비교 화면에서는 선택된 search profile column의 시각적 정렬을 유지한다. 기본 embedding-only 비교는 4개 embedding profile column을 사용하고, BM25와 hybrid 선택 시 keyword/hybrid column을 같은 결과 카드 패턴으로 표시한다.
 
 - 대시보드와 검색 결과는 개발자/평가자가 실험 결과를 빠르게 판단할 수 있도록 숫자와 상태 중심으로 표현한다.
 
@@ -1104,7 +1171,7 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | Dashboard | 문서 수, 파일 용량, chunk 수, pipeline/embedding 진행률, queue backlog, 검색 latency, 오류 목록 |
 | File Upload | 파일 선택, 업로드 사용자, 소유 조직, 접근 범위, 문서 그룹, 보안 등급, 업로드 결과, queued job link |
 | Permission Simulation | 테스트 사용자, 조직 계층, membership role, 문서 접근 범위 fixture 관리 |
-| Search Compare | 검색어, actor, 검색 scope, 필터, top-k, 4-column 결과 비교, 피드백 버튼 |
+| Search Compare | 검색어, actor, 검색 scope, 필터, top-k, retrieval strategy, embedding/BM25/hybrid 결과 비교, 피드백 버튼 |
 | Document Detail | 원본 metadata, owner, access scope, pipeline timeline, parsing 결과, chunk 목록, embedding 상태 |
 | Job Monitor | pipeline job queue, stage/status/progress, 완료/실패/재처리 상태, worker lease 상태 |
 | Ingestion Artifact Preview | normalized markdown, extraction warning/error, document block, chunk source anchor, table/image artifact metadata |
@@ -1146,11 +1213,11 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 
 ## 7.1 평가 원칙
 
-- 동일 문서, 동일 parser, 동일 chunk, 동일 query, 동일 top-k 조건에서 embedding profile만 바꾸어 비교한다.
+- 동일 문서, 동일 parser, 동일 chunk, 동일 query, 동일 top-k 조건에서 embedding profile, BM25 keyword baseline, hybrid strategy를 바꾸어 비교한다.
 
 - 권한 실험에서는 동일 query와 동일 embedding profile이라도 actor와 requested_search_scope가 다르면 별도 실험으로 기록한다.
 
-- 서로 다른 profile의 score 절대값은 직접 비교하지 않는다.
+- 서로 다른 search profile의 score 절대값은 직접 비교하지 않는다.
 
 - 주요 비교 기준은 정답 chunk의 rank, top-k 포함 여부, 관련 section 검색 여부, 피드백 분포이다.
 
@@ -1160,7 +1227,11 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 
 - Qwen3 2560 profile은 halfvec 저장에 따른 저장용량 절감과 검색 품질 변화를 함께 측정한다.
 
-- bge-m3의 sparse/hybrid 기능은 MVP 이후 별도 phase에서 실험한다.
+- BM25 keyword baseline은 embedding-only 결과가 keyword baseline 대비 실제로 유의미한 개선을 제공하는지 판단하는 기준선으로 사용한다.
+
+- Hybrid retrieval은 BM25-only와 embedding-only 결과를 모두 기록한 뒤 RRF 또는 weighted fusion 결과가 Recall@k/MRR/nDCG를 개선하는지 검증한다.
+
+- bge-m3의 sparse/hybrid 기능은 BM25 baseline과 일반 hybrid MVP 이후 별도 phase에서 실험한다.
 
 - approximate index를 적용하는 경우 exact search 결과를 baseline으로 저장하고 Recall@k 변화량을 함께 기록한다.
 
@@ -1178,6 +1249,8 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 | Exact vs ANN delta | exact search 대비 HNSW/IVFFlat 적용 후 Recall@k, latency 변화 |
 | Permission-filtered Recall@k | actor의 effective scope 내 정답 chunk가 top-k에 포함되었는지 여부 |
 | Scope variance | 동일 query에 대해 mine/team/managed_org/company scope별 결과 차이 |
+| BM25 baseline delta | BM25-only 대비 embedding-only 또는 hybrid의 Recall@k/MRR/nDCG 변화 |
+| Hybrid uplift | BM25-only와 embedding-only 중 더 좋은 단독 결과 대비 hybrid fusion의 개선폭 |
 
 ## 7.3 Golden Question Set 요구사항
 
@@ -1195,11 +1268,13 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 
 - 모든 검색 로그는 query 원문과 normalized query를 함께 저장한다.
 
-- 검색 로그는 profile_name, model_name, dimension, storage_type, normalize_embeddings, pooling_strategy, query_instruction, mvp_max_input_tokens를 저장해야 한다.
+- 검색 로그는 search_profile_name, retrieval_strategy, profile_kind를 저장해야 한다. embedding profile인 경우 profile_name, model_name, dimension, storage_type, normalize_embeddings, pooling_strategy, query_instruction, mvp_max_input_tokens를 함께 저장해야 한다.
 
 - Qwen 계열 profile은 query-side instruction 사용 여부와 instruction text를 반드시 profile metadata 또는 search log에 남긴다.
 
-- 검색 로그는 chunk_policy_name, parser_name, parser_version, similarity_metric, top_k, index_type, index_parameters를 저장해야 한다.
+- 검색 로그는 chunk_policy_name, parser_name, parser_version, similarity_metric/scoring_metric, top_k, index_type, index_parameters를 저장해야 한다.
+
+- BM25 검색 로그는 tokenizer, tokenizer_version, term_filtering rule, k1, b, corpus_chunk_count, average_document_length, statistics_refreshed_at을 기록해야 한다.
 
 - 검색 결과는 chunk_id만 저장하지 않고, 결과 chunk의 artifact_id, block_id, chunk_type, source_anchor snapshot을 조회 가능해야 한다.
 
@@ -1207,7 +1282,7 @@ permission_filter_metadata에는 actor의 primary org, managed org subtree, 포�
 
 - 검색 로그는 actor_user_id, requested_search_scope, effective_search_scope, permission_filter_metadata를 저장해야 한다.
 
-- 검색 결과는 profile별 rank, chunk_id, distance, score, profile_elapsed_ms를 개별 row로 저장한다.
+- 검색 결과는 search profile별 rank, chunk_id, distance, score, score_components, profile_elapsed_ms를 개별 row로 저장한다.
 
 - 사용자가 입력한 피드백은 검색 결과 row와 연결하여 저장하고, 같은 chunk라도 검색 실험이 다르면 별도 feedback으로 보존한다.
 
@@ -1399,7 +1474,8 @@ pytest tests/e2e
 | Phase 2.7 | Ingestion Source Contract | extraction_profiles/runs/artifacts, document_blocks, table/image artifact placeholder, chunk source contract | normalized markdown artifact와 block/source anchor를 기준으로 chunk lineage test 통과 |
 | Phase 3 | Parsing + Chunking | 파일별 extractor/parser, heading-aware chunker, chunk_policies/chunks 저장 | fixture 문서별 artifact/block/chunk 생성 결과와 chunk policy regression test 통과 |
 | Phase 4 | 4개 Embedding Profile 처리 | profile별 worker/table, embedding_jobs 상태 관리, Qwen 2560 halfvec 저장 | 동일 chunk에 대해 4개 profile embedding 저장 및 job status transition 검증 |
-| Phase 5 | 검색 비교 UI | 4-column 검색 화면, search_logs/search_log_results/feedback 저장 | 동일 query에 대한 4개 profile top-k 결과 표시, 재현성 metadata 기록, 피드백 저장 |
+| Phase 5 | 검색 비교 UI | embedding-only 검색 화면, search_logs/search_log_results/feedback 저장 | 동일 query에 대한 4개 embedding profile top-k 결과 표시, 재현성 metadata 기록, 피드백 저장 |
+| Phase 5.5 | BM25/Hybrid 검색 비교 | BM25 keyword index, BM25 baseline, hybrid fusion, strategy 비교 UI | 동일 query/golden set에서 BM25-only, embedding-only, hybrid top-k 결과와 품질 지표 비교 |
 | Phase 6 | 평가 자동화 | golden question set, Recall@k/MRR/nDCG 리포트 | 질문셋 기반 profile별 평가 리포트 생성 |
 
 ## 10.1 MVP 완료 기준
@@ -1422,11 +1498,13 @@ pytest tests/e2e
 
 - Qwen3 2560 profile은 halfvec(2560)으로 저장하고 integration test로 검증한다.
 
-- 검색 화면에서 4개 profile 결과를 병렬 비교할 수 있다.
+- 검색 화면에서 4개 embedding profile 결과를 병렬 비교할 수 있다.
+
+- BM25 baseline 도입 후 검색 화면에서 BM25-only, embedding-only, hybrid 결과를 같은 query와 필터 조건으로 비교할 수 있다.
 
 - 검색 화면/API에서 actor와 requested scope를 선택할 수 있고, 권한 범위 밖 문서는 결과에 노출되지 않는다.
 
-- 검색 로그는 profile runtime 설정, chunk policy, top-k, similarity metric, query instruction, 결과 chunk를 재현 가능하게 저장한다.
+- 검색 로그는 search profile/strategy runtime 설정, chunk policy, top-k, similarity/scoring metric, query instruction 또는 BM25 tokenizer/parameter, 결과 chunk를 재현 가능하게 저장한다.
 
 - 검색 로그는 actor_user_id, requested_search_scope, effective_search_scope, permission_filter_metadata를 재현 가능하게 저장한다.
 
@@ -1453,6 +1531,8 @@ pytest tests/e2e
 | Chunk 정책 부적절 | 검색 recall 저하 또는 중복 검색 증가 | chunk_policy를 DB에 저장하고 정책별 평가 자동화 |
 | Score 비교 오해 | 모델 성능 오판 | score 절대값이 아닌 rank/top-k/피드백 기준으로 비교 |
 | Query instruction 미기록 | Qwen 계열 검색 결과 재현 불가 | profile metadata와 search log에 query instruction 사용 여부와 instruction text 저장 |
+| BM25 tokenizer 품질 부족 | 한국어 keyword baseline이 실제 문서 의미를 충분히 반영하지 못함 | MVP tokenizer를 재현 가능한 baseline으로 고정하고 n-gram/형태소 tokenizer를 별도 실험 strategy로 확장 |
+| Hybrid score 왜곡 | 서로 다른 score scale을 단순 합산하여 품질을 오판 | 1차 hybrid는 RRF 기반 rank fusion으로 구현하고 score_components를 search log에 저장 |
 | 권한 필터 누락 | 접근 권한이 없는 문서/chunk가 검색 결과에 노출 | permission pre-filter를 repository/search SQL 단계에서 적용하고 permission matrix regression test 추가 |
 | 사후 필터링으로 인한 top-k 왜곡 | 권한 없는 결과 제거 후 관련 chunk가 누락되어 검색 품질 오판 | vector search 후보군 생성 전 actor/scope 조건을 pre-filter로 적용 |
 | 권한 metadata 미기록 | 같은 query 결과 차이를 재현하거나 설명하기 어려움 | search_logs에 actor, requested/effective scope, permission filter metadata 저장 |
@@ -1499,4 +1579,4 @@ pytest tests/e2e
 
 > **최종 정의**
 >
-> NeX_PCX는 FastAPI + Bootstrap 기반 Web 환경에서 사내 문서를 업로드하고, PostgreSQL 기반 pipeline queue와 worker로 텍스트 추출, chunking, embedding, vector indexing을 수행한 뒤, 동일 chunk를 4개 embedding profile로 PostgreSQL + pgvector에 저장하고 검색 결과를 병렬 비교하는 NeX-CX 선행 검증 플랫폼이다. 본 프로젝트의 핵심 산출물은 프로그램 자체뿐 아니라, 한국어 사내 문서 검색을 위한 모델/정책/운영/품질관리 기준 데이터이다.
+> NeX_PCX는 FastAPI + Bootstrap 기반 Web 환경에서 사내 문서를 업로드하고, PostgreSQL 기반 pipeline queue와 worker로 텍스트 추출, chunking, embedding, vector indexing을 수행한 뒤, 동일 chunk를 4개 embedding profile과 BM25/hybrid retrieval strategy로 병렬 비교하는 NeX-CX 선행 검증 플랫폼이다. 본 프로젝트의 핵심 산출물은 프로그램 자체뿐 아니라, 한국어 사내 문서 검색을 위한 모델/검색전략/정책/운영/품질관리 기준 데이터이다.

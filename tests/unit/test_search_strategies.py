@@ -23,10 +23,32 @@ def test_search_strategy_registry_lists_active_and_planned_strategies() -> None:
 
     assert "vector_cosine" in active_names
     assert "vector_cosine_threshold" in active_names
+    assert "bm25_keyword" not in active_names
+    assert "bm25_keyword" in all_names
     assert "hybrid_keyword_vector" not in active_names
     assert "hybrid_keyword_vector" in all_names
+    assert get_search_strategy("bm25_keyword") is None
+    assert get_search_strategy("bm25_keyword", active_only=False) is not None
     assert get_search_strategy("hybrid_keyword_vector") is None
     assert get_search_strategy("hybrid_keyword_vector", active_only=False) is not None
+
+
+def test_bm25_keyword_strategy_contract_is_planned_baseline() -> None:
+    strategy = get_search_strategy("bm25_keyword", active_only=False)
+
+    assert strategy is not None
+    assert strategy.mode == "keyword"
+    assert strategy.stage == "planned"
+    assert strategy.similarity_metric == "bm25"
+    assert strategy.supports_multi_profile is False
+    assert strategy.runtime_parameters == {
+        "planned": True,
+        "index_source": "chunks.chunk_text",
+        "tokenizer": "unicode_word_v1",
+        "scoring": "okapi_bm25",
+        "k1": 1.2,
+        "b": 0.75,
+    }
 
 
 def test_search_strategy_selection_merges_defaults_and_runtime_parameters() -> None:
@@ -50,6 +72,7 @@ def test_search_strategy_selection_merges_defaults_and_runtime_parameters() -> N
     ("kwargs", "message"),
     [
         ({"strategy_name": "unknown"}, "Unsupported search strategy"),
+        ({"strategy_name": "bm25_keyword"}, "Unsupported search strategy"),
         ({"strategy_name": "hybrid_keyword_vector"}, "Unsupported search strategy"),
         ({"strategy_name": "vector_cosine", "top_k": 0}, "top_k"),
         ({"strategy_name": "vector_cosine", "top_k": 101}, "top_k"),
@@ -85,6 +108,17 @@ def test_search_strategy_definition_validation_rejects_bad_definitions() -> None
                 mode="graph",
                 stage="active",
                 similarity_metric="cosine",
+            )
+        )
+    with pytest.raises(InvalidSearchStrategyError, match="Unsupported similarity_metric"):
+        _validate_strategy_definition(
+            SearchStrategyDefinition(
+                strategy_name="bad_metric",
+                display_name="Bad Metric",
+                description="Bad strategy",
+                mode="keyword",
+                stage="active",
+                similarity_metric="tfidf",
             )
         )
     with pytest.raises(InvalidSearchStrategyError, match="default_top_k"):
