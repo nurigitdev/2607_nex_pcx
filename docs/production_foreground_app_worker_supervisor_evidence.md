@@ -20,6 +20,9 @@ The supervisor standardizes:
 - graceful termination of the web process when the supervisor exits, and
 - JSON/Markdown evidence output.
 
+Slice 301 adds `NEX_PCX_FOREGROUND_*` runtime defaults so foreground operation
+does not depend on remembering every worker flag at launch time.
+
 ## Commands
 
 Dry-run:
@@ -36,13 +39,20 @@ Foreground supervised run:
 
 ```bash
 ./.venv/bin/python scripts/run_foreground_app_worker_supervisor.py \
-  --pipeline-limit 1 \
-  --embedding-limit-per-profile 5 \
-  --worker-cycle-interval-seconds 5 \
   --json-output artifacts/foreground_app_worker_supervisor.json \
   --markdown-output artifacts/foreground_app_worker_supervisor.md \
   --pretty
 ```
+
+Recommended foreground defaults:
+
+| Environment Variable | Default | Meaning |
+| --- | ---: | --- |
+| `NEX_PCX_FOREGROUND_PIPELINE_LIMIT` | `1` | Pipeline jobs claimed per cycle |
+| `NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE` | `5` | Embedding jobs claimed per profile |
+| `NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS` | `5` | Delay between worker cycles |
+| `NEX_PCX_FOREGROUND_CHECK_PORT_AVAILABLE` | `true` | Fail planning if the web port is already reachable |
+| `NEX_PCX_FOREGROUND_NO_DEFAULT_QWEN_TOKEN_GUARD` | `false` | Keep Qwen token guard enabled by default |
 
 Stop the supervised foreground session:
 

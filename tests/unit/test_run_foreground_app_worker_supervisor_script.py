@@ -58,6 +58,95 @@ def test_main_writes_dry_run_supervisor_evidence(monkeypatch, tmp_path) -> None:
     )
 
 
+def test_main_uses_foreground_environment_defaults(monkeypatch, tmp_path) -> None:
+    json_output = tmp_path / "supervisor.json"
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_PIPELINE_LIMIT", "4")
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE", "9")
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS", "1.5")
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_REQUIRE_DATABASE_URL", "false")
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_CHECK_PORT_AVAILABLE", "false")
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_NO_DEFAULT_QWEN_TOKEN_GUARD", "true")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_foreground_app_worker_supervisor.py",
+            "--workdir",
+            str(tmp_path),
+            "--python-bin",
+            "python",
+            "--dry-run",
+            "--json-output",
+            str(json_output),
+        ],
+    )
+
+    exit_code = run_foreground_app_worker_supervisor.main()
+    payload = json.loads(json_output.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert payload["plan"]["worker_cycle_interval_seconds"] == 1.5
+    assert "--pipeline-limit 4" in payload["plan"]["worker_shell_command"]
+    assert "--embedding-limit-per-profile 9" in payload["plan"]["worker_shell_command"]
+    assert "--no-default-qwen-token-guard" in payload["plan"]["worker_command"]
+
+
+def test_main_cli_values_override_foreground_environment_defaults(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    json_output = tmp_path / "supervisor.json"
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_PIPELINE_LIMIT", "4")
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_CHECK_PORT_AVAILABLE", "false")
+    monkeypatch.setenv("NEX_PCX_DATABASE_URL", "postgresql://user:secret@db/app")
+    monkeypatch.setattr(
+        "app.core.foreground_production_launch.is_tcp_port_available",
+        lambda **kwargs: True,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_foreground_app_worker_supervisor.py",
+            "--workdir",
+            str(tmp_path),
+            "--python-bin",
+            "python",
+            "--pipeline-limit",
+            "2",
+            "--check-port",
+            "--dry-run",
+            "--json-output",
+            str(json_output),
+        ],
+    )
+
+    exit_code = run_foreground_app_worker_supervisor.main()
+    payload = json.loads(json_output.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert "--pipeline-limit 2" in payload["plan"]["worker_shell_command"]
+    assert payload["plan"]["launch_plan"]["check_count"] >= 1
+
+
+def test_main_rejects_allow_missing_database_url_for_live_run(monkeypatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_foreground_app_worker_supervisor.py",
+            "--allow-missing-database-url",
+        ],
+    )
+
+    try:
+        run_foreground_app_worker_supervisor.main()
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("expected argparse SystemExit")
+
+
 def test_main_returns_nonzero_when_supervisor_plan_is_blocked(monkeypatch, tmp_path) -> None:
     json_output = tmp_path / "blocked.json"
     monkeypatch.delenv("NEX_PCX_DATABASE_URL", raising=False)

@@ -18,12 +18,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.foreground_app_worker_supervisor import (  # noqa: E402
-    DEFAULT_SUPERVISED_WEB_PID_FILE,
-    DEFAULT_SUPERVISOR_LOG_FILE,
-    DEFAULT_SUPERVISOR_PID_FILE,
-    DEFAULT_WORKER_CYCLE_INTERVAL_SECONDS,
-    DEFAULT_WORKER_RUNNER_JSON_OUTPUT,
-    DEFAULT_WORKER_RUNNER_MARKDOWN_OUTPUT,
     SUPERVISOR_PLAN_BLOCKED,
     SUPERVISOR_STATUS_BLOCKED,
     SUPERVISOR_STATUS_EXITED,
@@ -35,59 +29,75 @@ from app.core.foreground_app_worker_supervisor import (  # noqa: E402
     build_foreground_app_worker_supervisor_evidence,
     build_foreground_app_worker_supervisor_plan,
     foreground_app_worker_supervisor_evidence_payload,
+    foreground_app_worker_supervisor_options_from_environ,
     payload_to_json,
     render_foreground_app_worker_supervisor_markdown,
 )
 from app.core.foreground_production_launch import (  # noqa: E402
-    DEFAULT_DATABASE_URL_ENV,
-    DEFAULT_PYTHON_BIN,
     resolve_launch_path,
 )
-from app.core.foreground_worker_runner import (  # noqa: E402
-    DEFAULT_EMBEDDING_LIMIT_PER_PROFILE,
-    DEFAULT_HEALTH_TIMEOUT_SECONDS,
-    DEFAULT_MAX_HEALTH_ELAPSED_MS,
-    DEFAULT_PIPELINE_LIMIT,
-)
-from app.core.service_startup_templates import DEFAULT_WEB_HOST, DEFAULT_WEB_PORT  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run NeX-PCX foreground web app with automatic worker cycles.",
     )
-    parser.add_argument("--workdir", default=str(PROJECT_ROOT))
-    parser.add_argument("--python-bin", default=DEFAULT_PYTHON_BIN)
-    parser.add_argument("--host", default=DEFAULT_WEB_HOST)
-    parser.add_argument("--port", type=int, default=DEFAULT_WEB_PORT)
-    parser.add_argument("--database-url-env", default=DEFAULT_DATABASE_URL_ENV)
-    parser.add_argument("--supervisor-pid-file", default=DEFAULT_SUPERVISOR_PID_FILE)
-    parser.add_argument("--web-pid-file", default=DEFAULT_SUPERVISED_WEB_PID_FILE)
-    parser.add_argument("--log-file", default=DEFAULT_SUPERVISOR_LOG_FILE)
+    try:
+        runtime_defaults = foreground_app_worker_supervisor_options_from_environ(
+            os.environ,
+            defaults=ForegroundAppWorkerSupervisorOptions(workdir=PROJECT_ROOT),
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    parser.add_argument("--workdir", default=str(runtime_defaults.workdir))
+    parser.add_argument("--python-bin", default=runtime_defaults.python_bin)
+    parser.add_argument("--host", default=runtime_defaults.host)
+    parser.add_argument("--port", type=int, default=runtime_defaults.port)
+    parser.add_argument("--database-url-env", default=runtime_defaults.database_url_env)
+    parser.add_argument("--supervisor-pid-file", default=runtime_defaults.supervisor_pid_file)
+    parser.add_argument("--web-pid-file", default=runtime_defaults.web_pid_file)
+    parser.add_argument("--log-file", default=runtime_defaults.log_file)
     parser.add_argument(
         "--worker-cycle-interval-seconds",
         type=float,
-        default=DEFAULT_WORKER_CYCLE_INTERVAL_SECONDS,
+        default=runtime_defaults.worker_cycle_interval_seconds,
     )
-    parser.add_argument("--pipeline-limit", type=int, default=DEFAULT_PIPELINE_LIMIT)
+    parser.add_argument("--pipeline-limit", type=int, default=runtime_defaults.pipeline_limit)
     parser.add_argument(
         "--embedding-limit-per-profile",
         type=int,
-        default=DEFAULT_EMBEDDING_LIMIT_PER_PROFILE,
+        default=runtime_defaults.embedding_limit_per_profile,
     )
     parser.add_argument(
         "--guard-health-timeout-seconds",
         type=float,
-        default=DEFAULT_HEALTH_TIMEOUT_SECONDS,
+        default=runtime_defaults.guard_health_timeout_seconds,
     )
     parser.add_argument(
         "--max-provider-health-elapsed-ms",
         type=int,
-        default=DEFAULT_MAX_HEALTH_ELAPSED_MS,
+        default=runtime_defaults.max_provider_health_elapsed_ms,
     )
-    parser.add_argument("--worker-json-output", default=DEFAULT_WORKER_RUNNER_JSON_OUTPUT)
-    parser.add_argument("--worker-markdown-output", default=DEFAULT_WORKER_RUNNER_MARKDOWN_OUTPUT)
-    parser.add_argument("--no-default-qwen-token-guard", action="store_true")
+    parser.add_argument("--worker-json-output", default=runtime_defaults.worker_json_output)
+    parser.add_argument(
+        "--worker-markdown-output",
+        default=runtime_defaults.worker_markdown_output,
+    )
+    qwen_guard_group = parser.add_mutually_exclusive_group()
+    qwen_guard_group.set_defaults(
+        no_default_qwen_token_guard=runtime_defaults.no_default_qwen_token_guard
+    )
+    qwen_guard_group.add_argument(
+        "--no-default-qwen-token-guard",
+        dest="no_default_qwen_token_guard",
+        action="store_true",
+    )
+    qwen_guard_group.add_argument(
+        "--default-qwen-token-guard",
+        dest="no_default_qwen_token_guard",
+        action="store_false",
+    )
     parser.add_argument(
         "--json-output",
         default="artifacts/foreground_app_worker_supervisor.json",
@@ -99,16 +109,35 @@ def main() -> int:
     parser.add_argument("--startup-timeout-seconds", type=float, default=30.0)
     parser.add_argument("--max-worker-cycles", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--skip-port-check", action="store_true")
-    parser.add_argument(
-        "--allow-missing-database-url",
+    port_check_group = parser.add_mutually_exclusive_group()
+    port_check_group.set_defaults(check_port_available=runtime_defaults.check_port_available)
+    port_check_group.add_argument(
+        "--check-port",
+        dest="check_port_available",
         action="store_true",
+    )
+    port_check_group.add_argument(
+        "--skip-port-check",
+        dest="check_port_available",
+        action="store_false",
+    )
+    database_group = parser.add_mutually_exclusive_group()
+    database_group.set_defaults(require_database_url=runtime_defaults.require_database_url)
+    database_group.add_argument(
+        "--require-database-url",
+        dest="require_database_url",
+        action="store_true",
+    )
+    database_group.add_argument(
+        "--allow-missing-database-url",
+        dest="require_database_url",
+        action="store_false",
         help="Allow dry-run planning when NEX_PCX_DATABASE_URL is not configured.",
     )
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
-    if args.allow_missing_database_url and not args.dry_run:
-        parser.error("--allow-missing-database-url can only be used with --dry-run")
+    if not args.require_database_url and not args.dry_run:
+        parser.error("missing database URL can only be allowed with --dry-run")
 
     plan = build_foreground_app_worker_supervisor_plan(
         ForegroundAppWorkerSupervisorOptions(
@@ -117,7 +146,7 @@ def main() -> int:
             host=args.host,
             port=args.port,
             database_url_env=args.database_url_env,
-            require_database_url=not args.allow_missing_database_url,
+            require_database_url=args.require_database_url,
             supervisor_pid_file=args.supervisor_pid_file,
             web_pid_file=args.web_pid_file,
             log_file=args.log_file,
@@ -129,7 +158,7 @@ def main() -> int:
             worker_json_output=args.worker_json_output,
             worker_markdown_output=args.worker_markdown_output,
             no_default_qwen_token_guard=args.no_default_qwen_token_guard,
-            check_port_available=not args.skip_port_check,
+            check_port_available=args.check_port_available,
         ),
         environ=os.environ,
     )

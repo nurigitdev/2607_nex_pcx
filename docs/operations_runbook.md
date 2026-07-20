@@ -39,6 +39,10 @@ export NEX_PCX_EMBEDDING_PROVIDER_SOURCE="route"
 export NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS="true"
 export NEX_PCX_EMBEDDING_ROUTE_READINESS_FAILURE_MODE="defer"
 export NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS="300"
+export NEX_PCX_FOREGROUND_PIPELINE_LIMIT="1"
+export NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE="5"
+export NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS="5"
+export NEX_PCX_FOREGROUND_CHECK_PORT_AVAILABLE="true"
 ```
 
 Recommended provider route base URLs for the current DGX development server:
@@ -90,13 +94,11 @@ Recommended provider route base URLs for the current DGX development server:
    ```
 
 5. Start the main web application with foreground app and worker supervisor
-   evidence.
+   evidence. The runner reads `NEX_PCX_FOREGROUND_*` values as defaults; CLI
+   flags override them when an operator needs a one-off adjustment.
 
    ```bash
    ./.venv/bin/python scripts/run_foreground_app_worker_supervisor.py \
-     --pipeline-limit 1 \
-     --embedding-limit-per-profile 5 \
-     --worker-cycle-interval-seconds 5 \
      --json-output artifacts/foreground_app_worker_supervisor.json \
      --markdown-output artifacts/foreground_app_worker_supervisor.md \
      --pretty

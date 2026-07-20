@@ -51,6 +51,28 @@ DEFAULT_WORKER_CYCLE_INTERVAL_SECONDS = 5.0
 DEFAULT_WORKER_RUNNER_JSON_OUTPUT = "artifacts/foreground_worker_runner.json"
 DEFAULT_WORKER_RUNNER_MARKDOWN_OUTPUT = "artifacts/foreground_worker_runner.md"
 
+ENV_FOREGROUND_WORKDIR = "NEX_PCX_FOREGROUND_WORKDIR"
+ENV_FOREGROUND_PYTHON_BIN = "NEX_PCX_FOREGROUND_PYTHON_BIN"
+ENV_FOREGROUND_HOST = "NEX_PCX_FOREGROUND_HOST"
+ENV_FOREGROUND_PORT = "NEX_PCX_FOREGROUND_PORT"
+ENV_FOREGROUND_DATABASE_URL_ENV = "NEX_PCX_FOREGROUND_DATABASE_URL_ENV"
+ENV_FOREGROUND_REQUIRE_DATABASE_URL = "NEX_PCX_FOREGROUND_REQUIRE_DATABASE_URL"
+ENV_FOREGROUND_SUPERVISOR_PID_FILE = "NEX_PCX_FOREGROUND_SUPERVISOR_PID_FILE"
+ENV_FOREGROUND_WEB_PID_FILE = "NEX_PCX_FOREGROUND_WEB_PID_FILE"
+ENV_FOREGROUND_SUPERVISOR_LOG_FILE = "NEX_PCX_FOREGROUND_SUPERVISOR_LOG_FILE"
+ENV_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS = "NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS"
+ENV_FOREGROUND_PIPELINE_LIMIT = "NEX_PCX_FOREGROUND_PIPELINE_LIMIT"
+ENV_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE = "NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE"
+ENV_FOREGROUND_GUARD_HEALTH_TIMEOUT_SECONDS = "NEX_PCX_FOREGROUND_GUARD_HEALTH_TIMEOUT_SECONDS"
+ENV_FOREGROUND_MAX_PROVIDER_HEALTH_ELAPSED_MS = "NEX_PCX_FOREGROUND_MAX_PROVIDER_HEALTH_ELAPSED_MS"
+ENV_FOREGROUND_WORKER_JSON_OUTPUT = "NEX_PCX_FOREGROUND_WORKER_JSON_OUTPUT"
+ENV_FOREGROUND_WORKER_MARKDOWN_OUTPUT = "NEX_PCX_FOREGROUND_WORKER_MARKDOWN_OUTPUT"
+ENV_FOREGROUND_NO_DEFAULT_QWEN_TOKEN_GUARD = "NEX_PCX_FOREGROUND_NO_DEFAULT_QWEN_TOKEN_GUARD"
+ENV_FOREGROUND_CHECK_PORT_AVAILABLE = "NEX_PCX_FOREGROUND_CHECK_PORT_AVAILABLE"
+
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+_FALSE_VALUES = {"0", "false", "no", "off"}
+
 
 @dataclass(frozen=True)
 class ForegroundAppWorkerSupervisorOptions:
@@ -72,6 +94,88 @@ class ForegroundAppWorkerSupervisorOptions:
     worker_markdown_output: str = DEFAULT_WORKER_RUNNER_MARKDOWN_OUTPUT
     no_default_qwen_token_guard: bool = False
     check_port_available: bool = True
+
+
+def foreground_app_worker_supervisor_options_from_environ(
+    environ: Mapping[str, str],
+    *,
+    defaults: ForegroundAppWorkerSupervisorOptions | None = None,
+) -> ForegroundAppWorkerSupervisorOptions:
+    base = defaults or ForegroundAppWorkerSupervisorOptions()
+    return _validate_options(
+        ForegroundAppWorkerSupervisorOptions(
+            workdir=_env_str(environ, ENV_FOREGROUND_WORKDIR, str(base.workdir)),
+            python_bin=_env_str(environ, ENV_FOREGROUND_PYTHON_BIN, base.python_bin),
+            host=_env_str(environ, ENV_FOREGROUND_HOST, base.host),
+            port=_env_int(environ, ENV_FOREGROUND_PORT, base.port),
+            database_url_env=_env_str(
+                environ,
+                ENV_FOREGROUND_DATABASE_URL_ENV,
+                base.database_url_env,
+            ),
+            require_database_url=_env_bool(
+                environ,
+                ENV_FOREGROUND_REQUIRE_DATABASE_URL,
+                base.require_database_url,
+            ),
+            supervisor_pid_file=_env_str(
+                environ,
+                ENV_FOREGROUND_SUPERVISOR_PID_FILE,
+                base.supervisor_pid_file,
+            ),
+            web_pid_file=_env_str(environ, ENV_FOREGROUND_WEB_PID_FILE, base.web_pid_file),
+            log_file=_env_str(
+                environ,
+                ENV_FOREGROUND_SUPERVISOR_LOG_FILE,
+                base.log_file,
+            ),
+            worker_cycle_interval_seconds=_env_float(
+                environ,
+                ENV_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS,
+                base.worker_cycle_interval_seconds,
+            ),
+            pipeline_limit=_env_int(
+                environ,
+                ENV_FOREGROUND_PIPELINE_LIMIT,
+                base.pipeline_limit,
+            ),
+            embedding_limit_per_profile=_env_int(
+                environ,
+                ENV_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE,
+                base.embedding_limit_per_profile,
+            ),
+            guard_health_timeout_seconds=_env_float(
+                environ,
+                ENV_FOREGROUND_GUARD_HEALTH_TIMEOUT_SECONDS,
+                base.guard_health_timeout_seconds,
+            ),
+            max_provider_health_elapsed_ms=_env_int(
+                environ,
+                ENV_FOREGROUND_MAX_PROVIDER_HEALTH_ELAPSED_MS,
+                base.max_provider_health_elapsed_ms,
+            ),
+            worker_json_output=_env_str(
+                environ,
+                ENV_FOREGROUND_WORKER_JSON_OUTPUT,
+                base.worker_json_output,
+            ),
+            worker_markdown_output=_env_str(
+                environ,
+                ENV_FOREGROUND_WORKER_MARKDOWN_OUTPUT,
+                base.worker_markdown_output,
+            ),
+            no_default_qwen_token_guard=_env_bool(
+                environ,
+                ENV_FOREGROUND_NO_DEFAULT_QWEN_TOKEN_GUARD,
+                base.no_default_qwen_token_guard,
+            ),
+            check_port_available=_env_bool(
+                environ,
+                ENV_FOREGROUND_CHECK_PORT_AVAILABLE,
+                base.check_port_available,
+            ),
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -611,6 +715,46 @@ def _quote_command(command: tuple[str, ...]) -> str:
 
 def _number_text(value: float) -> str:
     return str(int(value)) if value == int(value) else str(value)
+
+
+def _env_str(environ: Mapping[str, str], name: str, default: str) -> str:
+    value = environ.get(name)
+    if value is None:
+        return default
+    selected_value = value.strip()
+    return selected_value if selected_value else default
+
+
+def _env_int(environ: Mapping[str, str], name: str, default: int) -> int:
+    value = environ.get(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+
+
+def _env_float(environ: Mapping[str, str], name: str, default: float) -> float:
+    value = environ.get(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+
+
+def _env_bool(environ: Mapping[str, str], name: str, default: bool) -> bool:
+    value = environ.get(name)
+    if value is None or not value.strip():
+        return default
+    selected_value = value.strip().lower()
+    if selected_value in _TRUE_VALUES:
+        return True
+    if selected_value in _FALSE_VALUES:
+        return False
+    raise ValueError(f"{name} must be one of: 1, 0, true, false, yes, no, on, off")
 
 
 def _iso_or_none(value: datetime | None) -> str | None:
