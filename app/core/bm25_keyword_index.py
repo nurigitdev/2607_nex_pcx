@@ -11,9 +11,42 @@ from psycopg import Connection
 from app.core.database import connect
 
 DEFAULT_BM25_TOKENIZER_NAME = "unicode_word_v1"
-SUPPORTED_BM25_TOKENIZERS = {DEFAULT_BM25_TOKENIZER_NAME}
+KOREAN_NGRAM_BM25_TOKENIZER_NAME = "unicode_word_ko_2_3gram_v1"
 AVERAGE_DOCUMENT_LENGTH_QUANT = Decimal("0.0001")
 _WORD_PATTERN = re.compile(r"(?u)\b\w+\b")
+_HANGUL_SYLLABLE_PATTERN = re.compile(r"[가-힣]+")
+_KOREAN_NGRAM_SIZES = (2, 3)
+
+
+@dataclass(frozen=True)
+class BM25TokenizerDefinition:
+    tokenizer_name: str
+    display_name: str
+    description: str
+    dependency_mode: str
+    status: str
+
+
+BM25_TOKENIZER_DEFINITIONS = {
+    DEFAULT_BM25_TOKENIZER_NAME: BM25TokenizerDefinition(
+        tokenizer_name=DEFAULT_BM25_TOKENIZER_NAME,
+        display_name="Unicode Word",
+        description="Case-folded Unicode word tokens for the reproducible BM25 baseline.",
+        dependency_mode="builtin",
+        status="default",
+    ),
+    KOREAN_NGRAM_BM25_TOKENIZER_NAME: BM25TokenizerDefinition(
+        tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+        display_name="Unicode Word + Korean 2/3-gram",
+        description=(
+            "Unicode word tokens plus Hangul syllable 2-gram and 3-gram terms for "
+            "Korean spacing and compound-noun recall experiments."
+        ),
+        dependency_mode="builtin",
+        status="experimental",
+    ),
+}
+SUPPORTED_BM25_TOKENIZERS = frozenset(BM25_TOKENIZER_DEFINITIONS)
 
 
 @dataclass(frozen=True)
@@ -72,13 +105,51 @@ def validate_bm25_tokenizer_name(tokenizer_name: str) -> str:
     return _validate_tokenizer_name(tokenizer_name)
 
 
+def list_bm25_tokenizers() -> tuple[BM25TokenizerDefinition, ...]:
+    return tuple(BM25_TOKENIZER_DEFINITIONS.values())
+
+
+def _tokenize_unicode_words(text: str) -> tuple[str, ...]:
+    return tuple(match.group(0).casefold() for match in _WORD_PATTERN.finditer(text))
+
+
+def _iter_korean_ngrams(token: str) -> tuple[str, ...]:
+    ngrams: list[str] = []
+    normalized_token = token.casefold()
+    for match in _HANGUL_SYLLABLE_PATTERN.finditer(normalized_token):
+        sequence = match.group(0)
+        for size in _KOREAN_NGRAM_SIZES:
+            if len(sequence) < size:
+                continue
+            for start in range(0, len(sequence) - size + 1):
+                term = sequence[start : start + size]
+                if term == normalized_token:
+                    continue
+                ngrams.append(term)
+    return tuple(ngrams)
+
+
+def _tokenize_unicode_words_with_korean_ngrams(text: str) -> tuple[str, ...]:
+    terms: list[str] = []
+    for token in _tokenize_unicode_words(text):
+        terms.append(token)
+        terms.extend(_iter_korean_ngrams(token))
+    return tuple(terms)
+
+
+_BM25_TOKENIZER_FUNCTIONS = {
+    DEFAULT_BM25_TOKENIZER_NAME: _tokenize_unicode_words,
+    KOREAN_NGRAM_BM25_TOKENIZER_NAME: _tokenize_unicode_words_with_korean_ngrams,
+}
+
+
 def tokenize_bm25_text(
     text: str,
     *,
     tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME,
 ) -> tuple[str, ...]:
-    _validate_tokenizer_name(tokenizer_name)
-    return tuple(match.group(0).casefold() for match in _WORD_PATTERN.finditer(text))
+    validated_tokenizer_name = _validate_tokenizer_name(tokenizer_name)
+    return _BM25_TOKENIZER_FUNCTIONS[validated_tokenizer_name](text)
 
 
 def build_bm25_term_frequencies(

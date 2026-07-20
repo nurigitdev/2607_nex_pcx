@@ -2,7 +2,10 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.bm25_keyword_index import refresh_chunk_policy_keyword_index
+from app.core.bm25_keyword_index import (
+    KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+    refresh_chunk_policy_keyword_index,
+)
 from app.core.bm25_search import BM25SearchInput, search_bm25_chunks
 from app.core.chunks import ChunkInput, create_chunk
 from app.core.database import connect
@@ -225,6 +228,50 @@ def test_search_bm25_chunks_filters_inactive_documents(
             [active_file_id, archived_file_id],
             policy_name,
         )
+
+
+def test_search_bm25_chunks_supports_korean_ngram_tokenizer(
+    migrated_database_url: str,
+) -> None:
+    policy_name = f"bm25_policy_{uuid4().hex}"
+    document_group = f"slice-312-{uuid4().hex}"
+    _create_policy(migrated_database_url, policy_name)
+    file_id, document_id = _create_document(
+        migrated_database_url,
+        document_group=document_group,
+    )
+    try:
+        chunk_ids = _create_chunks(
+            migrated_database_url,
+            document_id,
+            policy_name,
+            [
+                "업무보고서는 매월 제출합니다",
+                "휴가 신청 규칙을 설명합니다",
+            ],
+        )
+        refresh_chunk_policy_keyword_index(
+            migrated_database_url,
+            chunk_policy_name=policy_name,
+            tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+        )
+
+        results = search_bm25_chunks(
+            migrated_database_url,
+            BM25SearchInput(
+                query_text="업무 보고서",
+                top_k=5,
+                chunk_policy_name=policy_name,
+                tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+                document_group=document_group,
+            ),
+        )
+
+        assert [result.chunk_id for result in results] == [chunk_ids[0]]
+        assert results[0].score_components["tokenizer_name"] == KOREAN_NGRAM_BM25_TOKENIZER_NAME
+        assert "보고서" in results[0].score_components["query_terms"]
+    finally:
+        _cleanup_fixture(migrated_database_url, [file_id], policy_name)
 
 
 def test_search_bm25_chunks_returns_empty_for_punctuation_query(

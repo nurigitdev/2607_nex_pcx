@@ -4,6 +4,7 @@ import pytest
 
 from app.core.bm25_keyword_index import (
     DEFAULT_BM25_TOKENIZER_NAME,
+    KOREAN_NGRAM_BM25_TOKENIZER_NAME,
     list_chunk_keyword_statistics,
     list_chunk_keyword_terms,
     refresh_chunk_policy_keyword_index,
@@ -207,6 +208,68 @@ def test_refresh_chunk_policy_keyword_index_rebuilds_terms_and_statistics(
         assert statistics["한국어"].document_frequency == 2
         assert statistics["gamma"].corpus_chunk_count == 3
         assert float(statistics["gamma"].average_document_length) == pytest.approx(2.3333)
+    finally:
+        _cleanup_fixture(migrated_database_url, file_id, policy_name)
+
+
+def test_korean_ngram_keyword_index_coexists_with_default_tokenizer(
+    migrated_database_url: str,
+) -> None:
+    policy_name = f"bm25_policy_{uuid4().hex}"
+    _create_policy(migrated_database_url, policy_name)
+    file_id, document_id = _create_document(migrated_database_url)
+    try:
+        chunk = create_chunk(
+            migrated_database_url,
+            ChunkInput(
+                document_id=document_id,
+                chunk_seq=0,
+                chunk_text="업무보고서는 매월 제출합니다",
+                chunk_policy_name=policy_name,
+            ),
+        )
+
+        refresh_chunk_policy_keyword_index(
+            migrated_database_url,
+            chunk_policy_name=policy_name,
+            tokenizer_name=DEFAULT_BM25_TOKENIZER_NAME,
+        )
+        korean_result = refresh_chunk_policy_keyword_index(
+            migrated_database_url,
+            chunk_policy_name=policy_name,
+            tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+        )
+        default_terms = {
+            term.term
+            for term in list_chunk_keyword_terms(
+                migrated_database_url,
+                chunk_id=chunk.chunk_id,
+                tokenizer_name=DEFAULT_BM25_TOKENIZER_NAME,
+            )
+        }
+        korean_terms = {
+            term.term
+            for term in list_chunk_keyword_terms(
+                migrated_database_url,
+                chunk_id=chunk.chunk_id,
+                tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+            )
+        }
+        korean_statistics = {
+            record.term
+            for record in list_chunk_keyword_statistics(
+                migrated_database_url,
+                chunk_policy_name=policy_name,
+                tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+            )
+        }
+
+        assert korean_result.tokenizer_name == KOREAN_NGRAM_BM25_TOKENIZER_NAME
+        assert "업무보고서는" in default_terms
+        assert "보고서" not in default_terms
+        assert "업무보고서는" in korean_terms
+        assert "보고서" in korean_terms
+        assert "보고서" in korean_statistics
     finally:
         _cleanup_fixture(migrated_database_url, file_id, policy_name)
 

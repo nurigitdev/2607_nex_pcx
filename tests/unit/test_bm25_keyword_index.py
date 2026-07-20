@@ -2,8 +2,10 @@ import pytest
 
 from app.core.bm25_keyword_index import (
     DEFAULT_BM25_TOKENIZER_NAME,
+    KOREAN_NGRAM_BM25_TOKENIZER_NAME,
     InvalidBM25KeywordIndexError,
     build_bm25_term_frequencies,
+    list_bm25_tokenizers,
     replace_chunk_keyword_terms_in_connection,
     tokenize_bm25_text,
 )
@@ -15,10 +17,54 @@ def test_tokenize_bm25_text_normalizes_unicode_word_tokens() -> None:
     assert tokens == ("nex", "pcx", "문서", "검색", "2", "0", "bm25", "bm25")
 
 
+def test_list_bm25_tokenizers_includes_default_and_korean_ngram_baseline() -> None:
+    definitions = {definition.tokenizer_name: definition for definition in list_bm25_tokenizers()}
+
+    assert definitions[DEFAULT_BM25_TOKENIZER_NAME].status == "default"
+    assert definitions[KOREAN_NGRAM_BM25_TOKENIZER_NAME].status == "experimental"
+    assert definitions[KOREAN_NGRAM_BM25_TOKENIZER_NAME].dependency_mode == "builtin"
+
+
+def test_korean_ngram_tokenizer_adds_compound_recall_terms() -> None:
+    tokens = tokenize_bm25_text(
+        "업무보고서는 검색 기능, NeX-PCX",
+        tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+    )
+
+    assert tokens == (
+        "업무보고서는",
+        "업무",
+        "무보",
+        "보고",
+        "고서",
+        "서는",
+        "업무보",
+        "무보고",
+        "보고서",
+        "고서는",
+        "검색",
+        "기능",
+        "nex",
+        "pcx",
+    )
+
+
 def test_build_bm25_term_frequencies_counts_casefolded_tokens() -> None:
     frequencies = build_bm25_term_frequencies("Alpha alpha BETA 한국어 한국어.")
 
     assert frequencies == {"alpha": 2, "beta": 1, "한국어": 2}
+
+
+def test_korean_ngram_term_frequencies_keep_repeated_query_terms() -> None:
+    frequencies = build_bm25_term_frequencies(
+        "업무보고서 업무 보고서",
+        tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+    )
+
+    assert frequencies["업무보고서"] == 1
+    assert frequencies["업무"] == 2
+    assert frequencies["보고서"] == 2
+    assert frequencies["보고"] == 2
 
 
 def test_build_bm25_term_frequencies_returns_empty_for_punctuation_only() -> None:

@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.8**
+**Software Requirements Specification v1.9**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.8
+문서 상태: Draft v1.9
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.8 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.9 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.8 |
+| 문서 버전 | v1.9 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -33,6 +33,7 @@
 | 1.6 | 2026-07-10 | GPU embedding provider API 분리, local smoke adapter, provider runtime metadata 요구사항 보강 |
 | 1.7 | 2026-07-15 | ingestion metadata, normalized markdown artifact, document block, table/image artifact, chunk source contract 요구사항 보강 |
 | 1.8 | 2026-07-20 | BM25 keyword baseline, 검색 전략/profile 계약, embedding-only/BM25/hybrid 비교 요구사항 보강 |
+| 1.9 | 2026-07-20 | 한국어 친화 BM25 tokenizer baseline, KoNLPy 보류, Mecab-ko optional 검토 기준 보강 |
 
 # 목차
 
@@ -421,7 +422,17 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - BM25 scoring은 Okapi BM25 기본 파라미터 k1=1.2, b=0.75를 시작점으로 하며, 후속 실험에서 tokenizer, stopword, k1, b 값을 search runtime metadata로 기록한다.
 
-- 한국어 문서는 공백/기호 기반 tokenization만으로 형태소 품질이 제한될 수 있으므로, MVP tokenizer는 재현 가능한 baseline으로 고정하고 후속 Slice에서 n-gram 또는 형태소 analyzer 개선을 실험한다.
+- 한국어 문서는 공백/기호 기반 tokenization만으로 형태소 품질이 제한될 수 있으므로, BM25 tokenizer는 여러 strategy를 side-by-side로 비교할 수 있어야 한다.
+
+- 기본 BM25 tokenizer는 `unicode_word_v1`로 유지한다. 이는 외부 의존성이 없고 재현성이 높지만, 조사/어미/복합명사/띄어쓰기 변형에 취약할 수 있다.
+
+- 한국어 친화 내장 baseline으로 `unicode_word_ko_2_3gram_v1`를 제공한다. 이 tokenizer는 Unicode word token에 더해 한글 연속 음절에서 2-gram/3-gram term을 생성하여 `업무보고서는`과 `업무 보고서` 같은 변형의 recall을 실험한다.
+
+- `unicode_word_ko_2_3gram_v1`는 형태소 분석기가 아니며, term 수 증가와 noise 증가 가능성이 있다. 따라서 운영 기본값으로 즉시 전환하지 않고 BM25/golden question 비교 실험에서 Recall@k, MRR, nDCG, index size, query latency를 함께 평가한다.
+
+- KoNLPy 계열 tokenizer는 라이선스 및 JVM/JPype/runtime 의존성 부담 때문에 기본 배포 대상에서 보류한다.
+
+- Mecab-ko는 KoNLPy 대안의 optional 형태소 analyzer 후보로 검토한다. 단, Python wrapper, 사전, 빌드 산출물, 고객사 재배포 방식의 라이선스와 설치 자동화가 확인되기 전까지 필수 dependency로 포함하지 않는다.
 
 - Hybrid retrieval은 1차 MVP에서 BM25 top-N과 vector top-N을 Reciprocal Rank Fusion(RRF)으로 결합한다.
 
@@ -1531,7 +1542,8 @@ pytest tests/e2e
 | Chunk 정책 부적절 | 검색 recall 저하 또는 중복 검색 증가 | chunk_policy를 DB에 저장하고 정책별 평가 자동화 |
 | Score 비교 오해 | 모델 성능 오판 | score 절대값이 아닌 rank/top-k/피드백 기준으로 비교 |
 | Query instruction 미기록 | Qwen 계열 검색 결과 재현 불가 | profile metadata와 search log에 query instruction 사용 여부와 instruction text 저장 |
-| BM25 tokenizer 품질 부족 | 한국어 keyword baseline이 실제 문서 의미를 충분히 반영하지 못함 | MVP tokenizer를 재현 가능한 baseline으로 고정하고 n-gram/형태소 tokenizer를 별도 실험 strategy로 확장 |
+| BM25 tokenizer 품질 부족 | 한국어 keyword baseline이 실제 문서 의미를 충분히 반영하지 못함 | `unicode_word_v1`을 기본 재현 baseline으로 유지하고 `unicode_word_ko_2_3gram_v1`와 optional Mecab-ko 후보를 별도 실험 strategy로 비교 |
+| 한국어 형태소 analyzer 라이선스/배포 리스크 | 고객사 설치 시 GPL/JVM/사전 배포 이슈가 발생할 수 있음 | KoNLPy는 보류하고 Mecab-ko는 wrapper/사전/설치 자동화 검토 완료 전까지 optional adapter 후보로만 관리 |
 | Hybrid score 왜곡 | 서로 다른 score scale을 단순 합산하여 품질을 오판 | 1차 hybrid는 RRF 기반 rank fusion으로 구현하고 score_components를 search log에 저장 |
 | 권한 필터 누락 | 접근 권한이 없는 문서/chunk가 검색 결과에 노출 | permission pre-filter를 repository/search SQL 단계에서 적용하고 permission matrix regression test 추가 |
 | 사후 필터링으로 인한 top-k 왜곡 | 권한 없는 결과 제거 후 관련 chunk가 누락되어 검색 품질 오판 | vector search 후보군 생성 전 actor/scope 조건을 pre-filter로 적용 |
