@@ -68,6 +68,10 @@ def _validate_tokenizer_name(tokenizer_name: str) -> str:
     return normalized
 
 
+def validate_bm25_tokenizer_name(tokenizer_name: str) -> str:
+    return _validate_tokenizer_name(tokenizer_name)
+
+
 def tokenize_bm25_text(
     text: str,
     *,
