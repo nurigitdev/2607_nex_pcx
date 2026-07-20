@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.types.json import Json
 
+from app.core.bm25_keyword_index import refresh_chunk_policy_keyword_index
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
 from app.core.embedding_vectors import (
@@ -38,6 +39,37 @@ def _seed_ids(database_url: str) -> dict[str, int]:
                 """)
             orgs = {row["org_unit_name"]: int(row["org_unit_id"]) for row in cursor.fetchall()}
     return {**users, **orgs}
+
+
+def _create_chunk_policy(database_url: str, chunk_policy_name: str) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO chunk_policies (
+                    chunk_policy_name,
+                    target_token_size,
+                    overlap_token_size,
+                    split_strategy,
+                    description
+                )
+                VALUES (%s, 256, 32, 'bm25-compare-fixture', 'BM25 compare fixture')
+                """,
+                (chunk_policy_name,),
+            )
+
+
+def _cleanup_chunk_policy(database_url: str, chunk_policy_name: str) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM chunk_keyword_statistics WHERE chunk_policy_name = %s",
+                (chunk_policy_name,),
+            )
+            cursor.execute(
+                "DELETE FROM chunk_policies WHERE chunk_policy_name = %s",
+                (chunk_policy_name,),
+            )
 
 
 def _create_search_compare_chunk(
@@ -1095,6 +1127,101 @@ def test_search_compare_api_returns_permission_filtered_profile_results(
         assert bad_export_response.json() == {"detail": "format must be json or csv."}
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
+
+
+def test_search_compare_api_returns_bm25_keyword_profile_results(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    document_group = f"slice-308-{uuid4()}"
+    chunk_policy_name = f"bm25_compare_{uuid4().hex}"
+    _create_chunk_policy(migrated_database_url, chunk_policy_name)
+    visible_file_id, visible_chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="visible bm25 company fixture",
+        owner_user_id=None,
+        owner_org_unit_id=ids["NeX Company"],
+        access_scope="company",
+        chunk_text="BM25 keyword compare anchor anchor",
+        document_group=document_group,
+        chunk_policy_name=chunk_policy_name,
+    )
+    hidden_file_id, hidden_chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="hidden bm25 personal fixture",
+        owner_user_id=ids["bob.member"],
+        owner_org_unit_id=ids["Business Team"],
+        access_scope="personal",
+        chunk_text="BM25 keyword compare anchor anchor",
+        document_group=document_group,
+        chunk_policy_name=chunk_policy_name,
+    )
+    try:
+        refresh_chunk_policy_keyword_index(
+            migrated_database_url,
+            chunk_policy_name=chunk_policy_name,
+        )
+        app = create_app(Settings(database_url=migrated_database_url))
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/search/compare",
+                json={
+                    "query_text": "bm25 keyword anchor",
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "top_k": 5,
+                    "profiles": ["bm25_keyword"],
+                    "chunk_policy_name": chunk_policy_name,
+                    "document_group": document_group,
+                },
+            )
+
+        body = response.json()
+        profile = body["profiles"][0]
+        result = profile["results"][0]
+        log_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT strategy_name, similarity_metric, query_runtime_metadata
+            FROM search_logs
+            WHERE search_log_id = %s
+            """,
+            (body["search_log_id"],),
+        )
+        result_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT
+                search_profile_name,
+                retrieval_strategy,
+                distance,
+                score_components
+            FROM search_log_results
+            WHERE search_log_result_id = %s
+            """,
+            (result["search_log_result_id"],),
+        )
+
+        assert response.status_code == 200
+        assert profile["profile_name"] == "bm25_keyword"
+        assert profile["query_runtime_metadata"]["retrieval_strategy"] == "bm25_keyword"
+        assert result["chunk_id"] == visible_chunk_id
+        assert result["chunk_id"] != hidden_chunk_id
+        assert result["distance"] is None
+        assert result["retrieval_strategy"] == "bm25_keyword"
+        assert result["score_components"]["query_terms"] == ["anchor", "bm25", "keyword"]
+        assert body["profile_status_counts"] == {"succeeded": 1, "failed": 0}
+        assert log_row["strategy_name"] == "bm25_keyword"
+        assert log_row["similarity_metric"] == "bm25"
+        assert log_row["query_runtime_metadata"]["keyword_search_profile_count"] == 1
+        assert result_row["search_profile_name"] == "bm25_keyword"
+        assert result_row["retrieval_strategy"] == "bm25_keyword"
+        assert result_row["distance"] is None
+        assert result_row["score_components"]["query_terms"] == ["anchor", "bm25", "keyword"]
+    finally:
+        _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
+        _cleanup_chunk_policy(migrated_database_url, chunk_policy_name)
 
 
 def test_search_compare_readiness_api_flags_incomplete_profile_policy_coverage(

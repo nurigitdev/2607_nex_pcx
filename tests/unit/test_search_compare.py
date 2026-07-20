@@ -2,6 +2,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.core.bm25_search import BM25SearchResult
 from app.core.permissions import PermissionSearchFilter
 from app.core.query_embeddings import InvalidQueryEmbeddingError, QueryEmbeddingResult
 from app.core.search_compare import (
@@ -86,6 +87,37 @@ def _vector_search_result(profile_name: str) -> VectorSearchResult:
         original_file_name="policy.md",
         file_ext=".md",
         embedding_elapsed_ms=3,
+    )
+
+
+def _bm25_search_result() -> BM25SearchResult:
+    return BM25SearchResult(
+        profile_name="bm25_keyword",
+        distance=None,
+        embedding_elapsed_ms=None,
+        search_profile_name="bm25_keyword",
+        retrieval_strategy="bm25_keyword",
+        rank=1,
+        chunk_id=11,
+        document_id=21,
+        file_id=31,
+        score=1.25,
+        chunk_text="keyword policy chunk",
+        chunk_preview="keyword policy chunk",
+        content_hash="hash-keyword",
+        chunk_policy_name="heading_512_64",
+        heading_path=("Policy",),
+        page_no=None,
+        slide_no=None,
+        sheet_name=None,
+        cell_range=None,
+        document_title="Policy",
+        document_group="unit",
+        original_file_name="policy.md",
+        file_ext=".md",
+        matched_term_count=2,
+        document_length=4.0,
+        score_components={"query_terms": ["keyword", "policy"]},
     )
 
 
@@ -510,3 +542,84 @@ def test_run_search_compare_returns_profile_failure_without_aborting(monkeypatch
     assert set(metadata["profile_query_embeddings"]) == {"kure_v1_1024"}
     assert metadata["profile_failures"]["bge_m3_1024"]["error_message"] == ("provider unavailable")
     assert captured_allow_mock_fallback == [False, False]
+
+
+def test_run_search_compare_executes_bm25_profile_without_query_embedding(monkeypatch) -> None:
+    captured_search_log_input = None
+    captured_result_inputs = None
+    captured_bm25_input = None
+
+    def fake_embed_query_for_profile(*args, **kwargs):
+        raise AssertionError("BM25 profile must not request query embeddings")
+
+    def fake_search_bm25_chunks(_database_url, bm25_input):
+        nonlocal captured_bm25_input
+        captured_bm25_input = bm25_input
+        return [_bm25_search_result()]
+
+    def fake_create_search_log(_database_url, search_log_input):
+        nonlocal captured_search_log_input
+        captured_search_log_input = search_log_input
+
+        class SearchLog:
+            search_log_id = 43
+
+        return SearchLog()
+
+    def fake_create_search_log_results(_database_url, result_inputs):
+        nonlocal captured_result_inputs
+        captured_result_inputs = result_inputs
+
+        class SearchLogResult:
+            search_log_result_id = 101
+
+        return [SearchLogResult()]
+
+    monkeypatch.setattr(
+        "app.core.search_compare.resolve_permission_search_filter",
+        lambda *args, **kwargs: _permission_filter(),
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._with_permission_explainability",
+        lambda _database_url, _search_input, permission_filter: permission_filter,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.embed_query_for_profile",
+        fake_embed_query_for_profile,
+    )
+    monkeypatch.setattr("app.core.search_compare.search_bm25_chunks", fake_search_bm25_chunks)
+    monkeypatch.setattr("app.core.search_compare.create_search_log", fake_create_search_log)
+    monkeypatch.setattr(
+        "app.core.search_compare.create_search_log_results",
+        fake_create_search_log_results,
+    )
+
+    result = run_search_compare(
+        "postgresql://unused",
+        SearchCompareInput(
+            query_text="keyword policy",
+            actor_user_id=1,
+            requested_search_scope="company",
+            profiles=("bm25_keyword",),
+            chunk_policy_name="heading_512_64",
+        ),
+    )
+
+    assert result.profiles[0].status == SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED
+    assert result.profiles[0].results[0].vector_result.chunk_id == 11
+    assert captured_bm25_input is not None
+    assert captured_bm25_input.chunk_policy_name == "heading_512_64"
+    assert captured_bm25_input.permission_filter == _permission_filter()
+    assert captured_search_log_input is not None
+    assert captured_search_log_input.strategy_name == "bm25_keyword"
+    assert captured_search_log_input.similarity_metric == "bm25"
+    assert captured_search_log_input.query_runtime_metadata["query_embedding_bridge"] is False
+    assert captured_search_log_input.query_runtime_metadata["keyword_search_profile_count"] == 1
+    assert set(captured_search_log_input.query_runtime_metadata["profile_keyword_searches"]) == {
+        "bm25_keyword"
+    }
+    assert captured_result_inputs is not None
+    assert captured_result_inputs[0].distance is None
+    assert captured_result_inputs[0].search_profile_name == "bm25_keyword"
+    assert captured_result_inputs[0].retrieval_strategy == "bm25_keyword"
+    assert captured_result_inputs[0].score_components == {"query_terms": ["keyword", "policy"]}

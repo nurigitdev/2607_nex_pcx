@@ -3388,7 +3388,7 @@ def run_registered_embedding_provider_route_preflight(
 
 
 def vector_search_result_payload(result: VectorSearchResult) -> dict[str, object]:
-    return {
+    payload = {
         "profile_name": result.profile_name,
         "rank": result.rank,
         "chunk_id": result.chunk_id,
@@ -3410,6 +3410,13 @@ def vector_search_result_payload(result: VectorSearchResult) -> dict[str, object
         "file_ext": result.file_ext,
         "embedding_elapsed_ms": result.embedding_elapsed_ms,
     }
+    if hasattr(result, "search_profile_name"):
+        payload["search_profile_name"] = result.search_profile_name
+    if hasattr(result, "retrieval_strategy"):
+        payload["retrieval_strategy"] = result.retrieval_strategy
+    if hasattr(result, "score_components"):
+        payload["score_components"] = result.score_components
+    return payload
 
 
 def search_compare_profile_payload(profile: SearchCompareProfileResult) -> dict[str, object]:

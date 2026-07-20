@@ -36,6 +36,9 @@ class BM25SearchInput:
 
 @dataclass(frozen=True)
 class BM25SearchResult:
+    profile_name: str
+    distance: float | None
+    embedding_elapsed_ms: int | None
     search_profile_name: str
     retrieval_strategy: str
     rank: int
@@ -148,6 +151,9 @@ def _row_to_bm25_search_result(
     matched_term_count = int(row["matched_term_count"])
     document_length = float(row["document_length"])
     return BM25SearchResult(
+        profile_name=BM25_SEARCH_PROFILE_NAME,
+        distance=None,
+        embedding_elapsed_ms=None,
         search_profile_name=BM25_SEARCH_PROFILE_NAME,
         retrieval_strategy=BM25_RETRIEVAL_STRATEGY,
         rank=int(row["rank"]),

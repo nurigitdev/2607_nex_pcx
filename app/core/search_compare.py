@@ -6,6 +6,15 @@ from decimal import Decimal
 from time import perf_counter
 from typing import Any
 
+from app.core.bm25_search import (
+    BM25_RETRIEVAL_STRATEGY,
+    BM25_SEARCH_PROFILE_NAME,
+    BM25SearchInput,
+    BM25SearchResult,
+    InvalidBM25SearchError,
+    search_bm25_chunks,
+)
+from app.core.chunks import DEFAULT_CHUNK_POLICY_NAME
 from app.core.database import connect
 from app.core.embedding_jobs import (
     EmbeddingJobInput,
@@ -45,6 +54,9 @@ SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED = "succeeded"
 SEARCH_COMPARE_PROFILE_STATUS_FAILED = "failed"
 SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED = "query_embedding_failed"
 SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED = "vector_search_failed"
+SEARCH_COMPARE_PROFILE_ERROR_KEYWORD_SEARCH_FAILED = "keyword_search_failed"
+
+SearchResultLike = VectorSearchResult | BM25SearchResult
 
 
 @dataclass(frozen=True)
@@ -105,7 +117,7 @@ class SearchCompareCoverageReconcileResult:
 @dataclass(frozen=True)
 class SearchCompareResultItem:
     search_log_result_id: int
-    vector_result: VectorSearchResult
+    vector_result: SearchResultLike
 
 
 @dataclass(frozen=True)
@@ -231,7 +243,7 @@ class SearchPermissionMatrixEntryResult:
     permission_filter: PermissionSearchFilter
     result_count: int
     unique_chunk_count: int
-    top_result: VectorSearchResult | None
+    top_result: SearchResultLike | None
     profiles: tuple[SearchCompareProfileResult, ...]
     total_elapsed_ms: int
 
@@ -252,7 +264,7 @@ class InvalidSearchCompareError(ValueError):
 class _RawSearchCompareProfileResult:
     profile_name: str
     elapsed_ms: int
-    results: tuple[VectorSearchResult, ...]
+    results: tuple[SearchResultLike, ...]
     status: str
     error_code: str | None = None
     error_message: str | None = None
@@ -973,6 +985,20 @@ def _search_compare_query_runtime_metadata(
         for profile_result in profile_results
         if profile_result.succeeded
     }
+    query_embedding_profiles = {
+        profile_name: metadata
+        for profile_name, metadata in profiles.items()
+        if metadata.get("retrieval_strategy") != BM25_RETRIEVAL_STRATEGY
+    }
+    keyword_search_profiles = {
+        profile_name: metadata
+        for profile_name, metadata in profiles.items()
+        if metadata.get("retrieval_strategy") == BM25_RETRIEVAL_STRATEGY
+    }
+    has_query_embedding_profile = any(
+        not _is_bm25_search_profile(profile_result.profile_name)
+        for profile_result in profile_results
+    )
     profile_failures = {
         profile_result.profile_name: _profile_failure_metadata(
             profile_result.profile_name,
@@ -986,32 +1012,36 @@ def _search_compare_query_runtime_metadata(
     provider_types = sorted(
         {
             str(profile_metadata["provider_type"])
-            for profile_metadata in profiles.values()
+            for profile_metadata in query_embedding_profiles.values()
             if profile_metadata.get("provider_type") is not None
         }
     )
     runtime_sources = sorted(
         {
             str(profile_metadata["runtime_source"])
-            for profile_metadata in profiles.values()
+            for profile_metadata in query_embedding_profiles.values()
             if profile_metadata.get("runtime_source") is not None
         }
     )
     status_counts = _profile_status_counts(profile_results)
     return {
-        "adapter": "query_embedding_bridge",
+        "adapter": (
+            "query_embedding_bridge" if not keyword_search_profiles else "search_compare_runtime"
+        ),
         "search_mode": "compare_mvp",
-        "query_embedding_bridge": True,
+        "query_embedding_bridge": has_query_embedding_profile,
         "allow_mock_fallback": allow_mock_fallback,
         "real_provider_required": not allow_mock_fallback,
         "selected_profile_count": len(profile_results),
-        "query_embedding_profile_count": len(profiles),
-        "query_embedding_success_count": len(profiles),
+        "query_embedding_profile_count": len(query_embedding_profiles),
+        "query_embedding_success_count": len(query_embedding_profiles),
+        "keyword_search_profile_count": len(keyword_search_profiles),
         "profile_status_counts": status_counts,
         "profile_failure_count": status_counts.get(SEARCH_COMPARE_PROFILE_STATUS_FAILED, 0),
         "query_embedding_provider_types": provider_types,
         "query_embedding_runtime_sources": runtime_sources,
-        "profile_query_embeddings": profiles,
+        "profile_query_embeddings": query_embedding_profiles,
+        "profile_keyword_searches": keyword_search_profiles,
         "profile_failures": profile_failures,
     }
 
@@ -1019,7 +1049,49 @@ def _search_compare_query_runtime_metadata(
 def _profile_error_code(exc: Exception) -> str:
     if isinstance(exc, InvalidQueryEmbeddingError):
         return SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED
+    if isinstance(exc, InvalidBM25SearchError):
+        return SEARCH_COMPARE_PROFILE_ERROR_KEYWORD_SEARCH_FAILED
     return SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED
+
+
+def _is_bm25_search_profile(profile_name: str) -> bool:
+    return profile_name == BM25_SEARCH_PROFILE_NAME
+
+
+def _bm25_query_runtime_metadata(
+    *,
+    tokenizer_name: str,
+    k1: float,
+    b: float,
+) -> dict[str, object]:
+    return {
+        "provider_type": "keyword",
+        "provider_model_id": BM25_SEARCH_PROFILE_NAME,
+        "runtime_source": "local_keyword_index",
+        "query_embedding_bridge": False,
+        "retrieval_strategy": BM25_RETRIEVAL_STRATEGY,
+        "search_profile_name": BM25_SEARCH_PROFILE_NAME,
+        "tokenizer_name": tokenizer_name,
+        "k1": k1,
+        "b": b,
+    }
+
+
+def _search_compare_strategy_name(profiles: tuple[str, ...]) -> str:
+    bm25_profile_count = sum(
+        1 for profile_name in profiles if _is_bm25_search_profile(profile_name)
+    )
+    if bm25_profile_count == 0:
+        return "vector_cosine"
+    if bm25_profile_count == len(profiles):
+        return BM25_RETRIEVAL_STRATEGY
+    return "mixed_vector_bm25"
+
+
+def _search_compare_similarity_metric(profiles: tuple[str, ...]) -> str:
+    if profiles and all(_is_bm25_search_profile(profile_name) for profile_name in profiles):
+        return "bm25"
+    return "cosine"
 
 
 def _failed_profile_result(
@@ -1074,38 +1146,59 @@ def run_search_compare(
     for profile_name in profiles:
         profile_started_at = perf_counter()
         try:
-            query_embedding = embed_query_for_profile(
-                database_url,
-                query_text=validated.query_text,
-                profile_name=profile_name,
-                fallback_runtime_config=fallback_config,
-                provider_builder=query_embedding_provider_builder,
-                trace_id=f"search-compare:{validated.actor_user_id}:{profile_name}",
-                allow_mock_fallback=validated.allow_mock_fallback,
-            )
-            results = search_similar_chunks(
-                database_url,
-                VectorSearchInput(
+            if _is_bm25_search_profile(profile_name):
+                bm25_input = BM25SearchInput(
                     query_text=validated.query_text,
-                    profile_name=profile_name,
                     top_k=validated.top_k,
-                    query_embedding=query_embedding.embedding,
-                    chunk_policy_name=validated.chunk_policy_name,
+                    chunk_policy_name=validated.chunk_policy_name or DEFAULT_CHUNK_POLICY_NAME,
                     document_group=validated.document_group,
                     file_type=validated.file_type,
                     permission_filter=permission_filter,
-                ),
-            )
+                )
+                results = search_bm25_chunks(database_url, bm25_input)
+                query_runtime_metadata = _bm25_query_runtime_metadata(
+                    tokenizer_name=bm25_input.tokenizer_name,
+                    k1=bm25_input.k1,
+                    b=bm25_input.b,
+                )
+            else:
+                query_embedding = embed_query_for_profile(
+                    database_url,
+                    query_text=validated.query_text,
+                    profile_name=profile_name,
+                    fallback_runtime_config=fallback_config,
+                    provider_builder=query_embedding_provider_builder,
+                    trace_id=f"search-compare:{validated.actor_user_id}:{profile_name}",
+                    allow_mock_fallback=validated.allow_mock_fallback,
+                )
+                results = search_similar_chunks(
+                    database_url,
+                    VectorSearchInput(
+                        query_text=validated.query_text,
+                        profile_name=profile_name,
+                        top_k=validated.top_k,
+                        query_embedding=query_embedding.embedding,
+                        chunk_policy_name=validated.chunk_policy_name,
+                        document_group=validated.document_group,
+                        file_type=validated.file_type,
+                        permission_filter=permission_filter,
+                    ),
+                )
+                query_runtime_metadata = query_embedding_runtime_metadata(query_embedding)
             raw_profile_results.append(
                 _RawSearchCompareProfileResult(
                     profile_name=profile_name,
                     elapsed_ms=max(0, int((perf_counter() - profile_started_at) * 1000)),
                     results=tuple(results),
                     status=SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED,
-                    query_runtime_metadata=query_embedding_runtime_metadata(query_embedding),
+                    query_runtime_metadata=query_runtime_metadata,
                 )
             )
-        except (InvalidQueryEmbeddingError, InvalidVectorSearchError) as exc:
+        except (
+            InvalidQueryEmbeddingError,
+            InvalidVectorSearchError,
+            InvalidBM25SearchError,
+        ) as exc:
             raw_profile_results.append(
                 _failed_profile_result(
                     profile_name,
@@ -1129,13 +1222,14 @@ def run_search_compare(
             file_type=validated.file_type,
             chunk_policy_name=validated.chunk_policy_name,
             top_k=validated.top_k,
-            similarity_metric="cosine",
             profiles=profiles,
             query_runtime_metadata=_search_compare_query_runtime_metadata(
                 raw_profile_results_tuple,
                 allow_mock_fallback=validated.allow_mock_fallback,
             ),
+            strategy_name=_search_compare_strategy_name(profiles),
             total_elapsed_ms=total_elapsed_ms,
+            similarity_metric=_search_compare_similarity_metric(profiles),
             created_by_user_id=validated.actor_user_id,
         ),
     )
@@ -1147,6 +1241,13 @@ def run_search_compare(
             chunk_id=result.chunk_id,
             distance=result.distance,
             score=result.score,
+            search_profile_name=getattr(
+                result,
+                "search_profile_name",
+                profile_result.profile_name,
+            ),
+            retrieval_strategy=getattr(result, "retrieval_strategy", "vector_cosine"),
+            score_components=getattr(result, "score_components", {}),
             profile_elapsed_ms=profile_result.elapsed_ms,
         )
         for profile_result in raw_profile_results_tuple
