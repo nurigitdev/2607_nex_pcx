@@ -147,6 +147,7 @@ def test_search_log_repository_persists_results_and_feedback(
                     chunk_id=chunk_id,
                     distance=0.12,
                     score=0.88,
+                    score_components={"vector_score": 0.88},
                     profile_elapsed_ms=7,
                 )
             ],
@@ -203,12 +204,16 @@ def test_search_log_repository_persists_results_and_feedback(
         assert updated_log.reviewed_at is not None
         assert stored_result == results[0]
         assert updated_log.profiles == ("kure_v1_1024",)
+        assert updated_log.strategy_name == "vector_cosine"
         assert updated_log.permission_filter_metadata == {"actor_user_id": user_id}
         assert updated_log.query_runtime_metadata == {"adapter": "mock"}
         assert stored_results == results
         assert results[0].rank == 1
         assert results[0].chunk_id == chunk_id
         assert results[0].distance == pytest.approx(0.12)
+        assert results[0].search_profile_name == "kure_v1_1024"
+        assert results[0].retrieval_strategy == "vector_cosine"
+        assert results[0].score_components == {"vector_score": 0.88}
         assert feedback.relevance_label == "correct"
         assert feedback.comment == "expected result"
         assert summary.feedback_count == 1

@@ -31,6 +31,7 @@ def test_validate_search_log_input_normalizes_values() -> None:
             chunk_policy_name="heading_512_64",
             top_k=5,
             profiles=("kure_v1_1024", "bge_m3_1024"),
+            strategy_name="vector_cosine_threshold",
             query_runtime_metadata={"adapter": "mock"},
             total_elapsed_ms=10,
             created_by="tester",
@@ -40,7 +41,25 @@ def test_validate_search_log_input_normalizes_values() -> None:
 
     assert validated.query_text == "hello"
     assert validated.profiles == ("kure_v1_1024", "bge_m3_1024")
+    assert validated.strategy_name == "vector_cosine_threshold"
     assert validated.similarity_metric == "cosine"
+
+
+def test_validate_search_log_input_accepts_bm25_strategy_metric() -> None:
+    validated = validate_search_log_input(
+        SearchLogInput(
+            query_text="keyword baseline",
+            top_k=5,
+            profiles=("bm25_keyword",),
+            strategy_name="bm25_keyword",
+            similarity_metric="bm25",
+            query_runtime_metadata={"tokenizer": "unicode_word_v1"},
+        )
+    )
+
+    assert validated.strategy_name == "bm25_keyword"
+    assert validated.similarity_metric == "bm25"
+    assert validated.profiles == ("bm25_keyword",)
 
 
 @pytest.mark.parametrize(
@@ -115,6 +134,47 @@ def test_validate_search_log_result_input_rejects_invalid_values() -> None:
                 distance=math.inf,
             )
         )
+
+    with pytest.raises(InvalidSearchLogError, match="score_components"):
+        validate_search_log_result_input(
+            SearchLogResultInput(
+                search_log_id=1,
+                profile_name="bm25_keyword",
+                rank=1,
+                chunk_id=1,
+                score_components=[],  # type: ignore[arg-type]
+            )
+        )
+
+
+def test_validate_search_log_result_input_defaults_search_profile_contract() -> None:
+    vector_result = validate_search_log_result_input(
+        SearchLogResultInput(
+            search_log_id=1,
+            profile_name="kure_v1_1024",
+            rank=1,
+            chunk_id=1,
+        )
+    )
+    keyword_result = validate_search_log_result_input(
+        SearchLogResultInput(
+            search_log_id=1,
+            profile_name="bm25_keyword",
+            search_profile_name="bm25_keyword",
+            retrieval_strategy="bm25_keyword",
+            rank=1,
+            chunk_id=1,
+            score=3.14,
+            score_components={"bm25_score": 3.14},
+        )
+    )
+
+    assert vector_result.search_profile_name == "kure_v1_1024"
+    assert vector_result.retrieval_strategy == "vector_cosine"
+    assert vector_result.score_components == {}
+    assert keyword_result.search_profile_name == "bm25_keyword"
+    assert keyword_result.retrieval_strategy == "bm25_keyword"
+    assert keyword_result.score_components == {"bm25_score": 3.14}
 
 
 def test_validate_search_result_feedback_input_rejects_invalid_values() -> None:

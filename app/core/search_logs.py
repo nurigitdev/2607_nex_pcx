@@ -11,7 +11,7 @@ from psycopg.types.json import Json
 from app.core.database import connect
 
 SEARCH_SCOPES = {"mine", "team", "managed_org", "company"}
-SIMILARITY_METRICS = {"cosine", "l2", "inner_product"}
+SIMILARITY_METRICS = {"cosine", "l2", "inner_product", "bm25"}
 FEEDBACK_LABELS = {"correct", "partial", "wrong", "duplicate", "insufficient_context"}
 MAX_REVIEW_TAGS = 12
 MAX_REVIEW_TAG_LENGTH = 40
@@ -31,6 +31,7 @@ class SearchLogInput:
     document_group: str | None = None
     file_type: str | None = None
     chunk_policy_name: str | None = None
+    strategy_name: str = "vector_cosine"
     similarity_metric: str = "cosine"
     query_runtime_metadata: dict[str, Any] = field(default_factory=dict)
     total_elapsed_ms: int | None = None
@@ -50,6 +51,7 @@ class SearchLogRecord:
     document_group: str | None
     file_type: str | None
     chunk_policy_name: str | None
+    strategy_name: str
     top_k: int
     similarity_metric: str
     profiles: tuple[str, ...]
@@ -72,6 +74,9 @@ class SearchLogResultInput:
     chunk_id: int
     distance: float | None = None
     score: float | None = None
+    search_profile_name: str | None = None
+    retrieval_strategy: str | None = None
+    score_components: dict[str, Any] = field(default_factory=dict)
     profile_elapsed_ms: int | None = None
 
 
@@ -84,6 +89,9 @@ class SearchLogResultRecord:
     chunk_id: int
     distance: float | None
     score: float | None
+    search_profile_name: str | None
+    retrieval_strategy: str | None
+    score_components: dict[str, Any]
     profile_elapsed_ms: int | None
     created_at: datetime
 
@@ -453,6 +461,8 @@ def validate_search_log_input(search_log_input: SearchLogInput) -> SearchLogInpu
             search_log_input.chunk_policy_name,
             "chunk_policy_name",
         ),
+        strategy_name=_validate_nonblank(search_log_input.strategy_name, "strategy_name")
+        or search_log_input.strategy_name,
         top_k=search_log_input.top_k,
         similarity_metric=_validate_similarity_metric(search_log_input.similarity_metric),
         profiles=_validate_profiles(search_log_input.profiles),
@@ -473,14 +483,29 @@ def validate_search_log_result_input(
     _validate_finite_float(result_input.distance, "distance")
     _validate_finite_float(result_input.score, "score")
     _validate_elapsed_ms(result_input.profile_elapsed_ms, "profile_elapsed_ms")
+    if not isinstance(result_input.score_components, dict):
+        raise InvalidSearchLogError("score_components must be a JSON object")
+    profile_name = (
+        _validate_nonblank(result_input.profile_name, "profile_name") or result_input.profile_name
+    )
     return SearchLogResultInput(
         search_log_id=result_input.search_log_id,
-        profile_name=_validate_nonblank(result_input.profile_name, "profile_name")
-        or result_input.profile_name,
+        profile_name=profile_name,
         rank=result_input.rank,
         chunk_id=result_input.chunk_id,
         distance=result_input.distance,
         score=result_input.score,
+        search_profile_name=_validate_nonblank(
+            result_input.search_profile_name,
+            "search_profile_name",
+        )
+        or profile_name,
+        retrieval_strategy=_validate_nonblank(
+            result_input.retrieval_strategy,
+            "retrieval_strategy",
+        )
+        or "vector_cosine",
+        score_components=dict(result_input.score_components),
         profile_elapsed_ms=result_input.profile_elapsed_ms,
     )
 
@@ -514,6 +539,7 @@ def _row_to_search_log_record(row: dict[str, Any]) -> SearchLogRecord:
         document_group=row["document_group"],
         file_type=row["file_type"],
         chunk_policy_name=row["chunk_policy_name"],
+        strategy_name=str(row.get("strategy_name") or "vector_cosine"),
         top_k=int(row["top_k"]),
         similarity_metric=str(row["similarity_metric"]),
         profiles=tuple(row["profiles"] or ()),
@@ -544,6 +570,9 @@ def _row_to_search_log_result_record(row: dict[str, Any]) -> SearchLogResultReco
         chunk_id=int(row["chunk_id"]),
         distance=float(row["distance"]) if row["distance"] is not None else None,
         score=float(row["score"]) if row["score"] is not None else None,
+        search_profile_name=row.get("search_profile_name"),
+        retrieval_strategy=row.get("retrieval_strategy"),
+        score_components=dict(row.get("score_components") or {}),
         profile_elapsed_ms=(
             int(row["profile_elapsed_ms"]) if row["profile_elapsed_ms"] is not None else None
         ),
@@ -997,6 +1026,7 @@ def create_search_log_in_connection(
                 document_group,
                 file_type,
                 chunk_policy_name,
+                strategy_name,
                 top_k,
                 similarity_metric,
                 profiles,
@@ -1007,7 +1037,8 @@ def create_search_log_in_connection(
             )
             VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s,
+                %s
             )
             RETURNING *
             """,
@@ -1021,6 +1052,7 @@ def create_search_log_in_connection(
                 validated.document_group,
                 validated.file_type,
                 validated.chunk_policy_name,
+                validated.strategy_name,
                 validated.top_k,
                 validated.similarity_metric,
                 Json(list(validated.profiles)),
@@ -1553,9 +1585,12 @@ def create_search_log_result_in_connection(
                 chunk_id,
                 distance,
                 score,
+                search_profile_name,
+                retrieval_strategy,
+                score_components,
                 profile_elapsed_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -1565,6 +1600,9 @@ def create_search_log_result_in_connection(
                 validated.chunk_id,
                 validated.distance,
                 validated.score,
+                validated.search_profile_name,
+                validated.retrieval_strategy,
+                Json(validated.score_components),
                 validated.profile_elapsed_ms,
             ),
         )

@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260715_0029"
+HEAD_REVISION = "20260720_0030"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -69,6 +69,23 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         WHERE extraction_profile_name LIKE 'local_%%_default'
         """,
     )
+    search_profile_table = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.search_profiles') AS table_name",
+    )
+    bm25_profile_count = fetch_one(
+        test_database_url,
+        """
+        SELECT count(*) AS count
+        FROM search_profiles
+        WHERE search_profile_name = 'bm25_keyword'
+          AND profile_kind = 'keyword'
+        """,
+    )
+    keyword_index_table = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.chunk_keyword_terms') AS table_name",
+    )
 
     assert revision["version_num"] == HEAD_REVISION
     assert extension["extversion"]
@@ -82,6 +99,9 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert extraction_artifact_table["table_name"] == "extraction_artifacts"
     assert extraction_quality_snapshot_table["table_name"] == "extraction_quality_snapshots"
     assert local_extraction_profile_count["count"] == 7
+    assert search_profile_table["table_name"] == "search_profiles"
+    assert bm25_profile_count["count"] == 1
+    assert keyword_index_table["table_name"] == "chunk_keyword_terms"
 
 
 def test_alembic_downgrade_base_clears_revision(test_database_url: str) -> None:
