@@ -63,6 +63,7 @@ def test_main_uses_foreground_environment_defaults(monkeypatch, tmp_path) -> Non
     monkeypatch.setenv("NEX_PCX_FOREGROUND_PIPELINE_LIMIT", "4")
     monkeypatch.setenv("NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE", "9")
     monkeypatch.setenv("NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS", "1.5")
+    monkeypatch.setenv("NEX_PCX_FOREGROUND_WORKER_FAILURE_TOLERANCE", "2")
     monkeypatch.setenv("NEX_PCX_FOREGROUND_REQUIRE_DATABASE_URL", "false")
     monkeypatch.setenv("NEX_PCX_FOREGROUND_CHECK_PORT_AVAILABLE", "false")
     monkeypatch.setenv("NEX_PCX_FOREGROUND_NO_DEFAULT_QWEN_TOKEN_GUARD", "true")
@@ -86,6 +87,7 @@ def test_main_uses_foreground_environment_defaults(monkeypatch, tmp_path) -> Non
 
     assert exit_code == 0
     assert payload["plan"]["worker_cycle_interval_seconds"] == 1.5
+    assert payload["plan"]["worker_failure_tolerance"] == 2
     assert "--pipeline-limit 4" in payload["plan"]["worker_shell_command"]
     assert "--embedding-limit-per-profile 9" in payload["plan"]["worker_shell_command"]
     assert "--no-default-qwen-token-guard" in payload["plan"]["worker_command"]
@@ -189,6 +191,7 @@ def test_run_supervisor_starts_web_runs_one_worker_cycle_and_exits(
             web_pid_file="run/web.pid",
             log_file="run/supervisor.log",
             worker_cycle_interval_seconds=0.01,
+            worker_failure_tolerance=0,
         ),
         environ={},
     )
@@ -244,6 +247,7 @@ def test_run_supervisor_reports_failed_worker_cycle(monkeypatch, tmp_path) -> No
             web_pid_file="run/web.pid",
             log_file="run/supervisor.log",
             worker_cycle_interval_seconds=0.01,
+            worker_failure_tolerance=0,
         ),
         environ={},
     )
@@ -280,6 +284,64 @@ def test_run_supervisor_reports_failed_worker_cycle(monkeypatch, tmp_path) -> No
     assert payload["status"] == "failed"
     assert payload["failed_worker_cycle_count"] == 1
     assert payload["worker_cycles"][0]["message"] == "worker failed"
+
+
+def test_run_supervisor_continues_within_worker_failure_tolerance(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    json_output = tmp_path / "supervisor.json"
+    plan = run_foreground_app_worker_supervisor.build_foreground_app_worker_supervisor_plan(
+        run_foreground_app_worker_supervisor.ForegroundAppWorkerSupervisorOptions(
+            workdir=tmp_path,
+            python_bin="python",
+            require_database_url=False,
+            check_port_available=False,
+            supervisor_pid_file="run/supervisor.pid",
+            web_pid_file="run/web.pid",
+            log_file="run/supervisor.log",
+            worker_cycle_interval_seconds=0.01,
+            worker_failure_tolerance=1,
+        ),
+        environ={},
+    )
+    popen_calls = []
+
+    def fake_popen(command, **kwargs):
+        popen_calls.append(tuple(command))
+        if len(popen_calls) == 1:
+            return _FakeWebProcess()
+        if len(popen_calls) == 2:
+            return _FakeWorkerProcess(exit_code=7, line="worker failed\n")
+        return _FakeWorkerProcess(exit_code=0, line="worker recovered\n")
+
+    monkeypatch.setattr(
+        run_foreground_app_worker_supervisor.subprocess,
+        "Popen",
+        fake_popen,
+    )
+    monkeypatch.setattr(
+        run_foreground_app_worker_supervisor,
+        "_wait_for_health",
+        lambda **kwargs: {"startup_health_status": "passed"},
+    )
+
+    exit_code = run_foreground_app_worker_supervisor._run_supervisor(
+        plan=plan,
+        startup_timeout_seconds=0,
+        max_worker_cycles=2,
+        json_output=str(json_output),
+        markdown_output=None,
+        pretty=True,
+    )
+    payload = json.loads(json_output.read_text(encoding="utf-8"))
+    log_text = (tmp_path / "run" / "supervisor.log").read_text(encoding="utf-8")
+
+    assert exit_code == 0
+    assert payload["status"] == "exited"
+    assert payload["failed_worker_cycle_count"] == 1
+    assert payload["worker_cycle_count"] == 2
+    assert "failed within tolerance" in log_text
 
 
 class _FakeWebProcess:

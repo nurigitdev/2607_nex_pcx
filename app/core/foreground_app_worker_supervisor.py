@@ -48,6 +48,7 @@ DEFAULT_SUPERVISOR_PID_FILE = "artifacts/foreground_app_worker_supervisor.pid"
 DEFAULT_SUPERVISOR_LOG_FILE = "artifacts/foreground_app_worker_supervisor.log"
 DEFAULT_SUPERVISED_WEB_PID_FILE = DEFAULT_PID_FILE
 DEFAULT_WORKER_CYCLE_INTERVAL_SECONDS = 5.0
+DEFAULT_WORKER_FAILURE_TOLERANCE = 3
 DEFAULT_WORKER_RUNNER_JSON_OUTPUT = "artifacts/foreground_worker_runner.json"
 DEFAULT_WORKER_RUNNER_MARKDOWN_OUTPUT = "artifacts/foreground_worker_runner.md"
 
@@ -61,6 +62,7 @@ ENV_FOREGROUND_SUPERVISOR_PID_FILE = "NEX_PCX_FOREGROUND_SUPERVISOR_PID_FILE"
 ENV_FOREGROUND_WEB_PID_FILE = "NEX_PCX_FOREGROUND_WEB_PID_FILE"
 ENV_FOREGROUND_SUPERVISOR_LOG_FILE = "NEX_PCX_FOREGROUND_SUPERVISOR_LOG_FILE"
 ENV_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS = "NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS"
+ENV_FOREGROUND_WORKER_FAILURE_TOLERANCE = "NEX_PCX_FOREGROUND_WORKER_FAILURE_TOLERANCE"
 ENV_FOREGROUND_PIPELINE_LIMIT = "NEX_PCX_FOREGROUND_PIPELINE_LIMIT"
 ENV_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE = "NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE"
 ENV_FOREGROUND_GUARD_HEALTH_TIMEOUT_SECONDS = "NEX_PCX_FOREGROUND_GUARD_HEALTH_TIMEOUT_SECONDS"
@@ -86,6 +88,7 @@ class ForegroundAppWorkerSupervisorOptions:
     web_pid_file: str = DEFAULT_SUPERVISED_WEB_PID_FILE
     log_file: str = DEFAULT_SUPERVISOR_LOG_FILE
     worker_cycle_interval_seconds: float = DEFAULT_WORKER_CYCLE_INTERVAL_SECONDS
+    worker_failure_tolerance: int = DEFAULT_WORKER_FAILURE_TOLERANCE
     pipeline_limit: int = DEFAULT_PIPELINE_LIMIT
     embedding_limit_per_profile: int = DEFAULT_EMBEDDING_LIMIT_PER_PROFILE
     guard_health_timeout_seconds: float = DEFAULT_HEALTH_TIMEOUT_SECONDS
@@ -133,6 +136,11 @@ def foreground_app_worker_supervisor_options_from_environ(
                 environ,
                 ENV_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS,
                 base.worker_cycle_interval_seconds,
+            ),
+            worker_failure_tolerance=_env_int(
+                environ,
+                ENV_FOREGROUND_WORKER_FAILURE_TOLERANCE,
+                base.worker_failure_tolerance,
             ),
             pipeline_limit=_env_int(
                 environ,
@@ -195,6 +203,7 @@ class ForegroundAppWorkerSupervisorPlan:
     launch_plan: ForegroundProductionLaunchPlan
     worker_command: tuple[str, ...]
     worker_cycle_interval_seconds: float
+    worker_failure_tolerance: int
     supervisor_pid_file: str
     web_pid_file: str
     log_file: str
@@ -299,6 +308,7 @@ def build_foreground_app_worker_supervisor_plan(
         ),
         _worker_cycle_check(
             interval_seconds=selected_options.worker_cycle_interval_seconds,
+            worker_failure_tolerance=selected_options.worker_failure_tolerance,
             pipeline_limit=selected_options.pipeline_limit,
             embedding_limit_per_profile=selected_options.embedding_limit_per_profile,
             guard_health_timeout_seconds=selected_options.guard_health_timeout_seconds,
@@ -314,6 +324,7 @@ def build_foreground_app_worker_supervisor_plan(
         launch_plan=launch_plan,
         worker_command=worker_command,
         worker_cycle_interval_seconds=selected_options.worker_cycle_interval_seconds,
+        worker_failure_tolerance=selected_options.worker_failure_tolerance,
         supervisor_pid_file=selected_options.supervisor_pid_file,
         web_pid_file=selected_options.web_pid_file,
         log_file=selected_options.log_file,
@@ -401,6 +412,7 @@ def foreground_app_worker_supervisor_plan_payload(
         "worker_command": list(plan.worker_command),
         "worker_shell_command": plan.worker_shell_command,
         "worker_cycle_interval_seconds": plan.worker_cycle_interval_seconds,
+        "worker_failure_tolerance": plan.worker_failure_tolerance,
         "supervisor_pid_file": plan.supervisor_pid_file,
         "web_pid_file": plan.web_pid_file,
         "log_file": plan.log_file,
@@ -462,6 +474,7 @@ def render_foreground_app_worker_supervisor_markdown(payload: dict[str, object])
         f"- Web PID File: `{_text(plan.get('web_pid_file'))}`",
         f"- Log File: `{_text(plan.get('log_file'))}`",
         f"- Worker Interval Seconds: {_text(plan.get('worker_cycle_interval_seconds'))}",
+        f"- Worker Failure Tolerance: {_text(plan.get('worker_failure_tolerance'))}",
         f"- Worker Command: `{_text(plan.get('worker_shell_command'))}`",
         "",
         "## Checks",
@@ -547,6 +560,7 @@ def _validate_options(
         web_pid_file=web_pid_file,
         log_file=log_file,
         worker_cycle_interval_seconds=options.worker_cycle_interval_seconds,
+        worker_failure_tolerance=options.worker_failure_tolerance,
         pipeline_limit=options.pipeline_limit,
         embedding_limit_per_profile=options.embedding_limit_per_profile,
         guard_health_timeout_seconds=options.guard_health_timeout_seconds,
@@ -570,6 +584,7 @@ def _worker_command(options: ForegroundAppWorkerSupervisorOptions) -> tuple[str,
         _number_text(options.guard_health_timeout_seconds),
         "--max-provider-health-elapsed-ms",
         str(options.max_provider_health_elapsed_ms),
+        "--continue-on-command-failure",
         "--json-output",
         options.worker_json_output,
         "--markdown-output",
@@ -641,6 +656,7 @@ def _supervisor_path_check(
 def _worker_cycle_check(
     *,
     interval_seconds: float,
+    worker_failure_tolerance: int,
     pipeline_limit: int,
     embedding_limit_per_profile: int,
     guard_health_timeout_seconds: float,
@@ -649,6 +665,8 @@ def _worker_cycle_check(
     invalid = []
     if interval_seconds <= 0:
         invalid.append("worker_cycle_interval_seconds")
+    if worker_failure_tolerance < 0:
+        invalid.append("worker_failure_tolerance")
     if pipeline_limit < 0:
         invalid.append("pipeline_limit")
     if embedding_limit_per_profile <= 0:
@@ -672,6 +690,7 @@ def _worker_cycle_check(
             metadata={
                 "pipeline_limit": pipeline_limit,
                 "embedding_limit_per_profile": embedding_limit_per_profile,
+                "worker_failure_tolerance": worker_failure_tolerance,
             },
         )
     return ForegroundAppWorkerSupervisorCheck(
@@ -680,6 +699,7 @@ def _worker_cycle_check(
         detail="Worker cycle settings are bounded.",
         metadata={
             "interval_seconds": interval_seconds,
+            "worker_failure_tolerance": worker_failure_tolerance,
             "pipeline_limit": pipeline_limit,
             "embedding_limit_per_profile": embedding_limit_per_profile,
             "guard_health_timeout_seconds": guard_health_timeout_seconds,

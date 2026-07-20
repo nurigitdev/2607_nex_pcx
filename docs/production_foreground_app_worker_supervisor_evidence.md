@@ -21,7 +21,9 @@ The supervisor standardizes:
 - JSON/Markdown evidence output.
 
 Slice 301 adds `NEX_PCX_FOREGROUND_*` runtime defaults so foreground operation
-does not depend on remembering every worker flag at launch time.
+does not depend on remembering every worker flag at launch time. Slice 302 adds
+worker cycle failure tolerance so transient provider pressure does not
+immediately stop the web app.
 
 ## Commands
 
@@ -51,6 +53,7 @@ Recommended foreground defaults:
 | `NEX_PCX_FOREGROUND_PIPELINE_LIMIT` | `1` | Pipeline jobs claimed per cycle |
 | `NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE` | `5` | Embedding jobs claimed per profile |
 | `NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS` | `5` | Delay between worker cycles |
+| `NEX_PCX_FOREGROUND_WORKER_FAILURE_TOLERANCE` | `3` | Failed worker cycles allowed before supervisor stop |
 | `NEX_PCX_FOREGROUND_CHECK_PORT_AVAILABLE` | `true` | Fail planning if the web port is already reachable |
 | `NEX_PCX_FOREGROUND_NO_DEFAULT_QWEN_TOKEN_GUARD` | `false` | Keep Qwen token guard enabled by default |
 

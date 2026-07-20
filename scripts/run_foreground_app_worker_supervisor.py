@@ -63,6 +63,11 @@ def main() -> int:
         type=float,
         default=runtime_defaults.worker_cycle_interval_seconds,
     )
+    parser.add_argument(
+        "--worker-failure-tolerance",
+        type=int,
+        default=runtime_defaults.worker_failure_tolerance,
+    )
     parser.add_argument("--pipeline-limit", type=int, default=runtime_defaults.pipeline_limit)
     parser.add_argument(
         "--embedding-limit-per-profile",
@@ -151,6 +156,7 @@ def main() -> int:
             web_pid_file=args.web_pid_file,
             log_file=args.log_file,
             worker_cycle_interval_seconds=args.worker_cycle_interval_seconds,
+            worker_failure_tolerance=args.worker_failure_tolerance,
             pipeline_limit=args.pipeline_limit,
             embedding_limit_per_profile=args.embedding_limit_per_profile,
             guard_health_timeout_seconds=args.guard_health_timeout_seconds,
@@ -283,11 +289,21 @@ def _run_supervisor(
                         should_stop=lambda: stop_requested,
                     )
                 )
-                if worker_cycles[-1].exit_code != 0:
+                failed_cycle_count = sum(1 for cycle in worker_cycles if not cycle.succeeded)
+                if failed_cycle_count > plan.worker_failure_tolerance:
                     final_status = SUPERVISOR_STATUS_FAILED
                     returncode = worker_cycles[-1].exit_code
-                    message = "Worker cycle failed; supervisor is stopping."
+                    message = (
+                        "Worker cycle failure tolerance was exceeded; " "supervisor is stopping."
+                    )
                     break
+                if worker_cycles[-1].exit_code != 0:
+                    _write_log_line(
+                        log_handle,
+                        "Worker cycle failed within tolerance "
+                        f"({failed_cycle_count}/{plan.worker_failure_tolerance}); "
+                        "supervisor will continue.",
+                    )
                 _sleep_with_stop(
                     seconds=plan.worker_cycle_interval_seconds,
                     should_stop=lambda: stop_requested,

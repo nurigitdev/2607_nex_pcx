@@ -42,6 +42,7 @@ export NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS="300"
 export NEX_PCX_FOREGROUND_PIPELINE_LIMIT="1"
 export NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE="5"
 export NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS="5"
+export NEX_PCX_FOREGROUND_WORKER_FAILURE_TOLERANCE="3"
 export NEX_PCX_FOREGROUND_CHECK_PORT_AVAILABLE="true"
 ```
 
@@ -109,6 +110,9 @@ Recommended provider route base URLs for the current DGX development server:
    cycles. Use `--dry-run` first when you only want to verify the command and
    evidence paths. Use the standalone `run_foreground_production_app.py` only
    for diagnostics where queue processing must intentionally remain disabled.
+   Worker cycle failures are tolerated up to
+   `NEX_PCX_FOREGROUND_WORKER_FAILURE_TOLERANCE`, so a transient provider
+   resource issue does not immediately stop the web app.
 
 6. For a controlled pre-CX run, foreground operation is acceptable when an
    operator keeps the session alive and acknowledges that there is no automatic
