@@ -11,6 +11,7 @@ The checklist validates:
 - foreground go-live summary evidence
 - bounded foreground worker command plan
 - guarded foreground worker runner evidence
+- foreground app and worker supervisor evidence
 - operator handoff bundle manifest
 
 Command:

@@ -57,6 +57,35 @@ def test_main_writes_dry_run_shutdown_evidence(monkeypatch, tmp_path) -> None:
     assert "Foreground Production Shutdown Evidence" in markdown_output.read_text(encoding="utf-8")
 
 
+def test_main_accepts_custom_expected_command_markers(monkeypatch, tmp_path) -> None:
+    json_output = tmp_path / "shutdown.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "stop_foreground_production_app.py",
+            "--workdir",
+            str(tmp_path),
+            "--pid-file",
+            "missing.pid",
+            "--dry-run",
+            "--skip-port-check",
+            "--expected-command-marker",
+            "run_foreground_app_worker_supervisor.py",
+            "--json-output",
+            str(json_output),
+        ],
+    )
+
+    exit_code = stop_foreground_production_app.main()
+    payload = json.loads(json_output.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert payload["plan"]["expected_command_markers"] == [
+        "run_foreground_app_worker_supervisor.py"
+    ]
+
+
 def test_main_returns_nonzero_when_shutdown_plan_is_blocked(monkeypatch, tmp_path) -> None:
     json_output = tmp_path / "blocked.json"
     monkeypatch.setattr(

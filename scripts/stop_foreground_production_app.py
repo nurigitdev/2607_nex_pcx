@@ -17,6 +17,7 @@ from app.core.foreground_production_launch import (  # noqa: E402
     resolve_launch_path,
 )
 from app.core.foreground_production_shutdown import (  # noqa: E402
+    DEFAULT_EXPECTED_COMMAND_MARKERS,
     DEFAULT_SHUTDOWN_LOG_FILE,
     SHUTDOWN_PLAN_BLOCKED,
     SHUTDOWN_STATUS_BLOCKED,
@@ -51,6 +52,12 @@ def main() -> int:
     parser.add_argument("--poll-interval-seconds", type=float, default=0.5)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-port-check", action="store_true")
+    parser.add_argument(
+        "--expected-command-marker",
+        action="append",
+        default=None,
+        help="Expected command marker. Repeat to require multiple markers.",
+    )
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
 
@@ -63,6 +70,11 @@ def main() -> int:
             port=args.port,
             require_pid_file=not args.dry_run,
             check_port_reachable=not args.skip_port_check,
+            expected_command_markers=(
+                tuple(args.expected_command_marker)
+                if args.expected_command_marker is not None
+                else DEFAULT_EXPECTED_COMMAND_MARKERS
+            ),
         )
     )
     if args.dry_run or plan.status == SHUTDOWN_PLAN_BLOCKED:

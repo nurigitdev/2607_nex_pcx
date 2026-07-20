@@ -44,6 +44,7 @@ artifacts/operator_handoff/latest/evidence/
 - `docs/production_foreground_go_live_summary_evidence.md`
 - `docs/production_foreground_worker_plan_evidence.md`
 - `docs/production_foreground_worker_runner_evidence.md`
+- `docs/production_foreground_app_worker_supervisor_evidence.md`
 - `docs/production_foreground_final_handoff_evidence.md`
 - `artifacts/foreground_production_launch.json`
 - `artifacts/foreground_production_launch.md`
@@ -57,6 +58,8 @@ artifacts/operator_handoff/latest/evidence/
 - `artifacts/foreground_worker_plan.md`
 - `artifacts/foreground_worker_runner.json`
 - `artifacts/foreground_worker_runner.md`
+- `artifacts/foreground_app_worker_supervisor.json`
+- `artifacts/foreground_app_worker_supervisor.md`
 - `artifacts/foreground_final_handoff.json`
 - `artifacts/foreground_final_handoff.md`
 - `artifacts/app_host_service_restart_validation.json`

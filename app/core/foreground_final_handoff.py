@@ -46,6 +46,12 @@ DEFAULT_FINAL_HANDOFF_EVIDENCE = (
         ("completed",),
         ("planned", "guarded"),
     ),
+    (
+        "foreground_app_worker_supervisor",
+        "artifacts/foreground_app_worker_supervisor.json",
+        ("running",),
+        ("planned", "exited"),
+    ),
 )
 
 DEFAULT_FOREGROUND_WORKER_PLAN_PATH = "artifacts/foreground_worker_plan.json"

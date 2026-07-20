@@ -106,6 +106,9 @@ def test_default_handoff_evidence_paths_include_production_evidence_docs() -> No
     assert "docs/production_foreground_worker_runner_evidence.md" in (
         DEFAULT_HANDOFF_EVIDENCE_PATHS
     )
+    assert "docs/production_foreground_app_worker_supervisor_evidence.md" in (
+        DEFAULT_HANDOFF_EVIDENCE_PATHS
+    )
     assert "docs/production_foreground_final_handoff_evidence.md" in (
         DEFAULT_HANDOFF_EVIDENCE_PATHS
     )
@@ -121,6 +124,8 @@ def test_default_handoff_evidence_paths_include_production_evidence_docs() -> No
     assert "artifacts/foreground_worker_plan.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "artifacts/foreground_worker_runner.json" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "artifacts/foreground_worker_runner.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
+    assert "artifacts/foreground_app_worker_supervisor.json" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)
+    assert "artifacts/foreground_app_worker_supervisor.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "artifacts/foreground_final_handoff.json" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "artifacts/foreground_final_handoff.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "artifacts/app_host_service_restart_validation.json" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)

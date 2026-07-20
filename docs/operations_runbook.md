@@ -89,21 +89,24 @@ Recommended provider route base URLs for the current DGX development server:
    bash scripts/migrate.sh upgrade head
    ```
 
-5. Start the main web application with foreground launch evidence.
+5. Start the main web application with foreground app and worker supervisor
+   evidence.
 
    ```bash
-   ./.venv/bin/python scripts/run_foreground_production_app.py \
-     --json-output artifacts/foreground_production_launch.json \
-     --markdown-output artifacts/foreground_production_launch.md \
-     --pid-file artifacts/foreground_production_launch.pid \
-     --log-file artifacts/foreground_production_launch.log \
+   ./.venv/bin/python scripts/run_foreground_app_worker_supervisor.py \
+     --pipeline-limit 1 \
+     --embedding-limit-per-profile 5 \
+     --worker-cycle-interval-seconds 5 \
+     --json-output artifacts/foreground_app_worker_supervisor.json \
+     --markdown-output artifacts/foreground_app_worker_supervisor.md \
      --pretty
    ```
 
-   Run this in a supervised terminal. The runner writes the process ID and log
-   path before keeping Uvicorn attached to the foreground session. Use
-   `--dry-run` first when you only want to verify the command and evidence
-   paths.
+   Run this in a supervised terminal. The runner starts Uvicorn, writes
+   supervisor and web PID files, and polls the queue through bounded worker
+   cycles. Use `--dry-run` first when you only want to verify the command and
+   evidence paths. Use the standalone `run_foreground_production_app.py` only
+   for diagnostics where queue processing must intentionally remain disabled.
 
 6. For a controlled pre-CX run, foreground operation is acceptable when an
    operator keeps the session alive and acknowledges that there is no automatic
