@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.9**
+**Software Requirements Specification v1.10**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.9
+문서 상태: Draft v1.10
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.9 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.10 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.9 |
+| 문서 버전 | v1.10 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -34,6 +34,7 @@
 | 1.7 | 2026-07-15 | ingestion metadata, normalized markdown artifact, document block, table/image artifact, chunk source contract 요구사항 보강 |
 | 1.8 | 2026-07-20 | BM25 keyword baseline, 검색 전략/profile 계약, embedding-only/BM25/hybrid 비교 요구사항 보강 |
 | 1.9 | 2026-07-20 | 한국어 친화 BM25 tokenizer baseline, KoNLPy 보류, Mecab-ko optional 검토 기준 보강 |
+| 1.10 | 2026-07-21 | Search Compare BM25 tokenizer 선택, 검색 로그 runtime metadata 재현성 요구사항 보강 |
 
 # 목차
 
@@ -433,6 +434,10 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - KoNLPy 계열 tokenizer는 라이선스 및 JVM/JPype/runtime 의존성 부담 때문에 기본 배포 대상에서 보류한다.
 
 - Mecab-ko는 KoNLPy 대안의 optional 형태소 analyzer 후보로 검토한다. 단, Python wrapper, 사전, 빌드 산출물, 고객사 재배포 방식의 라이선스와 설치 자동화가 확인되기 전까지 필수 dependency로 포함하지 않는다.
+
+- Search Compare 화면은 BM25 Keyword profile 선택 시 BM25 tokenizer를 선택할 수 있어야 한다. 선택한 tokenizer는 BM25-only 검색, chunk policy compare, permission matrix 실험에 동일하게 적용한다.
+
+- 선택한 BM25 tokenizer와 tokenizer별 index 준비 여부는 search runtime metadata와 BM25 coverage/freshness 화면을 통해 재현 가능해야 한다.
 
 - Hybrid retrieval은 1차 MVP에서 BM25 top-N과 vector top-N을 Reciprocal Rank Fusion(RRF)으로 결합한다.
 
@@ -1285,7 +1290,7 @@ PRIMARY KEY (chunk_policy_name, term)
 
 - 검색 로그는 chunk_policy_name, parser_name, parser_version, similarity_metric/scoring_metric, top_k, index_type, index_parameters를 저장해야 한다.
 
-- BM25 검색 로그는 tokenizer, tokenizer_version, term_filtering rule, k1, b, corpus_chunk_count, average_document_length, statistics_refreshed_at을 기록해야 한다.
+- BM25 검색 로그는 tokenizer, tokenizer_version, term_filtering rule, k1, b, corpus_chunk_count, average_document_length, statistics_refreshed_at을 기록해야 한다. Search Compare에서 선택한 BM25 tokenizer는 profile runtime metadata와 search log top-level metadata 양쪽에 기록한다.
 
 - 검색 결과는 chunk_id만 저장하지 않고, 결과 chunk의 artifact_id, block_id, chunk_type, source_anchor snapshot을 조회 가능해야 한다.
 

@@ -32,9 +32,44 @@ from app.main import (
     extraction_quality_snapshot_payload,
     extraction_quality_snapshot_summary_payload,
     extraction_rerun_feedback_payload,
+    search_log_bm25_tokenizer_name,
 )
 
 NOW = datetime(2026, 7, 15, tzinfo=UTC)
+
+
+def test_search_log_bm25_tokenizer_name_reads_direct_and_profile_metadata() -> None:
+    assert (
+        search_log_bm25_tokenizer_name(
+            {
+                "profile_keyword_searches": {
+                    "bm25_keyword": {"tokenizer_name": "unicode_word_ko_2_3gram_v1"}
+                }
+            }
+        )
+        == "unicode_word_ko_2_3gram_v1"
+    )
+    assert (
+        search_log_bm25_tokenizer_name(
+            {
+                "bm25_tokenizer_name": "unicode_word_v1",
+                "profile_keyword_searches": {
+                    "bm25_keyword": {"tokenizer_name": "unicode_word_ko_2_3gram_v1"}
+                },
+            }
+        )
+        == "unicode_word_v1"
+    )
+    assert (
+        search_log_bm25_tokenizer_name(
+            {
+                "bm25_tokenizer_name": "unknown",
+                "profile_keyword_searches": {"bm25_keyword": {"tokenizer_name": "unicode_word_v1"}},
+            }
+        )
+        == "unicode_word_v1"
+    )
+    assert search_log_bm25_tokenizer_name({"profile_keyword_searches": {}}) is None
 
 
 def make_extraction_artifact(**overrides) -> ExtractionArtifactRecord:

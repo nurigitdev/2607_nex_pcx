@@ -35,6 +35,11 @@ from app.core.bm25_index_coverage import (
     InvalidBM25IndexCoverageError,
     get_bm25_index_coverage_matrix,
 )
+from app.core.bm25_keyword_index import (
+    DEFAULT_BM25_TOKENIZER_NAME,
+    list_bm25_tokenizers,
+    validate_bm25_tokenizer_name,
+)
 from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
 from app.core.chunk_policies import (
     ChunkPolicySummaryRecord,
@@ -568,6 +573,7 @@ class SearchCompareRequest(BaseModel):
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    bm25_tokenizer_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -583,6 +589,7 @@ class SearchChunkPolicyCompareRequest(BaseModel):
     )
     document_group: str | None = None
     file_type: str | None = None
+    bm25_tokenizer_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -646,6 +653,7 @@ class SearchPermissionMatrixRequest(BaseModel):
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    bm25_tokenizer_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -4696,6 +4704,34 @@ def filter_search_logs_by_fingerprint(
     ]
 
 
+def _valid_bm25_tokenizer_name_or_none(value: object) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return validate_bm25_tokenizer_name(value.strip())
+    except ValueError:
+        return None
+
+
+def search_log_bm25_tokenizer_name(query_runtime_metadata: dict[str, object]) -> str | None:
+    direct_tokenizer_name = _valid_bm25_tokenizer_name_or_none(
+        query_runtime_metadata.get("bm25_tokenizer_name")
+    )
+    if direct_tokenizer_name is not None:
+        return direct_tokenizer_name
+
+    profile_keyword_searches = query_runtime_metadata.get("profile_keyword_searches")
+    if isinstance(profile_keyword_searches, dict):
+        profile_metadata = profile_keyword_searches.get(BM25_SEARCH_PROFILE_NAME)
+        if isinstance(profile_metadata, dict):
+            profile_tokenizer_name = _valid_bm25_tokenizer_name_or_none(
+                profile_metadata.get("tokenizer_name")
+            )
+            if profile_tokenizer_name is not None:
+                return profile_tokenizer_name
+    return None
+
+
 def search_log_replay_url(search_log: SearchLogRecord) -> str:
     query_params: dict[str, object] = {
         "replay_search_log_id": search_log.search_log_id,
@@ -4709,6 +4745,7 @@ def search_log_replay_url(search_log: SearchLogRecord) -> str:
         "document_group": search_log.document_group,
         "file_type": search_log.file_type,
         "chunk_policy_name": search_log.chunk_policy_name,
+        "bm25_tokenizer_name": search_log_bm25_tokenizer_name(search_log.query_runtime_metadata),
     }
     for key, value in optional_params.items():
         if value:
@@ -4742,6 +4779,14 @@ def search_compare_prefill_payload(
     if actor_user_id == "":
         actor_user_id = default_actor_id
 
+    raw_bm25_tokenizer_name = (
+        query_params.get("bm25_tokenizer_name") or DEFAULT_BM25_TOKENIZER_NAME
+    ).strip()
+    try:
+        bm25_tokenizer_name = validate_bm25_tokenizer_name(raw_bm25_tokenizer_name)
+    except ValueError:
+        bm25_tokenizer_name = DEFAULT_BM25_TOKENIZER_NAME
+
     return {
         "replay_search_log_id": (query_params.get("replay_search_log_id") or "").strip(),
         "query_text": (query_params.get("query_text") or "").strip(),
@@ -4751,6 +4796,7 @@ def search_compare_prefill_payload(
         "document_group": (query_params.get("document_group") or "").strip(),
         "file_type": (query_params.get("file_type") or "").strip(),
         "chunk_policy_name": (query_params.get("chunk_policy_name") or "").strip(),
+        "bm25_tokenizer_name": bm25_tokenizer_name,
         "profiles": profiles,
         "profile_selection_explicit": bool(query_params.getlist("profiles")),
         "require_real_provider": (query_params.get("require_real_provider") or "").lower()
@@ -9739,7 +9785,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         parse_status: str | None = None,
         document_group: str | None = None,
         chunk_policy_name: str | None = None,
-        tokenizer_name: str = "unicode_word_v1",
+        tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME,
         limit: int = 100,
     ) -> JSONResponse:
         if not settings.database_url:
@@ -10459,6 +10505,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     chunk_policy_name=source_log.chunk_policy_name,
                     document_group=source_log.document_group,
                     file_type=source_log.file_type,
+                    bm25_tokenizer_name=(
+                        search_log_bm25_tokenizer_name(source_log.query_runtime_metadata)
+                        or DEFAULT_BM25_TOKENIZER_NAME
+                    ),
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
@@ -10557,6 +10607,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     chunk_policy_name=payload.chunk_policy_name,
                     document_group=payload.document_group,
                     file_type=payload.file_type,
+                    bm25_tokenizer_name=(
+                        payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
+                    ),
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
@@ -10628,6 +10681,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             chunk_policy_name=chunk_policy_name,
                             document_group=payload.document_group,
                             file_type=payload.file_type,
+                            bm25_tokenizer_name=(
+                                payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
+                            ),
                             allow_mock_fallback=payload.allow_mock_fallback,
                         ),
                         fallback_runtime_config=(
@@ -10658,6 +10714,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "profiles": payload.profiles or [],
                 "document_group": payload.document_group,
                 "file_type": payload.file_type,
+                "bm25_tokenizer_name": payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME,
                 "policy_count": len(runs),
                 "shared_chunk_count": len(shared_chunk_ids),
                 "shared_chunk_ids": shared_chunk_ids,
@@ -11042,6 +11099,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     chunk_policy_name=payload.chunk_policy_name,
                     document_group=payload.document_group,
                     file_type=payload.file_type,
+                    bm25_tokenizer_name=(
+                        payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
+                    ),
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
@@ -13035,6 +13095,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 search_scope_options=SEARCH_COMPARE_SCOPE_OPTIONS,
                 search_file_type_options=SEARCH_COMPARE_FILE_TYPES,
                 chunk_policy_options=chunk_policy_options,
+                bm25_tokenizer_options=[asdict(tokenizer) for tokenizer in list_bm25_tokenizers()],
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),
@@ -13619,7 +13680,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         parse_status: str | None = None,
         document_group: str | None = None,
         chunk_policy_name: str | None = None,
-        tokenizer_name: str = "unicode_word_v1",
+        tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME,
         limit: int = 100,
     ) -> HTMLResponse:
         matrix: BM25IndexCoverageMatrix | None = None

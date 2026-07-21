@@ -6,6 +6,11 @@ from decimal import Decimal
 from time import perf_counter
 from typing import Any
 
+from app.core.bm25_keyword_index import (
+    DEFAULT_BM25_TOKENIZER_NAME,
+    InvalidBM25KeywordIndexError,
+    validate_bm25_tokenizer_name,
+)
 from app.core.bm25_search import (
     BM25_RETRIEVAL_STRATEGY,
     BM25_SEARCH_PROFILE_NAME,
@@ -69,6 +74,7 @@ class SearchCompareInput:
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    bm25_tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME
     allow_mock_fallback: bool = True
 
 
@@ -231,6 +237,7 @@ class SearchPermissionMatrixInput:
     chunk_policy_name: str | None = None
     document_group: str | None = None
     file_type: str | None = None
+    bm25_tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME
     allow_mock_fallback: bool = True
 
 
@@ -299,6 +306,10 @@ def _validate_search_compare_input(search_input: SearchCompareInput) -> SearchCo
             raise InvalidSearchCompareError("profiles must not be empty")
         if len(set(profiles)) != len(profiles):
             raise InvalidSearchCompareError("profiles must be unique")
+    try:
+        bm25_tokenizer_name = validate_bm25_tokenizer_name(search_input.bm25_tokenizer_name)
+    except InvalidBM25KeywordIndexError as exc:
+        raise InvalidSearchCompareError(str(exc)) from exc
     return SearchCompareInput(
         query_text=query_text or search_input.query_text,
         actor_user_id=search_input.actor_user_id,
@@ -312,6 +323,7 @@ def _validate_search_compare_input(search_input: SearchCompareInput) -> SearchCo
         chunk_policy_name=_validate_nonblank(search_input.chunk_policy_name, "chunk_policy_name"),
         document_group=_validate_nonblank(search_input.document_group, "document_group"),
         file_type=_validate_nonblank(search_input.file_type, "file_type"),
+        bm25_tokenizer_name=bm25_tokenizer_name,
         allow_mock_fallback=search_input.allow_mock_fallback,
     )
 
@@ -355,6 +367,7 @@ def _validate_permission_matrix_input(
             chunk_policy_name=matrix_input.chunk_policy_name,
             document_group=matrix_input.document_group,
             file_type=matrix_input.file_type,
+            bm25_tokenizer_name=matrix_input.bm25_tokenizer_name,
             allow_mock_fallback=matrix_input.allow_mock_fallback,
         )
     )
@@ -366,6 +379,7 @@ def _validate_permission_matrix_input(
         chunk_policy_name=common.chunk_policy_name,
         document_group=common.document_group,
         file_type=common.file_type,
+        bm25_tokenizer_name=common.bm25_tokenizer_name,
         allow_mock_fallback=common.allow_mock_fallback,
     )
 
@@ -1024,6 +1038,13 @@ def _search_compare_query_runtime_metadata(
         }
     )
     status_counts = _profile_status_counts(profile_results)
+    bm25_tokenizer_names = sorted(
+        {
+            str(profile_metadata["tokenizer_name"])
+            for profile_metadata in keyword_search_profiles.values()
+            if profile_metadata.get("tokenizer_name") is not None
+        }
+    )
     return {
         "adapter": (
             "query_embedding_bridge" if not keyword_search_profiles else "search_compare_runtime"
@@ -1042,6 +1063,8 @@ def _search_compare_query_runtime_metadata(
         "query_embedding_runtime_sources": runtime_sources,
         "profile_query_embeddings": query_embedding_profiles,
         "profile_keyword_searches": keyword_search_profiles,
+        "bm25_tokenizer_name": bm25_tokenizer_names[0] if len(bm25_tokenizer_names) == 1 else None,
+        "bm25_tokenizer_names": bm25_tokenizer_names,
         "profile_failures": profile_failures,
     }
 
@@ -1151,6 +1174,7 @@ def run_search_compare(
                     query_text=validated.query_text,
                     top_k=validated.top_k,
                     chunk_policy_name=validated.chunk_policy_name or DEFAULT_CHUNK_POLICY_NAME,
+                    tokenizer_name=validated.bm25_tokenizer_name,
                     document_group=validated.document_group,
                     file_type=validated.file_type,
                     permission_filter=permission_filter,
@@ -1325,6 +1349,7 @@ def run_permission_search_matrix(
                 chunk_policy_name=validated.chunk_policy_name,
                 document_group=validated.document_group,
                 file_type=validated.file_type,
+                bm25_tokenizer_name=validated.bm25_tokenizer_name,
                 allow_mock_fallback=validated.allow_mock_fallback,
             ),
             fallback_runtime_config=fallback_runtime_config,

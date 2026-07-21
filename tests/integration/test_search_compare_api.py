@@ -4,7 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.types.json import Json
 
-from app.core.bm25_keyword_index import refresh_chunk_policy_keyword_index
+from app.core.bm25_keyword_index import (
+    KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+    refresh_chunk_policy_keyword_index,
+)
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
 from app.core.embedding_vectors import (
@@ -1160,6 +1163,7 @@ def test_search_compare_api_returns_bm25_keyword_profile_results(
         refresh_chunk_policy_keyword_index(
             migrated_database_url,
             chunk_policy_name=chunk_policy_name,
+            tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
         )
         app = create_app(Settings(database_url=migrated_database_url))
 
@@ -1174,6 +1178,7 @@ def test_search_compare_api_returns_bm25_keyword_profile_results(
                     "profiles": ["bm25_keyword"],
                     "chunk_policy_name": chunk_policy_name,
                     "document_group": document_group,
+                    "bm25_tokenizer_name": KOREAN_NGRAM_BM25_TOKENIZER_NAME,
                 },
             )
 
@@ -1206,6 +1211,9 @@ def test_search_compare_api_returns_bm25_keyword_profile_results(
         assert response.status_code == 200
         assert profile["profile_name"] == "bm25_keyword"
         assert profile["query_runtime_metadata"]["retrieval_strategy"] == "bm25_keyword"
+        assert profile["query_runtime_metadata"]["tokenizer_name"] == (
+            KOREAN_NGRAM_BM25_TOKENIZER_NAME
+        )
         assert result["chunk_id"] == visible_chunk_id
         assert result["chunk_id"] != hidden_chunk_id
         assert result["distance"] is None
@@ -1213,10 +1221,14 @@ def test_search_compare_api_returns_bm25_keyword_profile_results(
         assert result["matched_term_count"] == 3
         assert result["document_length"] == pytest.approx(5.0)
         assert result["score_components"]["query_terms"] == ["anchor", "bm25", "keyword"]
+        assert result["score_components"]["tokenizer_name"] == KOREAN_NGRAM_BM25_TOKENIZER_NAME
         assert body["profile_status_counts"] == {"succeeded": 1, "failed": 0}
         assert log_row["strategy_name"] == "bm25_keyword"
         assert log_row["similarity_metric"] == "bm25"
         assert log_row["query_runtime_metadata"]["keyword_search_profile_count"] == 1
+        assert log_row["query_runtime_metadata"]["bm25_tokenizer_name"] == (
+            KOREAN_NGRAM_BM25_TOKENIZER_NAME
+        )
         assert result_row["search_profile_name"] == "bm25_keyword"
         assert result_row["retrieval_strategy"] == "bm25_keyword"
         assert result_row["distance"] is None

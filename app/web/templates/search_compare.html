@@ -132,6 +132,30 @@
       <div class="form-text">{{ t("search_compare.chunk_policy_help") }}</div>
     </div>
 
+    {% set bm25_selected = (not search_prefill.profile_selection_explicit) or "bm25_keyword" in search_prefill.profiles %}
+    <div>
+      <label class="form-label" for="bm25_tokenizer_name">{{ t("search_compare.bm25_tokenizer") }}</label>
+      <select
+        class="form-select"
+        id="bm25_tokenizer_name"
+        name="bm25_tokenizer_name"
+        {% if not database_configured or not bm25_selected %}disabled{% endif %}
+      >
+        {% for tokenizer in bm25_tokenizer_options %}
+        <option value="{{ tokenizer.tokenizer_name }}" {% if tokenizer.tokenizer_name == search_prefill.bm25_tokenizer_name %}selected{% endif %}>
+          {{ tokenizer.display_name }}
+          · {{ tokenizer.tokenizer_name }}
+          {% if tokenizer.status == "default" %}
+          · {{ t("search_compare.bm25_tokenizer_default") }}
+          {% elif tokenizer.status == "experimental" %}
+          · {{ t("search_compare.bm25_tokenizer_experimental") }}
+          {% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      <div class="form-text">{{ t("search_compare.bm25_tokenizer_help") }}</div>
+    </div>
+
     <div class="search-provider-mode-field">
       <label class="form-label">{{ t("search_compare.provider_mode") }}</label>
       <label class="form-check search-provider-mode-check">
@@ -444,6 +468,7 @@
   const readinessRefreshStatus = document.getElementById("search-readiness-refresh-status");
   const permissionSummaryPanel = document.getElementById("search-permission-summary");
   const permissionSummaryGrid = document.getElementById("search-permission-summary-grid");
+  const bm25TokenizerSelect = document.getElementById("bm25_tokenizer_name");
   const matrixForm = document.getElementById("permission-matrix-form");
   const matrixSubmit = document.getElementById("permission-matrix-submit");
   const matrixStatus = document.getElementById("permission-matrix-status");
@@ -520,6 +545,7 @@
     failed: "{{ t('search_runtime.failed') }}",
     provider: "{{ t('search_runtime.provider') }}",
     model: "{{ t('search_runtime.model') }}",
+    tokenizer: "{{ t('search_runtime.tokenizer') }}",
     dimension: "{{ t('search_runtime.dimension') }}",
     runtimeSource: "{{ t('search_runtime.runtime_source') }}",
     providerLatency: "{{ t('search_runtime.provider_latency') }}",
@@ -629,8 +655,16 @@
   const selectedProfiles = () =>
     new FormData(form).getAll("profiles").filter(Boolean);
   const keywordProfileNames = new Set(["bm25_keyword"]);
+  const hasSelectedKeywordProfile = () =>
+    selectedProfiles().some((profile) => keywordProfileNames.has(profile));
   const selectedEmbeddingProfiles = () =>
     selectedProfiles().filter((profile) => !keywordProfileNames.has(profile));
+  const updateBM25TokenizerAvailability = () => {
+    if (!bm25TokenizerSelect) {
+      return;
+    }
+    bm25TokenizerSelect.disabled = !canLoadFeedbackSummary || !hasSelectedKeywordProfile();
+  };
 
   const selectedPolicyCompareNames = () => Array.from(
     policyCompareForm?.querySelectorAll(
@@ -1164,6 +1198,7 @@
     rows.append(
       renderRuntimeRow(runtimeLabels.provider, metadata.provider_type),
       renderRuntimeRow(runtimeLabels.model, runtimeModel(metadata)),
+      renderRuntimeRow(runtimeLabels.tokenizer, metadata.tokenizer_name),
       renderRuntimeRow(runtimeLabels.dimension, metadata.dimension),
       renderRuntimeRow(runtimeLabels.runtimeSource, metadata.runtime_source),
       renderRuntimeRow(runtimeLabels.providerLatency, formatLatency(metadata.provider_elapsed_ms)),
@@ -1411,6 +1446,7 @@
       chunk_policy_name: fieldValue("chunk_policy_name"),
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
+      bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
       allow_mock_fallback: !new FormData(form).has("require_real_provider"),
       entries: entries.map((entry) => ({
         actor_user_id: entry.actor_user_id,
@@ -1553,6 +1589,7 @@
       chunk_policy_names: chunkPolicyNames,
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
+      bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
       allow_mock_fallback: !formData.has("require_real_provider"),
     };
 
@@ -1995,6 +2032,7 @@
     runtime.append(
       makeCell(runtimeLabels.provider, metadata.provider_type),
       makeCell(runtimeLabels.model, runtimeModel(metadata)),
+      makeCell(runtimeLabels.tokenizer, metadata.tokenizer_name),
       makeCell(runtimeLabels.dimension, metadata.dimension),
       makeCell(runtimeLabels.runtimeSource, metadata.runtime_source),
     );
@@ -2055,6 +2093,7 @@
       chunk_policy_name: fieldValue("chunk_policy_name"),
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
+      bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
       allow_mock_fallback: !formData.has("require_real_provider"),
     };
 
@@ -2111,6 +2150,7 @@
 
   form.addEventListener("change", () => {
     stopReadinessAutoRefresh();
+    updateBM25TokenizerAvailability();
     loadReadiness();
   });
   policyCompareForm?.addEventListener("change", () => {
@@ -2121,6 +2161,7 @@
     }
   });
 
+  updateBM25TokenizerAvailability();
   loadReadiness();
   loadFeedbackSummary();
   loadFeedbackComments();

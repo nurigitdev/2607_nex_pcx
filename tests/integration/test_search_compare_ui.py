@@ -66,6 +66,14 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert 'id="permission-matrix-form"' in response.text
     assert "/api/search/permission-matrix" in response.text
     assert "Chunk 정책 비교" in response.text
+    assert 'id="bm25_tokenizer_name"' in response.text
+    assert 'value="unicode_word_v1"' in response.text
+    assert 'value="unicode_word_ko_2_3gram_v1"' in response.text
+    assert "Unicode Word + Korean 2/3-gram" in response.text
+    assert "BM25 Keyword profile에만 적용" in response.text
+    assert "bm25_tokenizer_name: fieldValue" in response.text
+    assert "updateBM25TokenizerAvailability" in response.text
+    assert "runtimeLabels.tokenizer" in response.text
     assert 'id="chunk-policy-compare-form"' in response.text
     assert "/api/search/compare/chunk-policies" in response.text
     assert "heading_1000_200" in response.text

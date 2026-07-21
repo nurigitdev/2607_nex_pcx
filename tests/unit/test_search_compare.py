@@ -2,6 +2,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.core.bm25_keyword_index import KOREAN_NGRAM_BM25_TOKENIZER_NAME
 from app.core.bm25_search import BM25SearchResult
 from app.core.permissions import PermissionSearchFilter
 from app.core.query_embeddings import InvalidQueryEmbeddingError, QueryEmbeddingResult
@@ -21,6 +22,7 @@ from app.core.search_compare import (
     _readiness_status,
     _validate_coverage_reconcile_input,
     _validate_readiness_input,
+    _validate_search_compare_input,
     run_permission_search_matrix,
     run_search_compare,
 )
@@ -148,6 +150,37 @@ def test_readiness_status_classifies_profile_policy_state(
         "embedded_chunk_count": 0,
     }
     assert _readiness_status(**{**defaults, **kwargs}) == expected
+
+
+def test_validate_search_compare_input_normalizes_bm25_tokenizer_name() -> None:
+    validated = _validate_search_compare_input(
+        SearchCompareInput(
+            query_text=" 업무 보고서 ",
+            actor_user_id=1,
+            requested_search_scope=" company ",
+            profiles=(" bm25_keyword ",),
+            chunk_policy_name=" heading_512_64 ",
+            bm25_tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+        )
+    )
+
+    assert validated.query_text == "업무 보고서"
+    assert validated.requested_search_scope == "company"
+    assert validated.profiles == ("bm25_keyword",)
+    assert validated.chunk_policy_name == "heading_512_64"
+    assert validated.bm25_tokenizer_name == KOREAN_NGRAM_BM25_TOKENIZER_NAME
+
+
+def test_validate_search_compare_input_rejects_unknown_bm25_tokenizer() -> None:
+    with pytest.raises(InvalidSearchCompareError, match="Unsupported tokenizer_name"):
+        _validate_search_compare_input(
+            SearchCompareInput(
+                query_text="hello",
+                actor_user_id=1,
+                requested_search_scope="company",
+                bm25_tokenizer_name="unknown",
+            )
+        )
 
 
 @pytest.mark.parametrize(
@@ -602,6 +635,7 @@ def test_run_search_compare_executes_bm25_profile_without_query_embedding(monkey
             requested_search_scope="company",
             profiles=("bm25_keyword",),
             chunk_policy_name="heading_512_64",
+            bm25_tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
         ),
     )
 
@@ -609,15 +643,28 @@ def test_run_search_compare_executes_bm25_profile_without_query_embedding(monkey
     assert result.profiles[0].results[0].vector_result.chunk_id == 11
     assert captured_bm25_input is not None
     assert captured_bm25_input.chunk_policy_name == "heading_512_64"
+    assert captured_bm25_input.tokenizer_name == KOREAN_NGRAM_BM25_TOKENIZER_NAME
     assert captured_bm25_input.permission_filter == _permission_filter()
     assert captured_search_log_input is not None
     assert captured_search_log_input.strategy_name == "bm25_keyword"
     assert captured_search_log_input.similarity_metric == "bm25"
     assert captured_search_log_input.query_runtime_metadata["query_embedding_bridge"] is False
     assert captured_search_log_input.query_runtime_metadata["keyword_search_profile_count"] == 1
+    assert captured_search_log_input.query_runtime_metadata["bm25_tokenizer_name"] == (
+        KOREAN_NGRAM_BM25_TOKENIZER_NAME
+    )
+    assert captured_search_log_input.query_runtime_metadata["bm25_tokenizer_names"] == [
+        KOREAN_NGRAM_BM25_TOKENIZER_NAME
+    ]
     assert set(captured_search_log_input.query_runtime_metadata["profile_keyword_searches"]) == {
         "bm25_keyword"
     }
+    assert (
+        captured_search_log_input.query_runtime_metadata["profile_keyword_searches"][
+            "bm25_keyword"
+        ]["tokenizer_name"]
+        == KOREAN_NGRAM_BM25_TOKENIZER_NAME
+    )
     assert captured_result_inputs is not None
     assert captured_result_inputs[0].distance is None
     assert captured_result_inputs[0].search_profile_name == "bm25_keyword"
