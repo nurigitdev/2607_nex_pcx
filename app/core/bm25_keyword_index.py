@@ -4,6 +4,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import lru_cache
 from typing import Any
 
 from psycopg import Connection
@@ -12,6 +13,7 @@ from app.core.database import connect
 
 DEFAULT_BM25_TOKENIZER_NAME = "unicode_word_v1"
 KOREAN_NGRAM_BM25_TOKENIZER_NAME = "unicode_word_ko_2_3gram_v1"
+MECAB_KO_BM25_TOKENIZER_NAME = "mecab_ko_morph_v1"
 AVERAGE_DOCUMENT_LENGTH_QUANT = Decimal("0.0001")
 _WORD_PATTERN = re.compile(r"(?u)\b\w+\b")
 _HANGUL_SYLLABLE_PATTERN = re.compile(r"[가-힣]+")
@@ -25,6 +27,9 @@ class BM25TokenizerDefinition:
     description: str
     dependency_mode: str
     status: str
+    available: bool = True
+    unavailable_reason: str | None = None
+    install_hint: str | None = None
 
 
 BM25_TOKENIZER_DEFINITIONS = {
@@ -44,6 +49,17 @@ BM25_TOKENIZER_DEFINITIONS = {
         ),
         dependency_mode="builtin",
         status="experimental",
+    ),
+    MECAB_KO_BM25_TOKENIZER_NAME: BM25TokenizerDefinition(
+        tokenizer_name=MECAB_KO_BM25_TOKENIZER_NAME,
+        display_name="Mecab-ko Morph",
+        description=(
+            "Optional Mecab-ko morphological tokens for Korean BM25 experiments. "
+            "Requires mecab-ko-python and mecab-ko-dic."
+        ),
+        dependency_mode="optional",
+        status="experimental",
+        install_hint="pip install 'nex-pcx[korean-tokenizers]'",
     ),
 }
 SUPPORTED_BM25_TOKENIZERS = frozenset(BM25_TOKENIZER_DEFINITIONS)
@@ -106,7 +122,25 @@ def validate_bm25_tokenizer_name(tokenizer_name: str) -> str:
 
 
 def list_bm25_tokenizers() -> tuple[BM25TokenizerDefinition, ...]:
-    return tuple(BM25_TOKENIZER_DEFINITIONS.values())
+    definitions: list[BM25TokenizerDefinition] = []
+    for definition in BM25_TOKENIZER_DEFINITIONS.values():
+        if definition.tokenizer_name != MECAB_KO_BM25_TOKENIZER_NAME:
+            definitions.append(definition)
+            continue
+        available, unavailable_reason = get_mecab_ko_tokenizer_availability()
+        definitions.append(
+            BM25TokenizerDefinition(
+                tokenizer_name=definition.tokenizer_name,
+                display_name=definition.display_name,
+                description=definition.description,
+                dependency_mode=definition.dependency_mode,
+                status=definition.status,
+                available=available,
+                unavailable_reason=unavailable_reason,
+                install_hint=definition.install_hint,
+            )
+        )
+    return tuple(definitions)
 
 
 def _tokenize_unicode_words(text: str) -> tuple[str, ...]:
@@ -137,9 +171,51 @@ def _tokenize_unicode_words_with_korean_ngrams(text: str) -> tuple[str, ...]:
     return tuple(terms)
 
 
+@lru_cache(maxsize=1)
+def _load_mecab_ko_tokenizer() -> Any:
+    try:
+        from mecab_ko import Mecab
+    except ModuleNotFoundError as exc:
+        raise InvalidBM25KeywordIndexError(
+            "mecab_ko module is not installed. Install nex-pcx[korean-tokenizers]."
+        ) from exc
+
+    try:
+        import mecab_ko_dic
+    except ModuleNotFoundError:
+        dicpath = None
+    else:
+        dicpath = mecab_ko_dic.DICDIR
+
+    try:
+        return Mecab(dicpath=dicpath) if dicpath is not None else Mecab()
+    except RuntimeError as exc:
+        raise InvalidBM25KeywordIndexError(f"mecab_ko tokenizer is unavailable: {exc}") from exc
+
+
+def get_mecab_ko_tokenizer_availability() -> tuple[bool, str | None]:
+    try:
+        _load_mecab_ko_tokenizer()
+    except InvalidBM25KeywordIndexError as exc:
+        return False, str(exc)
+    return True, None
+
+
+def _tokenize_mecab_ko_morphs(text: str) -> tuple[str, ...]:
+    tokenizer = _load_mecab_ko_tokenizer()
+    terms: list[str] = []
+    for token in tokenizer.morphs(text):
+        normalized = token.casefold()
+        if _WORD_PATTERN.fullmatch(normalized) is None:
+            continue
+        terms.append(normalized)
+    return tuple(terms)
+
+
 _BM25_TOKENIZER_FUNCTIONS = {
     DEFAULT_BM25_TOKENIZER_NAME: _tokenize_unicode_words,
     KOREAN_NGRAM_BM25_TOKENIZER_NAME: _tokenize_unicode_words_with_korean_ngrams,
+    MECAB_KO_BM25_TOKENIZER_NAME: _tokenize_mecab_ko_morphs,
 }
 
 

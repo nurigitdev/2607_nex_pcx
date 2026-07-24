@@ -7,6 +7,7 @@ from psycopg import Connection
 
 from app.core.bm25_keyword_index import (
     DEFAULT_BM25_TOKENIZER_NAME,
+    InvalidBM25KeywordIndexError,
     build_bm25_term_frequencies,
     validate_bm25_tokenizer_name,
 )
@@ -105,10 +106,13 @@ def validate_bm25_search_input(
         tokenizer_name = validate_bm25_tokenizer_name(query_input.tokenizer_name)
     except ValueError as exc:
         raise InvalidBM25SearchError(str(exc)) from exc
-    return build_bm25_term_frequencies(
-        query_input.query_text,
-        tokenizer_name=tokenizer_name,
-    )
+    try:
+        return build_bm25_term_frequencies(
+            query_input.query_text,
+            tokenizer_name=tokenizer_name,
+        )
+    except InvalidBM25KeywordIndexError as exc:
+        raise InvalidBM25SearchError(str(exc)) from exc
 
 
 def _chunk_preview(chunk_text: str) -> str:

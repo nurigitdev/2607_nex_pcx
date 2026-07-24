@@ -32,6 +32,10 @@ models = [
     "huggingface-hub>=0.23,<1.0",
     "sentence-transformers>=3.0,<6.0",
 ]
+korean-tokenizers = [
+    "mecab-ko-dic>=1.0,<2.0",
+    "mecab-ko-python>=0.5,<1.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

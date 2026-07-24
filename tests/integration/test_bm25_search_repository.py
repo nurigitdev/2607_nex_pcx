@@ -4,6 +4,8 @@ import pytest
 
 from app.core.bm25_keyword_index import (
     KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+    MECAB_KO_BM25_TOKENIZER_NAME,
+    get_mecab_ko_tokenizer_availability,
     refresh_chunk_policy_keyword_index,
 )
 from app.core.bm25_search import BM25SearchInput, search_bm25_chunks
@@ -270,6 +272,55 @@ def test_search_bm25_chunks_supports_korean_ngram_tokenizer(
         assert [result.chunk_id for result in results] == [chunk_ids[0]]
         assert results[0].score_components["tokenizer_name"] == KOREAN_NGRAM_BM25_TOKENIZER_NAME
         assert "보고서" in results[0].score_components["query_terms"]
+    finally:
+        _cleanup_fixture(migrated_database_url, [file_id], policy_name)
+
+
+def test_search_bm25_chunks_supports_optional_mecab_ko_tokenizer(
+    migrated_database_url: str,
+) -> None:
+    available, unavailable_reason = get_mecab_ko_tokenizer_availability()
+    if not available:
+        pytest.skip(unavailable_reason or "mecab_ko tokenizer is unavailable")
+
+    policy_name = f"bm25_policy_{uuid4().hex}"
+    document_group = f"slice-314-{uuid4().hex}"
+    _create_policy(migrated_database_url, policy_name)
+    file_id, document_id = _create_document(
+        migrated_database_url,
+        document_group=document_group,
+    )
+    try:
+        chunk_ids = _create_chunks(
+            migrated_database_url,
+            document_id,
+            policy_name,
+            [
+                "휴가 신청 규칙을 설명합니다",
+                "보안 감사 절차를 설명합니다",
+            ],
+        )
+        refresh_chunk_policy_keyword_index(
+            migrated_database_url,
+            chunk_policy_name=policy_name,
+            tokenizer_name=MECAB_KO_BM25_TOKENIZER_NAME,
+        )
+
+        results = search_bm25_chunks(
+            migrated_database_url,
+            BM25SearchInput(
+                query_text="휴가 신청",
+                top_k=5,
+                chunk_policy_name=policy_name,
+                tokenizer_name=MECAB_KO_BM25_TOKENIZER_NAME,
+                document_group=document_group,
+            ),
+        )
+
+        assert [result.chunk_id for result in results] == [chunk_ids[0]]
+        assert results[0].score_components["tokenizer_name"] == MECAB_KO_BM25_TOKENIZER_NAME
+        assert "휴가" in results[0].score_components["query_terms"]
+        assert "신청" in results[0].score_components["query_terms"]
     finally:
         _cleanup_fixture(migrated_database_url, [file_id], policy_name)
 

@@ -35,6 +35,7 @@
 | 1.8 | 2026-07-20 | BM25 keyword baseline, 검색 전략/profile 계약, embedding-only/BM25/hybrid 비교 요구사항 보강 |
 | 1.9 | 2026-07-20 | 한국어 친화 BM25 tokenizer baseline, KoNLPy 보류, Mecab-ko optional 검토 기준 보강 |
 | 1.10 | 2026-07-21 | Search Compare BM25 tokenizer 선택, 검색 로그 runtime metadata 재현성 요구사항 보강 |
+| 1.11 | 2026-07-24 | Mecab-ko optional BM25 tokenizer foundation, 설치/사전 dependency 상태 표시와 실험 tokenizer 요구사항 보강 |
 
 # 목차
 
@@ -433,7 +434,9 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - KoNLPy 계열 tokenizer는 라이선스 및 JVM/JPype/runtime 의존성 부담 때문에 기본 배포 대상에서 보류한다.
 
-- Mecab-ko는 KoNLPy 대안의 optional 형태소 analyzer 후보로 검토한다. 단, Python wrapper, 사전, 빌드 산출물, 고객사 재배포 방식의 라이선스와 설치 자동화가 확인되기 전까지 필수 dependency로 포함하지 않는다.
+- Mecab-ko는 KoNLPy 대안의 optional 형태소 analyzer로 제공한다. `mecab_ko_morph_v1` tokenizer는 `mecab-ko-python`과 `mecab-ko-dic`가 설치된 환경에서만 활성화되며, 미설치 또는 dictionary 초기화 실패 시 UI와 API metadata에 unavailable 상태를 표시한다.
+
+- `mecab_ko_morph_v1`는 운영 기본값이 아니라 한국어 BM25 품질 실험 tokenizer로 관리한다. 형태소 tokenizer 기반 keyword index는 tokenizer별로 별도 backfill해야 하며, Search Compare와 BM25 coverage 화면에서 tokenizer별 readiness를 확인한 뒤 비교 실험에 사용한다.
 
 - Search Compare 화면은 BM25 Keyword profile 선택 시 BM25 tokenizer를 선택할 수 있어야 한다. 선택한 tokenizer는 BM25-only 검색, chunk policy compare, permission matrix 실험에 동일하게 적용한다.
 
@@ -1548,7 +1551,7 @@ pytest tests/e2e
 | Score 비교 오해 | 모델 성능 오판 | score 절대값이 아닌 rank/top-k/피드백 기준으로 비교 |
 | Query instruction 미기록 | Qwen 계열 검색 결과 재현 불가 | profile metadata와 search log에 query instruction 사용 여부와 instruction text 저장 |
 | BM25 tokenizer 품질 부족 | 한국어 keyword baseline이 실제 문서 의미를 충분히 반영하지 못함 | `unicode_word_v1`을 기본 재현 baseline으로 유지하고 `unicode_word_ko_2_3gram_v1`와 optional Mecab-ko 후보를 별도 실험 strategy로 비교 |
-| 한국어 형태소 analyzer 라이선스/배포 리스크 | 고객사 설치 시 GPL/JVM/사전 배포 이슈가 발생할 수 있음 | KoNLPy는 보류하고 Mecab-ko는 wrapper/사전/설치 자동화 검토 완료 전까지 optional adapter 후보로만 관리 |
+| 한국어 형태소 analyzer 라이선스/배포 리스크 | 고객사 설치 시 GPL/JVM/사전 배포 이슈가 발생할 수 있음 | KoNLPy는 보류하고 Mecab-ko는 `korean-tokenizers` optional dependency와 설치 evidence로 관리하며, 기본 tokenizer는 외부 의존성 없는 `unicode_word_v1`로 유지 |
 | Hybrid score 왜곡 | 서로 다른 score scale을 단순 합산하여 품질을 오판 | 1차 hybrid는 RRF 기반 rank fusion으로 구현하고 score_components를 search log에 저장 |
 | 권한 필터 누락 | 접근 권한이 없는 문서/chunk가 검색 결과에 노출 | permission pre-filter를 repository/search SQL 단계에서 적용하고 permission matrix regression test 추가 |
 | 사후 필터링으로 인한 top-k 왜곡 | 권한 없는 결과 제거 후 관련 chunk가 누락되어 검색 품질 오판 | vector search 후보군 생성 전 actor/scope 조건을 pre-filter로 적용 |

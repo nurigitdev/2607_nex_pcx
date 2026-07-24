@@ -491,6 +491,7 @@
     "bm25_tokenizer": "BM25 Tokenizer",
     "bm25_tokenizer_default": "Default",
     "bm25_tokenizer_experimental": "Experimental",
+    "bm25_tokenizer_unavailable": "Install required",
     "bm25_tokenizer_help": "Applies only to the BM25 Keyword profile and requires a matching keyword index.",
     "policy_compare_title": "Chunk Policy Compare",
     "policy_compare_subtitle": "Run the same search conditions across multiple chunk policies.",

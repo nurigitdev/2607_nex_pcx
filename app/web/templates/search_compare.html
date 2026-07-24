@@ -142,10 +142,16 @@
         {% if not database_configured or not bm25_selected %}disabled{% endif %}
       >
         {% for tokenizer in bm25_tokenizer_options %}
-        <option value="{{ tokenizer.tokenizer_name }}" {% if tokenizer.tokenizer_name == search_prefill.bm25_tokenizer_name %}selected{% endif %}>
+        <option
+          value="{{ tokenizer.tokenizer_name }}"
+          {% if tokenizer.tokenizer_name == search_prefill.bm25_tokenizer_name %}selected{% endif %}
+          {% if tokenizer.available is sameas false %}disabled{% endif %}
+        >
           {{ tokenizer.display_name }}
           · {{ tokenizer.tokenizer_name }}
-          {% if tokenizer.status == "default" %}
+          {% if tokenizer.available is sameas false %}
+          · {{ t("search_compare.bm25_tokenizer_unavailable") }}
+          {% elif tokenizer.status == "default" %}
           · {{ t("search_compare.bm25_tokenizer_default") }}
           {% elif tokenizer.status == "experimental" %}
           · {{ t("search_compare.bm25_tokenizer_experimental") }}

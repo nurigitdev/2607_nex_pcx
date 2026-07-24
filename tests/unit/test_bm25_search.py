@@ -1,5 +1,6 @@
 import pytest
 
+from app.core.bm25_keyword_index import InvalidBM25KeywordIndexError
 from app.core.bm25_search import (
     BM25SearchInput,
     InvalidBM25SearchError,
@@ -23,6 +24,21 @@ def test_validate_bm25_search_input_returns_query_term_frequencies() -> None:
 
 def test_validate_bm25_search_input_allows_punctuation_query_for_empty_result() -> None:
     assert validate_bm25_search_input(BM25SearchInput(query_text="... !!!")) == {}
+
+
+def test_validate_bm25_search_input_wraps_tokenizer_runtime_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_tokenizer_error(*args: object, **kwargs: object) -> dict[str, int]:
+        raise InvalidBM25KeywordIndexError("mecab unavailable")
+
+    monkeypatch.setattr(
+        "app.core.bm25_search.build_bm25_term_frequencies",
+        raise_tokenizer_error,
+    )
+
+    with pytest.raises(InvalidBM25SearchError, match="mecab unavailable"):
+        validate_bm25_search_input(BM25SearchInput(query_text="업무보고서"))
 
 
 @pytest.mark.parametrize(

@@ -1,10 +1,13 @@
 import pytest
 
+import app.core.bm25_keyword_index as bm25_keyword_index
 from app.core.bm25_keyword_index import (
     DEFAULT_BM25_TOKENIZER_NAME,
     KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+    MECAB_KO_BM25_TOKENIZER_NAME,
     InvalidBM25KeywordIndexError,
     build_bm25_term_frequencies,
+    get_mecab_ko_tokenizer_availability,
     list_bm25_tokenizers,
     replace_chunk_keyword_terms_in_connection,
     tokenize_bm25_text,
@@ -23,6 +26,9 @@ def test_list_bm25_tokenizers_includes_default_and_korean_ngram_baseline() -> No
     assert definitions[DEFAULT_BM25_TOKENIZER_NAME].status == "default"
     assert definitions[KOREAN_NGRAM_BM25_TOKENIZER_NAME].status == "experimental"
     assert definitions[KOREAN_NGRAM_BM25_TOKENIZER_NAME].dependency_mode == "builtin"
+    assert definitions[MECAB_KO_BM25_TOKENIZER_NAME].status == "experimental"
+    assert definitions[MECAB_KO_BM25_TOKENIZER_NAME].dependency_mode == "optional"
+    assert definitions[MECAB_KO_BM25_TOKENIZER_NAME].install_hint
 
 
 def test_korean_ngram_tokenizer_adds_compound_recall_terms() -> None:
@@ -47,6 +53,47 @@ def test_korean_ngram_tokenizer_adds_compound_recall_terms() -> None:
         "nex",
         "pcx",
     )
+
+
+def test_mecab_ko_tokenizer_reports_unavailable_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_dependency_error() -> object:
+        raise InvalidBM25KeywordIndexError("dictionary missing")
+
+    monkeypatch.setattr(bm25_keyword_index, "_load_mecab_ko_tokenizer", raise_dependency_error)
+
+    definitions = {definition.tokenizer_name: definition for definition in list_bm25_tokenizers()}
+
+    assert definitions[MECAB_KO_BM25_TOKENIZER_NAME].available is False
+    assert definitions[MECAB_KO_BM25_TOKENIZER_NAME].unavailable_reason == "dictionary missing"
+
+
+def test_mecab_ko_tokenizer_raises_clear_error_when_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_dependency_error() -> object:
+        raise InvalidBM25KeywordIndexError("mecab unavailable")
+
+    monkeypatch.setattr(bm25_keyword_index, "_load_mecab_ko_tokenizer", raise_dependency_error)
+
+    with pytest.raises(InvalidBM25KeywordIndexError, match="mecab unavailable"):
+        tokenize_bm25_text("업무보고서", tokenizer_name=MECAB_KO_BM25_TOKENIZER_NAME)
+
+
+def test_mecab_ko_tokenizer_splits_korean_morphs_when_available() -> None:
+    available, unavailable_reason = get_mecab_ko_tokenizer_availability()
+    if not available:
+        pytest.skip(unavailable_reason or "mecab_ko tokenizer is unavailable")
+
+    tokens = tokenize_bm25_text(
+        "업무보고서는 검색 기능을 비교합니다. NeX-PCX BM25",
+        tokenizer_name=MECAB_KO_BM25_TOKENIZER_NAME,
+    )
+
+    assert "업무" in tokens
+    assert "보고" in tokens
+    assert "검색" in tokens
+    assert "기능" in tokens
+    assert "." not in tokens
 
 
 def test_build_bm25_term_frequencies_counts_casefolded_tokens() -> None:
