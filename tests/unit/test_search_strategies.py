@@ -27,9 +27,12 @@ def test_search_strategy_registry_lists_active_and_planned_strategies() -> None:
     assert "bm25_keyword" in all_names
     assert "hybrid_keyword_vector" in active_names
     assert "hybrid_keyword_vector" in all_names
+    assert "reranked_vector_cosine" in active_names
+    assert "reranked_vector_cosine" in all_names
     assert get_search_strategy("bm25_keyword") is None
     assert get_search_strategy("bm25_keyword", active_only=False) is not None
     assert get_search_strategy("hybrid_keyword_vector") is not None
+    assert get_search_strategy("reranked_vector_cosine") is not None
 
 
 def test_hybrid_keyword_vector_strategy_contract_is_active_rrf_foundation() -> None:
@@ -62,6 +65,22 @@ def test_bm25_keyword_strategy_contract_is_planned_baseline() -> None:
         "scoring": "okapi_bm25",
         "k1": 1.2,
         "b": 0.75,
+    }
+
+
+def test_reranked_vector_cosine_strategy_contract_is_active_rerank_foundation() -> None:
+    strategy = get_search_strategy("reranked_vector_cosine")
+
+    assert strategy is not None
+    assert strategy.mode == "rerank"
+    assert strategy.stage == "active"
+    assert strategy.similarity_metric == "cosine"
+    assert strategy.runtime_parameters == {
+        "source_strategy": "vector_cosine",
+        "retrieval_strategy": "reranked",
+        "reranker_profile_name": "qwen3_reranker_4b",
+        "reranker_model_id": "Qwen/Qwen3-Reranker-4B",
+        "candidate_multiplier": 4,
     }
 
 

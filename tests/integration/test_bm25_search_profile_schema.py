@@ -149,7 +149,13 @@ def test_bm25_search_profile_tables_indexes_and_seed_rows(
                   AND profile_kind = 'hybrid'
                   AND NOT is_active
                   AND strategy_name = 'hybrid_keyword_vector'
-            ) AS hybrid_count
+            ) AS hybrid_count,
+            count(*) FILTER (
+                WHERE search_profile_name = 'reranked_vector_cosine'
+                  AND profile_kind = 'rerank'
+                  AND is_active
+                  AND strategy_name = 'reranked_vector_cosine'
+            ) AS reranked_count
         FROM search_profiles
         """,
     )
@@ -160,6 +166,7 @@ def test_bm25_search_profile_tables_indexes_and_seed_rows(
         "active_embedding_count": 4,
         "bm25_count": 1,
         "hybrid_count": 1,
+        "reranked_count": 1,
     }
 
 
@@ -204,6 +211,12 @@ def test_bm25_keyword_terms_and_search_log_result_contract(
                         1,
                         3.0000
                     )
+                    ON CONFLICT (chunk_policy_name, tokenizer_name, term) DO UPDATE
+                    SET
+                        document_frequency = EXCLUDED.document_frequency,
+                        corpus_chunk_count = EXCLUDED.corpus_chunk_count,
+                        average_document_length = EXCLUDED.average_document_length,
+                        updated_at = now()
                     """,
                 )
                 cursor.execute(

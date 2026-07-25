@@ -7,6 +7,8 @@ from app.core.bm25_search import BM25SearchResult
 from app.core.hybrid_search import HYBRID_RETRIEVAL_STRATEGY, HYBRID_SEARCH_PROFILE_NAME
 from app.core.permissions import PermissionSearchFilter
 from app.core.query_embeddings import InvalidQueryEmbeddingError, QueryEmbeddingResult
+from app.core.reranked_search import RERANKED_SEARCH_PROFILE_NAME
+from app.core.rerankers import RERANK_RETRIEVAL_STRATEGY
 from app.core.search_compare import (
     SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED,
     SEARCH_COMPARE_PROFILE_STATUS_FAILED,
@@ -67,17 +69,24 @@ def _query_embedding_result(profile_name: str) -> QueryEmbeddingResult:
     )
 
 
-def _vector_search_result(profile_name: str) -> VectorSearchResult:
+def _vector_search_result(
+    profile_name: str,
+    *,
+    rank: int = 1,
+    chunk_id: int = 10,
+    score: float = 0.9,
+    chunk_text: str = "policy chunk",
+) -> VectorSearchResult:
     return VectorSearchResult(
         profile_name=profile_name,
-        rank=1,
-        chunk_id=10,
+        rank=rank,
+        chunk_id=chunk_id,
         document_id=20,
         file_id=30,
         distance=0.1,
-        score=0.9,
-        chunk_text="policy chunk",
-        chunk_preview="policy chunk",
+        score=score,
+        chunk_text=chunk_text,
+        chunk_preview=chunk_text,
         content_hash="hash",
         chunk_policy_name="heading_512_64",
         heading_path=("Policy",),
@@ -801,3 +810,188 @@ def test_run_search_compare_executes_hybrid_profile_with_rrf_metadata(monkeypatc
     assert {item.retrieval_strategy for item in captured_result_inputs} == {
         HYBRID_RETRIEVAL_STRATEGY
     }
+
+
+def test_run_search_compare_executes_reranked_profile_with_source_metadata(
+    monkeypatch,
+) -> None:
+    captured_search_log_input = None
+    captured_result_inputs = None
+    captured_vector_input = None
+    captured_trace_ids: list[str] = []
+
+    def fake_embed_query_for_profile(*args, profile_name: str, **kwargs):
+        captured_trace_ids.append(kwargs["trace_id"])
+        assert profile_name == "qwen3_4b_2560"
+        return _query_embedding_result(profile_name)
+
+    def fake_search_similar_chunks(_database_url, query_input):
+        nonlocal captured_vector_input
+        captured_vector_input = query_input
+        return [
+            _vector_search_result(
+                query_input.profile_name,
+                rank=1,
+                chunk_id=10,
+                score=0.91,
+                chunk_text="policy unrelated",
+            ),
+            _vector_search_result(
+                query_input.profile_name,
+                rank=2,
+                chunk_id=12,
+                score=0.86,
+                chunk_text="keyword policy exact answer",
+            ),
+        ]
+
+    def fake_create_search_log(_database_url, search_log_input):
+        nonlocal captured_search_log_input
+        captured_search_log_input = search_log_input
+
+        class SearchLog:
+            search_log_id = 45
+
+        return SearchLog()
+
+    def fake_create_search_log_results(_database_url, result_inputs):
+        nonlocal captured_result_inputs
+        captured_result_inputs = result_inputs
+
+        class SearchLogResult:
+            def __init__(self, search_log_result_id: int) -> None:
+                self.search_log_result_id = search_log_result_id
+
+        return [
+            SearchLogResult(search_log_result_id)
+            for search_log_result_id in range(300, 300 + len(result_inputs))
+        ]
+
+    monkeypatch.setattr(
+        "app.core.search_compare.resolve_permission_search_filter",
+        lambda *args, **kwargs: _permission_filter(),
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._with_permission_explainability",
+        lambda _database_url, _search_input, permission_filter: permission_filter,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.embed_query_for_profile",
+        fake_embed_query_for_profile,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.search_similar_chunks",
+        fake_search_similar_chunks,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._fetch_readiness_profiles",
+        lambda _database_url, profiles: profiles,
+    )
+    monkeypatch.setattr("app.core.search_compare.create_search_log", fake_create_search_log)
+    monkeypatch.setattr(
+        "app.core.search_compare.create_search_log_results",
+        fake_create_search_log_results,
+    )
+
+    result = run_search_compare(
+        "postgresql://unused",
+        SearchCompareInput(
+            query_text="keyword policy",
+            actor_user_id=1,
+            requested_search_scope="company",
+            top_k=2,
+            profiles=(RERANKED_SEARCH_PROFILE_NAME,),
+            chunk_policy_name="heading_512_64",
+            reranked_vector_profile_name="qwen3_4b_2560",
+        ),
+    )
+
+    profile = result.profiles[0]
+    assert profile.profile_name == RERANKED_SEARCH_PROFILE_NAME
+    assert profile.status == SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED
+    assert [item.vector_result.retrieval_strategy for item in profile.results] == [
+        RERANK_RETRIEVAL_STRATEGY,
+        RERANK_RETRIEVAL_STRATEGY,
+    ]
+    assert captured_vector_input is not None
+    assert captured_vector_input.profile_name == "qwen3_4b_2560"
+    assert captured_vector_input.top_k == 8
+    assert captured_trace_ids == ["search-compare:1:reranked_vector_cosine:qwen3_4b_2560"]
+    assert captured_search_log_input is not None
+    assert captured_search_log_input.strategy_name == RERANKED_SEARCH_PROFILE_NAME
+    assert captured_search_log_input.similarity_metric == "cosine"
+    metadata = captured_search_log_input.query_runtime_metadata
+    assert metadata["adapter"] == "search_compare_runtime"
+    assert metadata["query_embedding_profile_count"] == 0
+    assert metadata["reranked_search_profile_count"] == 1
+    assert (
+        metadata["profile_reranked_searches"][RERANKED_SEARCH_PROFILE_NAME][
+            "reranked_vector_profile_name"
+        ]
+        == "qwen3_4b_2560"
+    )
+    assert captured_result_inputs is not None
+    assert {item.search_profile_name for item in captured_result_inputs} == {
+        RERANKED_SEARCH_PROFILE_NAME
+    }
+    assert {item.retrieval_strategy for item in captured_result_inputs} == {
+        RERANK_RETRIEVAL_STRATEGY
+    }
+    top_score_components = captured_result_inputs[0].score_components
+    assert top_score_components["source_profile_name"] == "qwen3_4b_2560"
+    assert top_score_components["source_retrieval_strategy"] == "vector_cosine"
+    assert top_score_components["candidate_count"] == 2
+
+
+def test_validate_search_compare_input_normalizes_reranked_vector_profile_name() -> None:
+    validated = _validate_search_compare_input(
+        SearchCompareInput(
+            query_text="업무 보고서",
+            actor_user_id=1,
+            requested_search_scope="company",
+            profiles=(RERANKED_SEARCH_PROFILE_NAME,),
+            reranked_vector_profile_name=" qwen3_4b_2560 ",
+        )
+    )
+
+    assert validated.reranked_vector_profile_name == "qwen3_4b_2560"
+
+
+def test_run_permission_search_matrix_passes_reranked_vector_profile_name(
+    monkeypatch,
+) -> None:
+    captured_inputs: list[SearchCompareInput] = []
+
+    def fake_run_search_compare(_database_url, search_input, **kwargs):
+        captured_inputs.append(search_input)
+
+        class CompareResult:
+            search_log_id = 500
+            actor_user_id = search_input.actor_user_id
+            requested_search_scope = search_input.requested_search_scope
+            effective_search_scope = search_input.requested_search_scope
+            permission_filter = _permission_filter()
+            profiles = ()
+            total_elapsed_ms = 1
+
+        return CompareResult()
+
+    monkeypatch.setattr("app.core.search_compare.run_search_compare", fake_run_search_compare)
+
+    result = run_permission_search_matrix(
+        "postgresql://unused",
+        SearchPermissionMatrixInput(
+            query_text="policy",
+            entries=(
+                SearchPermissionMatrixEntryInput(
+                    actor_user_id=1,
+                    requested_search_scope="company",
+                ),
+            ),
+            profiles=(RERANKED_SEARCH_PROFILE_NAME,),
+            reranked_vector_profile_name="qwen3_4b_2560",
+        ),
+    )
+
+    assert result.entries[0].search_log_id == 500
+    assert captured_inputs[0].reranked_vector_profile_name == "qwen3_4b_2560"

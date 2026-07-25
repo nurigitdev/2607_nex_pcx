@@ -49,6 +49,18 @@ from app.core.query_embeddings import (
     embed_query_for_profile,
     query_embedding_runtime_metadata,
 )
+from app.core.reranked_search import (
+    RERANKED_SEARCH_PROFILE_NAME,
+    InvalidRerankedSearchError,
+    RerankedSearchResult,
+    rerank_search_results,
+)
+from app.core.rerankers import (
+    DEFAULT_RERANKER_MODEL_ID,
+    DEFAULT_RERANKER_PROFILE_NAME,
+    DEFAULT_RERANKER_PROVIDER_TYPE,
+    RERANK_RETRIEVAL_STRATEGY,
+)
 from app.core.search_logs import (
     SearchLogInput,
     SearchLogResultInput,
@@ -56,6 +68,7 @@ from app.core.search_logs import (
     create_search_log_results,
 )
 from app.core.vector_search import (
+    MAX_TOP_K,
     InvalidVectorSearchError,
     VectorSearchInput,
     VectorSearchResult,
@@ -70,8 +83,10 @@ SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED = "query_embedding_failed"
 SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED = "vector_search_failed"
 SEARCH_COMPARE_PROFILE_ERROR_KEYWORD_SEARCH_FAILED = "keyword_search_failed"
 SEARCH_COMPARE_PROFILE_ERROR_HYBRID_SEARCH_FAILED = "hybrid_search_failed"
+SEARCH_COMPARE_PROFILE_ERROR_RERANKED_SEARCH_FAILED = "reranked_search_failed"
+DEFAULT_RERANK_CANDIDATE_MULTIPLIER = 4
 
-SearchResultLike = VectorSearchResult | BM25SearchResult | HybridSearchResult
+SearchResultLike = VectorSearchResult | BM25SearchResult | HybridSearchResult | RerankedSearchResult
 
 
 @dataclass(frozen=True)
@@ -86,6 +101,7 @@ class SearchCompareInput:
     file_type: str | None = None
     bm25_tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME
     hybrid_vector_profile_name: str | None = None
+    reranked_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -250,6 +266,7 @@ class SearchPermissionMatrixInput:
     file_type: str | None = None
     bm25_tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME
     hybrid_vector_profile_name: str | None = None
+    reranked_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -340,6 +357,10 @@ def _validate_search_compare_input(search_input: SearchCompareInput) -> SearchCo
             search_input.hybrid_vector_profile_name,
             "hybrid_vector_profile_name",
         ),
+        reranked_vector_profile_name=_validate_nonblank(
+            search_input.reranked_vector_profile_name,
+            "reranked_vector_profile_name",
+        ),
         allow_mock_fallback=search_input.allow_mock_fallback,
     )
 
@@ -385,6 +406,7 @@ def _validate_permission_matrix_input(
             file_type=matrix_input.file_type,
             bm25_tokenizer_name=matrix_input.bm25_tokenizer_name,
             hybrid_vector_profile_name=matrix_input.hybrid_vector_profile_name,
+            reranked_vector_profile_name=matrix_input.reranked_vector_profile_name,
             allow_mock_fallback=matrix_input.allow_mock_fallback,
         )
     )
@@ -398,6 +420,7 @@ def _validate_permission_matrix_input(
         file_type=common.file_type,
         bm25_tokenizer_name=common.bm25_tokenizer_name,
         hybrid_vector_profile_name=common.hybrid_vector_profile_name,
+        reranked_vector_profile_name=common.reranked_vector_profile_name,
         allow_mock_fallback=common.allow_mock_fallback,
     )
 
@@ -1022,11 +1045,20 @@ def _search_compare_query_runtime_metadata(
         for profile_name, metadata in profiles.items()
         if metadata.get("retrieval_strategy") == HYBRID_RETRIEVAL_STRATEGY
     }
+    reranked_search_profiles = {
+        profile_name: metadata
+        for profile_name, metadata in profiles.items()
+        if metadata.get("retrieval_strategy") == RERANK_RETRIEVAL_STRATEGY
+    }
     query_embedding_profiles = {
         profile_name: metadata
         for profile_name, metadata in profiles.items()
         if metadata.get("retrieval_strategy")
-        not in {BM25_RETRIEVAL_STRATEGY, HYBRID_RETRIEVAL_STRATEGY}
+        not in {
+            BM25_RETRIEVAL_STRATEGY,
+            HYBRID_RETRIEVAL_STRATEGY,
+            RERANK_RETRIEVAL_STRATEGY,
+        }
     }
     keyword_search_profiles = {
         profile_name: metadata
@@ -1076,7 +1108,9 @@ def _search_compare_query_runtime_metadata(
     return {
         "adapter": (
             "query_embedding_bridge"
-            if not keyword_search_profiles and not hybrid_search_profiles
+            if not keyword_search_profiles
+            and not hybrid_search_profiles
+            and not reranked_search_profiles
             else "search_compare_runtime"
         ),
         "search_mode": "compare_mvp",
@@ -1088,6 +1122,7 @@ def _search_compare_query_runtime_metadata(
         "query_embedding_success_count": len(query_embedding_profiles),
         "keyword_search_profile_count": len(keyword_search_profiles),
         "hybrid_search_profile_count": len(hybrid_search_profiles),
+        "reranked_search_profile_count": len(reranked_search_profiles),
         "profile_status_counts": status_counts,
         "profile_failure_count": status_counts.get(SEARCH_COMPARE_PROFILE_STATUS_FAILED, 0),
         "query_embedding_provider_types": provider_types,
@@ -1095,6 +1130,7 @@ def _search_compare_query_runtime_metadata(
         "profile_query_embeddings": query_embedding_profiles,
         "profile_keyword_searches": keyword_search_profiles,
         "profile_hybrid_searches": hybrid_search_profiles,
+        "profile_reranked_searches": reranked_search_profiles,
         "bm25_tokenizer_name": bm25_tokenizer_names[0] if len(bm25_tokenizer_names) == 1 else None,
         "bm25_tokenizer_names": bm25_tokenizer_names,
         "profile_failures": profile_failures,
@@ -1108,6 +1144,8 @@ def _profile_error_code(exc: Exception) -> str:
         return SEARCH_COMPARE_PROFILE_ERROR_KEYWORD_SEARCH_FAILED
     if isinstance(exc, InvalidHybridSearchError):
         return SEARCH_COMPARE_PROFILE_ERROR_HYBRID_SEARCH_FAILED
+    if isinstance(exc, InvalidRerankedSearchError):
+        return SEARCH_COMPARE_PROFILE_ERROR_RERANKED_SEARCH_FAILED
     return SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED
 
 
@@ -1117,6 +1155,10 @@ def _is_bm25_search_profile(profile_name: str) -> bool:
 
 def _is_hybrid_search_profile(profile_name: str) -> bool:
     return profile_name == HYBRID_SEARCH_PROFILE_NAME
+
+
+def _is_reranked_search_profile(profile_name: str) -> bool:
+    return profile_name == RERANKED_SEARCH_PROFILE_NAME
 
 
 def _bm25_query_runtime_metadata(
@@ -1167,6 +1209,41 @@ def _hybrid_query_runtime_metadata(
     }
 
 
+def _reranked_query_runtime_metadata(
+    *,
+    vector_profile_name: str,
+    candidate_top_k: int,
+    vector_query_runtime_metadata: dict[str, object],
+    results: tuple[RerankedSearchResult, ...],
+) -> dict[str, object]:
+    score_components = results[0].score_components if results else {}
+    return {
+        "provider_type": "rerank",
+        "provider_model_id": str(
+            score_components.get("reranker_model_id", DEFAULT_RERANKER_MODEL_ID)
+        ),
+        "runtime_source": "local_reranker_contract",
+        "query_embedding_bridge": True,
+        "retrieval_strategy": RERANK_RETRIEVAL_STRATEGY,
+        "search_profile_name": RERANKED_SEARCH_PROFILE_NAME,
+        "reranked_vector_profile_name": vector_profile_name,
+        "source_vector_profile_name": vector_profile_name,
+        "candidate_top_k": candidate_top_k,
+        "candidate_multiplier": DEFAULT_RERANK_CANDIDATE_MULTIPLIER,
+        "reranker_profile_name": str(
+            score_components.get("reranker_profile_name", DEFAULT_RERANKER_PROFILE_NAME)
+        ),
+        "reranker_model_id": str(
+            score_components.get("reranker_model_id", DEFAULT_RERANKER_MODEL_ID)
+        ),
+        "reranker_provider_type": str(
+            score_components.get("reranker_provider_type", DEFAULT_RERANKER_PROVIDER_TYPE)
+        ),
+        "candidate_count": int(score_components.get("candidate_count", 0)),
+        "source_query_runtime_metadata": vector_query_runtime_metadata,
+    }
+
+
 def _resolve_hybrid_vector_profile(
     database_url: str,
     search_input: SearchCompareInput,
@@ -1186,6 +1263,30 @@ def _resolve_hybrid_vector_profile(
     return _default_profiles(database_url)[0]
 
 
+def _resolve_reranked_vector_profile(
+    database_url: str,
+    search_input: SearchCompareInput,
+    profiles: tuple[str, ...],
+) -> str | None:
+    if not any(_is_reranked_search_profile(profile_name) for profile_name in profiles):
+        return None
+    if search_input.reranked_vector_profile_name is not None:
+        return _fetch_readiness_profiles(
+            database_url,
+            (search_input.reranked_vector_profile_name,),
+        )[0]
+    for profile_name in profiles:
+        if not any(
+            (
+                _is_bm25_search_profile(profile_name),
+                _is_hybrid_search_profile(profile_name),
+                _is_reranked_search_profile(profile_name),
+            )
+        ):
+            return _fetch_readiness_profiles(database_url, (profile_name,))[0]
+    return _default_profiles(database_url)[0]
+
+
 def _search_compare_strategy_name(profiles: tuple[str, ...]) -> str:
     bm25_profile_count = sum(
         1 for profile_name in profiles if _is_bm25_search_profile(profile_name)
@@ -1193,9 +1294,14 @@ def _search_compare_strategy_name(profiles: tuple[str, ...]) -> str:
     hybrid_profile_count = sum(
         1 for profile_name in profiles if _is_hybrid_search_profile(profile_name)
     )
+    reranked_profile_count = sum(
+        1 for profile_name in profiles if _is_reranked_search_profile(profile_name)
+    )
+    if reranked_profile_count == len(profiles):
+        return RERANKED_SEARCH_PROFILE_NAME
     if hybrid_profile_count == len(profiles):
         return HYBRID_RETRIEVAL_STRATEGY
-    if hybrid_profile_count > 0:
+    if hybrid_profile_count > 0 or reranked_profile_count > 0:
         return "mixed_search_profiles"
     if bm25_profile_count == 0:
         return "vector_cosine"
@@ -1257,6 +1363,11 @@ def run_search_compare(
         permission_filter,
     )
     hybrid_vector_profile_name = _resolve_hybrid_vector_profile(
+        database_url,
+        validated,
+        profiles,
+    )
+    reranked_vector_profile_name = _resolve_reranked_vector_profile(
         database_url,
         validated,
         profiles,
@@ -1345,6 +1456,49 @@ def run_search_compare(
                     candidate_top_k=hybrid_input.candidate_top_k,
                     vector_query_runtime_metadata=query_embedding_runtime_metadata(query_embedding),
                 )
+            elif _is_reranked_search_profile(profile_name):
+                if reranked_vector_profile_name is None:
+                    raise InvalidRerankedSearchError("reranked_vector_profile_name is required")
+                candidate_top_k = min(
+                    MAX_TOP_K,
+                    validated.top_k * DEFAULT_RERANK_CANDIDATE_MULTIPLIER,
+                )
+                query_embedding = embed_query_for_profile(
+                    database_url,
+                    query_text=validated.query_text,
+                    profile_name=reranked_vector_profile_name,
+                    fallback_runtime_config=fallback_config,
+                    provider_builder=query_embedding_provider_builder,
+                    trace_id=(
+                        f"search-compare:{validated.actor_user_id}:"
+                        f"{RERANKED_SEARCH_PROFILE_NAME}:{reranked_vector_profile_name}"
+                    ),
+                    allow_mock_fallback=validated.allow_mock_fallback,
+                )
+                vector_results = search_similar_chunks(
+                    database_url,
+                    VectorSearchInput(
+                        query_text=validated.query_text,
+                        profile_name=reranked_vector_profile_name,
+                        top_k=candidate_top_k,
+                        query_embedding=query_embedding.embedding,
+                        chunk_policy_name=validated.chunk_policy_name,
+                        document_group=validated.document_group,
+                        file_type=validated.file_type,
+                        permission_filter=permission_filter,
+                    ),
+                )
+                results = rerank_search_results(
+                    query_text=validated.query_text,
+                    results=tuple(vector_results),
+                    top_k=validated.top_k,
+                )
+                query_runtime_metadata = _reranked_query_runtime_metadata(
+                    vector_profile_name=reranked_vector_profile_name,
+                    candidate_top_k=candidate_top_k,
+                    vector_query_runtime_metadata=query_embedding_runtime_metadata(query_embedding),
+                    results=results,
+                )
             else:
                 query_embedding = embed_query_for_profile(
                     database_url,
@@ -1383,6 +1537,7 @@ def run_search_compare(
             InvalidVectorSearchError,
             InvalidBM25SearchError,
             InvalidHybridSearchError,
+            InvalidRerankedSearchError,
         ) as exc:
             raw_profile_results.append(
                 _failed_profile_result(
@@ -1477,7 +1632,7 @@ def run_search_compare(
 
 def _first_profile_top_result(
     profiles: tuple[SearchCompareProfileResult, ...],
-) -> VectorSearchResult | None:
+) -> SearchResultLike | None:
     for profile in profiles:
         if profile.results:
             return profile.results[0].vector_result
@@ -1512,6 +1667,7 @@ def run_permission_search_matrix(
                 file_type=validated.file_type,
                 bm25_tokenizer_name=validated.bm25_tokenizer_name,
                 hybrid_vector_profile_name=validated.hybrid_vector_profile_name,
+                reranked_vector_profile_name=validated.reranked_vector_profile_name,
                 allow_mock_fallback=validated.allow_mock_fallback,
             ),
             fallback_runtime_config=fallback_runtime_config,

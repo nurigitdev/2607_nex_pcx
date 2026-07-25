@@ -99,12 +99,18 @@ SEARCH_STRATEGY_REGISTRY: dict[str, SearchStrategyDefinition] = {
     "reranked_vector_cosine": SearchStrategyDefinition(
         strategy_name="reranked_vector_cosine",
         display_name="Reranked Vector Cosine",
-        description="Planned vector retrieval followed by reranking.",
+        description="Vector retrieval followed by Qwen-style reranking.",
         mode="rerank",
-        stage="planned",
+        stage="active",
         similarity_metric="cosine",
         supports_score_threshold=True,
-        runtime_parameters={"planned": True},
+        runtime_parameters={
+            "source_strategy": "vector_cosine",
+            "retrieval_strategy": "reranked",
+            "reranker_profile_name": "qwen3_reranker_4b",
+            "reranker_model_id": "Qwen/Qwen3-Reranker-4B",
+            "candidate_multiplier": 4,
+        },
     ),
 }
 

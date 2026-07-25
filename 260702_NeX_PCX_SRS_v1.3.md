@@ -42,6 +42,7 @@
 | 1.15 | 2026-07-25 | Search Compare UI의 Hybrid RRF profile 선택, hybrid vector-side profile 제어 요구사항 보강 |
 | 1.16 | 2026-07-25 | Reranker runtime contract foundation, Qwen3-Reranker-4B provider 계약과 mock baseline 요구사항 보강 |
 | 1.17 | 2026-07-25 | Reranked search result core foundation, source score/rank 보존과 rerank score component 요구사항 보강 |
+| 1.18 | 2026-07-25 | Search Compare API의 reranked_vector_cosine profile 실행, source vector profile 및 reranker metadata 재현성 요구사항 보강 |
 
 # 목차
 
@@ -456,6 +457,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Search Compare UI는 Hybrid RRF profile을 명시적으로 선택할 수 있어야 하며, 선택 시 BM25 tokenizer와 결합 대상 embedding profile을 함께 지정할 수 있어야 한다.
 - Reranking은 1차로 검색 후보 chunk text를 query와 함께 reranker provider에 전달해 rerank score/rank를 받는 독립 계약으로 정의한다. Qwen3-Reranker-4B는 remote provider 후보로 관리하되, 개발/테스트 환경에서는 deterministic mock lexical-overlap reranker로 API와 로그 계약을 먼저 검증할 수 있어야 한다.
 - Reranked search result는 원본 vector/BM25/hybrid 후보의 source profile, retrieval strategy, source rank, source score, source score_components를 보존하고, reranker profile/model/provider와 rerank score를 별도 score_components로 기록해야 한다.
+- Search Compare API는 `reranked_vector_cosine` profile을 실행할 때 reranked_vector_profile_name을 명시하거나 선택된 embedding profile 중 첫 번째 active profile을 source vector 후보 검색에 사용하며, source vector profile, candidate_top_k, reranker profile/model/provider를 search runtime metadata와 result score_components에 기록해야 한다.
 
 - 검색 결과에는 rank, score/distance, 문서명, page/slide/sheet, heading_path, chunk preview, 피드백 버튼을 포함한다.
 
@@ -639,7 +641,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | pipeline_jobs | 문서 처리 파이프라인의 상위 job, stage, status, lease, 진행률 |
 | pipeline_job_events | pipeline job 상태 변경과 진행률 변경 이력 |
 | embedding_profiles | 모델명, dimension, storage type, runtime 설정 등 profile metadata |
-| search_profiles | 검색 비교용 profile/lane metadata. embedding profile, BM25 baseline, hybrid strategy를 포괄 |
+| search_profiles | 검색 비교용 profile/lane metadata. embedding profile, BM25 baseline, hybrid, reranked strategy를 포괄 |
 | embedding_jobs | chunk/profile별 embedding 작업 상태와 재시도 정보 |
 | chunk_embeddings_kure_v1_1024 | KURE-v1 1024차원 embedding 저장 |
 | chunk_embeddings_bge_m3_1024 | bge-m3 1024차원 embedding 저장 |

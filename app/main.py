@@ -460,6 +460,7 @@ from app.core.pipeline_jobs import (
     retry_pipeline_job,
 )
 from app.core.query_embeddings import InvalidQueryEmbeddingError
+from app.core.reranked_search import RERANKED_SEARCH_PROFILE_NAME
 from app.core.search_compare import (
     InvalidSearchCompareError,
     SearchCompareCoverageReconcileInput,
@@ -582,6 +583,7 @@ class SearchCompareRequest(BaseModel):
     file_type: str | None = None
     bm25_tokenizer_name: str | None = None
     hybrid_vector_profile_name: str | None = None
+    reranked_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -599,6 +601,7 @@ class SearchChunkPolicyCompareRequest(BaseModel):
     file_type: str | None = None
     bm25_tokenizer_name: str | None = None
     hybrid_vector_profile_name: str | None = None
+    reranked_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -670,6 +673,7 @@ class SearchPermissionMatrixRequest(BaseModel):
     file_type: str | None = None
     bm25_tokenizer_name: str | None = None
     hybrid_vector_profile_name: str | None = None
+    reranked_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -4757,6 +4761,24 @@ def search_log_bm25_tokenizer_name(query_runtime_metadata: dict[str, object]) ->
     return None
 
 
+def search_log_reranked_vector_profile_name(
+    query_runtime_metadata: dict[str, object],
+) -> str | None:
+    profile_reranked_searches = query_runtime_metadata.get("profile_reranked_searches")
+    if not isinstance(profile_reranked_searches, dict):
+        return None
+    profile_metadata = profile_reranked_searches.get(RERANKED_SEARCH_PROFILE_NAME)
+    if not isinstance(profile_metadata, dict):
+        return None
+    value = profile_metadata.get("reranked_vector_profile_name") or profile_metadata.get(
+        "source_vector_profile_name"
+    )
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 def search_log_replay_url(search_log: SearchLogRecord) -> str:
     query_params: dict[str, object] = {
         "replay_search_log_id": search_log.search_log_id,
@@ -4771,6 +4793,9 @@ def search_log_replay_url(search_log: SearchLogRecord) -> str:
         "file_type": search_log.file_type,
         "chunk_policy_name": search_log.chunk_policy_name,
         "bm25_tokenizer_name": search_log_bm25_tokenizer_name(search_log.query_runtime_metadata),
+        "reranked_vector_profile_name": search_log_reranked_vector_profile_name(
+            search_log.query_runtime_metadata
+        ),
     }
     for key, value in optional_params.items():
         if value:
@@ -4824,6 +4849,9 @@ def search_compare_prefill_payload(
         "bm25_tokenizer_name": bm25_tokenizer_name,
         "hybrid_vector_profile_name": (
             query_params.get("hybrid_vector_profile_name") or ""
+        ).strip(),
+        "reranked_vector_profile_name": (
+            query_params.get("reranked_vector_profile_name") or ""
         ).strip(),
         "profiles": profiles,
         "profile_selection_explicit": bool(query_params.getlist("profiles")),
@@ -10561,6 +10589,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         search_log_bm25_tokenizer_name(source_log.query_runtime_metadata)
                         or DEFAULT_BM25_TOKENIZER_NAME
                     ),
+                    reranked_vector_profile_name=search_log_reranked_vector_profile_name(
+                        source_log.query_runtime_metadata
+                    ),
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
             )
@@ -10663,6 +10694,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
                     ),
                     hybrid_vector_profile_name=payload.hybrid_vector_profile_name,
+                    reranked_vector_profile_name=payload.reranked_vector_profile_name,
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
@@ -10738,6 +10770,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                 payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
                             ),
                             hybrid_vector_profile_name=payload.hybrid_vector_profile_name,
+                            reranked_vector_profile_name=payload.reranked_vector_profile_name,
                             allow_mock_fallback=payload.allow_mock_fallback,
                         ),
                         fallback_runtime_config=(
@@ -10770,6 +10803,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "file_type": payload.file_type,
                 "bm25_tokenizer_name": payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME,
                 "hybrid_vector_profile_name": payload.hybrid_vector_profile_name,
+                "reranked_vector_profile_name": payload.reranked_vector_profile_name,
                 "policy_count": len(runs),
                 "shared_chunk_count": len(shared_chunk_ids),
                 "shared_chunk_ids": shared_chunk_ids,
@@ -11158,6 +11192,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
                     ),
                     hybrid_vector_profile_name=payload.hybrid_vector_profile_name,
+                    reranked_vector_profile_name=payload.reranked_vector_profile_name,
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
