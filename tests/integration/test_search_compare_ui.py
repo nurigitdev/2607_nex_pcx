@@ -43,6 +43,15 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert 'value="bm25_keyword"' in response.text
     assert "BM25 Keyword" in response.text
     assert 'data-profile-kind="keyword"' in response.text
+    assert 'value="hybrid_keyword_vector"' in response.text
+    assert "Hybrid RRF" in response.text
+    assert 'data-profile-kind="hybrid"' in response.text
+    assert 'id="hybrid_vector_profile_name"' in response.text
+    assert "Hybrid Vector Profile" in response.text
+    assert 'name="hybrid_vector_profile_name"' in response.text
+    assert "hybrid_vector_profile_name: fieldValue" in response.text
+    assert "updateHybridVectorProfileAvailability" in response.text
+    assert "selectedReadinessProfiles" in response.text
     assert "selectedEmbeddingProfiles" in response.text
     assert "keywordProfileNames" in response.text
     assert 'makeCell("strategy"' in response.text
@@ -72,7 +81,7 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert 'value="mecab_ko_morph_v1"' in response.text
     assert "Unicode Word + Korean 2/3-gram" in response.text
     assert "Mecab-ko Morph" in response.text
-    assert "BM25 Keyword profile에만 적용" in response.text
+    assert "BM25 Keyword와 Hybrid profile에 적용" in response.text
     assert "bm25_tokenizer_name: fieldValue" in response.text
     assert "updateBM25TokenizerAvailability" in response.text
     assert "runtimeLabels.tokenizer" in response.text

@@ -132,7 +132,7 @@
       <div class="form-text">{{ t("search_compare.chunk_policy_help") }}</div>
     </div>
 
-    {% set bm25_selected = (not search_prefill.profile_selection_explicit) or "bm25_keyword" in search_prefill.profiles %}
+    {% set bm25_selected = (not search_prefill.profile_selection_explicit) or "bm25_keyword" in search_prefill.profiles or "hybrid_keyword_vector" in search_prefill.profiles %}
     <div>
       <label class="form-label" for="bm25_tokenizer_name">{{ t("search_compare.bm25_tokenizer") }}</label>
       <select
@@ -162,6 +162,27 @@
       <div class="form-text">{{ t("search_compare.bm25_tokenizer_help") }}</div>
     </div>
 
+    {% set hybrid_selected = "hybrid_keyword_vector" in search_prefill.profiles %}
+    <div class="search-hybrid-profile-field">
+      <label class="form-label" for="hybrid_vector_profile_name">{{ t("search_compare.hybrid_vector_profile") }}</label>
+      <select
+        class="form-select"
+        id="hybrid_vector_profile_name"
+        name="hybrid_vector_profile_name"
+        {% if not database_configured or not hybrid_selected %}disabled{% endif %}
+      >
+        {% for profile in embedding_profile_options %}
+        <option
+          value="{{ profile }}"
+          {% if profile == search_prefill.hybrid_vector_profile_name %}selected{% endif %}
+        >
+          {{ profile }}
+        </option>
+        {% endfor %}
+      </select>
+      <div class="form-text">{{ t("search_compare.hybrid_vector_profile_help") }}</div>
+    </div>
+
     <div class="search-provider-mode-field">
       <label class="form-label">{{ t("search_compare.provider_mode") }}</label>
       <label class="form-check search-provider-mode-check">
@@ -184,22 +205,26 @@
       <div class="search-profile-list">
         {% for profile in profile_options %}
         {% set is_keyword_profile = profile == "bm25_keyword" %}
+        {% set is_hybrid_profile = profile == "hybrid_keyword_vector" %}
         <label
-          class="search-profile-option{% if is_keyword_profile %} search-profile-option-keyword{% endif %}"
-          data-profile-kind="{% if is_keyword_profile %}keyword{% else %}embedding{% endif %}"
+          class="search-profile-option{% if is_keyword_profile %} search-profile-option-keyword{% elif is_hybrid_profile %} search-profile-option-hybrid{% endif %}"
+          data-profile-kind="{% if is_keyword_profile %}keyword{% elif is_hybrid_profile %}hybrid{% else %}embedding{% endif %}"
         >
           <input
             class="form-check-input"
             type="checkbox"
             name="profiles"
             value="{{ profile }}"
-            {% if (not search_prefill.profile_selection_explicit) or profile in search_prefill.profiles %}
+            {% if profile in search_prefill.profiles or ((not search_prefill.profile_selection_explicit) and (not is_hybrid_profile)) %}
             checked
             {% endif %}
             {% if not database_configured %}disabled{% endif %}
           >
           {% if is_keyword_profile %}
           <span class="search-profile-option-name">BM25 Keyword</span>
+          <span class="search-profile-option-code">{{ profile }}</span>
+          {% elif is_hybrid_profile %}
+          <span class="search-profile-option-name">{{ t("search_compare.hybrid_profile") }}</span>
           <span class="search-profile-option-code">{{ profile }}</span>
           {% else %}
           <span class="search-profile-option-name">{{ profile }}</span>
@@ -488,6 +513,7 @@
   const feedbackSummaryRefresh = document.getElementById("feedback-summary-refresh");
   const feedbackCommentsList = document.getElementById("feedback-comments-list");
   const feedbackCommentsMeta = document.getElementById("feedback-comments-meta");
+  const hybridVectorProfileSelect = document.getElementById("hybrid_vector_profile_name");
   const canLoadFeedbackSummary = {{ "true" if database_configured else "false" }};
   const matrixLimit = 12;
   const policyCompareLimit = 8;
@@ -661,15 +687,40 @@
   const selectedProfiles = () =>
     new FormData(form).getAll("profiles").filter(Boolean);
   const keywordProfileNames = new Set(["bm25_keyword"]);
+  const hybridProfileNames = new Set(["hybrid_keyword_vector"]);
   const hasSelectedKeywordProfile = () =>
     selectedProfiles().some((profile) => keywordProfileNames.has(profile));
+  const hasSelectedHybridProfile = () =>
+    selectedProfiles().some((profile) => hybridProfileNames.has(profile));
   const selectedEmbeddingProfiles = () =>
-    selectedProfiles().filter((profile) => !keywordProfileNames.has(profile));
+    selectedProfiles().filter(
+      (profile) => !keywordProfileNames.has(profile) && !hybridProfileNames.has(profile),
+    );
+  const selectedReadinessProfiles = () => {
+    const profiles = selectedEmbeddingProfiles();
+    const hybridVectorProfile = fieldValue("hybrid_vector_profile_name");
+    if (
+      hasSelectedHybridProfile()
+      && hybridVectorProfile
+      && !profiles.includes(hybridVectorProfile)
+    ) {
+      profiles.push(hybridVectorProfile);
+    }
+    return profiles;
+  };
   const updateBM25TokenizerAvailability = () => {
     if (!bm25TokenizerSelect) {
       return;
     }
-    bm25TokenizerSelect.disabled = !canLoadFeedbackSummary || !hasSelectedKeywordProfile();
+    bm25TokenizerSelect.disabled = !canLoadFeedbackSummary || (
+      !hasSelectedKeywordProfile() && !hasSelectedHybridProfile()
+    );
+  };
+  const updateHybridVectorProfileAvailability = () => {
+    if (!hybridVectorProfileSelect) {
+      return;
+    }
+    hybridVectorProfileSelect.disabled = !canLoadFeedbackSummary || !hasSelectedHybridProfile();
   };
 
   const selectedPolicyCompareNames = () => Array.from(
@@ -1453,6 +1504,7 @@
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
       bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
+      hybrid_vector_profile_name: fieldValue("hybrid_vector_profile_name"),
       allow_mock_fallback: !new FormData(form).has("require_real_provider"),
       entries: entries.map((entry) => ({
         actor_user_id: entry.actor_user_id,
@@ -1596,6 +1648,7 @@
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
       bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
+      hybrid_vector_profile_name: fieldValue("hybrid_vector_profile_name"),
       allow_mock_fallback: !formData.has("require_real_provider"),
     };
 
@@ -2100,6 +2153,7 @@
       document_group: fieldValue("document_group"),
       file_type: fieldValue("file_type"),
       bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
+      hybrid_vector_profile_name: fieldValue("hybrid_vector_profile_name"),
       allow_mock_fallback: !formData.has("require_real_provider"),
     };
 
@@ -2157,6 +2211,7 @@
   form.addEventListener("change", () => {
     stopReadinessAutoRefresh();
     updateBM25TokenizerAvailability();
+    updateHybridVectorProfileAvailability();
     loadReadiness();
   });
   policyCompareForm?.addEventListener("change", () => {
@@ -2168,6 +2223,7 @@
   });
 
   updateBM25TokenizerAvailability();
+  updateHybridVectorProfileAvailability();
   loadReadiness();
   loadFeedbackSummary();
   loadFeedbackComments();

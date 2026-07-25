@@ -39,6 +39,7 @@
 | 1.12 | 2026-07-25 | BM25 tokenizer별 index backfill 제어, coverage/readiness feedback, 운영 보정 요구사항 보강 |
 | 1.13 | 2026-07-25 | Hybrid BM25+Vector RRF 검색 foundation, score component 재현성 요구사항 보강 |
 | 1.14 | 2026-07-25 | Search Compare API의 Hybrid RRF profile 실행, vector/BM25 후보 병합 runtime metadata 요구사항 보강 |
+| 1.15 | 2026-07-25 | Search Compare UI의 Hybrid RRF profile 선택, hybrid vector-side profile 제어 요구사항 보강 |
 
 # 목차
 
@@ -450,6 +451,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Hybrid retrieval은 1차 MVP에서 BM25 top-N과 vector top-N을 Reciprocal Rank Fusion(RRF)으로 결합한다.
 - Hybrid retrieval의 RRF 결과는 vector rank, keyword rank, source별 원 score, RRF 기여도, rrf_k 값을 score_components에 저장해 Search Log와 실험 결과에서 재현 가능해야 한다.
 - Search Compare API는 `hybrid_keyword_vector` profile을 실행할 때 hybrid_vector_profile_name을 명시하거나 선택된 embedding profile 중 첫 번째 active profile을 vector side로 사용하며, 후보 top-N과 RRF 병합 결과를 검색 로그에 기록해야 한다.
+- Search Compare UI는 Hybrid RRF profile을 명시적으로 선택할 수 있어야 하며, 선택 시 BM25 tokenizer와 결합 대상 embedding profile을 함께 지정할 수 있어야 한다.
 
 - 검색 결과에는 rank, score/distance, 문서명, page/slide/sheet, heading_path, chunk preview, 피드백 버튼을 포함한다.
 

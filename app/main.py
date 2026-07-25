@@ -399,6 +399,7 @@ from app.core.golden_search_experiments import (
     InvalidGoldenSearchExperimentError,
     execute_golden_search_experiment_batch,
 )
+from app.core.hybrid_search import HYBRID_SEARCH_PROFILE_NAME
 from app.core.i18n import (
     LANGUAGE_COOKIE_NAME,
     LANGUAGE_OPTIONS,
@@ -4821,6 +4822,9 @@ def search_compare_prefill_payload(
         "file_type": (query_params.get("file_type") or "").strip(),
         "chunk_policy_name": (query_params.get("chunk_policy_name") or "").strip(),
         "bm25_tokenizer_name": bm25_tokenizer_name,
+        "hybrid_vector_profile_name": (
+            query_params.get("hybrid_vector_profile_name") or ""
+        ).strip(),
         "profiles": profiles,
         "profile_selection_explicit": bool(query_params.getlist("profiles")),
         "require_real_provider": (query_params.get("require_real_provider") or "").lower()
@@ -13116,6 +13120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def search_compare_page(request: Request) -> HTMLResponse:
         actor_options: list[dict[str, object]] = []
         profile_options: list[str] = []
+        embedding_profile_options: list[str] = []
         chunk_policy_options: list[ChunkPolicySummaryRecord] = []
         error_message = None
 
@@ -13124,12 +13129,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             try:
                 actor_options = list_search_actor_options(settings.database_url)
-                profile_options = [
+                embedding_profile_options = [
                     profile.profile_name
                     for profile in list_active_embedding_profiles(settings.database_url)
                 ]
+                profile_options = list(embedding_profile_options)
                 if BM25_SEARCH_PROFILE_NAME not in profile_options:
                     profile_options.append(BM25_SEARCH_PROFILE_NAME)
+                if HYBRID_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(HYBRID_SEARCH_PROFILE_NAME)
                 chunk_policy_options = list_chunk_policy_summaries(settings.database_url)
             except Exception as exc:
                 error_message = str(exc)
@@ -13142,6 +13150,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 actor_options=actor_options,
                 profile_options=profile_options,
+                embedding_profile_options=embedding_profile_options,
                 default_actor_id=default_actor_id,
                 search_prefill=search_compare_prefill_payload(request, default_actor_id),
                 search_scope_options=SEARCH_COMPARE_SCOPE_OPTIONS,

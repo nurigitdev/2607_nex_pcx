@@ -2840,6 +2840,12 @@ main.container-fluid {
   color: #134e4a;
 }
 
+.search-profile-option-hybrid {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #312e81;
+}
+
 .search-profile-option-name,
 .search-profile-option-code {
   overflow-wrap: anywhere;
