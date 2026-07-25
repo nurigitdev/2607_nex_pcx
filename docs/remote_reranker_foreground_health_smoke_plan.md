@@ -69,4 +69,11 @@ The smoke passes when `/healthz` returns HTTP 200 with:
 | Slow startup | Increase `--startup-timeout-seconds`; first model load may be slow. |
 | Health mismatch | Compare the JSON payload with the expected health contract above. |
 
-After this health smoke passes, run the request smoke for `/v1/rerank`.
+After this health smoke passes, run the request smoke for `/v1/rerank`:
+
+```bash
+./.venv/bin/python scripts/run_remote_reranker_request_smoke.py \
+  --markdown-output artifacts/remote_reranker_request_smoke.md
+```
+
+See `docs/remote_reranker_request_smoke_runner.md` for request payload and evidence details.
