@@ -15,6 +15,7 @@ from app.core.embedding_vectors import (
     generate_mock_embedding,
     store_chunk_embedding,
 )
+from app.core.hybrid_search import HYBRID_RETRIEVAL_STRATEGY, HYBRID_SEARCH_PROFILE_NAME
 from app.core.search_logs import (
     SearchLogInput,
     SearchLogResultInput,
@@ -1233,6 +1234,122 @@ def test_search_compare_api_returns_bm25_keyword_profile_results(
         assert result_row["retrieval_strategy"] == "bm25_keyword"
         assert result_row["distance"] is None
         assert result_row["score_components"]["query_terms"] == ["anchor", "bm25", "keyword"]
+    finally:
+        _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
+        _cleanup_chunk_policy(migrated_database_url, chunk_policy_name)
+
+
+def test_search_compare_api_returns_hybrid_keyword_vector_profile_results(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    document_group = f"slice-317-{uuid4()}"
+    chunk_policy_name = f"hybrid_compare_{uuid4().hex}"
+    _create_chunk_policy(migrated_database_url, chunk_policy_name)
+    visible_file_id, visible_chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="visible hybrid company fixture",
+        owner_user_id=None,
+        owner_org_unit_id=ids["NeX Company"],
+        access_scope="company",
+        chunk_text="Hybrid keyword vector compare anchor anchor",
+        document_group=document_group,
+        chunk_policy_name=chunk_policy_name,
+    )
+    hidden_file_id, hidden_chunk_id = _create_search_compare_chunk(
+        migrated_database_url,
+        title="hidden hybrid personal fixture",
+        owner_user_id=ids["bob.member"],
+        owner_org_unit_id=ids["Business Team"],
+        access_scope="personal",
+        chunk_text="Hybrid keyword vector compare anchor anchor",
+        document_group=document_group,
+        chunk_policy_name=chunk_policy_name,
+    )
+    try:
+        _store_profile_embeddings(
+            migrated_database_url,
+            visible_chunk_id,
+            "Hybrid keyword vector compare anchor anchor",
+        )
+        _store_profile_embeddings(
+            migrated_database_url,
+            hidden_chunk_id,
+            "Hybrid keyword vector compare anchor anchor",
+        )
+        refresh_chunk_policy_keyword_index(
+            migrated_database_url,
+            chunk_policy_name=chunk_policy_name,
+            tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+        )
+        app = create_app(Settings(database_url=migrated_database_url))
+
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/search/compare",
+                json={
+                    "query_text": "hybrid keyword anchor",
+                    "actor_user_id": ids["alice.member"],
+                    "requested_search_scope": "company",
+                    "top_k": 3,
+                    "profiles": [HYBRID_SEARCH_PROFILE_NAME],
+                    "chunk_policy_name": chunk_policy_name,
+                    "document_group": document_group,
+                    "bm25_tokenizer_name": KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+                    "hybrid_vector_profile_name": "kure_v1_1024",
+                },
+            )
+
+        body = response.json()
+        profile = body["profiles"][0]
+        result = profile["results"][0]
+        log_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT strategy_name, similarity_metric, query_runtime_metadata
+            FROM search_logs
+            WHERE search_log_id = %s
+            """,
+            (body["search_log_id"],),
+        )
+        result_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT search_profile_name, retrieval_strategy, score_components
+            FROM search_log_results
+            WHERE search_log_result_id = %s
+            """,
+            (result["search_log_result_id"],),
+        )
+
+        assert response.status_code == 200
+        assert profile["profile_name"] == HYBRID_SEARCH_PROFILE_NAME
+        assert profile["query_runtime_metadata"]["retrieval_strategy"] == (
+            HYBRID_RETRIEVAL_STRATEGY
+        )
+        assert profile["query_runtime_metadata"]["hybrid_vector_profile_name"] == "kure_v1_1024"
+        assert result["chunk_id"] == visible_chunk_id
+        assert result["chunk_id"] != hidden_chunk_id
+        assert result["search_profile_name"] == HYBRID_SEARCH_PROFILE_NAME
+        assert result["retrieval_strategy"] == HYBRID_RETRIEVAL_STRATEGY
+        assert result["score_components"]["fusion"] == "rrf"
+        assert result["score_components"]["source_count"] == 2
+        assert body["profile_status_counts"] == {"succeeded": 1, "failed": 0}
+        assert log_row["strategy_name"] == HYBRID_RETRIEVAL_STRATEGY
+        assert log_row["similarity_metric"] == "cosine"
+        assert log_row["query_runtime_metadata"]["hybrid_search_profile_count"] == 1
+        assert log_row["query_runtime_metadata"]["bm25_tokenizer_name"] == (
+            KOREAN_NGRAM_BM25_TOKENIZER_NAME
+        )
+        assert (
+            log_row["query_runtime_metadata"]["profile_hybrid_searches"][
+                HYBRID_SEARCH_PROFILE_NAME
+            ]["hybrid_vector_profile_name"]
+            == "kure_v1_1024"
+        )
+        assert result_row["search_profile_name"] == HYBRID_SEARCH_PROFILE_NAME
+        assert result_row["retrieval_strategy"] == HYBRID_RETRIEVAL_STRATEGY
+        assert result_row["score_components"]["fusion"] == "rrf"
     finally:
         _cleanup_files(migrated_database_url, [visible_file_id, hidden_file_id])
         _cleanup_chunk_policy(migrated_database_url, chunk_policy_name)

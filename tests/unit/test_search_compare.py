@@ -4,6 +4,7 @@ import pytest
 
 from app.core.bm25_keyword_index import KOREAN_NGRAM_BM25_TOKENIZER_NAME
 from app.core.bm25_search import BM25SearchResult
+from app.core.hybrid_search import HYBRID_RETRIEVAL_STRATEGY, HYBRID_SEARCH_PROFILE_NAME
 from app.core.permissions import PermissionSearchFilter
 from app.core.query_embeddings import InvalidQueryEmbeddingError, QueryEmbeddingResult
 from app.core.search_compare import (
@@ -532,6 +533,10 @@ def test_run_search_compare_returns_profile_failure_without_aborting(monkeypatch
         lambda _database_url, _search_input, permission_filter: permission_filter,
     )
     monkeypatch.setattr(
+        "app.core.search_compare._fetch_readiness_profiles",
+        lambda _database_url, profiles: profiles,
+    )
+    monkeypatch.setattr(
         "app.core.search_compare.embed_query_for_profile",
         fake_embed_query_for_profile,
     )
@@ -617,6 +622,10 @@ def test_run_search_compare_executes_bm25_profile_without_query_embedding(monkey
         lambda _database_url, _search_input, permission_filter: permission_filter,
     )
     monkeypatch.setattr(
+        "app.core.search_compare._fetch_readiness_profiles",
+        lambda _database_url, profiles: profiles,
+    )
+    monkeypatch.setattr(
         "app.core.search_compare.embed_query_for_profile",
         fake_embed_query_for_profile,
     )
@@ -670,3 +679,125 @@ def test_run_search_compare_executes_bm25_profile_without_query_embedding(monkey
     assert captured_result_inputs[0].search_profile_name == "bm25_keyword"
     assert captured_result_inputs[0].retrieval_strategy == "bm25_keyword"
     assert captured_result_inputs[0].score_components == {"query_terms": ["keyword", "policy"]}
+
+
+def test_run_search_compare_executes_hybrid_profile_with_rrf_metadata(monkeypatch) -> None:
+    captured_search_log_input = None
+    captured_result_inputs = None
+    captured_vector_input = None
+    captured_bm25_input = None
+    captured_trace_ids: list[str] = []
+
+    def fake_embed_query_for_profile(*args, profile_name: str, **kwargs):
+        captured_trace_ids.append(kwargs["trace_id"])
+        assert profile_name == "qwen3_4b_2560"
+        return _query_embedding_result(profile_name)
+
+    def fake_search_similar_chunks(_database_url, query_input):
+        nonlocal captured_vector_input
+        captured_vector_input = query_input
+        return [_vector_search_result(query_input.profile_name)]
+
+    def fake_search_bm25_chunks(_database_url, bm25_input):
+        nonlocal captured_bm25_input
+        captured_bm25_input = bm25_input
+        return [_bm25_search_result()]
+
+    def fake_create_search_log(_database_url, search_log_input):
+        nonlocal captured_search_log_input
+        captured_search_log_input = search_log_input
+
+        class SearchLog:
+            search_log_id = 44
+
+        return SearchLog()
+
+    def fake_create_search_log_results(_database_url, result_inputs):
+        nonlocal captured_result_inputs
+        captured_result_inputs = result_inputs
+
+        class SearchLogResult:
+            def __init__(self, search_log_result_id: int) -> None:
+                self.search_log_result_id = search_log_result_id
+
+        return [
+            SearchLogResult(search_log_result_id)
+            for search_log_result_id in range(200, 200 + len(result_inputs))
+        ]
+
+    monkeypatch.setattr(
+        "app.core.search_compare.resolve_permission_search_filter",
+        lambda *args, **kwargs: _permission_filter(),
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._with_permission_explainability",
+        lambda _database_url, _search_input, permission_filter: permission_filter,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.embed_query_for_profile",
+        fake_embed_query_for_profile,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.search_similar_chunks",
+        fake_search_similar_chunks,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._fetch_readiness_profiles",
+        lambda _database_url, profiles: profiles,
+    )
+    monkeypatch.setattr("app.core.search_compare.search_bm25_chunks", fake_search_bm25_chunks)
+    monkeypatch.setattr("app.core.search_compare.create_search_log", fake_create_search_log)
+    monkeypatch.setattr(
+        "app.core.search_compare.create_search_log_results",
+        fake_create_search_log_results,
+    )
+
+    result = run_search_compare(
+        "postgresql://unused",
+        SearchCompareInput(
+            query_text="keyword policy",
+            actor_user_id=1,
+            requested_search_scope="company",
+            top_k=2,
+            profiles=(HYBRID_SEARCH_PROFILE_NAME,),
+            chunk_policy_name="heading_512_64",
+            bm25_tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+            hybrid_vector_profile_name="qwen3_4b_2560",
+        ),
+    )
+
+    profile = result.profiles[0]
+    assert profile.profile_name == HYBRID_SEARCH_PROFILE_NAME
+    assert profile.status == SEARCH_COMPARE_PROFILE_STATUS_SUCCEEDED
+    assert [item.vector_result.retrieval_strategy for item in profile.results] == [
+        HYBRID_RETRIEVAL_STRATEGY,
+        HYBRID_RETRIEVAL_STRATEGY,
+    ]
+    assert captured_vector_input is not None
+    assert captured_vector_input.profile_name == "qwen3_4b_2560"
+    assert captured_vector_input.top_k == 8
+    assert captured_bm25_input is not None
+    assert captured_bm25_input.top_k == 8
+    assert captured_bm25_input.tokenizer_name == KOREAN_NGRAM_BM25_TOKENIZER_NAME
+    assert captured_trace_ids == ["search-compare:1:hybrid_keyword_vector:qwen3_4b_2560"]
+    assert captured_search_log_input is not None
+    assert captured_search_log_input.strategy_name == HYBRID_RETRIEVAL_STRATEGY
+    assert captured_search_log_input.similarity_metric == "cosine"
+    metadata = captured_search_log_input.query_runtime_metadata
+    assert metadata["adapter"] == "search_compare_runtime"
+    assert metadata["query_embedding_profile_count"] == 0
+    assert metadata["hybrid_search_profile_count"] == 1
+    assert metadata["bm25_tokenizer_name"] == KOREAN_NGRAM_BM25_TOKENIZER_NAME
+    assert (
+        metadata["profile_hybrid_searches"][HYBRID_SEARCH_PROFILE_NAME][
+            "hybrid_vector_profile_name"
+        ]
+        == "qwen3_4b_2560"
+    )
+    assert captured_result_inputs is not None
+    assert {item.search_profile_name for item in captured_result_inputs} == {
+        HYBRID_SEARCH_PROFILE_NAME
+    }
+    assert {item.retrieval_strategy for item in captured_result_inputs} == {
+        HYBRID_RETRIEVAL_STRATEGY
+    }

@@ -33,6 +33,15 @@ from app.core.embedding_providers import (
     build_embedding_provider_from_runtime_config,
 )
 from app.core.embedding_vectors import EMBEDDING_VECTOR_TABLES
+from app.core.hybrid_search import (
+    HYBRID_RETRIEVAL_STRATEGY,
+    HYBRID_SEARCH_PROFILE_NAME,
+    HybridSearchInput,
+    HybridSearchResult,
+    InvalidHybridSearchError,
+    reciprocal_rank_fuse_results,
+    validate_hybrid_search_input,
+)
 from app.core.permissions import PermissionSearchFilter, resolve_permission_search_filter
 from app.core.query_embeddings import (
     InvalidQueryEmbeddingError,
@@ -60,8 +69,9 @@ SEARCH_COMPARE_PROFILE_STATUS_FAILED = "failed"
 SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED = "query_embedding_failed"
 SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED = "vector_search_failed"
 SEARCH_COMPARE_PROFILE_ERROR_KEYWORD_SEARCH_FAILED = "keyword_search_failed"
+SEARCH_COMPARE_PROFILE_ERROR_HYBRID_SEARCH_FAILED = "hybrid_search_failed"
 
-SearchResultLike = VectorSearchResult | BM25SearchResult
+SearchResultLike = VectorSearchResult | BM25SearchResult | HybridSearchResult
 
 
 @dataclass(frozen=True)
@@ -75,6 +85,7 @@ class SearchCompareInput:
     document_group: str | None = None
     file_type: str | None = None
     bm25_tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME
+    hybrid_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -238,6 +249,7 @@ class SearchPermissionMatrixInput:
     document_group: str | None = None
     file_type: str | None = None
     bm25_tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME
+    hybrid_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -324,6 +336,10 @@ def _validate_search_compare_input(search_input: SearchCompareInput) -> SearchCo
         document_group=_validate_nonblank(search_input.document_group, "document_group"),
         file_type=_validate_nonblank(search_input.file_type, "file_type"),
         bm25_tokenizer_name=bm25_tokenizer_name,
+        hybrid_vector_profile_name=_validate_nonblank(
+            search_input.hybrid_vector_profile_name,
+            "hybrid_vector_profile_name",
+        ),
         allow_mock_fallback=search_input.allow_mock_fallback,
     )
 
@@ -368,6 +384,7 @@ def _validate_permission_matrix_input(
             document_group=matrix_input.document_group,
             file_type=matrix_input.file_type,
             bm25_tokenizer_name=matrix_input.bm25_tokenizer_name,
+            hybrid_vector_profile_name=matrix_input.hybrid_vector_profile_name,
             allow_mock_fallback=matrix_input.allow_mock_fallback,
         )
     )
@@ -380,6 +397,7 @@ def _validate_permission_matrix_input(
         document_group=common.document_group,
         file_type=common.file_type,
         bm25_tokenizer_name=common.bm25_tokenizer_name,
+        hybrid_vector_profile_name=common.hybrid_vector_profile_name,
         allow_mock_fallback=common.allow_mock_fallback,
     )
 
@@ -999,10 +1017,16 @@ def _search_compare_query_runtime_metadata(
         for profile_result in profile_results
         if profile_result.succeeded
     }
+    hybrid_search_profiles = {
+        profile_name: metadata
+        for profile_name, metadata in profiles.items()
+        if metadata.get("retrieval_strategy") == HYBRID_RETRIEVAL_STRATEGY
+    }
     query_embedding_profiles = {
         profile_name: metadata
         for profile_name, metadata in profiles.items()
-        if metadata.get("retrieval_strategy") != BM25_RETRIEVAL_STRATEGY
+        if metadata.get("retrieval_strategy")
+        not in {BM25_RETRIEVAL_STRATEGY, HYBRID_RETRIEVAL_STRATEGY}
     }
     keyword_search_profiles = {
         profile_name: metadata
@@ -1038,16 +1062,22 @@ def _search_compare_query_runtime_metadata(
         }
     )
     status_counts = _profile_status_counts(profile_results)
-    bm25_tokenizer_names = sorted(
-        {
-            str(profile_metadata["tokenizer_name"])
-            for profile_metadata in keyword_search_profiles.values()
-            if profile_metadata.get("tokenizer_name") is not None
-        }
-    )
+    direct_keyword_tokenizer_names = {
+        str(profile_metadata["tokenizer_name"])
+        for profile_metadata in keyword_search_profiles.values()
+        if profile_metadata.get("tokenizer_name") is not None
+    }
+    hybrid_keyword_tokenizer_names = {
+        str(profile_metadata["bm25_tokenizer_name"])
+        for profile_metadata in hybrid_search_profiles.values()
+        if profile_metadata.get("bm25_tokenizer_name") is not None
+    }
+    bm25_tokenizer_names = sorted(direct_keyword_tokenizer_names | hybrid_keyword_tokenizer_names)
     return {
         "adapter": (
-            "query_embedding_bridge" if not keyword_search_profiles else "search_compare_runtime"
+            "query_embedding_bridge"
+            if not keyword_search_profiles and not hybrid_search_profiles
+            else "search_compare_runtime"
         ),
         "search_mode": "compare_mvp",
         "query_embedding_bridge": has_query_embedding_profile,
@@ -1057,12 +1087,14 @@ def _search_compare_query_runtime_metadata(
         "query_embedding_profile_count": len(query_embedding_profiles),
         "query_embedding_success_count": len(query_embedding_profiles),
         "keyword_search_profile_count": len(keyword_search_profiles),
+        "hybrid_search_profile_count": len(hybrid_search_profiles),
         "profile_status_counts": status_counts,
         "profile_failure_count": status_counts.get(SEARCH_COMPARE_PROFILE_STATUS_FAILED, 0),
         "query_embedding_provider_types": provider_types,
         "query_embedding_runtime_sources": runtime_sources,
         "profile_query_embeddings": query_embedding_profiles,
         "profile_keyword_searches": keyword_search_profiles,
+        "profile_hybrid_searches": hybrid_search_profiles,
         "bm25_tokenizer_name": bm25_tokenizer_names[0] if len(bm25_tokenizer_names) == 1 else None,
         "bm25_tokenizer_names": bm25_tokenizer_names,
         "profile_failures": profile_failures,
@@ -1074,11 +1106,17 @@ def _profile_error_code(exc: Exception) -> str:
         return SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED
     if isinstance(exc, InvalidBM25SearchError):
         return SEARCH_COMPARE_PROFILE_ERROR_KEYWORD_SEARCH_FAILED
+    if isinstance(exc, InvalidHybridSearchError):
+        return SEARCH_COMPARE_PROFILE_ERROR_HYBRID_SEARCH_FAILED
     return SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED
 
 
 def _is_bm25_search_profile(profile_name: str) -> bool:
     return profile_name == BM25_SEARCH_PROFILE_NAME
+
+
+def _is_hybrid_search_profile(profile_name: str) -> bool:
+    return profile_name == HYBRID_SEARCH_PROFILE_NAME
 
 
 def _bm25_query_runtime_metadata(
@@ -1100,10 +1138,65 @@ def _bm25_query_runtime_metadata(
     }
 
 
+def _hybrid_query_runtime_metadata(
+    *,
+    vector_profile_name: str,
+    tokenizer_name: str,
+    k1: float,
+    b: float,
+    rrf_k: int,
+    candidate_top_k: int,
+    vector_query_runtime_metadata: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "provider_type": "hybrid",
+        "provider_model_id": HYBRID_SEARCH_PROFILE_NAME,
+        "runtime_source": "local_hybrid_rrf",
+        "query_embedding_bridge": True,
+        "retrieval_strategy": HYBRID_RETRIEVAL_STRATEGY,
+        "search_profile_name": HYBRID_SEARCH_PROFILE_NAME,
+        "hybrid_vector_profile_name": vector_profile_name,
+        "keyword_profile_name": BM25_SEARCH_PROFILE_NAME,
+        "bm25_tokenizer_name": tokenizer_name,
+        "k1": k1,
+        "b": b,
+        "fusion": "rrf",
+        "rrf_k": rrf_k,
+        "candidate_top_k": candidate_top_k,
+        "vector_query_runtime_metadata": vector_query_runtime_metadata,
+    }
+
+
+def _resolve_hybrid_vector_profile(
+    database_url: str,
+    search_input: SearchCompareInput,
+    profiles: tuple[str, ...],
+) -> str | None:
+    if not any(_is_hybrid_search_profile(profile_name) for profile_name in profiles):
+        return None
+    if search_input.hybrid_vector_profile_name is not None:
+        return _fetch_readiness_profiles(database_url, (search_input.hybrid_vector_profile_name,))[
+            0
+        ]
+    for profile_name in profiles:
+        if not _is_bm25_search_profile(profile_name) and not _is_hybrid_search_profile(
+            profile_name
+        ):
+            return _fetch_readiness_profiles(database_url, (profile_name,))[0]
+    return _default_profiles(database_url)[0]
+
+
 def _search_compare_strategy_name(profiles: tuple[str, ...]) -> str:
     bm25_profile_count = sum(
         1 for profile_name in profiles if _is_bm25_search_profile(profile_name)
     )
+    hybrid_profile_count = sum(
+        1 for profile_name in profiles if _is_hybrid_search_profile(profile_name)
+    )
+    if hybrid_profile_count == len(profiles):
+        return HYBRID_RETRIEVAL_STRATEGY
+    if hybrid_profile_count > 0:
+        return "mixed_search_profiles"
     if bm25_profile_count == 0:
         return "vector_cosine"
     if bm25_profile_count == len(profiles):
@@ -1163,6 +1256,11 @@ def run_search_compare(
         validated,
         permission_filter,
     )
+    hybrid_vector_profile_name = _resolve_hybrid_vector_profile(
+        database_url,
+        validated,
+        profiles,
+    )
 
     started_at = perf_counter()
     raw_profile_results: list[_RawSearchCompareProfileResult] = []
@@ -1184,6 +1282,68 @@ def run_search_compare(
                     tokenizer_name=bm25_input.tokenizer_name,
                     k1=bm25_input.k1,
                     b=bm25_input.b,
+                )
+            elif _is_hybrid_search_profile(profile_name):
+                if hybrid_vector_profile_name is None:
+                    raise InvalidHybridSearchError("hybrid_vector_profile_name is required")
+                hybrid_input = validate_hybrid_search_input(
+                    HybridSearchInput(
+                        query_text=validated.query_text,
+                        vector_profile_name=hybrid_vector_profile_name,
+                        top_k=validated.top_k,
+                        chunk_policy_name=validated.chunk_policy_name,
+                        bm25_tokenizer_name=validated.bm25_tokenizer_name,
+                    )
+                )
+                query_embedding = embed_query_for_profile(
+                    database_url,
+                    query_text=validated.query_text,
+                    profile_name=hybrid_input.vector_profile_name,
+                    fallback_runtime_config=fallback_config,
+                    provider_builder=query_embedding_provider_builder,
+                    trace_id=(
+                        f"search-compare:{validated.actor_user_id}:"
+                        f"{HYBRID_SEARCH_PROFILE_NAME}:{hybrid_input.vector_profile_name}"
+                    ),
+                    allow_mock_fallback=validated.allow_mock_fallback,
+                )
+                vector_results = search_similar_chunks(
+                    database_url,
+                    VectorSearchInput(
+                        query_text=validated.query_text,
+                        profile_name=hybrid_input.vector_profile_name,
+                        top_k=hybrid_input.candidate_top_k,
+                        query_embedding=query_embedding.embedding,
+                        chunk_policy_name=validated.chunk_policy_name,
+                        document_group=validated.document_group,
+                        file_type=validated.file_type,
+                        permission_filter=permission_filter,
+                    ),
+                )
+                bm25_input = BM25SearchInput(
+                    query_text=validated.query_text,
+                    top_k=hybrid_input.candidate_top_k,
+                    chunk_policy_name=validated.chunk_policy_name or DEFAULT_CHUNK_POLICY_NAME,
+                    tokenizer_name=validated.bm25_tokenizer_name,
+                    document_group=validated.document_group,
+                    file_type=validated.file_type,
+                    permission_filter=permission_filter,
+                )
+                keyword_results = search_bm25_chunks(database_url, bm25_input)
+                results = reciprocal_rank_fuse_results(
+                    vector_results=vector_results,
+                    keyword_results=keyword_results,
+                    top_k=hybrid_input.top_k,
+                    rrf_k=hybrid_input.rrf_k,
+                )
+                query_runtime_metadata = _hybrid_query_runtime_metadata(
+                    vector_profile_name=hybrid_input.vector_profile_name,
+                    tokenizer_name=bm25_input.tokenizer_name,
+                    k1=bm25_input.k1,
+                    b=bm25_input.b,
+                    rrf_k=hybrid_input.rrf_k,
+                    candidate_top_k=hybrid_input.candidate_top_k,
+                    vector_query_runtime_metadata=query_embedding_runtime_metadata(query_embedding),
                 )
             else:
                 query_embedding = embed_query_for_profile(
@@ -1222,6 +1382,7 @@ def run_search_compare(
             InvalidQueryEmbeddingError,
             InvalidVectorSearchError,
             InvalidBM25SearchError,
+            InvalidHybridSearchError,
         ) as exc:
             raw_profile_results.append(
                 _failed_profile_result(
@@ -1350,6 +1511,7 @@ def run_permission_search_matrix(
                 document_group=validated.document_group,
                 file_type=validated.file_type,
                 bm25_tokenizer_name=validated.bm25_tokenizer_name,
+                hybrid_vector_profile_name=validated.hybrid_vector_profile_name,
                 allow_mock_fallback=validated.allow_mock_fallback,
             ),
             fallback_runtime_config=fallback_runtime_config,

@@ -580,6 +580,7 @@ class SearchCompareRequest(BaseModel):
     document_group: str | None = None
     file_type: str | None = None
     bm25_tokenizer_name: str | None = None
+    hybrid_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -596,6 +597,7 @@ class SearchChunkPolicyCompareRequest(BaseModel):
     document_group: str | None = None
     file_type: str | None = None
     bm25_tokenizer_name: str | None = None
+    hybrid_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -666,6 +668,7 @@ class SearchPermissionMatrixRequest(BaseModel):
     document_group: str | None = None
     file_type: str | None = None
     bm25_tokenizer_name: str | None = None
+    hybrid_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
 
 
@@ -10655,6 +10658,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     bm25_tokenizer_name=(
                         payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
                     ),
+                    hybrid_vector_profile_name=payload.hybrid_vector_profile_name,
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
@@ -10729,6 +10733,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             bm25_tokenizer_name=(
                                 payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
                             ),
+                            hybrid_vector_profile_name=payload.hybrid_vector_profile_name,
                             allow_mock_fallback=payload.allow_mock_fallback,
                         ),
                         fallback_runtime_config=(
@@ -10760,6 +10765,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "document_group": payload.document_group,
                 "file_type": payload.file_type,
                 "bm25_tokenizer_name": payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME,
+                "hybrid_vector_profile_name": payload.hybrid_vector_profile_name,
                 "policy_count": len(runs),
                 "shared_chunk_count": len(shared_chunk_ids),
                 "shared_chunk_ids": shared_chunk_ids,
@@ -11147,6 +11153,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     bm25_tokenizer_name=(
                         payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
                     ),
+                    hybrid_vector_profile_name=payload.hybrid_vector_profile_name,
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
