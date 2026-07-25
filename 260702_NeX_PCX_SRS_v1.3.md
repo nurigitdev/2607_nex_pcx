@@ -37,6 +37,7 @@
 | 1.10 | 2026-07-21 | Search Compare BM25 tokenizer 선택, 검색 로그 runtime metadata 재현성 요구사항 보강 |
 | 1.11 | 2026-07-24 | Mecab-ko optional BM25 tokenizer foundation, 설치/사전 dependency 상태 표시와 실험 tokenizer 요구사항 보강 |
 | 1.12 | 2026-07-25 | BM25 tokenizer별 index backfill 제어, coverage/readiness feedback, 운영 보정 요구사항 보강 |
+| 1.13 | 2026-07-25 | Hybrid BM25+Vector RRF 검색 foundation, score component 재현성 요구사항 보강 |
 
 # 목차
 
@@ -446,6 +447,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - BM25 coverage 화면은 선택한 tokenizer와 chunk policy 기준으로 term index와 corpus statistics를 backfill할 수 있는 운영 제어를 제공한다. Backfill 결과는 성공/실패 정책 수, tokenizer name, 실행 범위를 feedback으로 표시하고 API payload로도 제공한다.
 
 - Hybrid retrieval은 1차 MVP에서 BM25 top-N과 vector top-N을 Reciprocal Rank Fusion(RRF)으로 결합한다.
+- Hybrid retrieval의 RRF 결과는 vector rank, keyword rank, source별 원 score, RRF 기여도, rrf_k 값을 score_components에 저장해 Search Log와 실험 결과에서 재현 가능해야 한다.
 
 - 검색 결과에는 rank, score/distance, 문서명, page/slide/sheet, heading_path, chunk preview, 피드백 버튼을 포함한다.
 

@@ -84,13 +84,12 @@ SEARCH_STRATEGY_REGISTRY: dict[str, SearchStrategyDefinition] = {
     "hybrid_keyword_vector": SearchStrategyDefinition(
         strategy_name="hybrid_keyword_vector",
         display_name="Hybrid Keyword + Vector",
-        description="Planned BM25 keyword and vector blended retrieval strategy.",
+        description="BM25 keyword and vector blended retrieval strategy using RRF.",
         mode="hybrid",
-        stage="planned",
+        stage="active",
         similarity_metric="cosine",
         supports_score_threshold=True,
         runtime_parameters={
-            "planned": True,
             "keyword_strategy": "bm25_keyword",
             "vector_strategy": "vector_cosine",
             "fusion": "rrf",
