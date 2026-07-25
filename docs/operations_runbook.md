@@ -16,6 +16,8 @@ Operator handoff bundles are documented in
 `docs/operator_handoff_bundle.md`.
 Release tag/version snapshots are documented in
 `docs/release_tag_version_snapshot.md`.
+Remote reranker operations status is documented in
+`docs/remote_reranker_operations_status_api_ui.md`.
 
 ## Scope
 
@@ -39,6 +41,9 @@ export NEX_PCX_EMBEDDING_PROVIDER_SOURCE="route"
 export NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS="true"
 export NEX_PCX_EMBEDDING_ROUTE_READINESS_FAILURE_MODE="defer"
 export NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS="300"
+export NEX_PCX_RERANKER_PROVIDER_MODE="remote"
+export NEX_PCX_REMOTE_RERANKER_PROVIDER_URL="http://192.168.20.243:9104"
+export NEX_PCX_REMOTE_RERANKER_PROVIDER_TIMEOUT_SECONDS="300"
 export NEX_PCX_FOREGROUND_PIPELINE_LIMIT="1"
 export NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE="5"
 export NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS="5"
@@ -54,6 +59,12 @@ Recommended provider route base URLs for the current DGX development server:
 | `bge_m3` | `http://192.168.20.243:9102` |
 | `qwen3_4b_1000` | `http://192.168.20.243:9103` |
 | `qwen3_4b_2560` | `http://192.168.20.243:9103` |
+
+Recommended remote reranker base URL:
+
+| Profile | Base URL |
+| --- | --- |
+| `qwen3_reranker_4b` | `http://192.168.20.243:9104` |
 
 ## Startup Checklist
 

@@ -263,6 +263,7 @@ from app.core.embedding_providers import (
     InvalidEmbeddingProviderError,
     embedding_provider_runtime_config_from_settings,
 )
+from app.core.remote_reranker_operations import get_remote_reranker_operations_status
 from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
     InvalidEmbeddingVectorError,
@@ -8714,6 +8715,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=provider_health.payload,
         )
 
+    @app.get("/api/admin/reranker-provider/status")
+    def api_remote_reranker_provider_operations_status(
+        request_smoke: bool = False,
+    ) -> JSONResponse:
+        operations_status = get_remote_reranker_operations_status(
+            settings,
+            request_smoke=request_smoke,
+        )
+        return JSONResponse(
+            status_code=operations_status.status_code,
+            content=operations_status.payload,
+        )
+
     @app.get("/api/admin/embedding-provider-routes/contract-sample-sets")
     def api_list_embedding_provider_contract_sample_sets(
         active_only: bool = False,
@@ -14450,6 +14464,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 provider_health=provider_health.payload,
                 provider_status_code=provider_health.status_code,
+            ),
+        )
+
+    @app.get("/admin/reranker-provider", response_class=HTMLResponse)
+    def reranker_provider_page(
+        request: Request,
+        request_smoke: bool = Query(False),
+    ) -> HTMLResponse:
+        operations_status = get_remote_reranker_operations_status(
+            settings,
+            request_smoke=request_smoke,
+        )
+        return TEMPLATES.TemplateResponse(
+            request,
+            "reranker_provider.html",
+            template_context(
+                request,
+                operations_status=operations_status.payload,
+                operations_status_code=operations_status.status_code,
+                request_smoke=request_smoke,
             ),
         )
 

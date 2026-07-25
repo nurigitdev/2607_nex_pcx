@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set status_name = operations_status.operations_status %}
+{% set provider = operations_status.provider or {} %}
+{% set health = operations_status.health or {} %}
+{% set smoke = operations_status.request_smoke or {} %}
+{% set runtime = operations_status.app_runtime or {} %}
+{% set status_badge = "success" if operations_status.passed else "danger" %}
+{% set process_badge = "success" if operations_status.status == "running" else "warning" %}
+{% set smoke_badge = "success" if smoke.passed else ("secondary" if not smoke.checked else "danger") %}
+
+<div class="d-flex align-items-center justify-content-between gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("reranker_provider.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("reranker_provider.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary" href="/admin/reranker-provider">{{ t("reranker_provider.refresh") }}</a>
+    <a class="btn btn-primary" href="/admin/reranker-provider?request_smoke=true">{{ t("reranker_provider.run_request_smoke") }}</a>
+    <a class="btn btn-outline-secondary" href="/api/admin/reranker-provider/status">{{ t("common.api") }}</a>
+  </div>
+</div>
+
+<section class="document-detail-grid mb-4">
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("reranker_provider.operations_status") }}</div>
+    <div class="mt-3">
+      <span class="badge text-bg-{{ status_badge }}">{{ t("reranker_provider.status_" ~ status_name) }}</span>
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("reranker_provider.remote_process") }}</div>
+    <div class="mt-3">
+      <span class="badge text-bg-{{ process_badge }}">{{ operations_status.status or "-" }}</span>
+      <span class="ms-2 text-secondary">{{ t("reranker_provider.pid") }}: {{ operations_status.pid or "-" }}</span>
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("reranker_provider.health") }}</div>
+    <div class="mt-3">
+      {% if health.ok %}
+      <span class="badge text-bg-success">{{ t("reranker_provider.ready") }}</span>
+      {% else %}
+      <span class="badge text-bg-danger">{{ t("reranker_provider.not_ready") }}</span>
+      {% endif %}
+      <span class="ms-2 text-secondary">{{ t("reranker_provider.http_status") }}: {{ health.status_code or "-" }}</span>
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("reranker_provider.request_smoke") }}</div>
+    <div class="mt-3">
+      <span class="badge text-bg-{{ smoke_badge }}">
+        {% if smoke.passed %}
+        {{ t("reranker_provider.passed") }}
+        {% elif smoke.checked %}
+        {{ t("reranker_provider.failed") }}
+        {% else %}
+        {{ t("reranker_provider.skipped") }}
+        {% endif %}
+      </span>
+    </div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-reranker-provider-status-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("reranker_provider.provider_detail") }}</h2>
+      <div class="text-secondary">{{ t("reranker_provider.provider_detail_help") }}</div>
+    </div>
+    <a class="btn btn-sm btn-outline-primary" href="/api/admin/reranker-provider/status?request_smoke=true">
+      {{ t("reranker_provider.request_smoke_api") }}
+    </a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <tbody>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.checked_at") }}</th>
+          <td class="model-path">{{ operations_status.checked_at }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.app_runtime_mode") }}</th>
+          <td>
+            <span class="badge text-bg-light border">{{ runtime.mode or "-" }}</span>
+            <span class="ms-2 text-secondary">{{ runtime.status or "-" }}</span>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.configured_url") }}</th>
+          <td class="model-path">{{ runtime.remote_base_url or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.base_url") }}</th>
+          <td class="model-path">{{ provider.base_url or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.provider_name") }}</th>
+          <td>{{ provider.provider_name or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.provider_model_id") }}</th>
+          <td>{{ provider.provider_model_id or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.profile") }}</th>
+          <td>{{ provider.reranker_profile_name or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.backend") }}</th>
+          <td>{{ provider.backend or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.device") }}</th>
+          <td>{{ provider.device or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.ssh_target") }}</th>
+          <td class="model-path">{{ provider.ssh_target or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.pid_file") }}</th>
+          <td class="model-path">{{ provider.pid_file or "-" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("reranker_provider.log_file") }}</th>
+          <td class="model-path">{{ provider.log_file or "-" }}</td>
+        </tr>
+        {% if operations_status.error %}
+        <tr>
+          <th scope="row">{{ t("reranker_provider.error") }}</th>
+          <td class="text-danger">{{ operations_status.error }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if health.mismatches %}
+<section class="metric-card bg-white p-3 mb-4">
+  <div class="metric-label mb-2">{{ t("reranker_provider.mismatches") }}</div>
+  <ul class="mb-0">
+    {% for mismatch in health.mismatches %}
+    <li><code>{{ mismatch }}</code></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if smoke.summary %}
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-reranker-request-smoke-panel>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("reranker_provider.request_smoke_detail") }}</h2>
+      <div class="text-secondary">{{ t("reranker_provider.request_smoke_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("reranker_provider.rank") }}</th>
+          <th>{{ t("reranker_provider.candidate") }}</th>
+          <th class="text-end">{{ t("reranker_provider.score") }}</th>
+          <th class="text-end">{{ t("reranker_provider.source_rank") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for preview in smoke.summary.result_previews or [] %}
+        <tr>
+          <td>{{ preview.rank }}</td>
+          <td><code>{{ preview.candidate_key }}</code></td>
+          <td class="text-end">{{ "%.6f"|format(preview.score) }}</td>
+          <td class="text-end">{{ preview.source_rank or "-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="p-3 border-top">
+    <div class="row g-3">
+      <div class="col-12 col-md-3">
+        <div class="metric-label">{{ t("reranker_provider.request_elapsed") }}</div>
+        <div class="metric-value">{{ smoke.summary.request_elapsed_ms or "-" }} ms</div>
+      </div>
+      <div class="col-12 col-md-3">
+        <div class="metric-label">{{ t("reranker_provider.provider_elapsed") }}</div>
+        <div class="metric-value">{{ smoke.summary.provider_elapsed_ms or "-" }} ms</div>
+      </div>
+      <div class="col-12 col-md-3">
+        <div class="metric-label">{{ t("reranker_provider.candidate_count") }}</div>
+        <div class="metric-value">{{ smoke.summary.candidate_count or "-" }}</div>
+      </div>
+      <div class="col-12 col-md-3">
+        <div class="metric-label">{{ t("reranker_provider.returned_count") }}</div>
+        <div class="metric-value">{{ smoke.summary.returned_count or "-" }}</div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="row g-4">
+  <div class="col-12 col-xl-6">
+    <div class="metric-card bg-white p-3 h-100">
+      <div class="metric-label mb-2">{{ t("reranker_provider.health_payload") }}</div>
+      {% if health.payload %}
+      <pre class="json-preview operations-json-preview mb-0">{{ health.payload | tojson(indent=2) }}</pre>
+      {% else %}
+      <div class="text-secondary">{{ t("reranker_provider.no_health_payload") }}</div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-12 col-xl-6">
+    <div class="metric-card bg-white p-3 h-100">
+      <div class="metric-label mb-2">{{ t("reranker_provider.request_smoke_payload") }}</div>
+      {% if smoke.summary %}
+      <pre class="json-preview operations-json-preview mb-0">{{ smoke.summary | tojson(indent=2) }}</pre>
+      {% else %}
+      <div class="text-secondary">{{ t("reranker_provider.no_request_smoke") }}</div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

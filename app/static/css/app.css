@@ -158,6 +158,11 @@ a {
   width: 100%;
 }
 
+.mobile-nav .nav-link {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .container-fluid {
   box-sizing: border-box;
   width: 100%;
@@ -1753,6 +1758,11 @@ main.container-fluid {
   font-family: var(--bs-font-monospace);
   font-size: 0.875rem;
   overflow-wrap: anywhere;
+}
+
+.operations-json-preview {
+  max-height: 22rem;
+  overflow: auto;
 }
 
 .model-readiness-table td {
