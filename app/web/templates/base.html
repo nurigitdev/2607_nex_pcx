@@ -34,6 +34,7 @@
           <a class="nav-link {% if current_path.startswith('/admin/multi-policy-ingestion-coverage') %}active{% endif %}" href="/admin/multi-policy-ingestion-coverage">{{ t("nav.multi_policy_coverage") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/bm25-index-coverage') %}active{% endif %}" href="/admin/bm25-index-coverage">{{ t("nav.bm25_coverage") }}</a>
           <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">{{ t("nav.search") }}</a>
+          <a class="nav-link {% if current_path.startswith('/search/context') %}active{% endif %}" href="/search/context">{{ t("nav.retrieval_context") }}</a>
           <a class="nav-link {% if current_path.startswith('/search/experiments') %}active{% endif %}" href="/search/experiments">{{ t("nav.search_experiments") }}</a>
           <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">{{ t("nav.history") }}</a>
           <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">{{ t("nav.evaluations") }}</a>
@@ -85,6 +86,7 @@
               <a class="nav-link {% if current_path.startswith('/admin/multi-policy-ingestion-coverage') %}active{% endif %}" href="/admin/multi-policy-ingestion-coverage">{{ t("nav.multi_policy_coverage") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/bm25-index-coverage') %}active{% endif %}" href="/admin/bm25-index-coverage">{{ t("nav.bm25_coverage") }}</a>
               <a class="nav-link {% if current_path == '/search' %}active{% endif %}" href="/search">{{ t("nav.search") }}</a>
+              <a class="nav-link {% if current_path.startswith('/search/context') %}active{% endif %}" href="/search/context">{{ t("nav.retrieval_context") }}</a>
               <a class="nav-link {% if current_path.startswith('/search/experiments') %}active{% endif %}" href="/search/experiments">{{ t("nav.search_experiments") }}</a>
               <a class="nav-link {% if current_path.startswith('/search/logs') %}active{% endif %}" href="/search/logs">{{ t("nav.history") }}</a>
               <a class="nav-link {% if current_path == '/evaluations' %}active{% endif %}" href="/evaluations">{{ t("nav.evaluations") }}</a>

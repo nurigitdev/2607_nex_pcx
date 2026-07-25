@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("retrieval_context.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("retrieval_context.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="/search/logs">{{ t("retrieval_context.open_history") }}</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <form class="row g-3 align-items-end" method="get">
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="search_log_id">{{ t("retrieval_context.search_log_id") }}</label>
+      <input
+        class="form-control"
+        id="search_log_id"
+        name="search_log_id"
+        type="number"
+        min="1"
+        value="{{ selected_search_log_id or '' }}"
+        placeholder="123"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="max_context_chars">{{ t("retrieval_context.max_context_chars") }}</label>
+      <input
+        class="form-control"
+        id="max_context_chars"
+        name="max_context_chars"
+        type="number"
+        min="500"
+        max="50000"
+        step="500"
+        value="{{ max_context_chars }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="max_items">{{ t("retrieval_context.max_items") }}</label>
+      <input
+        class="form-control"
+        id="max_items"
+        name="max_items"
+        type="number"
+        min="1"
+        max="100"
+        value="{{ max_items }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <div class="form-check mb-2">
+        <input
+          class="form-check-input"
+          id="include_neighbors"
+          name="include_neighbors"
+          type="checkbox"
+          value="true"
+          {% if include_neighbors %}checked{% endif %}
+          {% if not database_configured %}disabled{% endif %}
+        >
+        <label class="form-check-label" for="include_neighbors">{{ t("retrieval_context.include_neighbors") }}</label>
+      </div>
+    </div>
+    <div class="col-12 col-md-2">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("retrieval_context.build") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if package %}
+<section class="bg-white border rounded-2 p-3 mb-4" data-retrieval-context-package>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("retrieval_context.package_summary") }}</h2>
+      <div class="text-secondary small">{{ t("retrieval_context.package_key") }}: {{ package.package_key }}</div>
+    </div>
+    <a
+      class="btn btn-outline-primary btn-sm"
+      href="/api/search/logs/{{ package.search_log.search_log.search_log_id }}/retrieval-context?max_context_chars={{ max_context_chars }}&include_neighbors={{ 'true' if include_neighbors else 'false' }}&max_items={{ max_items }}"
+    >
+      {{ t("retrieval_context.open_api") }}
+    </a>
+  </div>
+  <div class="row g-3 mt-1">
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.included") }}</div>
+        <div class="metric-value">{{ package.summary.included_count }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.excluded") }}</div>
+        <div class="metric-value">{{ package.summary.excluded_count }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.unique_candidates") }}</div>
+        <div class="metric-value">{{ package.summary.unique_candidate_count }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.used_chars") }}</div>
+        <div class="metric-value">{{ package.summary.used_context_chars }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.remaining_chars") }}</div>
+        <div class="metric-value">{{ package.summary.remaining_context_chars }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.truncated") }}</div>
+        <div class="metric-value">{{ package.summary.truncated_count }}</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <h2 class="h5 mb-3">{{ t("retrieval_context.search_log") }}</h2>
+  <div class="row g-3 small">
+    <div class="col-12 col-lg-5">
+      <div class="text-secondary">{{ t("retrieval_context.query") }}</div>
+      <div class="fw-semibold text-break">{{ package.search_log.search_log.query_text }}</div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="text-secondary">{{ t("retrieval_context.actor") }}</div>
+      <div>{{ package.search_log.actor_display_name or package.search_log.actor_login_id or package.search_log.search_log.actor_user_id or "-" }}</div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="text-secondary">{{ t("retrieval_context.scope") }}</div>
+      <div>{{ package.search_log.search_log.effective_search_scope or "-" }}</div>
+    </div>
+    <div class="col-6 col-lg-1">
+      <div class="text-secondary">Top-K</div>
+      <div>{{ package.search_log.search_log.top_k }}</div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="text-secondary">{{ t("retrieval_context.profiles") }}</div>
+      <div class="text-break">{{ package.search_log.search_log.profiles | join(", ") }}</div>
+    </div>
+  </div>
+</section>
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mb-3">
+    <h2 class="h5 mb-0">{{ t("retrieval_context.generation_context") }}</h2>
+    <span class="badge text-bg-light border">{{ package.summary.used_context_chars }} / {{ package.summary.max_context_chars }}</span>
+  </div>
+  <pre class="retrieval-context-text mb-0">{{ package.generation_context_text }}</pre>
+</section>
+
+<section class="mb-4">
+  <h2 class="h5 mb-3">{{ t("retrieval_context.citations") }}</h2>
+  <div class="row g-3">
+    {% for candidate in package.included_candidates %}
+    <div class="col-12 col-xl-6">
+      <article class="bg-white border rounded-2 p-3 h-100 retrieval-context-citation">
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+          <span class="badge text-bg-primary">{{ candidate.citation.citation_key }}</span>
+          <span class="text-secondary small">{{ candidate.primary_result.profile_name }} #{{ candidate.primary_result.rank }}</span>
+        </div>
+        <h3 class="h6 mb-1 text-break">{{ candidate.citation.document_title or candidate.citation.original_file_name }}</h3>
+        <div class="text-secondary small text-break mb-2">{{ candidate.citation.source_label }}</div>
+        {% if candidate.citation.heading_path %}
+        <div class="small mb-2">{{ candidate.citation.heading_path | join(" > ") }}</div>
+        {% endif %}
+        <dl class="row small mb-0">
+          <dt class="col-5">{{ t("retrieval_context.chunk_id") }}</dt>
+          <dd class="col-7">{{ candidate.citation.chunk_id }}</dd>
+          <dt class="col-5">{{ t("retrieval_context.chunk_policy") }}</dt>
+          <dd class="col-7 text-break">{{ candidate.citation.chunk_policy_name }}</dd>
+          <dt class="col-5">{{ t("retrieval_context.context_chars") }}</dt>
+          <dd class="col-7">{{ candidate.context_char_count }}</dd>
+          <dt class="col-5">{{ t("retrieval_context.supporting_results") }}</dt>
+          <dd class="col-7">{{ candidate.supporting_results | length }}</dd>
+        </dl>
+      </article>
+    </div>
+    {% else %}
+    <div class="col-12">
+      <div class="bg-white border rounded-2 p-3 text-secondary">{{ t("retrieval_context.no_included") }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if package.excluded_candidates %}
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <h2 class="h5 mb-3">{{ t("retrieval_context.excluded_candidates") }}</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("retrieval_context.reason") }}</th>
+          <th scope="col">{{ t("retrieval_context.profile") }}</th>
+          <th scope="col">{{ t("retrieval_context.rank") }}</th>
+          <th scope="col">{{ t("retrieval_context.document") }}</th>
+          <th scope="col">{{ t("retrieval_context.chunk_id") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for candidate in package.excluded_candidates %}
+        <tr>
+          <td>{{ candidate.exclusion_reason }}</td>
+          <td class="text-break">{{ candidate.primary_result.profile_name }}</td>
+          <td>{{ candidate.primary_result.rank }}</td>
+          <td class="text-break">{{ candidate.citation.document_title or candidate.citation.original_file_name }}</td>
+          <td>{{ candidate.citation.chunk_id }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <h2 class="h5 mb-3">{{ t("retrieval_context.raw_package") }}</h2>
+  <pre class="retrieval-context-json mb-0">{{ package_json }}</pre>
+</section>
+{% else %}
+<section class="bg-white border rounded-2 p-3">
+  <h2 class="h5 mb-3">{{ t("retrieval_context.recent_logs") }}</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">{{ t("retrieval_context.query") }}</th>
+          <th scope="col">{{ t("retrieval_context.scope") }}</th>
+          <th scope="col">{{ t("retrieval_context.results") }}</th>
+          <th scope="col">{{ t("retrieval_context.open") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in latest_logs %}
+        <tr>
+          <td>{{ item.search_log.search_log_id }}</td>
+          <td class="text-break">{{ item.search_log.query_text }}</td>
+          <td>{{ item.search_log.effective_search_scope or "-" }}</td>
+          <td>{{ item.result_count }}</td>
+          <td>
+            <a class="btn btn-outline-primary btn-sm" href="/search/context?search_log_id={{ item.search_log.search_log_id }}">
+              {{ t("retrieval_context.open") }}
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-secondary">{{ t("retrieval_context.no_recent_logs") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

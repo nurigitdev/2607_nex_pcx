@@ -285,13 +285,17 @@ def _list_context_chunks(
         SELECT
             CASE
                 WHEN c.chunk_id = %(current_chunk_id)s THEN 'current'
-                WHEN %(prev_chunk_id)s IS NOT NULL AND c.chunk_id = %(prev_chunk_id)s
+                WHEN %(prev_chunk_id)s::BIGINT IS NOT NULL
+                  AND c.chunk_id = %(prev_chunk_id)s::BIGINT
                     THEN 'previous'
-                WHEN %(next_chunk_id)s IS NOT NULL AND c.chunk_id = %(next_chunk_id)s
+                WHEN %(next_chunk_id)s::BIGINT IS NOT NULL
+                  AND c.chunk_id = %(next_chunk_id)s::BIGINT
                     THEN 'next'
-                WHEN %(prev_chunk_id)s IS NULL AND c.chunk_seq = %(current_chunk_seq)s - 1
+                WHEN %(prev_chunk_id)s::BIGINT IS NULL
+                  AND c.chunk_seq = %(current_chunk_seq)s - 1
                     THEN 'previous'
-                WHEN %(next_chunk_id)s IS NULL AND c.chunk_seq = %(current_chunk_seq)s + 1
+                WHEN %(next_chunk_id)s::BIGINT IS NULL
+                  AND c.chunk_seq = %(current_chunk_seq)s + 1
                     THEN 'next'
                 ELSE 'context'
             END AS position,
@@ -322,10 +326,22 @@ def _list_context_chunks(
           AND c.chunk_policy_name = %(chunk_policy_name)s
           AND (
               c.chunk_id = %(current_chunk_id)s
-              OR (%(prev_chunk_id)s IS NOT NULL AND c.chunk_id = %(prev_chunk_id)s)
-              OR (%(next_chunk_id)s IS NOT NULL AND c.chunk_id = %(next_chunk_id)s)
-              OR (%(prev_chunk_id)s IS NULL AND c.chunk_seq = %(current_chunk_seq)s - 1)
-              OR (%(next_chunk_id)s IS NULL AND c.chunk_seq = %(current_chunk_seq)s + 1)
+              OR (
+                  %(prev_chunk_id)s::BIGINT IS NOT NULL
+                  AND c.chunk_id = %(prev_chunk_id)s::BIGINT
+              )
+              OR (
+                  %(next_chunk_id)s::BIGINT IS NOT NULL
+                  AND c.chunk_id = %(next_chunk_id)s::BIGINT
+              )
+              OR (
+                  %(prev_chunk_id)s::BIGINT IS NULL
+                  AND c.chunk_seq = %(current_chunk_seq)s - 1
+              )
+              OR (
+                  %(next_chunk_id)s::BIGINT IS NULL
+                  AND c.chunk_seq = %(current_chunk_seq)s + 1
+              )
           )
         ORDER BY c.chunk_seq ASC, c.chunk_id ASC
         """,

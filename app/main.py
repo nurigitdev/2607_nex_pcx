@@ -556,6 +556,17 @@ from app.core.search_result_context import (
     SearchResultSourceContext,
     get_search_result_source_context,
 )
+from app.core.retrieval_context import (
+    DEFAULT_CONTEXT_CHAR_BUDGET,
+    DEFAULT_CONTEXT_MAX_ITEMS,
+    InvalidRetrievalContextError,
+    RetrievalContextCandidate,
+    RetrievalContextChunkEntry,
+    RetrievalContextInput,
+    RetrievalContextPackage,
+    RetrievalContextResultReference,
+    build_retrieval_context_package,
+)
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -3865,6 +3876,138 @@ def search_result_source_context_payload(
             "context_chunk_count": len(context.chunks),
             "current_source_anchor": current_chunk.source_anchor if current_chunk else {},
         },
+    }
+
+
+def retrieval_context_result_reference_payload(
+    result: RetrievalContextResultReference,
+) -> dict[str, object]:
+    return {
+        "search_log_result_id": result.search_log_result_id,
+        "profile_name": result.profile_name,
+        "search_profile_name": result.search_profile_name,
+        "retrieval_strategy": result.retrieval_strategy,
+        "rank": result.rank,
+        "chunk_id": result.chunk_id,
+        "distance": result.distance,
+        "score": result.score,
+        "score_components": result.score_components,
+        "profile_elapsed_ms": result.profile_elapsed_ms,
+        "created_at": _datetime_response(result.created_at),
+    }
+
+
+def retrieval_context_chunk_entry_payload(
+    chunk: RetrievalContextChunkEntry,
+) -> dict[str, object]:
+    return {
+        "position": chunk.position,
+        "chunk_id": chunk.chunk_id,
+        "chunk_seq": chunk.chunk_seq,
+        "chunk_text": chunk.chunk_text,
+        "chunk_preview": chunk.chunk_preview,
+        "char_count": chunk.char_count,
+        "token_count": chunk.token_count,
+        "source_anchor": chunk.source_anchor,
+    }
+
+
+def retrieval_context_candidate_payload(
+    candidate: RetrievalContextCandidate,
+) -> dict[str, object]:
+    return {
+        "included": candidate.included,
+        "exclusion_reason": candidate.exclusion_reason,
+        "citation": {
+            "citation_key": candidate.citation.citation_key,
+            "chunk_id": candidate.citation.chunk_id,
+            "document_id": candidate.citation.document_id,
+            "file_id": candidate.citation.file_id,
+            "document_title": candidate.citation.document_title,
+            "original_file_name": candidate.citation.original_file_name,
+            "file_ext": candidate.citation.file_ext,
+            "document_group": candidate.citation.document_group,
+            "chunk_policy_name": candidate.citation.chunk_policy_name,
+            "chunk_seq": candidate.citation.chunk_seq,
+            "heading_path": list(candidate.citation.heading_path),
+            "page_no": candidate.citation.page_no,
+            "slide_no": candidate.citation.slide_no,
+            "sheet_name": candidate.citation.sheet_name,
+            "cell_range": candidate.citation.cell_range,
+            "artifact_id": candidate.citation.artifact_id,
+            "block_id": candidate.citation.block_id,
+            "source_anchor": candidate.citation.source_anchor,
+            "source_label": candidate.citation.source_label,
+        },
+        "primary_result": retrieval_context_result_reference_payload(candidate.primary_result),
+        "supporting_results": [
+            retrieval_context_result_reference_payload(result)
+            for result in candidate.supporting_results
+        ],
+        "chunks": [retrieval_context_chunk_entry_payload(chunk) for chunk in candidate.chunks],
+        "context_text": candidate.context_text,
+        "context_char_count": candidate.context_char_count,
+        "original_context_char_count": candidate.original_context_char_count,
+        "truncated": candidate.truncated,
+    }
+
+
+def retrieval_context_package_payload(
+    package: RetrievalContextPackage,
+) -> dict[str, object]:
+    search_log = package.search_log.search_log
+    return {
+        "package_key": package.package_key,
+        "generated_at": _datetime_response(package.generated_at),
+        "search_log": {
+            "search_log_id": search_log.search_log_id,
+            "query_text": search_log.query_text,
+            "normalized_query_text": search_log.normalized_query_text,
+            "actor_user_id": search_log.actor_user_id,
+            "actor_login_id": package.search_log.actor_login_id,
+            "actor_display_name": package.search_log.actor_display_name,
+            "requested_search_scope": search_log.requested_search_scope,
+            "effective_search_scope": search_log.effective_search_scope,
+            "permission_filter_metadata": search_log.permission_filter_metadata,
+            "document_group": search_log.document_group,
+            "file_type": search_log.file_type,
+            "chunk_policy_name": search_log.chunk_policy_name,
+            "strategy_name": search_log.strategy_name,
+            "top_k": search_log.top_k,
+            "similarity_metric": search_log.similarity_metric,
+            "profiles": list(search_log.profiles),
+            "query_runtime_metadata": search_log.query_runtime_metadata,
+            "total_elapsed_ms": search_log.total_elapsed_ms,
+            "created_at": _datetime_response(search_log.created_at),
+        },
+        "summary": {
+            "candidate_result_count": package.summary.candidate_result_count,
+            "unique_candidate_count": package.summary.unique_candidate_count,
+            "included_count": package.summary.included_count,
+            "excluded_count": package.summary.excluded_count,
+            "duplicate_supporting_result_count": (
+                package.summary.duplicate_supporting_result_count
+            ),
+            "max_context_chars": package.summary.max_context_chars,
+            "used_context_chars": package.summary.used_context_chars,
+            "remaining_context_chars": package.summary.remaining_context_chars,
+            "truncated_count": package.summary.truncated_count,
+            "source_context_missing_count": package.summary.source_context_missing_count,
+            "include_neighbors": package.summary.include_neighbors,
+            "max_items": package.summary.max_items,
+        },
+        "generation_context_text": package.generation_context_text,
+        "included_candidates": [
+            retrieval_context_candidate_payload(candidate)
+            for candidate in package.included_candidates
+        ],
+        "excluded_candidates": [
+            retrieval_context_candidate_payload(candidate)
+            for candidate in package.excluded_candidates
+        ],
+        "candidates": [
+            retrieval_context_candidate_payload(candidate) for candidate in package.candidates
+        ],
     }
 
 
@@ -10894,6 +11037,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=search_result_source_context_payload(context))
 
+    @app.get("/api/search/logs/{search_log_id}/retrieval-context")
+    def api_get_search_log_retrieval_context(
+        search_log_id: int,
+        max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
+        include_neighbors: bool = True,
+        max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            package = build_retrieval_context_package(
+                settings.database_url,
+                RetrievalContextInput(
+                    search_log_id=search_log_id,
+                    max_context_chars=max_context_chars,
+                    include_neighbors=include_neighbors,
+                    max_items=max_items,
+                ),
+            )
+        except InvalidRetrievalContextError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if package is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log retrieval context not found.",
+            )
+
+        return JSONResponse(content=retrieval_context_package_payload(package))
+
     @app.post("/api/search/logs/{search_log_id}/retry-profile")
     def api_retry_search_log_profile(
         search_log_id: int,
@@ -13264,6 +13440,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 search_reranker_runtime=search_reranker_runtime_control_payload(settings),
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
+            ),
+        )
+
+    @app.get("/search/context", response_class=HTMLResponse)
+    def retrieval_context_page(
+        request: Request,
+        search_log_id: int | None = Query(default=None, ge=1),
+        max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
+        include_neighbors: bool = True,
+        max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+    ) -> HTMLResponse:
+        latest_logs: list[SearchLogListItem] = []
+        package: RetrievalContextPackage | None = None
+        package_payload: dict[str, object] | None = None
+        package_json = ""
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                latest_logs = list_search_logs(settings.database_url, limit=12)
+                if search_log_id is not None:
+                    package = build_retrieval_context_package(
+                        settings.database_url,
+                        RetrievalContextInput(
+                            search_log_id=search_log_id,
+                            max_context_chars=max_context_chars,
+                            include_neighbors=include_neighbors,
+                            max_items=max_items,
+                        ),
+                    )
+                    if package is None:
+                        error_message = "Search log retrieval context not found."
+                    else:
+                        package_payload = retrieval_context_package_payload(package)
+                        package_json = json.dumps(
+                            package_payload,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+            except (InvalidRetrievalContextError, InvalidSearchLogError) as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "retrieval_context.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                latest_logs=latest_logs,
+                selected_search_log_id=search_log_id,
+                max_context_chars=max_context_chars,
+                include_neighbors=include_neighbors,
+                max_items=max_items,
+                package=package,
+                package_payload=package_payload,
+                package_json=package_json,
+                error_message=error_message,
             ),
         )
 

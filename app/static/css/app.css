@@ -1765,6 +1765,18 @@ main.container-fluid {
   overflow: auto;
 }
 
+.retrieval-context-text,
+.retrieval-context-json {
+  max-height: 28rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.retrieval-context-citation {
+  overflow-wrap: anywhere;
+}
+
 .model-readiness-table td {
   vertical-align: top;
 }
