@@ -59,6 +59,13 @@ from app.core.chunks import (
     InvalidChunkError,
     list_document_chunks,
 )
+from app.core.citation_readiness import (
+    CitationReadinessCandidate,
+    CitationReadinessInput,
+    CitationReadinessIssue,
+    CitationReadinessReport,
+    build_citation_readiness_report,
+)
 from app.core.config import Settings, get_settings
 from app.core.dashboard_failures import (
     DashboardFailureDetail,
@@ -4007,6 +4014,73 @@ def retrieval_context_package_payload(
         ],
         "candidates": [
             retrieval_context_candidate_payload(candidate) for candidate in package.candidates
+        ],
+    }
+
+
+def citation_readiness_issue_payload(
+    issue: CitationReadinessIssue,
+) -> dict[str, object]:
+    return {
+        "code": issue.code,
+        "severity": issue.severity,
+        "message": issue.message,
+    }
+
+
+def citation_readiness_candidate_payload(
+    candidate: CitationReadinessCandidate,
+) -> dict[str, object]:
+    return {
+        "citation_key": candidate.citation_key,
+        "search_log_result_id": candidate.search_log_result_id,
+        "chunk_id": candidate.chunk_id,
+        "document_id": candidate.document_id,
+        "document_title": candidate.document_title,
+        "original_file_name": candidate.original_file_name,
+        "source_label": candidate.source_label,
+        "included": candidate.included,
+        "status": candidate.status,
+        "has_document_identity": candidate.has_document_identity,
+        "has_chunk_identity": candidate.has_chunk_identity,
+        "has_source_anchor": candidate.has_source_anchor,
+        "has_location_hint": candidate.has_location_hint,
+        "has_lineage_reference": candidate.has_lineage_reference,
+        "has_generation_text": candidate.has_generation_text,
+        "issue_count": candidate.issue_count,
+        "issues": [citation_readiness_issue_payload(issue) for issue in candidate.issues],
+    }
+
+
+def citation_readiness_report_payload(
+    report: CitationReadinessReport,
+) -> dict[str, object]:
+    return {
+        "package_key": report.package.package_key,
+        "search_log_id": report.package.search_log.search_log.search_log_id,
+        "query_text": report.package.search_log.search_log.query_text,
+        "generated_at": _datetime_response(report.package.generated_at),
+        "summary": {
+            "status": report.summary.status,
+            "total_candidate_count": report.summary.total_candidate_count,
+            "included_candidate_count": report.summary.included_candidate_count,
+            "excluded_candidate_count": report.summary.excluded_candidate_count,
+            "ready_count": report.summary.ready_count,
+            "warning_count": report.summary.warning_count,
+            "failed_count": report.summary.failed_count,
+            "source_anchor_ready_count": report.summary.source_anchor_ready_count,
+            "source_anchor_coverage_percent": _percent_value(
+                report.summary.source_anchor_coverage_percent
+            ),
+            "source_anchor_coverage_label": _percent_label(
+                report.summary.source_anchor_coverage_percent
+            ),
+            "citation_ready_percent": _percent_value(report.summary.citation_ready_percent),
+            "citation_ready_label": _percent_label(report.summary.citation_ready_percent),
+            "issue_count": report.summary.issue_count,
+        },
+        "candidates": [
+            citation_readiness_candidate_payload(candidate) for candidate in report.candidates
         ],
     }
 
@@ -11070,6 +11144,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=retrieval_context_package_payload(package))
 
+    @app.get("/api/search/logs/{search_log_id}/citation-readiness")
+    def api_get_search_log_citation_readiness(
+        search_log_id: int,
+        max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
+        include_neighbors: bool = True,
+        max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            report = build_citation_readiness_report(
+                settings.database_url,
+                CitationReadinessInput(
+                    search_log_id=search_log_id,
+                    max_context_chars=max_context_chars,
+                    include_neighbors=include_neighbors,
+                    max_items=max_items,
+                ),
+            )
+        except InvalidRetrievalContextError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if report is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log citation readiness not found.",
+            )
+
+        return JSONResponse(content=citation_readiness_report_payload(report))
+
     @app.post("/api/search/logs/{search_log_id}/retry-profile")
     def api_retry_search_log_profile(
         search_log_id: int,
@@ -13498,6 +13605,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 package=package,
                 package_payload=package_payload,
                 package_json=package_json,
+                error_message=error_message,
+            ),
+        )
+
+    @app.get("/search/citation-readiness", response_class=HTMLResponse)
+    def citation_readiness_page(
+        request: Request,
+        search_log_id: int | None = Query(default=None, ge=1),
+        max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
+        include_neighbors: bool = True,
+        max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+    ) -> HTMLResponse:
+        latest_logs: list[SearchLogListItem] = []
+        report: CitationReadinessReport | None = None
+        report_payload: dict[str, object] | None = None
+        report_json = ""
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                latest_logs = list_search_logs(settings.database_url, limit=12)
+                if search_log_id is not None:
+                    report = build_citation_readiness_report(
+                        settings.database_url,
+                        CitationReadinessInput(
+                            search_log_id=search_log_id,
+                            max_context_chars=max_context_chars,
+                            include_neighbors=include_neighbors,
+                            max_items=max_items,
+                        ),
+                    )
+                    if report is None:
+                        error_message = "Search log citation readiness not found."
+                    else:
+                        report_payload = citation_readiness_report_payload(report)
+                        report_json = json.dumps(
+                            report_payload,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+            except (InvalidRetrievalContextError, InvalidSearchLogError) as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "citation_readiness.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                latest_logs=latest_logs,
+                selected_search_log_id=search_log_id,
+                max_context_chars=max_context_chars,
+                include_neighbors=include_neighbors,
+                max_items=max_items,
+                report=report,
+                report_payload=report_payload,
+                report_json=report_json,
                 error_message=error_message,
             ),
         )

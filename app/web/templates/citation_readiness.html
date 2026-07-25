@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("citation_readiness.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("citation_readiness.subtitle") }}</p>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="/search/context">{{ t("citation_readiness.open_context") }}</a>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <form class="row g-3 align-items-end" method="get">
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="search_log_id">{{ t("retrieval_context.search_log_id") }}</label>
+      <input
+        class="form-control"
+        id="search_log_id"
+        name="search_log_id"
+        type="number"
+        min="1"
+        value="{{ selected_search_log_id or '' }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="max_context_chars">{{ t("retrieval_context.max_context_chars") }}</label>
+      <input
+        class="form-control"
+        id="max_context_chars"
+        name="max_context_chars"
+        type="number"
+        min="500"
+        max="50000"
+        step="500"
+        value="{{ max_context_chars }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="max_items">{{ t("retrieval_context.max_items") }}</label>
+      <input
+        class="form-control"
+        id="max_items"
+        name="max_items"
+        type="number"
+        min="1"
+        max="100"
+        value="{{ max_items }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <div class="form-check mb-2">
+        <input
+          class="form-check-input"
+          id="include_neighbors"
+          name="include_neighbors"
+          type="checkbox"
+          value="true"
+          {% if include_neighbors %}checked{% endif %}
+          {% if not database_configured %}disabled{% endif %}
+        >
+        <label class="form-check-label" for="include_neighbors">{{ t("retrieval_context.include_neighbors") }}</label>
+      </div>
+    </div>
+    <div class="col-12 col-md-2">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("citation_readiness.check") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if report %}
+{% set status_class = "success" if report.summary.status == "ready" else ("danger" if report.summary.status == "failed" else "warning") %}
+<section class="bg-white border rounded-2 p-3 mb-4" data-citation-readiness-report>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("citation_readiness.summary") }}</h2>
+      <div class="text-secondary small">{{ t("retrieval_context.package_key") }}: {{ report.package.package_key }}</div>
+    </div>
+    <span class="badge text-bg-{{ status_class }}">{{ report.summary.status }}</span>
+  </div>
+  <div class="row g-3 mt-1">
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("citation_readiness.anchor_coverage") }}</div>
+        <div class="metric-value">{{ report.summary.source_anchor_coverage_percent }}%</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("citation_readiness.ready_percent") }}</div>
+        <div class="metric-value">{{ report.summary.citation_ready_percent }}%</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("citation_readiness.ready") }}</div>
+        <div class="metric-value">{{ report.summary.ready_count }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("citation_readiness.warning") }}</div>
+        <div class="metric-value">{{ report.summary.warning_count }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("citation_readiness.failed") }}</div>
+        <div class="metric-value">{{ report.summary.failed_count }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("citation_readiness.issues") }}</div>
+        <div class="metric-value">{{ report.summary.issue_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="d-flex flex-wrap gap-2 mt-3">
+    <a
+      class="btn btn-outline-primary btn-sm"
+      href="/api/search/logs/{{ report.package.search_log.search_log.search_log_id }}/citation-readiness?max_context_chars={{ max_context_chars }}&include_neighbors={{ 'true' if include_neighbors else 'false' }}&max_items={{ max_items }}"
+    >
+      {{ t("retrieval_context.open_api") }}
+    </a>
+    <a
+      class="btn btn-outline-secondary btn-sm"
+      href="/search/context?search_log_id={{ report.package.search_log.search_log.search_log_id }}&max_context_chars={{ max_context_chars }}&include_neighbors={{ 'true' if include_neighbors else 'false' }}&max_items={{ max_items }}"
+    >
+      {{ t("citation_readiness.open_context") }}
+    </a>
+  </div>
+</section>
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <h2 class="h5 mb-3">{{ t("citation_readiness.candidates") }}</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle citation-readiness-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("citation_readiness.status") }}</th>
+          <th scope="col">{{ t("citation_readiness.citation") }}</th>
+          <th scope="col">{{ t("retrieval_context.document") }}</th>
+          <th scope="col">{{ t("citation_readiness.anchor") }}</th>
+          <th scope="col">{{ t("citation_readiness.lineage") }}</th>
+          <th scope="col">{{ t("citation_readiness.issue_codes") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for candidate in report.candidates %}
+        {% set candidate_class = "success" if candidate.status == "ready" else ("danger" if candidate.status == "failed" else "warning") %}
+        <tr>
+          <td><span class="badge text-bg-{{ candidate_class }}">{{ candidate.status }}</span></td>
+          <td>
+            <div class="fw-semibold">{{ candidate.citation_key or "-" }}</div>
+            <div class="text-secondary small">#{{ candidate.search_log_result_id }} / chunk {{ candidate.chunk_id }}</div>
+          </td>
+          <td class="text-break">
+            <div>{{ candidate.document_title or candidate.original_file_name }}</div>
+            <div class="text-secondary small">{{ candidate.source_label }}</div>
+          </td>
+          <td>
+            {% if candidate.has_source_anchor or candidate.has_location_hint %}
+            <span class="badge text-bg-success">{{ t("common.yes") }}</span>
+            {% else %}
+            <span class="badge text-bg-light border">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if candidate.has_lineage_reference %}
+            <span class="badge text-bg-success">{{ t("common.yes") }}</span>
+            {% else %}
+            <span class="badge text-bg-warning">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+          <td class="text-break">
+            {% for issue in candidate.issues %}
+            <span class="badge text-bg-light border me-1 mb-1">{{ issue.code }}</span>
+            {% else %}
+            <span class="text-secondary">-</span>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <h2 class="h5 mb-3">{{ t("citation_readiness.raw_report") }}</h2>
+  <pre class="citation-readiness-json mb-0">{{ report_json }}</pre>
+</section>
+{% else %}
+<section class="bg-white border rounded-2 p-3">
+  <h2 class="h5 mb-3">{{ t("retrieval_context.recent_logs") }}</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">{{ t("retrieval_context.query") }}</th>
+          <th scope="col">{{ t("retrieval_context.scope") }}</th>
+          <th scope="col">{{ t("retrieval_context.results") }}</th>
+          <th scope="col">{{ t("retrieval_context.open") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in latest_logs %}
+        <tr>
+          <td>{{ item.search_log.search_log_id }}</td>
+          <td class="text-break">{{ item.search_log.query_text }}</td>
+          <td>{{ item.search_log.effective_search_scope or "-" }}</td>
+          <td>{{ item.result_count }}</td>
+          <td>
+            <a class="btn btn-outline-primary btn-sm" href="/search/citation-readiness?search_log_id={{ item.search_log.search_log_id }}">
+              {{ t("citation_readiness.check") }}
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-secondary">{{ t("retrieval_context.no_recent_logs") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

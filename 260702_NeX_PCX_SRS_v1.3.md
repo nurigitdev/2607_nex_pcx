@@ -19,7 +19,7 @@
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.29 |
+| 문서 버전 | v1.30 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -54,6 +54,7 @@
 | 1.27 | 2026-07-25 | Remote reranker background lifecycle runner, PID/log 관리, 중복 실행 방지, status/request smoke evidence 요구사항 보강 |
 | 1.28 | 2026-07-25 | Remote reranker operations status API/UI, process/health/request smoke 운영 표시와 runtime 설정 점검 요구사항 보강 |
 | 1.29 | 2026-07-25 | Retrieval Context Package API/UI, 생성 단계 입력용 검색 결과 정규화, citation/source anchor/context budget 요구사항 보강 |
+| 1.30 | 2026-07-25 | Citation Coverage + Source Anchor Readiness Check, 생성 전 근거 품질 gate와 issue code 요구사항 보강 |
 
 # 목차
 
@@ -388,6 +389,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-047 | Search profile/strategy 관리 | embedding profile, BM25, hybrid를 동일 비교 화면과 검색 로그에서 구분 가능한 search profile/strategy로 관리한다. | MUST |
 | FR-048 | Hybrid 검색 비교 | BM25 결과와 vector 결과를 fusion하여 embedding-only, BM25-only, hybrid 방식을 같은 query/golden set으로 비교한다. | SHOULD |
 | FR-049 | Retrieval context package | 검색 로그의 top-k 결과를 생성 단계에서 사용할 수 있는 context package로 정규화하고 citation, source anchor, 권한 scope, runtime metadata, context budget을 함께 제공한다. | MUST |
+| FR-050 | Citation readiness check | 생성 단계로 넘기기 전 retrieval context의 citation key, 문서/파일 식별자, chunk 식별자, source anchor/location/lineage coverage를 점검하고 issue code를 표시한다. | MUST |
 
 ## 4.3 대시보드 요구사항
 
@@ -494,6 +496,10 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Retrieval context package는 reranked/hybrid/BM25/vector profile 결과를 우선순위에 따라 정렬하고, 동일 chunk가 여러 profile에서 발견되면 하나의 citation으로 deduplicate하되 supporting result metadata를 보존해야 한다.
 
 - Retrieval context package는 포함된 chunk text, 선택적 prev/next neighbor context, document/file metadata, page/slide/sheet/cell 위치, heading_path, artifact_id/block_id/source_anchor, context character budget, truncation/exclusion reason을 API와 UI에서 확인할 수 있어야 한다.
+
+- Citation readiness check는 retrieval context package 후보별로 citation key, document/file identity, chunk id/policy, generation text, source_anchor, page/slide/sheet/cell 또는 heading_path 위치 힌트, artifact_id/block_id lineage reference를 점검해야 한다.
+
+- Citation readiness 결과는 ready/warning/failed 상태, source anchor coverage percent, citation ready percent, 후보별 issue code를 API와 UI에서 제공하여 생성 단계 진입 전 근거 품질 gate로 사용할 수 있어야 한다.
 
 ## 4.6 Chunk policy 요구사항
 

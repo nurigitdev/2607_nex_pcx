@@ -1766,7 +1766,8 @@ main.container-fluid {
 }
 
 .retrieval-context-text,
-.retrieval-context-json {
+.retrieval-context-json,
+.citation-readiness-json {
   max-height: 28rem;
   overflow: auto;
   white-space: pre-wrap;
@@ -1775,6 +1776,10 @@ main.container-fluid {
 
 .retrieval-context-citation {
   overflow-wrap: anywhere;
+}
+
+.citation-readiness-table {
+  min-width: 58rem;
 }
 
 .model-readiness-table td {
