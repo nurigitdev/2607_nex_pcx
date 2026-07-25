@@ -36,6 +36,7 @@
 | 1.9 | 2026-07-20 | 한국어 친화 BM25 tokenizer baseline, KoNLPy 보류, Mecab-ko optional 검토 기준 보강 |
 | 1.10 | 2026-07-21 | Search Compare BM25 tokenizer 선택, 검색 로그 runtime metadata 재현성 요구사항 보강 |
 | 1.11 | 2026-07-24 | Mecab-ko optional BM25 tokenizer foundation, 설치/사전 dependency 상태 표시와 실험 tokenizer 요구사항 보강 |
+| 1.12 | 2026-07-25 | BM25 tokenizer별 index backfill 제어, coverage/readiness feedback, 운영 보정 요구사항 보강 |
 
 # 목차
 
@@ -442,6 +443,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - 선택한 BM25 tokenizer와 tokenizer별 index 준비 여부는 search runtime metadata와 BM25 coverage/freshness 화면을 통해 재현 가능해야 한다.
 
+- BM25 coverage 화면은 선택한 tokenizer와 chunk policy 기준으로 term index와 corpus statistics를 backfill할 수 있는 운영 제어를 제공한다. Backfill 결과는 성공/실패 정책 수, tokenizer name, 실행 범위를 feedback으로 표시하고 API payload로도 제공한다.
+
 - Hybrid retrieval은 1차 MVP에서 BM25 top-N과 vector top-N을 Reciprocal Rank Fusion(RRF)으로 결합한다.
 
 - 검색 결과에는 rank, score/distance, 문서명, page/slide/sheet, heading_path, chunk preview, 피드백 버튼을 포함한다.
@@ -597,6 +600,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - MVP의 기본 검색은 cosine distance를 사용한다. 데이터가 5만 chunk 이하인 초기 실험에서는 exact search를 우선하고, 이후 HNSW 또는 IVFFlat index를 profile별로 추가한다.
 
 - BM25 keyword baseline은 chunk text token index와 corpus statistics를 PostgreSQL에 저장하며, embedding vector와 독립적으로 재생성할 수 있어야 한다.
+
+- BM25 keyword index는 tokenizer별로 독립적으로 재생성 가능해야 한다. 운영자는 `unicode_word_v1`, `unicode_word_ko_2_3gram_v1`, `mecab_ko_morph_v1` 등 선택 가능한 tokenizer마다 chunk policy 단위 backfill을 실행하고 coverage/readiness를 확인할 수 있어야 한다.
 
 - Search log 결과 row는 embedding profile뿐 아니라 BM25 keyword baseline과 hybrid strategy도 저장할 수 있도록 search_profile 또는 retrieval_strategy 식별자를 가져야 한다.
 

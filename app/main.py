@@ -35,8 +35,14 @@ from app.core.bm25_index_coverage import (
     InvalidBM25IndexCoverageError,
     get_bm25_index_coverage_matrix,
 )
+from app.core.bm25_index_refresh import (
+    BM25IndexRefreshOptions,
+    bm25_index_refresh_report_payload,
+    refresh_bm25_keyword_indexes,
+)
 from app.core.bm25_keyword_index import (
     DEFAULT_BM25_TOKENIZER_NAME,
+    InvalidBM25KeywordIndexError,
     list_bm25_tokenizers,
     validate_bm25_tokenizer_name,
 )
@@ -611,6 +617,12 @@ class SearchCompareReadinessCoverageReconcileRequest(BaseModel):
     document_group: str | None = None
     file_type: str | None = None
     max_jobs: int = Field(default=500, ge=1, le=500)
+
+
+class BM25IndexBackfillRequest(BaseModel):
+    tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME
+    chunk_policy_names: list[str] | None = Field(default=None, max_length=20)
+    continue_on_error: bool = True
 
 
 class SearchProfileRetryRequest(BaseModel):
@@ -2332,6 +2344,15 @@ def bm25_index_coverage_matrix_payload(
         },
         "rows": [bm25_index_coverage_row_payload(row) for row in matrix.rows],
     }
+
+
+def _bm25_index_coverage_redirect_url(params: dict[str, object]) -> str:
+    clean_params = {
+        key: value for key, value in params.items() if value is not None and value != ""
+    }
+    if not clean_params:
+        return "/admin/bm25-index-coverage"
+    return f"/admin/bm25-index-coverage?{urlencode(clean_params)}"
 
 
 def embedding_coverage_document_payload(
@@ -9808,6 +9829,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=bm25_index_coverage_matrix_payload(matrix))
 
+    @app.post("/api/admin/bm25-index-coverage/backfill")
+    def api_backfill_bm25_index(
+        payload: BM25IndexBackfillRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            report = refresh_bm25_keyword_indexes(
+                settings.database_url,
+                options=BM25IndexRefreshOptions(
+                    chunk_policy_names=tuple(payload.chunk_policy_names or ()),
+                    tokenizer_name=payload.tokenizer_name,
+                    continue_on_error=payload.continue_on_error,
+                ),
+            )
+        except InvalidBM25KeywordIndexError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(content={"backfill": bm25_index_refresh_report_payload(report)})
+
     @app.get("/api/admin/multi-policy-ingestion-coverage")
     def api_get_multi_policy_ingestion_coverage_matrix(
         parse_status: str | None = None,
@@ -13682,10 +13727,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         chunk_policy_name: str | None = None,
         tokenizer_name: str = DEFAULT_BM25_TOKENIZER_NAME,
         limit: int = 100,
+        backfill_status: str | None = None,
+        backfill_tokenizer_name: str | None = None,
+        backfill_policy_count: int | None = None,
+        backfill_succeeded_count: int | None = None,
+        backfill_failed_count: int | None = None,
+        backfill_error: str | None = None,
     ) -> HTMLResponse:
         matrix: BM25IndexCoverageMatrix | None = None
         policies: list[ChunkPolicySummaryRecord] = []
         error_message = None
+        bm25_tokenizers = list_bm25_tokenizers()
+        selected_tokenizer_available = next(
+            (
+                tokenizer.available
+                for tokenizer in bm25_tokenizers
+                if tokenizer.tokenizer_name == tokenizer_name
+            ),
+            True,
+        )
 
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
@@ -13706,6 +13766,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ) as exc:
                 error_message = str(exc)
 
+        backfill_feedback = None
+        if backfill_status:
+            backfill_feedback = {
+                "status": backfill_status,
+                "tokenizer_name": backfill_tokenizer_name or tokenizer_name,
+                "policy_count": backfill_policy_count,
+                "succeeded_count": backfill_succeeded_count,
+                "failed_count": backfill_failed_count,
+                "error": backfill_error,
+            }
+
         return TEMPLATES.TemplateResponse(
             request,
             "bm25_index_coverage.html",
@@ -13713,14 +13784,77 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 matrix=matrix,
                 policies=policies,
+                bm25_tokenizer_options=[asdict(tokenizer) for tokenizer in bm25_tokenizers],
+                selected_tokenizer_available=selected_tokenizer_available,
                 selected_parse_status=parse_status or "",
                 selected_document_group=document_group or "",
                 selected_chunk_policy_name=chunk_policy_name or "",
                 selected_tokenizer_name=tokenizer_name,
                 selected_limit=limit,
+                backfill_feedback=backfill_feedback,
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),
+        )
+
+    @app.post("/admin/bm25-index-coverage/backfill")
+    def bm25_index_coverage_backfill_page(
+        parse_status: str | None = Form(default=None),
+        document_group: str | None = Form(default=None),
+        chunk_policy_name: str | None = Form(default=None),
+        tokenizer_name: str = Form(default=DEFAULT_BM25_TOKENIZER_NAME),
+        limit: int = Form(default=100),
+    ) -> RedirectResponse:
+        redirect_params: dict[str, object] = {
+            "parse_status": parse_status,
+            "document_group": document_group,
+            "chunk_policy_name": chunk_policy_name,
+            "tokenizer_name": tokenizer_name,
+            "limit": limit,
+        }
+        if not settings.database_url:
+            redirect_params.update(
+                {
+                    "backfill_status": "failed",
+                    "backfill_tokenizer_name": tokenizer_name,
+                    "backfill_error": "NEX_PCX_DATABASE_URL is not configured.",
+                }
+            )
+            return RedirectResponse(
+                _bm25_index_coverage_redirect_url(redirect_params),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+        try:
+            report = refresh_bm25_keyword_indexes(
+                settings.database_url,
+                options=BM25IndexRefreshOptions(
+                    chunk_policy_names=(chunk_policy_name,) if chunk_policy_name else (),
+                    tokenizer_name=tokenizer_name,
+                    continue_on_error=True,
+                ),
+            )
+        except InvalidBM25KeywordIndexError as exc:
+            redirect_params.update(
+                {
+                    "backfill_status": "failed",
+                    "backfill_tokenizer_name": tokenizer_name,
+                    "backfill_error": str(exc),
+                }
+            )
+        else:
+            redirect_params.update(
+                {
+                    "backfill_status": report.status,
+                    "backfill_tokenizer_name": report.tokenizer_name,
+                    "backfill_policy_count": report.policy_count,
+                    "backfill_succeeded_count": report.succeeded_count,
+                    "backfill_failed_count": report.failed_count,
+                }
+            )
+        return RedirectResponse(
+            _bm25_index_coverage_redirect_url(redirect_params),
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @app.get("/admin/multi-policy-ingestion-coverage", response_class=HTMLResponse)

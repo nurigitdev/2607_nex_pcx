@@ -13,6 +13,33 @@
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
 
+{% if backfill_feedback %}
+<div
+  class="alert {% if backfill_feedback.status == 'succeeded' %}alert-success{% else %}alert-warning{% endif %}"
+  role="alert"
+  data-bm25-backfill-feedback
+>
+  <div class="fw-semibold">
+    {% if backfill_feedback.status == "succeeded" %}
+    {{ t("bm25_coverage.backfill_done") }}
+    {% else %}
+    {{ t("bm25_coverage.backfill_failed") }}
+    {% endif %}
+  </div>
+  <div>
+    {{ t("bm25_coverage.tokenizer") }}: {{ backfill_feedback.tokenizer_name }}
+    {% if backfill_feedback.policy_count is not none %}
+    · {{ t("bm25_coverage.backfill_policy_count") }}: {{ backfill_feedback.policy_count }}
+    · {{ t("bm25_coverage.backfill_succeeded") }}: {{ backfill_feedback.succeeded_count }}
+    · {{ t("bm25_coverage.backfill_failed_count") }}: {{ backfill_feedback.failed_count }}
+    {% endif %}
+  </div>
+  {% if backfill_feedback.error %}
+  <div class="small mt-1">{{ backfill_feedback.error }}</div>
+  {% endif %}
+</div>
+{% endif %}
+
 <form class="embedding-coverage-filter bm25-coverage-filter d-flex align-items-center gap-2 mb-4" method="get">
   <label class="form-label mb-0 text-secondary" for="parse_status">{{ t("embedding_coverage.parse") }}</label>
   <select class="form-select form-select-sm" id="parse_status" name="parse_status" onchange="this.form.submit()">
@@ -44,13 +71,29 @@
   >
 
   <label class="form-label mb-0 text-secondary" for="tokenizer_name">{{ t("bm25_coverage.tokenizer") }}</label>
-  <input
-    class="form-control form-control-sm"
+  <select
+    class="form-select form-select-sm"
     id="tokenizer_name"
     name="tokenizer_name"
-    type="text"
-    value="{{ selected_tokenizer_name }}"
+    onchange="this.form.submit()"
   >
+    {% for tokenizer in bm25_tokenizer_options %}
+    <option
+      value="{{ tokenizer.tokenizer_name }}"
+      {% if tokenizer.tokenizer_name == selected_tokenizer_name %}selected{% endif %}
+      {% if tokenizer.available is sameas false %}disabled{% endif %}
+    >
+      {{ tokenizer.display_name }} · {{ tokenizer.tokenizer_name }}
+      {% if tokenizer.available is sameas false %}
+      · {{ t("search_compare.bm25_tokenizer_unavailable") }}
+      {% elif tokenizer.status == "default" %}
+      · {{ t("search_compare.bm25_tokenizer_default") }}
+      {% elif tokenizer.status == "experimental" %}
+      · {{ t("search_compare.bm25_tokenizer_experimental") }}
+      {% endif %}
+    </option>
+    {% endfor %}
+  </select>
 
   <label class="form-label mb-0 text-secondary" for="limit">{{ t("embedding_coverage.limit") }}</label>
   <input
@@ -64,6 +107,38 @@
   >
   <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t("embedding_coverage.filter") }}</button>
 </form>
+
+<section class="metric-card bg-white p-3 mb-4" data-bm25-backfill-control>
+  <div class="d-flex align-items-start justify-content-between gap-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("bm25_coverage.backfill_title") }}</h2>
+      <div class="text-secondary">
+        {{ t("bm25_coverage.backfill_help") }}
+      </div>
+      <div class="small text-secondary mt-2">
+        {{ t("bm25_coverage.tokenizer") }}: <strong>{{ selected_tokenizer_name }}</strong>
+        · {{ t("multi_policy_coverage.policy") }}:
+        <strong>
+          {% if selected_chunk_policy_name %}{{ selected_chunk_policy_name }}{% else %}{{ t("multi_policy_coverage.all_policies") }}{% endif %}
+        </strong>
+      </div>
+    </div>
+    <form id="bm25-backfill-form" method="post" action="/admin/bm25-index-coverage/backfill">
+      <input type="hidden" name="parse_status" value="{{ selected_parse_status }}">
+      <input type="hidden" name="document_group" value="{{ selected_document_group }}">
+      <input type="hidden" name="chunk_policy_name" value="{{ selected_chunk_policy_name }}">
+      <input type="hidden" name="tokenizer_name" value="{{ selected_tokenizer_name }}">
+      <input type="hidden" name="limit" value="{{ selected_limit }}">
+      <button
+        class="btn btn-primary btn-sm"
+        type="submit"
+        {% if not database_configured or not selected_tokenizer_available %}disabled{% endif %}
+      >
+        {{ t("bm25_coverage.backfill_run") }}
+      </button>
+    </form>
+  </div>
+</section>
 
 {% if matrix %}
 <section class="embedding-coverage-summary-grid mb-4">

@@ -4,7 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.bm25_index_coverage import get_bm25_index_coverage_matrix
-from app.core.bm25_keyword_index import refresh_chunk_policy_keyword_index
+from app.core.bm25_keyword_index import (
+    DEFAULT_BM25_TOKENIZER_NAME,
+    refresh_chunk_policy_keyword_index,
+)
 from app.core.chunks import ChunkInput, create_chunk
 from app.core.config import Settings
 from app.core.database import connect
@@ -175,11 +178,43 @@ def test_bm25_index_coverage_repository_api_and_page(
                     "lang": "en",
                 },
             )
+            bad_backfill_response = client.post(
+                "/api/admin/bm25-index-coverage/backfill",
+                json={"tokenizer_name": "unknown"},
+            )
+            backfill_response = client.post(
+                "/api/admin/bm25-index-coverage/backfill",
+                json={
+                    "tokenizer_name": DEFAULT_BM25_TOKENIZER_NAME,
+                    "chunk_policy_names": [fixture["policy_name"]],
+                },
+            )
+            refreshed_response = client.get(
+                "/api/admin/bm25-index-coverage",
+                params={
+                    "document_group": fixture["document_group"],
+                    "chunk_policy_name": fixture["policy_name"],
+                },
+            )
+            page_backfill_response = client.post(
+                "/admin/bm25-index-coverage/backfill",
+                data={
+                    "document_group": fixture["document_group"],
+                    "chunk_policy_name": fixture["policy_name"],
+                    "tokenizer_name": DEFAULT_BM25_TOKENIZER_NAME,
+                    "limit": "100",
+                },
+                follow_redirects=False,
+            )
+            feedback_response = client.get(page_backfill_response.headers["location"])
 
         row = matrix.rows[0]
         stale_row = stale_matrix.rows[0]
         payload = api_response.json()
         payload_row = payload["rows"][0]
+        backfill_payload = backfill_response.json()["backfill"]
+        refreshed_payload = refreshed_response.json()
+        refreshed_row = refreshed_payload["rows"][0]
 
         assert row.status == "complete"
         assert row.chunk_count == 2
@@ -207,7 +242,29 @@ def test_bm25_index_coverage_repository_api_and_page(
         assert str(fixture["policy_name"]) in page_response.text
         assert "2 / 3" in page_response.text
         assert "Stale" in page_response.text
+        assert 'id="bm25-backfill-form"' in page_response.text
+        assert "data-bm25-backfill-control" in page_response.text
+        assert "/admin/bm25-index-coverage/backfill" in page_response.text
+        assert 'value="unicode_word_v1"' in page_response.text
+        assert 'value="unicode_word_ko_2_3gram_v1"' in page_response.text
+        assert 'value="mecab_ko_morph_v1"' in page_response.text
         assert english_page_response.status_code == 200
         assert "Document x Policy BM25 Matrix" in english_page_response.text
+        assert bad_backfill_response.status_code == 400
+        assert backfill_response.status_code == 200
+        assert backfill_payload["status"] == "succeeded"
+        assert backfill_payload["tokenizer_name"] == DEFAULT_BM25_TOKENIZER_NAME
+        assert backfill_payload["policy_count"] == 1
+        assert backfill_payload["succeeded_count"] == 1
+        assert refreshed_response.status_code == 200
+        assert refreshed_payload["summary"]["stale_row_count"] == 0
+        assert refreshed_row["status"] == "complete"
+        assert refreshed_row["indexed_chunk_count"] == 3
+        assert refreshed_row["coverage_label"] == "100.00%"
+        assert page_backfill_response.status_code == 303
+        assert "backfill_status=succeeded" in page_backfill_response.headers["location"]
+        assert feedback_response.status_code == 200
+        assert "data-bm25-backfill-feedback" in feedback_response.text
+        assert "BM25 index backfill completed" in feedback_response.text
     finally:
         _cleanup_fixture(migrated_database_url, fixture)
