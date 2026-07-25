@@ -461,6 +461,7 @@ from app.core.pipeline_jobs import (
 )
 from app.core.query_embeddings import InvalidQueryEmbeddingError
 from app.core.reranked_search import RERANKED_SEARCH_PROFILE_NAME
+from app.core.rerankers import InvalidRerankerError, reranker_runtime_config_from_settings
 from app.core.search_compare import (
     InvalidSearchCompareError,
     SearchCompareCoverageReconcileInput,
@@ -10594,10 +10595,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+                fallback_reranker_runtime_config=reranker_runtime_config_from_settings(settings),
             )
         except (
             InvalidEmbeddingProviderError,
             InvalidQueryEmbeddingError,
+            InvalidRerankerError,
             InvalidSearchCompareError,
             InvalidPermissionError,
             InvalidVectorSearchError,
@@ -10698,10 +10701,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+                fallback_reranker_runtime_config=reranker_runtime_config_from_settings(settings),
             )
         except (
             InvalidEmbeddingProviderError,
             InvalidQueryEmbeddingError,
+            InvalidRerankerError,
             InvalidSearchCompareError,
             InvalidPermissionError,
             InvalidVectorSearchError,
@@ -10776,6 +10781,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         fallback_runtime_config=(
                             embedding_provider_runtime_config_from_settings(settings)
                         ),
+                        fallback_reranker_runtime_config=(
+                            reranker_runtime_config_from_settings(settings)
+                        ),
                     ),
                 )
                 for chunk_policy_name in chunk_policy_names
@@ -10783,6 +10791,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (
             InvalidEmbeddingProviderError,
             InvalidQueryEmbeddingError,
+            InvalidRerankerError,
             InvalidSearchCompareError,
             InvalidPermissionError,
             InvalidVectorSearchError,
@@ -10882,10 +10891,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+                fallback_reranker_runtime_config=reranker_runtime_config_from_settings(settings),
             )
         except (
             InvalidEmbeddingProviderError,
             InvalidQueryEmbeddingError,
+            InvalidRerankerError,
             InvalidSearchExperimentExecutionError,
             InvalidSearchExperimentError,
             InvalidSearchCompareError,
@@ -11196,10 +11207,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     allow_mock_fallback=payload.allow_mock_fallback,
                 ),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+                fallback_reranker_runtime_config=reranker_runtime_config_from_settings(settings),
             )
         except (
             InvalidEmbeddingProviderError,
             InvalidQueryEmbeddingError,
+            InvalidRerankerError,
             InvalidSearchCompareError,
             InvalidPermissionError,
             InvalidVectorSearchError,
@@ -12246,10 +12259,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 settings.database_url,
                 golden_evaluation_execution_input_from_request(payload),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+                fallback_reranker_runtime_config=reranker_runtime_config_from_settings(settings),
             )
         except (
             InvalidEmbeddingProviderError,
             InvalidQueryEmbeddingError,
+            InvalidRerankerError,
             InvalidGoldenEvaluationExecutionError,
             InvalidEvaluationRunError,
             InvalidGoldenQuestionError,
@@ -12284,10 +12299,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 settings.database_url,
                 golden_search_experiment_batch_input_from_request(payload),
                 fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+                fallback_reranker_runtime_config=reranker_runtime_config_from_settings(settings),
             )
         except (
             InvalidEmbeddingProviderError,
             InvalidQueryEmbeddingError,
+            InvalidRerankerError,
             InvalidGoldenSearchExperimentError,
             InvalidGoldenQuestionError,
             InvalidSearchExperimentExecutionError,

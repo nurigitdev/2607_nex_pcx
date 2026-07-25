@@ -10,6 +10,11 @@ from app.core.embedding_providers import (
     build_embedding_provider_from_runtime_config,
 )
 from app.core.query_embeddings import QueryEmbeddingProviderBuilder
+from app.core.rerankers import (
+    RerankerProviderBuilder,
+    RerankerRuntimeConfig,
+    build_reranker_provider_from_runtime_config,
+)
 from app.core.search_compare import (
     SEARCH_COMPARE_PROFILE_STATUS_FAILED,
     SearchCompareInput,
@@ -130,8 +135,12 @@ def execute_search_experiment(
     execution_input: SearchExperimentExecutionInput,
     *,
     fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    fallback_reranker_runtime_config: RerankerRuntimeConfig | None = None,
     query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
         build_embedding_provider_from_runtime_config
+    ),
+    reranker_provider_builder: RerankerProviderBuilder = (
+        build_reranker_provider_from_runtime_config
     ),
 ) -> SearchExperimentExecutionReport:
     try:
@@ -191,7 +200,9 @@ def execute_search_experiment(
                 allow_mock_fallback=execution_input.allow_mock_fallback,
             ),
             fallback_runtime_config=fallback_runtime_config,
+            fallback_reranker_runtime_config=fallback_reranker_runtime_config,
             query_embedding_provider_builder=query_embedding_provider_builder,
+            reranker_provider_builder=reranker_provider_builder,
         )
     except Exception as exc:
         update_search_experiment_run_status(

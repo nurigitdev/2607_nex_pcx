@@ -8,7 +8,13 @@ from app.core.hybrid_search import HYBRID_RETRIEVAL_STRATEGY, HYBRID_SEARCH_PROF
 from app.core.permissions import PermissionSearchFilter
 from app.core.query_embeddings import InvalidQueryEmbeddingError, QueryEmbeddingResult
 from app.core.reranked_search import RERANKED_SEARCH_PROFILE_NAME
-from app.core.rerankers import RERANK_RETRIEVAL_STRATEGY
+from app.core.rerankers import (
+    RERANK_RETRIEVAL_STRATEGY,
+    RerankerRuntimeConfig,
+    RerankRequest,
+    RerankResult,
+    RerankResultItem,
+)
 from app.core.search_compare import (
     SEARCH_COMPARE_PROFILE_ERROR_QUERY_EMBEDDING_FAILED,
     SEARCH_COMPARE_PROFILE_STATUS_FAILED,
@@ -941,6 +947,195 @@ def test_run_search_compare_executes_reranked_profile_with_source_metadata(
     assert top_score_components["source_profile_name"] == "qwen3_4b_2560"
     assert top_score_components["source_retrieval_strategy"] == "vector_cosine"
     assert top_score_components["candidate_count"] == 2
+
+
+def test_run_search_compare_uses_remote_reranker_runtime_config(monkeypatch) -> None:
+    captured_reranker_configs: list[RerankerRuntimeConfig] = []
+    captured_search_log_input = None
+    provider_closed = False
+
+    class CapturingRerankerProvider:
+        provider_type = "remote"
+
+        def rerank(self, request: RerankRequest) -> RerankResult:
+            candidate = request.candidates[0]
+            return RerankResult(
+                query_text=request.query_text,
+                reranker_profile_name=request.reranker_profile_name,
+                reranker_model_id=request.reranker_model_id,
+                provider_type=self.provider_type,
+                retrieval_strategy=RERANK_RETRIEVAL_STRATEGY,
+                candidate_count=len(request.candidates),
+                returned_count=1,
+                top_k=request.top_k,
+                results=(
+                    RerankResultItem(
+                        candidate=candidate,
+                        rank=1,
+                        score=0.98,
+                        score_components={"remote_score": 0.98},
+                    ),
+                ),
+                runtime_metadata={"remote_elapsed_ms": 33},
+            )
+
+        def close(self) -> None:
+            nonlocal provider_closed
+            provider_closed = True
+
+    def fake_reranker_provider_builder(runtime_config: RerankerRuntimeConfig):
+        captured_reranker_configs.append(runtime_config)
+        return CapturingRerankerProvider()
+
+    def fake_embed_query_for_profile(*args, profile_name: str, **kwargs):
+        assert profile_name == "qwen3_4b_2560"
+        return _query_embedding_result(profile_name)
+
+    def fake_search_similar_chunks(_database_url, query_input):
+        return [
+            _vector_search_result(
+                query_input.profile_name,
+                rank=1,
+                chunk_id=10,
+                score=0.91,
+                chunk_text="policy exact",
+            )
+        ]
+
+    def fake_create_search_log(_database_url, search_log_input):
+        nonlocal captured_search_log_input
+        captured_search_log_input = search_log_input
+
+        class SearchLog:
+            search_log_id = 46
+
+        return SearchLog()
+
+    def fake_create_search_log_results(_database_url, result_inputs):
+        class SearchLogResult:
+            search_log_result_id = 301
+
+        return [SearchLogResult()]
+
+    monkeypatch.setattr(
+        "app.core.search_compare.resolve_permission_search_filter",
+        lambda *args, **kwargs: _permission_filter(),
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._with_permission_explainability",
+        lambda _database_url, _search_input, permission_filter: permission_filter,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.embed_query_for_profile",
+        fake_embed_query_for_profile,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.search_similar_chunks",
+        fake_search_similar_chunks,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._fetch_readiness_profiles",
+        lambda _database_url, profiles: profiles,
+    )
+    monkeypatch.setattr("app.core.search_compare.create_search_log", fake_create_search_log)
+    monkeypatch.setattr(
+        "app.core.search_compare.create_search_log_results",
+        fake_create_search_log_results,
+    )
+
+    result = run_search_compare(
+        "postgresql://unused",
+        SearchCompareInput(
+            query_text="policy",
+            actor_user_id=1,
+            requested_search_scope="company",
+            profiles=(RERANKED_SEARCH_PROFILE_NAME,),
+            reranked_vector_profile_name="qwen3_4b_2560",
+            allow_mock_fallback=False,
+        ),
+        fallback_reranker_runtime_config=RerankerRuntimeConfig(
+            mode="remote",
+            remote_base_url="http://dgx-reranker.local:19104/",
+            remote_timeout_seconds=88.0,
+        ),
+        reranker_provider_builder=fake_reranker_provider_builder,
+    )
+
+    assert result.profiles[0].results[0].vector_result.score == 0.98
+    assert provider_closed is True
+    assert captured_reranker_configs == [
+        RerankerRuntimeConfig(
+            mode="remote",
+            remote_base_url="http://dgx-reranker.local:19104",
+            remote_timeout_seconds=88.0,
+        )
+    ]
+    assert captured_search_log_input is not None
+    metadata = captured_search_log_input.query_runtime_metadata
+    reranked_metadata = metadata["profile_reranked_searches"][RERANKED_SEARCH_PROFILE_NAME]
+    assert reranked_metadata["provider_runtime_mode"] == "remote"
+    assert reranked_metadata["provider_runtime_base_url"] == "http://dgx-reranker.local:19104"
+    assert reranked_metadata["reranker_provider_type"] == "remote"
+    assert reranked_metadata["reranker_runtime_metadata"] == {"remote_elapsed_ms": 33}
+
+
+def test_run_search_compare_blocks_mock_reranker_when_real_provider_required(
+    monkeypatch,
+) -> None:
+    def fake_embed_query_for_profile(*args, profile_name: str, **kwargs):
+        return _query_embedding_result(profile_name)
+
+    def fake_search_similar_chunks(_database_url, query_input):
+        return [_vector_search_result(query_input.profile_name)]
+
+    def fake_create_search_log(_database_url, search_log_input):
+        class SearchLog:
+            search_log_id = 47
+
+        return SearchLog()
+
+    monkeypatch.setattr(
+        "app.core.search_compare.resolve_permission_search_filter",
+        lambda *args, **kwargs: _permission_filter(),
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._with_permission_explainability",
+        lambda _database_url, _search_input, permission_filter: permission_filter,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.embed_query_for_profile",
+        fake_embed_query_for_profile,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare.search_similar_chunks",
+        fake_search_similar_chunks,
+    )
+    monkeypatch.setattr(
+        "app.core.search_compare._fetch_readiness_profiles",
+        lambda _database_url, profiles: profiles,
+    )
+    monkeypatch.setattr("app.core.search_compare.create_search_log", fake_create_search_log)
+    monkeypatch.setattr(
+        "app.core.search_compare.create_search_log_results",
+        lambda _database_url, result_inputs: [],
+    )
+
+    result = run_search_compare(
+        "postgresql://unused",
+        SearchCompareInput(
+            query_text="policy",
+            actor_user_id=1,
+            requested_search_scope="company",
+            profiles=(RERANKED_SEARCH_PROFILE_NAME,),
+            reranked_vector_profile_name="qwen3_4b_2560",
+            allow_mock_fallback=False,
+        ),
+        fallback_reranker_runtime_config=RerankerRuntimeConfig(mode="mock"),
+    )
+
+    assert result.profiles[0].status == SEARCH_COMPARE_PROFILE_STATUS_FAILED
+    assert result.profiles[0].error_code == "reranked_search_failed"
+    assert "Mock reranker fallback is disabled" in (result.profiles[0].error_message or "")
 
 
 def test_validate_search_compare_input_normalizes_reranked_vector_profile_name() -> None:

@@ -59,7 +59,13 @@ from app.core.rerankers import (
     DEFAULT_RERANKER_MODEL_ID,
     DEFAULT_RERANKER_PROFILE_NAME,
     DEFAULT_RERANKER_PROVIDER_TYPE,
+    MOCK_RERANKER_PROVIDER_MODE,
     RERANK_RETRIEVAL_STRATEGY,
+    InvalidRerankerError,
+    RerankerProviderBuilder,
+    RerankerRuntimeConfig,
+    build_reranker_provider_from_runtime_config,
+    normalize_reranker_runtime_config,
 )
 from app.core.search_logs import (
     SearchLogInput,
@@ -1144,7 +1150,7 @@ def _profile_error_code(exc: Exception) -> str:
         return SEARCH_COMPARE_PROFILE_ERROR_KEYWORD_SEARCH_FAILED
     if isinstance(exc, InvalidHybridSearchError):
         return SEARCH_COMPARE_PROFILE_ERROR_HYBRID_SEARCH_FAILED
-    if isinstance(exc, InvalidRerankedSearchError):
+    if isinstance(exc, InvalidRerankedSearchError | InvalidRerankerError):
         return SEARCH_COMPARE_PROFILE_ERROR_RERANKED_SEARCH_FAILED
     return SEARCH_COMPARE_PROFILE_ERROR_VECTOR_SEARCH_FAILED
 
@@ -1213,10 +1219,12 @@ def _reranked_query_runtime_metadata(
     *,
     vector_profile_name: str,
     candidate_top_k: int,
+    reranker_runtime_config: RerankerRuntimeConfig,
     vector_query_runtime_metadata: dict[str, object],
     results: tuple[RerankedSearchResult, ...],
 ) -> dict[str, object]:
     score_components = results[0].score_components if results else {}
+    reranker_runtime_metadata = score_components.get("reranker_runtime_metadata", {})
     return {
         "provider_type": "rerank",
         "provider_model_id": str(
@@ -1230,6 +1238,9 @@ def _reranked_query_runtime_metadata(
         "source_vector_profile_name": vector_profile_name,
         "candidate_top_k": candidate_top_k,
         "candidate_multiplier": DEFAULT_RERANK_CANDIDATE_MULTIPLIER,
+        "provider_runtime_mode": reranker_runtime_config.mode,
+        "provider_runtime_base_url": reranker_runtime_config.remote_base_url,
+        "provider_runtime_timeout_seconds": reranker_runtime_config.remote_timeout_seconds,
         "reranker_profile_name": str(
             score_components.get("reranker_profile_name", DEFAULT_RERANKER_PROFILE_NAME)
         ),
@@ -1240,6 +1251,9 @@ def _reranked_query_runtime_metadata(
             score_components.get("reranker_provider_type", DEFAULT_RERANKER_PROVIDER_TYPE)
         ),
         "candidate_count": int(score_components.get("candidate_count", 0)),
+        "reranker_runtime_metadata": (
+            dict(reranker_runtime_metadata) if isinstance(reranker_runtime_metadata, dict) else {}
+        ),
         "source_query_runtime_metadata": vector_query_runtime_metadata,
     }
 
@@ -1345,13 +1359,20 @@ def run_search_compare(
     search_input: SearchCompareInput,
     *,
     fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    fallback_reranker_runtime_config: RerankerRuntimeConfig | None = None,
     query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
         build_embedding_provider_from_runtime_config
+    ),
+    reranker_provider_builder: RerankerProviderBuilder = (
+        build_reranker_provider_from_runtime_config
     ),
 ) -> SearchCompareResult:
     validated = _validate_search_compare_input(search_input)
     profiles = validated.profiles or _default_profiles(database_url)
     fallback_config = fallback_runtime_config or EmbeddingProviderRuntimeConfig(mode="mock")
+    fallback_reranker_config = normalize_reranker_runtime_config(
+        fallback_reranker_runtime_config or RerankerRuntimeConfig(mode="mock")
+    )
     permission_filter = resolve_permission_search_filter(
         database_url,
         actor_user_id=validated.actor_user_id,
@@ -1488,14 +1509,28 @@ def run_search_compare(
                         permission_filter=permission_filter,
                     ),
                 )
-                results = rerank_search_results(
-                    query_text=validated.query_text,
-                    results=tuple(vector_results),
-                    top_k=validated.top_k,
-                )
+                if (
+                    not validated.allow_mock_fallback
+                    and fallback_reranker_config.mode == MOCK_RERANKER_PROVIDER_MODE
+                ):
+                    raise InvalidRerankerError(
+                        "Mock reranker fallback is disabled for this search run"
+                    )
+                reranker_provider = reranker_provider_builder(fallback_reranker_config)
+                try:
+                    results = rerank_search_results(
+                        query_text=validated.query_text,
+                        results=tuple(vector_results),
+                        top_k=validated.top_k,
+                        provider=reranker_provider,
+                    )
+                finally:
+                    if hasattr(reranker_provider, "close"):
+                        reranker_provider.close()  # type: ignore[attr-defined]
                 query_runtime_metadata = _reranked_query_runtime_metadata(
                     vector_profile_name=reranked_vector_profile_name,
                     candidate_top_k=candidate_top_k,
+                    reranker_runtime_config=fallback_reranker_config,
                     vector_query_runtime_metadata=query_embedding_runtime_metadata(query_embedding),
                     results=results,
                 )
@@ -1538,6 +1573,7 @@ def run_search_compare(
             InvalidBM25SearchError,
             InvalidHybridSearchError,
             InvalidRerankedSearchError,
+            InvalidRerankerError,
         ) as exc:
             raw_profile_results.append(
                 _failed_profile_result(
@@ -1644,8 +1680,12 @@ def run_permission_search_matrix(
     matrix_input: SearchPermissionMatrixInput,
     *,
     fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    fallback_reranker_runtime_config: RerankerRuntimeConfig | None = None,
     query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
         build_embedding_provider_from_runtime_config
+    ),
+    reranker_provider_builder: RerankerProviderBuilder = (
+        build_reranker_provider_from_runtime_config
     ),
 ) -> SearchPermissionMatrixResult:
     validated = _validate_permission_matrix_input(matrix_input)
@@ -1671,7 +1711,9 @@ def run_permission_search_matrix(
                 allow_mock_fallback=validated.allow_mock_fallback,
             ),
             fallback_runtime_config=fallback_runtime_config,
+            fallback_reranker_runtime_config=fallback_reranker_runtime_config,
             query_embedding_provider_builder=query_embedding_provider_builder,
+            reranker_provider_builder=reranker_provider_builder,
         )
         chunk_ids = {
             result.vector_result.chunk_id

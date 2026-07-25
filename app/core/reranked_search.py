@@ -171,6 +171,7 @@ def rerank_search_results(
                     "reranker_model_id": rerank_result.reranker_model_id,
                     "reranker_provider_type": rerank_result.provider_type,
                     "candidate_count": rerank_result.candidate_count,
+                    "reranker_runtime_metadata": dict(rerank_result.runtime_metadata),
                 },
             )
         )

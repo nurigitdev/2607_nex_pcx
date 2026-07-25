@@ -12,6 +12,9 @@ def test_default_settings(monkeypatch) -> None:
     monkeypatch.delenv("NEX_PCX_EMBEDDING_PROVIDER_MODE", raising=False)
     monkeypatch.delenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_URL", raising=False)
     monkeypatch.delenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("NEX_PCX_RERANKER_PROVIDER_MODE", raising=False)
+    monkeypatch.delenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_URL", raising=False)
+    monkeypatch.delenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS", raising=False)
     monkeypatch.delenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_FAILURE_MODE", raising=False)
     monkeypatch.delenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS", raising=False)
@@ -30,6 +33,9 @@ def test_default_settings(monkeypatch) -> None:
     assert settings.embedding_provider_mode == "mock"
     assert settings.remote_embedding_provider_url is None
     assert settings.remote_embedding_provider_timeout_seconds == 30.0
+    assert settings.reranker_provider_mode == "mock"
+    assert settings.remote_reranker_provider_url is None
+    assert settings.remote_reranker_provider_timeout_seconds == 60.0
     assert settings.embedding_require_route_readiness is False
     assert settings.embedding_route_readiness_failure_mode == "fail"
     assert settings.embedding_route_readiness_defer_seconds == 300
@@ -46,6 +52,9 @@ def test_database_settings_from_environment(monkeypatch) -> None:
         "http://embedding-provider.local",
     )
     monkeypatch.setenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_MODE", "remote")
+    monkeypatch.setenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_URL", "http://reranker.local")
+    monkeypatch.setenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_TIMEOUT_SECONDS", "90.5")
     monkeypatch.setenv("NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS", "true")
     monkeypatch.setenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_FAILURE_MODE", "defer")
     monkeypatch.setenv("NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS", "900")
@@ -59,6 +68,9 @@ def test_database_settings_from_environment(monkeypatch) -> None:
     assert settings.embedding_provider_mode == "remote"
     assert settings.remote_embedding_provider_url == "http://embedding-provider.local"
     assert settings.remote_embedding_provider_timeout_seconds == 12.5
+    assert settings.reranker_provider_mode == "remote"
+    assert settings.remote_reranker_provider_url == "http://reranker.local"
+    assert settings.remote_reranker_provider_timeout_seconds == 90.5
     assert settings.embedding_require_route_readiness is True
     assert settings.embedding_route_readiness_failure_mode == "defer"
     assert settings.embedding_route_readiness_defer_seconds == 900

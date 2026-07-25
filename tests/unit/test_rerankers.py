@@ -1,3 +1,6 @@
+import json
+
+import httpx
 import pytest
 
 from app.core.rerankers import (
@@ -5,12 +8,19 @@ from app.core.rerankers import (
     DEFAULT_RERANKER_PROFILE_NAME,
     DEFAULT_RERANKER_PROVIDER_TYPE,
     MAX_RERANK_CANDIDATES,
+    REMOTE_RERANKER_PROVIDER_MODE,
     RERANK_RETRIEVAL_STRATEGY,
     InvalidRerankerError,
+    MockLexicalOverlapReranker,
+    RemoteRerankerProviderClient,
     RerankCandidate,
+    RerankerRuntimeConfig,
     RerankRequest,
     RerankResult,
+    build_reranker_provider_from_runtime_config,
+    normalize_reranker_runtime_config,
     rerank_candidates,
+    reranker_runtime_config_from_settings,
     validate_rerank_candidate,
     validate_rerank_request,
 )
@@ -232,3 +242,214 @@ def test_rerank_candidates_rejects_invalid_provider_result() -> None:
             ),
             provider=BadProvider(),
         )
+
+
+def test_reranker_runtime_config_defaults_to_mock() -> None:
+    config = reranker_runtime_config_from_settings(object())
+    provider = build_reranker_provider_from_runtime_config(config)
+
+    assert config == RerankerRuntimeConfig(mode="mock")
+    assert isinstance(provider, MockLexicalOverlapReranker)
+
+
+def test_reranker_runtime_config_builds_remote_client() -> None:
+    class SettingsStub:
+        reranker_provider_mode = " REMOTE "
+        remote_reranker_provider_url = "http://reranker.local/"
+        remote_reranker_provider_timeout_seconds = 17.5
+
+    http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200)))
+    config = reranker_runtime_config_from_settings(SettingsStub())
+    provider = build_reranker_provider_from_runtime_config(config, http_client=http_client)
+
+    assert config == RerankerRuntimeConfig(
+        mode=REMOTE_RERANKER_PROVIDER_MODE,
+        remote_base_url="http://reranker.local",
+        remote_timeout_seconds=17.5,
+    )
+    assert isinstance(provider, RemoteRerankerProviderClient)
+    assert provider.base_url == "http://reranker.local"
+    assert provider.timeout_seconds == 17.5
+
+
+def test_reranker_runtime_config_rejects_invalid_remote_settings() -> None:
+    with pytest.raises(InvalidRerankerError, match="Unsupported"):
+        normalize_reranker_runtime_config(RerankerRuntimeConfig(mode="local"))
+
+    with pytest.raises(InvalidRerankerError, match="remote_reranker_provider_url"):
+        normalize_reranker_runtime_config(RerankerRuntimeConfig(mode="remote"))
+
+    with pytest.raises(InvalidRerankerError, match="timeout"):
+        normalize_reranker_runtime_config(
+            RerankerRuntimeConfig(
+                mode="remote",
+                remote_base_url="http://reranker",
+                remote_timeout_seconds=0,
+            )
+        )
+
+
+def test_remote_reranker_provider_client_reads_health_and_reranks() -> None:
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        assert request.headers["x-reranker-route"] == "dgx"
+        if request.url.path == "/healthz":
+            return httpx.Response(
+                200,
+                json={
+                    "ready": True,
+                    "provider_type": "remote",
+                    "provider_model_id": DEFAULT_RERANKER_MODEL_ID,
+                    "reranker_profile_name": DEFAULT_RERANKER_PROFILE_NAME,
+                    "device": "cuda:0",
+                    "runtime_metadata": {"server": "dgx-spark"},
+                },
+            )
+        if request.url.path == "/v1/rerank":
+            payload = json_from_request(request)
+            assert payload["query_text"] == "policy"
+            assert payload["top_k"] == 1
+            assert payload["candidates"][0]["candidate_key"] == "c1"
+            return httpx.Response(
+                200,
+                json={
+                    "query_text": "policy",
+                    "reranker_profile_name": DEFAULT_RERANKER_PROFILE_NAME,
+                    "reranker_model_id": DEFAULT_RERANKER_MODEL_ID,
+                    "provider_type": "remote",
+                    "retrieval_strategy": RERANK_RETRIEVAL_STRATEGY,
+                    "candidate_count": 2,
+                    "returned_count": 1,
+                    "top_k": 1,
+                    "results": [
+                        {
+                            "candidate_key": "c2",
+                            "rank": 1,
+                            "score": 0.97,
+                            "score_components": {"remote_score": 0.97},
+                        }
+                    ],
+                    "runtime_metadata": {"elapsed_ms": 22},
+                },
+            )
+        return httpx.Response(404, json={"detail": "not found"})
+
+    client = RemoteRerankerProviderClient(
+        "http://reranker.local/",
+        headers={"X-Reranker-Route": "dgx"},
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    health = client.health()
+    result = client.rerank(
+        RerankRequest(
+            query_text="policy",
+            candidates=(
+                _candidate("c1", rank=1, text="unrelated", chunk_id=10),
+                _candidate("c2", rank=2, text="policy exact", chunk_id=20),
+            ),
+            top_k=1,
+        )
+    )
+    client.close()
+
+    assert health.ready is True
+    assert health.provider_model_id == DEFAULT_RERANKER_MODEL_ID
+    assert health.device == "cuda:0"
+    assert result.provider_type == "remote"
+    assert result.results[0].candidate.candidate_key == "c2"
+    assert result.results[0].score == 0.97
+    assert result.runtime_metadata == {"elapsed_ms": 22}
+    assert [request.url.path for request in seen_requests] == ["/healthz", "/v1/rerank"]
+
+
+def test_remote_reranker_provider_client_rejects_invalid_settings_and_responses() -> None:
+    with pytest.raises(InvalidRerankerError, match="base_url"):
+        RemoteRerankerProviderClient(" ")
+
+    with pytest.raises(InvalidRerankerError, match="timeout_seconds"):
+        RemoteRerankerProviderClient("http://reranker", timeout_seconds=0)
+
+    with pytest.raises(InvalidRerankerError, match="header"):
+        RemoteRerankerProviderClient("http://reranker", headers={"Bad:Header": "value"})
+
+    bad_client = RemoteRerankerProviderClient(
+        "http://reranker",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json=[]))
+        ),
+    )
+
+    with pytest.raises(InvalidRerankerError, match="JSON object"):
+        bad_client.health()
+
+    invalid_health_client = RemoteRerankerProviderClient(
+        "http://reranker",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200,
+                    json={
+                        "ready": "yes",
+                        "provider_type": "remote",
+                        "provider_model_id": DEFAULT_RERANKER_MODEL_ID,
+                        "reranker_profile_name": DEFAULT_RERANKER_PROFILE_NAME,
+                    },
+                )
+            )
+        ),
+    )
+
+    with pytest.raises(InvalidRerankerError, match="Invalid reranker health response"):
+        invalid_health_client.health()
+
+
+def test_remote_reranker_provider_client_wraps_http_and_contract_errors() -> None:
+    failing_client = RemoteRerankerProviderClient(
+        "http://reranker",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(503, json={"detail": "warming"})
+            )
+        ),
+    )
+
+    with pytest.raises(InvalidRerankerError, match="Remote reranker request failed"):
+        failing_client.health()
+
+    mismatch_client = RemoteRerankerProviderClient(
+        "http://reranker",
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(
+                    200,
+                    json={
+                        "reranker_profile_name": "other",
+                        "reranker_model_id": DEFAULT_RERANKER_MODEL_ID,
+                        "retrieval_strategy": RERANK_RETRIEVAL_STRATEGY,
+                        "candidate_count": 1,
+                        "returned_count": 0,
+                        "top_k": 1,
+                        "results": [],
+                    },
+                )
+            )
+        ),
+    )
+
+    with pytest.raises(InvalidRerankerError, match="reranker_profile_name mismatch"):
+        mismatch_client.rerank(
+            RerankRequest(
+                query_text="policy",
+                candidates=(_candidate("c1", rank=1, text="policy"),),
+                top_k=1,
+            )
+        )
+
+
+def json_from_request(request: httpx.Request) -> dict[str, object]:
+    payload = json.loads(request.content.decode("utf-8"))
+    assert isinstance(payload, dict)
+    return payload

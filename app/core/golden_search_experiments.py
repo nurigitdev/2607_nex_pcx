@@ -15,6 +15,11 @@ from app.core.golden_questions import (
     list_golden_questions,
 )
 from app.core.query_embeddings import QueryEmbeddingProviderBuilder
+from app.core.rerankers import (
+    RerankerProviderBuilder,
+    RerankerRuntimeConfig,
+    build_reranker_provider_from_runtime_config,
+)
 from app.core.search_experiment_runner import (
     SearchExperimentExecutionInput,
     SearchExperimentExecutionReport,
@@ -163,8 +168,12 @@ def execute_golden_search_experiment_batch(
     batch_input: GoldenSearchExperimentBatchInput,
     *,
     fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    fallback_reranker_runtime_config: RerankerRuntimeConfig | None = None,
     query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
         build_embedding_provider_from_runtime_config
+    ),
+    reranker_provider_builder: RerankerProviderBuilder = (
+        build_reranker_provider_from_runtime_config
     ),
 ) -> GoldenSearchExperimentBatchReport | None:
     validated = validate_golden_search_experiment_batch_input(batch_input)
@@ -195,7 +204,9 @@ def execute_golden_search_experiment_batch(
                 run_name_prefix=run_name_prefix,
             ),
             fallback_runtime_config=fallback_runtime_config,
+            fallback_reranker_runtime_config=fallback_reranker_runtime_config,
             query_embedding_provider_builder=query_embedding_provider_builder,
+            reranker_provider_builder=reranker_provider_builder,
         )
         total_elapsed_ms += experiment.run.total_elapsed_ms or 0
         question_reports.append(

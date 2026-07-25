@@ -26,6 +26,9 @@ class Settings:
     embedding_provider_mode: str = "mock"
     remote_embedding_provider_url: str | None = None
     remote_embedding_provider_timeout_seconds: float = 30.0
+    reranker_provider_mode: str = "mock"
+    remote_reranker_provider_url: str | None = None
+    remote_reranker_provider_timeout_seconds: float = 60.0
     embedding_require_route_readiness: bool = False
     embedding_route_readiness_failure_mode: str = "fail"
     embedding_route_readiness_defer_seconds: int = 300
@@ -44,6 +47,11 @@ def get_settings() -> Settings:
         remote_embedding_provider_url=getenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_URL"),
         remote_embedding_provider_timeout_seconds=float(
             getenv("NEX_PCX_REMOTE_EMBEDDING_PROVIDER_TIMEOUT_SECONDS", "30.0")
+        ),
+        reranker_provider_mode=getenv("NEX_PCX_RERANKER_PROVIDER_MODE", "mock"),
+        remote_reranker_provider_url=getenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_URL"),
+        remote_reranker_provider_timeout_seconds=float(
+            getenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_TIMEOUT_SECONDS", "60.0")
         ),
         embedding_require_route_readiness=_env_bool(
             "NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS",

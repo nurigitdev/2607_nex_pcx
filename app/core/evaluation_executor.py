@@ -20,6 +20,11 @@ from app.core.golden_questions import (
     list_golden_questions,
 )
 from app.core.query_embeddings import QueryEmbeddingProviderBuilder
+from app.core.rerankers import (
+    RerankerProviderBuilder,
+    RerankerRuntimeConfig,
+    build_reranker_provider_from_runtime_config,
+)
 from app.core.search_compare import SearchCompareInput, run_search_compare
 
 
@@ -114,8 +119,12 @@ def execute_golden_evaluation(
     execution_input: GoldenEvaluationExecutionInput,
     *,
     fallback_runtime_config: EmbeddingProviderRuntimeConfig | None = None,
+    fallback_reranker_runtime_config: RerankerRuntimeConfig | None = None,
     query_embedding_provider_builder: QueryEmbeddingProviderBuilder = (
         build_embedding_provider_from_runtime_config
+    ),
+    reranker_provider_builder: RerankerProviderBuilder = (
+        build_reranker_provider_from_runtime_config
     ),
 ) -> GoldenEvaluationExecutionReport | None:
     validated = validate_golden_evaluation_execution_input(execution_input)
@@ -137,7 +146,9 @@ def execute_golden_evaluation(
             database_url,
             _question_search_input(question, validated),
             fallback_runtime_config=fallback_runtime_config,
+            fallback_reranker_runtime_config=fallback_reranker_runtime_config,
             query_embedding_provider_builder=query_embedding_provider_builder,
+            reranker_provider_builder=reranker_provider_builder,
         )
         search_log_ids_by_question[question.question_id] = search_result.search_log_id
 
