@@ -2,8 +2,8 @@ from typing import Any
 
 import pytest
 
-from app.core.config import Settings
 from app.core import remote_reranker_operations as operations
+from app.core.config import Settings
 from app.core.rerankers import (
     REMOTE_RERANKER_PROVIDER_MODE,
     RERANK_RETRIEVAL_STRATEGY,

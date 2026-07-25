@@ -1,7 +1,7 @@
 """Citation and source-anchor readiness checks for retrieval context packages."""
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.core.retrieval_context import (
     DEFAULT_CONTEXT_CHAR_BUDGET,

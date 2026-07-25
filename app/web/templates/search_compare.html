@@ -647,6 +647,20 @@
     rerankerDevice: "{{ t('search_runtime.reranker_device') }}",
     rerankerElapsed: "{{ t('search_runtime.reranker_elapsed') }}",
   };
+  const confidenceLabels = {
+    title: "{{ t('retrieval_confidence.title') }}",
+    answerable: "{{ t('retrieval_confidence.answerable') }}",
+    low_confidence: "{{ t('retrieval_confidence.low_confidence') }}",
+    no_relevant_context: "{{ t('retrieval_confidence.no_relevant_context') }}",
+    failed: "{{ t('search_runtime.failed') }}",
+    message_low_confidence: "{{ t('retrieval_confidence.message_low_confidence') }}",
+    message_no_relevant_context: "{{ t('retrieval_confidence.message_no_relevant_context') }}",
+    message_failed: "{{ t('retrieval_confidence.message_failed') }}",
+    topScore: "{{ t('retrieval_confidence.top_score') }}",
+    sourceScore: "{{ t('retrieval_confidence.source_score') }}",
+    rerankerScore: "{{ t('retrieval_confidence.reranker_score') }}",
+    reasons: "{{ t('retrieval_confidence.reasons') }}",
+  };
   const readinessLabels = {
     ready: "{{ t('search_compare.readiness_ready') }}",
     attention: "{{ t('search_compare.readiness_attention') }}",
@@ -857,6 +871,59 @@
   const statusLabel = (status) =>
     status === "failed" ? runtimeLabels.failed : runtimeLabels.succeeded;
   const runtimeMetadata = (profile) => profile.query_runtime_metadata || {};
+  const retrievalConfidence = (metadata) => {
+    const value = metadata?.retrieval_confidence;
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  };
+  const confidenceStatusLabel = (status) =>
+    confidenceLabels[status] || status || "-";
+  const confidenceStatusClass = (status) => {
+    if (status === "answerable") {
+      return "success";
+    }
+    if (status === "no_relevant_context" || status === "failed") {
+      return "danger";
+    }
+    return "warning";
+  };
+  const confidenceMessage = (status) => {
+    if (status === "no_relevant_context") {
+      return confidenceLabels.message_no_relevant_context;
+    }
+    if (status === "failed") {
+      return confidenceLabels.message_failed;
+    }
+    if (status === "low_confidence") {
+      return confidenceLabels.message_low_confidence;
+    }
+    return "";
+  };
+  const renderConfidenceNotice = (confidence) => {
+    if (!confidence?.status || confidence.status === "answerable") {
+      return null;
+    }
+    const notice = document.createElement("div");
+    notice.className =
+      `alert alert-${confidenceStatusClass(confidence.status)} py-2 px-3 small mb-3`;
+    const title = document.createElement("div");
+    title.className = "fw-semibold";
+    title.textContent = `${confidenceLabels.title}: ${confidenceStatusLabel(confidence.status)}`;
+    const message = document.createElement("div");
+    message.textContent = confidenceMessage(confidence.status);
+    notice.append(title, message);
+    if (Array.isArray(confidence.reason_codes) && confidence.reason_codes.length) {
+      const reasons = document.createElement("div");
+      reasons.className = "d-flex flex-wrap gap-1 mt-2";
+      confidence.reason_codes.forEach((reasonCode) => {
+        const badge = document.createElement("span");
+        badge.className = "badge text-bg-light border";
+        badge.textContent = reasonCode;
+        reasons.append(badge);
+      });
+      notice.append(reasons);
+    }
+    return notice;
+  };
   const runtimeModel = (metadata) =>
     metadata.provider_model_id || metadata.model_id || metadata.profile_name || "-";
   const isRerankedRuntime = (metadata) =>
@@ -1354,6 +1421,7 @@
   const renderRuntimeCard = (profile) => {
     const status = profileStatus(profile);
     const metadata = runtimeMetadata(profile);
+    const confidence = retrievalConfidence(metadata);
     const card = document.createElement("article");
     card.className = `search-runtime-card search-runtime-card-${status}`;
 
@@ -1375,10 +1443,18 @@
       renderRuntimeRow(runtimeLabels.providerLatency, formatLatency(metadata.provider_elapsed_ms)),
       renderRuntimeRow(runtimeLabels.profileLatency, formatLatency(profile.elapsed_ms)),
       renderRuntimeRow(runtimeLabels.totalLatency, formatLatency(metadata.total_elapsed_ms)),
+      renderRuntimeRow(confidenceLabels.title, confidenceStatusLabel(confidence.status)),
+      renderRuntimeRow(confidenceLabels.topScore, formatRuntimeValue(confidence.top_score)),
+      renderRuntimeRow(confidenceLabels.sourceScore, formatRuntimeValue(confidence.top_source_score)),
+      renderRuntimeRow(confidenceLabels.rerankerScore, formatRuntimeValue(confidence.top_reranker_score)),
       ...renderRerankerRuntimeRows(metadata),
     );
 
     card.append(header, rows);
+    const confidenceNotice = renderConfidenceNotice(confidence);
+    if (confidenceNotice) {
+      card.append(confidenceNotice);
+    }
 
     if (status === "failed") {
       const failure = document.createElement("div");
@@ -2187,6 +2263,7 @@
   const renderProfile = (profile) => {
     const status = profileStatus(profile);
     const metadata = runtimeMetadata(profile);
+    const confidence = retrievalConfidence(metadata);
     const section = document.createElement("section");
     section.className = `search-profile-column search-profile-column-${status}`;
 
@@ -2221,6 +2298,9 @@
         makeCell(runtimeLabels.rerankerMode, metadata.provider_runtime_mode),
       );
     }
+    runtimeRows.push(
+      makeCell(confidenceLabels.title, confidenceStatusLabel(confidence.status)),
+    );
     runtime.append(...runtimeRows);
 
     const body = document.createElement("div");
@@ -2245,7 +2325,12 @@
       profile.results.forEach((result) => body.append(renderResult(result)));
     }
 
-    section.append(header, runtime, body);
+    const confidenceNotice = renderConfidenceNotice(confidence);
+    if (confidenceNotice) {
+      section.append(header, runtime, confidenceNotice, body);
+    } else {
+      section.append(header, runtime, body);
+    }
     return section;
   };
 
@@ -2254,6 +2339,10 @@
     summaryEl.textContent = `log #${payload.search_log_id} / ${payload.effective_search_scope} / ${payload.total_elapsed_ms} ms`;
     renderRuntimeStatus(payload);
     renderPermissionSummary(payload.permission_summary);
+    const confidenceNotice = renderConfidenceNotice(payload.retrieval_confidence || {});
+    if (confidenceNotice) {
+      resultsEl.append(confidenceNotice);
+    }
     payload.profiles.forEach((profile) => resultsEl.append(renderProfile(profile)));
   };
 

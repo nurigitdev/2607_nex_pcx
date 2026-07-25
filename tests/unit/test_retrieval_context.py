@@ -68,6 +68,7 @@ def _result_detail(
     score: float,
     search_profile_name: str | None = None,
     retrieval_strategy: str | None = None,
+    score_components: dict[str, object] | None = None,
 ) -> SearchLogResultDetailRecord:
     return SearchLogResultDetailRecord(
         search_log_result=SearchLogResultRecord(
@@ -80,7 +81,7 @@ def _result_detail(
             score=score,
             search_profile_name=search_profile_name,
             retrieval_strategy=retrieval_strategy,
-            score_components={"score": score},
+            score_components=score_components or {"score": score},
             profile_elapsed_ms=11,
             created_at=NOW,
         ),
@@ -354,6 +355,43 @@ def test_build_retrieval_context_package_reports_missing_source_context(
     assert package.summary.source_context_missing_count == 1
     assert package.excluded_candidates[0].exclusion_reason == "source_context_missing"
     assert package.excluded_candidates[0].citation.source_label == "document-60.md"
+
+
+def test_build_retrieval_context_package_withholds_low_confidence_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _result_detail(
+        result_id=8,
+        chunk_id=70,
+        profile_name="reranked_vector_cosine",
+        search_profile_name="reranked_vector_cosine",
+        retrieval_strategy="reranked",
+        rank=1,
+        score=-3.5,
+        score_components={
+            "source_score": 0.32,
+            "raw_cross_encoder_score": -3.5,
+        },
+    )
+    monkeypatch.setattr(context_builder, "get_search_log_detail", lambda *_: _search_log((result,)))
+    monkeypatch.setattr(
+        context_builder,
+        "get_search_result_source_context",
+        lambda *_: (_ for _ in ()).throw(AssertionError("source context should be withheld")),
+    )
+
+    package = build_retrieval_context_package(
+        "postgresql://example/test",
+        RetrievalContextInput(search_log_id=77),
+    )
+
+    assert package is not None
+    assert package.confidence_assessment is not None
+    assert package.confidence_assessment.status == "low_confidence"
+    assert package.summary.included_count == 0
+    assert package.summary.excluded_count == 1
+    assert package.excluded_candidates[0].exclusion_reason == "low_confidence"
+    assert package.generation_context_text == ""
 
 
 def test_build_retrieval_context_package_returns_none_for_missing_search_log(

@@ -270,7 +270,6 @@ from app.core.embedding_providers import (
     InvalidEmbeddingProviderError,
     embedding_provider_runtime_config_from_settings,
 )
-from app.core.remote_reranker_operations import get_remote_reranker_operations_status
 from app.core.embedding_vectors import (
     EmbeddingVectorRecord,
     InvalidEmbeddingVectorError,
@@ -468,12 +467,25 @@ from app.core.pipeline_jobs import (
     retry_pipeline_job,
 )
 from app.core.query_embeddings import InvalidQueryEmbeddingError
+from app.core.remote_reranker_operations import get_remote_reranker_operations_status
 from app.core.reranked_search import RERANKED_SEARCH_PROFILE_NAME
 from app.core.rerankers import (
     DEFAULT_RERANKER_MODEL_ID,
     DEFAULT_RERANKER_PROFILE_NAME,
     InvalidRerankerError,
     reranker_runtime_config_from_settings,
+)
+from app.core.retrieval_confidence import retrieval_confidence_assessment_payload
+from app.core.retrieval_context import (
+    DEFAULT_CONTEXT_CHAR_BUDGET,
+    DEFAULT_CONTEXT_MAX_ITEMS,
+    InvalidRetrievalContextError,
+    RetrievalContextCandidate,
+    RetrievalContextChunkEntry,
+    RetrievalContextInput,
+    RetrievalContextPackage,
+    RetrievalContextResultReference,
+    build_retrieval_context_package,
 )
 from app.core.search_compare import (
     InvalidSearchCompareError,
@@ -562,17 +574,6 @@ from app.core.search_result_context import (
     SearchResultSourceBlock,
     SearchResultSourceContext,
     get_search_result_source_context,
-)
-from app.core.retrieval_context import (
-    DEFAULT_CONTEXT_CHAR_BUDGET,
-    DEFAULT_CONTEXT_MAX_ITEMS,
-    InvalidRetrievalContextError,
-    RetrievalContextCandidate,
-    RetrievalContextChunkEntry,
-    RetrievalContextInput,
-    RetrievalContextPackage,
-    RetrievalContextResultReference,
-    build_retrieval_context_package,
 )
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
 
@@ -3727,6 +3728,9 @@ def search_compare_payload(result: SearchCompareResult) -> dict[str, object]:
         "total_elapsed_ms": result.total_elapsed_ms,
         "profile_status_counts": profile_status_counts,
         "profile_failure_count": profile_status_counts.get("failed", 0),
+        "retrieval_confidence": retrieval_confidence_assessment_payload(
+            getattr(result, "confidence_assessment", None)
+        ),
         "profiles": [search_compare_profile_payload(profile) for profile in result.profiles],
     }
 
@@ -3987,6 +3991,9 @@ def retrieval_context_package_payload(
             "total_elapsed_ms": search_log.total_elapsed_ms,
             "created_at": _datetime_response(search_log.created_at),
         },
+        "retrieval_confidence": retrieval_confidence_assessment_payload(
+            package.confidence_assessment
+        ),
         "summary": {
             "candidate_result_count": package.summary.candidate_result_count,
             "unique_candidate_count": package.summary.unique_candidate_count,
@@ -4060,6 +4067,9 @@ def citation_readiness_report_payload(
         "search_log_id": report.package.search_log.search_log.search_log_id,
         "query_text": report.package.search_log.search_log.query_text,
         "generated_at": _datetime_response(report.package.generated_at),
+        "retrieval_confidence": retrieval_confidence_assessment_payload(
+            report.package.confidence_assessment
+        ),
         "summary": {
             "status": report.summary.status,
             "total_candidate_count": report.summary.total_candidate_count,

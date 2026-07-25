@@ -192,6 +192,7 @@ def test_citation_readiness_api_and_ui(
         body = api_response.json()
         assert api_response.status_code == 200
         assert body["search_log_id"] == search_log_id
+        assert body["retrieval_confidence"]["status"] == "answerable"
         assert body["summary"]["included_candidate_count"] == 1
         assert body["summary"]["source_anchor_coverage_percent"] == "100.00"
         assert body["summary"]["warning_count"] == 1
@@ -205,6 +206,7 @@ def test_citation_readiness_api_and_ui(
         assert page_response.status_code == 200
         assert "Citation Coverage 점검" in page_response.text
         assert "data-citation-readiness-report" in page_response.text
+        assert "data-retrieval-confidence-guardrail" not in page_response.text
         assert "missing_artifact_block_reference" in page_response.text
         assert list_page_response.status_code == 200
         assert "최근 검색 로그" in list_page_response.text

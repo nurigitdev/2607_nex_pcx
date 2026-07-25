@@ -42,6 +42,19 @@
     "yes": "Yes",
     "no": "No"
   },
+  "retrieval_confidence": {
+    "title": "Retrieval Confidence",
+    "answerable": "Answerable",
+    "low_confidence": "Low Confidence",
+    "no_relevant_context": "No Relevant Context",
+    "message_low_confidence": "Results were returned, but score signals are too weak for generation context.",
+    "message_no_relevant_context": "No relevant retrieval result was available, so generation context was left empty.",
+    "message_failed": "A search runtime failure makes this result unsafe for generation context.",
+    "top_score": "Top Score",
+    "source_score": "Source Score",
+    "reranker_score": "Reranker Score",
+    "reasons": "Reasons"
+  },
   "retrieval_context": {
     "title": "Retrieval Context Package",
     "subtitle": "Package search results into grounded context for the generation stage.",

@@ -592,6 +592,12 @@ def test_run_search_compare_returns_profile_failure_without_aborting(monkeypatch
     assert metadata["query_embedding_success_count"] == 1
     assert metadata["profile_status_counts"] == {"succeeded": 1, "failed": 1}
     assert metadata["profile_failure_count"] == 1
+    assert metadata["retrieval_confidence"]["status"] == "answerable"
+    assert metadata["retrieval_confidence"]["answerable_profile_count"] == 1
+    assert (
+        metadata["profile_query_embeddings"]["kure_v1_1024"]["retrieval_confidence"]["status"]
+        == "answerable"
+    )
     assert set(metadata["profile_query_embeddings"]) == {"kure_v1_1024"}
     assert metadata["profile_failures"]["bge_m3_1024"]["error_message"] == ("provider unavailable")
     assert captured_allow_mock_fallback == [False, False]
@@ -930,6 +936,9 @@ def test_run_search_compare_executes_reranked_profile_with_source_metadata(
     assert metadata["adapter"] == "search_compare_runtime"
     assert metadata["query_embedding_profile_count"] == 0
     assert metadata["reranked_search_profile_count"] == 1
+    assert metadata["retrieval_confidence"]["status"] == "answerable"
+    assert result.confidence_assessment is not None
+    assert result.confidence_assessment.status == "answerable"
     assert (
         metadata["profile_reranked_searches"][RERANKED_SEARCH_PROFILE_NAME][
             "reranked_vector_profile_name"

@@ -67,6 +67,12 @@ from app.core.rerankers import (
     build_reranker_provider_from_runtime_config,
     normalize_reranker_runtime_config,
 )
+from app.core.retrieval_confidence import (
+    RetrievalConfidenceAssessment,
+    assess_search_compare_retrieval_confidence,
+    retrieval_confidence_assessment_payload,
+    retrieval_confidence_profile_payload,
+)
 from app.core.search_logs import (
     SearchLogInput,
     SearchLogResultInput,
@@ -181,6 +187,7 @@ class SearchCompareResult:
     top_k: int
     profiles: tuple[SearchCompareProfileResult, ...]
     total_elapsed_ms: int
+    confidence_assessment: RetrievalConfidenceAssessment | None = None
 
 
 @dataclass(frozen=True)
@@ -1584,6 +1591,24 @@ def run_search_compare(
             )
 
     raw_profile_results_tuple = tuple(raw_profile_results)
+    confidence_assessment = assess_search_compare_retrieval_confidence(
+        raw_profile_results_tuple,
+    )
+    confidence_by_profile_name = {
+        profile.profile_name: profile for profile in confidence_assessment.profiles
+    }
+    raw_profile_results_tuple = tuple(
+        replace(
+            profile_result,
+            query_runtime_metadata={
+                **profile_result.query_runtime_metadata,
+                "retrieval_confidence": retrieval_confidence_profile_payload(
+                    confidence_by_profile_name[profile_result.profile_name]
+                ),
+            },
+        )
+        for profile_result in raw_profile_results_tuple
+    )
     total_elapsed_ms = max(0, int((perf_counter() - started_at) * 1000))
     search_log = create_search_log(
         database_url,
@@ -1599,10 +1624,15 @@ def run_search_compare(
             chunk_policy_name=validated.chunk_policy_name,
             top_k=validated.top_k,
             profiles=profiles,
-            query_runtime_metadata=_search_compare_query_runtime_metadata(
-                raw_profile_results_tuple,
-                allow_mock_fallback=validated.allow_mock_fallback,
-            ),
+            query_runtime_metadata={
+                **_search_compare_query_runtime_metadata(
+                    raw_profile_results_tuple,
+                    allow_mock_fallback=validated.allow_mock_fallback,
+                ),
+                "retrieval_confidence": retrieval_confidence_assessment_payload(
+                    confidence_assessment
+                ),
+            },
             strategy_name=_search_compare_strategy_name(profiles),
             total_elapsed_ms=total_elapsed_ms,
             similarity_metric=_search_compare_similarity_metric(profiles),
@@ -1663,6 +1693,7 @@ def run_search_compare(
         top_k=validated.top_k,
         profiles=tuple(profile_results),
         total_elapsed_ms=total_elapsed_ms,
+        confidence_assessment=confidence_assessment,
     )
 
 

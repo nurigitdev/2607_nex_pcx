@@ -12,8 +12,8 @@ from app.core.citation_readiness import (
 )
 from app.core.retrieval_context import (
     RetrievalContextCandidate,
-    RetrievalContextCitation,
     RetrievalContextChunkEntry,
+    RetrievalContextCitation,
     RetrievalContextPackage,
     RetrievalContextResultReference,
     RetrievalContextSummary,

@@ -5,6 +5,10 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 
+from app.core.retrieval_confidence import (
+    RetrievalConfidenceAssessment,
+    assess_search_log_retrieval_confidence,
+)
 from app.core.search_logs import (
     SearchLogDetailRecord,
     SearchLogResultDetailRecord,
@@ -127,6 +131,7 @@ class RetrievalContextPackage:
     candidates: tuple[RetrievalContextCandidate, ...]
     generation_context_text: str
     generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    confidence_assessment: RetrievalConfidenceAssessment | None = None
 
     @property
     def included_candidates(self) -> tuple[RetrievalContextCandidate, ...]:
@@ -418,6 +423,11 @@ def build_retrieval_context_package(
     if search_log is None:
         return None
 
+    confidence_assessment = assess_search_log_retrieval_confidence(
+        search_log.search_log,
+        search_log.results,
+    )
+    withhold_generation_context = confidence_assessment.withhold_generation_context
     sorted_results = sorted(search_log.results, key=_result_sort_key)
     candidates: list[RetrievalContextCandidate] = []
     candidates_by_chunk_id: dict[int, int] = {}
@@ -449,6 +459,16 @@ def build_retrieval_context_package(
 
         if len(candidates_by_chunk_id) >= validated.max_items:
             candidates.append(_excluded_candidate(result_detail, reason="max_items_exceeded"))
+            continue
+
+        if withhold_generation_context:
+            candidates.append(
+                _excluded_candidate(
+                    result_detail,
+                    reason=confidence_assessment.status,
+                )
+            )
+            candidates_by_chunk_id[result.chunk_id] = len(candidates) - 1
             continue
 
         context = get_search_result_source_context(database_url, result.search_log_result_id)
@@ -543,4 +563,5 @@ def build_retrieval_context_package(
         summary=summary,
         candidates=candidate_tuple,
         generation_context_text=generation_text,
+        confidence_assessment=confidence_assessment,
     )

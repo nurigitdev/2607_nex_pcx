@@ -42,6 +42,19 @@
     "yes": "예",
     "no": "아니오"
   },
+  "retrieval_confidence": {
+    "title": "검색 신뢰도",
+    "answerable": "답변 가능",
+    "low_confidence": "근거 신뢰도 낮음",
+    "no_relevant_context": "관련 근거 없음",
+    "message_low_confidence": "검색 결과는 있지만 점수 신호가 낮아 생성 입력 Context에서 제외했습니다.",
+    "message_no_relevant_context": "관련 검색 결과가 없어 생성 입력 Context를 비웠습니다.",
+    "message_failed": "검색 실행 실패가 있어 생성 근거로 사용하기 어렵습니다.",
+    "top_score": "Top Score",
+    "source_score": "Source Score",
+    "reranker_score": "Reranker Score",
+    "reasons": "사유"
+  },
   "retrieval_context": {
     "title": "검색 Context 패키지",
     "subtitle": "검색 결과를 생성 단계에서 사용할 수 있는 근거 묶음으로 정리합니다.",
