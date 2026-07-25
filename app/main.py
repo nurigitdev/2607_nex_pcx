@@ -461,7 +461,12 @@ from app.core.pipeline_jobs import (
 )
 from app.core.query_embeddings import InvalidQueryEmbeddingError
 from app.core.reranked_search import RERANKED_SEARCH_PROFILE_NAME
-from app.core.rerankers import InvalidRerankerError, reranker_runtime_config_from_settings
+from app.core.rerankers import (
+    DEFAULT_RERANKER_MODEL_ID,
+    DEFAULT_RERANKER_PROFILE_NAME,
+    InvalidRerankerError,
+    reranker_runtime_config_from_settings,
+)
 from app.core.search_compare import (
     InvalidSearchCompareError,
     SearchCompareCoverageReconcileInput,
@@ -4859,6 +4864,37 @@ def search_compare_prefill_payload(
         "require_real_provider": (query_params.get("require_real_provider") or "").lower()
         in {"1", "true", "yes", "on"},
     }
+
+
+def search_reranker_runtime_control_payload(settings: object) -> dict[str, object]:
+    raw_mode = str(getattr(settings, "reranker_provider_mode", "mock") or "mock").strip().lower()
+    raw_base_url = getattr(settings, "remote_reranker_provider_url", None)
+    raw_timeout = getattr(settings, "remote_reranker_provider_timeout_seconds", 60.0)
+    try:
+        config = reranker_runtime_config_from_settings(settings)
+        return {
+            "status": "configured",
+            "validation_error": "",
+            "mode": config.mode,
+            "remote_base_url": config.remote_base_url or "",
+            "timeout_seconds": config.remote_timeout_seconds,
+            "reranker_profile_name": DEFAULT_RERANKER_PROFILE_NAME,
+            "reranker_model_id": DEFAULT_RERANKER_MODEL_ID,
+        }
+    except (InvalidRerankerError, TypeError, ValueError) as exc:
+        try:
+            timeout_seconds: float | None = float(raw_timeout)
+        except (TypeError, ValueError):
+            timeout_seconds = None
+        return {
+            "status": "invalid",
+            "validation_error": str(exc),
+            "mode": raw_mode or "mock",
+            "remote_base_url": str(raw_base_url).strip().rstrip("/") if raw_base_url else "",
+            "timeout_seconds": timeout_seconds,
+            "reranker_profile_name": DEFAULT_RERANKER_PROFILE_NAME,
+            "reranker_model_id": DEFAULT_RERANKER_MODEL_ID,
+        }
 
 
 def search_log_record_payload(item: SearchLogListItem) -> dict[str, object]:
@@ -13190,6 +13226,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     profile_options.append(BM25_SEARCH_PROFILE_NAME)
                 if HYBRID_SEARCH_PROFILE_NAME not in profile_options:
                     profile_options.append(HYBRID_SEARCH_PROFILE_NAME)
+                if RERANKED_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(RERANKED_SEARCH_PROFILE_NAME)
                 chunk_policy_options = list_chunk_policy_summaries(settings.database_url)
             except Exception as exc:
                 error_message = str(exc)
@@ -13209,6 +13247,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 search_file_type_options=SEARCH_COMPARE_FILE_TYPES,
                 chunk_policy_options=chunk_policy_options,
                 bm25_tokenizer_options=[asdict(tokenizer) for tokenizer in list_bm25_tokenizers()],
+                search_reranker_runtime=search_reranker_runtime_control_payload(settings),
                 error_message=error_message,
                 database_configured=bool(settings.database_url),
             ),

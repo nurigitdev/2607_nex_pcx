@@ -183,6 +183,27 @@
       <div class="form-text">{{ t("search_compare.hybrid_vector_profile_help") }}</div>
     </div>
 
+    {% set reranked_selected = "reranked_vector_cosine" in search_prefill.profiles %}
+    <div class="search-reranked-profile-field">
+      <label class="form-label" for="reranked_vector_profile_name">{{ t("search_compare.reranked_vector_profile") }}</label>
+      <select
+        class="form-select"
+        id="reranked_vector_profile_name"
+        name="reranked_vector_profile_name"
+        {% if not database_configured or not reranked_selected %}disabled{% endif %}
+      >
+        {% for profile in embedding_profile_options %}
+        <option
+          value="{{ profile }}"
+          {% if profile == search_prefill.reranked_vector_profile_name %}selected{% endif %}
+        >
+          {{ profile }}
+        </option>
+        {% endfor %}
+      </select>
+      <div class="form-text">{{ t("search_compare.reranked_vector_profile_help") }}</div>
+    </div>
+
     <div class="search-provider-mode-field">
       <label class="form-label">{{ t("search_compare.provider_mode") }}</label>
       <label class="form-check search-provider-mode-check">
@@ -200,22 +221,45 @@
       <div class="form-text">{{ t("search_compare.require_real_provider_help") }}</div>
     </div>
 
+    <div
+      class="search-reranker-runtime-field"
+      id="search-reranker-runtime-controls"
+      data-reranker-runtime-status="{{ search_reranker_runtime.status }}"
+      data-reranker-runtime-mode="{{ search_reranker_runtime.mode }}"
+    >
+      <label class="form-label">{{ t("search_compare.reranker_runtime_controls") }}</label>
+      <div class="search-reranker-runtime-box search-reranker-runtime-box-{{ search_reranker_runtime.status }}">
+        <span>{{ t("search_runtime.provider_mode") }}: {{ search_reranker_runtime.mode }}</span>
+        {% if search_reranker_runtime.remote_base_url %}
+        <span>{{ t("search_runtime.reranker_url") }}: {{ search_reranker_runtime.remote_base_url }}</span>
+        {% endif %}
+        {% if search_reranker_runtime.timeout_seconds is not none %}
+        <span>{{ t("search_runtime.reranker_timeout") }}: {{ search_reranker_runtime.timeout_seconds }}s</span>
+        {% endif %}
+        <span>{{ t("search_runtime.reranker_profile") }}: {{ search_reranker_runtime.reranker_profile_name }}</span>
+        {% if search_reranker_runtime.status == "invalid" %}
+        <strong>{{ t("search_runtime.invalid_config") }}: {{ search_reranker_runtime.validation_error }}</strong>
+        {% endif %}
+      </div>
+    </div>
+
     <fieldset class="search-profile-field">
       <legend class="form-label">Profiles</legend>
       <div class="search-profile-list">
         {% for profile in profile_options %}
         {% set is_keyword_profile = profile == "bm25_keyword" %}
         {% set is_hybrid_profile = profile == "hybrid_keyword_vector" %}
+        {% set is_reranked_profile = profile == "reranked_vector_cosine" %}
         <label
-          class="search-profile-option{% if is_keyword_profile %} search-profile-option-keyword{% elif is_hybrid_profile %} search-profile-option-hybrid{% endif %}"
-          data-profile-kind="{% if is_keyword_profile %}keyword{% elif is_hybrid_profile %}hybrid{% else %}embedding{% endif %}"
+          class="search-profile-option{% if is_keyword_profile %} search-profile-option-keyword{% elif is_hybrid_profile %} search-profile-option-hybrid{% elif is_reranked_profile %} search-profile-option-reranked{% endif %}"
+          data-profile-kind="{% if is_keyword_profile %}keyword{% elif is_hybrid_profile %}hybrid{% elif is_reranked_profile %}reranked{% else %}embedding{% endif %}"
         >
           <input
             class="form-check-input"
             type="checkbox"
             name="profiles"
             value="{{ profile }}"
-            {% if profile in search_prefill.profiles or ((not search_prefill.profile_selection_explicit) and (not is_hybrid_profile)) %}
+            {% if profile in search_prefill.profiles or ((not search_prefill.profile_selection_explicit) and (not is_hybrid_profile) and (not is_reranked_profile)) %}
             checked
             {% endif %}
             {% if not database_configured %}disabled{% endif %}
@@ -225,6 +269,9 @@
           <span class="search-profile-option-code">{{ profile }}</span>
           {% elif is_hybrid_profile %}
           <span class="search-profile-option-name">{{ t("search_compare.hybrid_profile") }}</span>
+          <span class="search-profile-option-code">{{ profile }}</span>
+          {% elif is_reranked_profile %}
+          <span class="search-profile-option-name">{{ t("search_compare.reranked_profile") }}</span>
           <span class="search-profile-option-code">{{ profile }}</span>
           {% else %}
           <span class="search-profile-option-name">{{ profile }}</span>
@@ -514,6 +561,7 @@
   const feedbackCommentsList = document.getElementById("feedback-comments-list");
   const feedbackCommentsMeta = document.getElementById("feedback-comments-meta");
   const hybridVectorProfileSelect = document.getElementById("hybrid_vector_profile_name");
+  const rerankedVectorProfileSelect = document.getElementById("reranked_vector_profile_name");
   const canLoadFeedbackSummary = {{ "true" if database_configured else "false" }};
   const matrixLimit = 12;
   const policyCompareLimit = 8;
@@ -587,6 +635,17 @@
     errorMessage: "{{ t('search_runtime.error_message') }}",
     noMetadata: "{{ t('search_runtime.no_metadata') }}",
     noResultsAfterSuccess: "{{ t('search_runtime.no_results_after_success') }}",
+    sourceVectorProfile: "{{ t('search_runtime.source_vector_profile') }}",
+    candidateTopK: "{{ t('search_runtime.candidate_top_k') }}",
+    candidateCount: "{{ t('search_runtime.candidate_count') }}",
+    rerankerMode: "{{ t('search_runtime.reranker_mode') }}",
+    rerankerUrl: "{{ t('search_runtime.reranker_url') }}",
+    rerankerTimeout: "{{ t('search_runtime.reranker_timeout') }}",
+    rerankerProfile: "{{ t('search_runtime.reranker_profile') }}",
+    rerankerProvider: "{{ t('search_runtime.reranker_provider') }}",
+    rerankerBackend: "{{ t('search_runtime.reranker_backend') }}",
+    rerankerDevice: "{{ t('search_runtime.reranker_device') }}",
+    rerankerElapsed: "{{ t('search_runtime.reranker_elapsed') }}",
   };
   const readinessLabels = {
     ready: "{{ t('search_compare.readiness_ready') }}",
@@ -688,23 +747,37 @@
     new FormData(form).getAll("profiles").filter(Boolean);
   const keywordProfileNames = new Set(["bm25_keyword"]);
   const hybridProfileNames = new Set(["hybrid_keyword_vector"]);
+  const rerankedProfileNames = new Set(["reranked_vector_cosine"]);
   const hasSelectedKeywordProfile = () =>
     selectedProfiles().some((profile) => keywordProfileNames.has(profile));
   const hasSelectedHybridProfile = () =>
     selectedProfiles().some((profile) => hybridProfileNames.has(profile));
+  const hasSelectedRerankedProfile = () =>
+    selectedProfiles().some((profile) => rerankedProfileNames.has(profile));
   const selectedEmbeddingProfiles = () =>
     selectedProfiles().filter(
-      (profile) => !keywordProfileNames.has(profile) && !hybridProfileNames.has(profile),
+      (profile) =>
+        !keywordProfileNames.has(profile)
+        && !hybridProfileNames.has(profile)
+        && !rerankedProfileNames.has(profile),
     );
   const selectedReadinessProfiles = () => {
     const profiles = selectedEmbeddingProfiles();
     const hybridVectorProfile = fieldValue("hybrid_vector_profile_name");
+    const rerankedVectorProfile = fieldValue("reranked_vector_profile_name");
     if (
       hasSelectedHybridProfile()
       && hybridVectorProfile
       && !profiles.includes(hybridVectorProfile)
     ) {
       profiles.push(hybridVectorProfile);
+    }
+    if (
+      hasSelectedRerankedProfile()
+      && rerankedVectorProfile
+      && !profiles.includes(rerankedVectorProfile)
+    ) {
+      profiles.push(rerankedVectorProfile);
     }
     return profiles;
   };
@@ -721,6 +794,12 @@
       return;
     }
     hybridVectorProfileSelect.disabled = !canLoadFeedbackSummary || !hasSelectedHybridProfile();
+  };
+  const updateRerankedVectorProfileAvailability = () => {
+    if (!rerankedVectorProfileSelect) {
+      return;
+    }
+    rerankedVectorProfileSelect.disabled = !canLoadFeedbackSummary || !hasSelectedRerankedProfile();
   };
 
   const selectedPolicyCompareNames = () => Array.from(
@@ -780,6 +859,41 @@
   const runtimeMetadata = (profile) => profile.query_runtime_metadata || {};
   const runtimeModel = (metadata) =>
     metadata.provider_model_id || metadata.model_id || metadata.profile_name || "-";
+  const isRerankedRuntime = (metadata) =>
+    metadata.search_profile_name === "reranked_vector_cosine"
+    || metadata.provider_type === "rerank"
+    || Boolean(metadata.reranker_profile_name);
+  const rerankerRuntimeMetadata = (metadata) => {
+    const value = metadata.reranker_runtime_metadata;
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  };
+  const renderRerankerRuntimeRows = (metadata) => {
+    if (!isRerankedRuntime(metadata)) {
+      return [];
+    }
+    const rerankerMetadata = rerankerRuntimeMetadata(metadata);
+    return [
+      renderRuntimeRow(
+        runtimeLabels.sourceVectorProfile,
+        metadata.source_vector_profile_name || metadata.reranked_vector_profile_name,
+      ),
+      renderRuntimeRow(runtimeLabels.candidateTopK, metadata.candidate_top_k),
+      renderRuntimeRow(runtimeLabels.candidateCount, metadata.candidate_count),
+      renderRuntimeRow(runtimeLabels.rerankerMode, metadata.provider_runtime_mode),
+      renderRuntimeRow(runtimeLabels.rerankerUrl, metadata.provider_runtime_base_url),
+      renderRuntimeRow(
+        runtimeLabels.rerankerTimeout,
+        metadata.provider_runtime_timeout_seconds
+          ? `${metadata.provider_runtime_timeout_seconds}s`
+          : null,
+      ),
+      renderRuntimeRow(runtimeLabels.rerankerProfile, metadata.reranker_profile_name),
+      renderRuntimeRow(runtimeLabels.rerankerProvider, metadata.reranker_provider_type),
+      renderRuntimeRow(runtimeLabels.rerankerBackend, rerankerMetadata.backend),
+      renderRuntimeRow(runtimeLabels.rerankerDevice, rerankerMetadata.device),
+      renderRuntimeRow(runtimeLabels.rerankerElapsed, formatLatency(rerankerMetadata.elapsed_ms)),
+    ];
+  };
 
   const readinessStatusLabel = (status) => {
     if (status === "ready") {
@@ -1026,7 +1140,7 @@
 
   const readinessPayload = (chunkPolicyNames = null) => {
     const formData = new FormData(form);
-    const profiles = selectedEmbeddingProfiles();
+    const profiles = selectedReadinessProfiles();
     if (!profiles.length) {
       return null;
     }
@@ -1261,6 +1375,7 @@
       renderRuntimeRow(runtimeLabels.providerLatency, formatLatency(metadata.provider_elapsed_ms)),
       renderRuntimeRow(runtimeLabels.profileLatency, formatLatency(profile.elapsed_ms)),
       renderRuntimeRow(runtimeLabels.totalLatency, formatLatency(metadata.total_elapsed_ms)),
+      ...renderRerankerRuntimeRows(metadata),
     );
 
     card.append(header, rows);
@@ -1505,6 +1620,7 @@
       file_type: fieldValue("file_type"),
       bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
       hybrid_vector_profile_name: fieldValue("hybrid_vector_profile_name"),
+      reranked_vector_profile_name: fieldValue("reranked_vector_profile_name"),
       allow_mock_fallback: !new FormData(form).has("require_real_provider"),
       entries: entries.map((entry) => ({
         actor_user_id: entry.actor_user_id,
@@ -1649,6 +1765,7 @@
       file_type: fieldValue("file_type"),
       bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
       hybrid_vector_profile_name: fieldValue("hybrid_vector_profile_name"),
+      reranked_vector_profile_name: fieldValue("reranked_vector_profile_name"),
       allow_mock_fallback: !formData.has("require_real_provider"),
     };
 
@@ -2088,13 +2205,23 @@
 
     const runtime = document.createElement("div");
     runtime.className = "search-profile-runtime";
-    runtime.append(
+    const runtimeRows = [
       makeCell(runtimeLabels.provider, metadata.provider_type),
       makeCell(runtimeLabels.model, runtimeModel(metadata)),
       makeCell(runtimeLabels.tokenizer, metadata.tokenizer_name),
       makeCell(runtimeLabels.dimension, metadata.dimension),
       makeCell(runtimeLabels.runtimeSource, metadata.runtime_source),
-    );
+    ];
+    if (isRerankedRuntime(metadata)) {
+      runtimeRows.push(
+        makeCell(
+          runtimeLabels.sourceVectorProfile,
+          metadata.source_vector_profile_name || metadata.reranked_vector_profile_name,
+        ),
+        makeCell(runtimeLabels.rerankerMode, metadata.provider_runtime_mode),
+      );
+    }
+    runtime.append(...runtimeRows);
 
     const body = document.createElement("div");
     body.className = "search-result-list";
@@ -2154,6 +2281,7 @@
       file_type: fieldValue("file_type"),
       bm25_tokenizer_name: fieldValue("bm25_tokenizer_name"),
       hybrid_vector_profile_name: fieldValue("hybrid_vector_profile_name"),
+      reranked_vector_profile_name: fieldValue("reranked_vector_profile_name"),
       allow_mock_fallback: !formData.has("require_real_provider"),
     };
 
@@ -2212,6 +2340,7 @@
     stopReadinessAutoRefresh();
     updateBM25TokenizerAvailability();
     updateHybridVectorProfileAvailability();
+    updateRerankedVectorProfileAvailability();
     loadReadiness();
   });
   policyCompareForm?.addEventListener("change", () => {
@@ -2224,6 +2353,7 @@
 
   updateBM25TokenizerAvailability();
   updateHybridVectorProfileAvailability();
+  updateRerankedVectorProfileAvailability();
   loadReadiness();
   loadFeedbackSummary();
   loadFeedbackComments();

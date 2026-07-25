@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from app.core.chunks import ChunkRecord
+from app.core.config import Settings
 from app.core.document_inventory import DocumentInventoryItem
 from app.core.file_metadata import FileMetadataRecord
 from app.core.ingestion_artifacts import (
@@ -34,6 +35,7 @@ from app.main import (
     extraction_rerun_feedback_payload,
     search_log_bm25_tokenizer_name,
     search_log_reranked_vector_profile_name,
+    search_reranker_runtime_control_payload,
 )
 
 NOW = datetime(2026, 7, 15, tzinfo=UTC)
@@ -101,6 +103,79 @@ def test_search_log_reranked_vector_profile_name_reads_profile_metadata() -> Non
         )
         is None
     )
+
+
+def test_search_reranker_runtime_control_payload_reports_mock_defaults() -> None:
+    payload = search_reranker_runtime_control_payload(Settings())
+
+    assert payload["status"] == "configured"
+    assert payload["mode"] == "mock"
+    assert payload["remote_base_url"] == ""
+    assert payload["timeout_seconds"] == 60.0
+    assert payload["reranker_profile_name"] == "qwen3_reranker_4b"
+    assert payload["reranker_model_id"] == "Qwen/Qwen3-Reranker-4B"
+
+
+def test_search_reranker_runtime_control_payload_normalizes_remote_config() -> None:
+    payload = search_reranker_runtime_control_payload(
+        Settings(
+            reranker_provider_mode=" REMOTE ",
+            remote_reranker_provider_url=" http://reranker.local:9104/ ",
+            remote_reranker_provider_timeout_seconds=90.0,
+        )
+    )
+
+    assert payload["status"] == "configured"
+    assert payload["mode"] == "remote"
+    assert payload["remote_base_url"] == "http://reranker.local:9104"
+    assert payload["timeout_seconds"] == 90.0
+    assert payload["validation_error"] == ""
+
+
+@pytest.mark.parametrize(
+    ("settings", "expected_error", "expected_timeout"),
+    [
+        (
+            Settings(reranker_provider_mode="remote"),
+            "remote_reranker_provider_url is required",
+            60.0,
+        ),
+        (
+            Settings(
+                reranker_provider_mode="remote",
+                remote_reranker_provider_url="http://reranker.local:9104",
+                remote_reranker_provider_timeout_seconds=0,
+            ),
+            "remote_reranker_provider_timeout_seconds must be greater than 0",
+            0.0,
+        ),
+    ],
+)
+def test_search_reranker_runtime_control_payload_reports_invalid_config(
+    settings: Settings,
+    expected_error: str,
+    expected_timeout: float,
+) -> None:
+    payload = search_reranker_runtime_control_payload(settings)
+
+    assert payload["status"] == "invalid"
+    assert payload["mode"] == "remote"
+    assert expected_error in str(payload["validation_error"])
+    assert payload["timeout_seconds"] == expected_timeout
+
+
+def test_search_reranker_runtime_control_payload_preserves_unparseable_timeout() -> None:
+    class BrokenSettings:
+        reranker_provider_mode = "remote"
+        remote_reranker_provider_url = " http://reranker.local:9104/ "
+        remote_reranker_provider_timeout_seconds = "slow"
+
+    payload = search_reranker_runtime_control_payload(BrokenSettings())
+
+    assert payload["status"] == "invalid"
+    assert payload["remote_base_url"] == "http://reranker.local:9104"
+    assert payload["timeout_seconds"] is None
+    assert "could not convert string to float" in str(payload["validation_error"])
 
 
 def make_extraction_artifact(**overrides) -> ExtractionArtifactRecord:

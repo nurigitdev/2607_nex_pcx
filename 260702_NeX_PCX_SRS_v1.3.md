@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.23**
+**Software Requirements Specification v1.24**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.23
+문서 상태: Draft v1.24
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.23 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.24 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.23 |
+| 문서 버전 | v1.24 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -48,6 +48,7 @@
 | 1.21 | 2026-07-25 | Remote reranker provider foreground launch script, DGX health smoke 절차와 기본 포트 9104 요구사항 보강 |
 | 1.22 | 2026-07-25 | Remote reranker request smoke runner, `/v1/rerank` 응답 계약과 score/rank evidence 요구사항 보강 |
 | 1.23 | 2026-07-25 | Search Compare remote reranker E2E smoke, query embedding부터 search log metadata까지 검증 요구사항 보강 |
+| 1.24 | 2026-07-25 | Search Compare reranker runtime controls UI, reranked source vector profile 선택 및 runtime metadata 표시 요구사항 보강 |
 
 # 목차
 
@@ -107,7 +108,7 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | 문서 처리 | 텍스트 추출, heading/section 추정, chunk 생성, chunk metadata 저장 |
 | Embedding | KURE-v1 1024, bge-m3 1024, Qwen3 1000, Qwen3 2560 profile 생성 및 저장 |
 | 비동기 처리 | 업로드 이후 텍스트 추출, parsing, chunking, embedding, vector indexing을 job queue와 worker로 처리 |
-| 검색 | 동일 query에 대한 4개 embedding profile, BM25 keyword baseline, hybrid 검색 결과 표시 |
+| 검색 | 동일 query에 대한 4개 embedding profile, BM25 keyword baseline, hybrid, reranked 검색 결과 표시 |
 | 평가 | 검색 결과 정답/부분정답/오답 피드백 저장, 검색 로그/latency 저장 |
 | 계정/권한 | 테스트용 사용자, 조직 계층, 역할, 문서 접근 범위, query 검색 범위 metadata 저장 |
 | 품질관리 | pytest, Playwright, pytest-cov, 독립 test DB, quality gate 절차 적용 |
@@ -131,8 +132,8 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | RAG | Retrieval-Augmented Generation. 검색 결과를 LLM 답변 생성의 근거로 사용하는 방식 |
 | Embedding Profile | 특정 모델명, dimension, normalization, pooling 설정을 포함한 embedding 실행 단위 |
 | Embedding Job | 특정 chunk와 embedding profile 조합에 대해 embedding 생성, 저장, 실패/재시도를 추적하는 background 작업 단위 |
-| Search Profile | 검색 비교 화면과 검색 로그에서 하나의 결과 column/lane으로 표시되는 검색 실행 단위. embedding profile, BM25 keyword baseline, hybrid strategy를 포괄한다. |
-| Retrieval Strategy | query를 chunk 후보군과 점수로 변환하는 검색 알고리즘 선택값. vector_cosine, bm25_keyword, hybrid_keyword_vector 등을 포함한다. |
+| Search Profile | 검색 비교 화면과 검색 로그에서 하나의 결과 column/lane으로 표시되는 검색 실행 단위. embedding profile, BM25 keyword baseline, hybrid, reranked strategy를 포괄한다. |
+| Retrieval Strategy | query를 chunk 후보군과 점수로 변환하는 검색 알고리즘 선택값. vector_cosine, bm25_keyword, hybrid_keyword_vector, reranked_vector_cosine 등을 포함한다. |
 | BM25 | Best Match 25. query term 빈도, 문서 빈도, chunk 길이를 반영하는 keyword retrieval baseline으로 사용한다. |
 | Hybrid Retrieval | BM25 keyword 결과와 embedding vector 결과를 fusion하여 단독 검색보다 안정적인 결과를 실험하는 검색 방식 |
 | Chunk | 문서 본문을 검색 가능한 단위로 분할한 텍스트 조각 |
@@ -465,6 +466,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Search Compare API는 `reranked_vector_cosine` profile을 실행할 때 reranked_vector_profile_name을 명시하거나 선택된 embedding profile 중 첫 번째 active profile을 source vector 후보 검색에 사용하며, source vector profile, candidate_top_k, reranker profile/model/provider를 search runtime metadata와 result score_components에 기록해야 한다.
 - remote reranker provider는 최소 `GET /healthz`, `POST /v1/rerank` HTTP 계약을 제공해야 하며, NeX_PCX는 `NEX_PCX_RERANKER_PROVIDER_MODE`, `NEX_PCX_REMOTE_RERANKER_PROVIDER_URL`, `NEX_PCX_REMOTE_RERANKER_PROVIDER_TIMEOUT_SECONDS` 설정으로 mock/remote provider를 전환할 수 있어야 한다.
 - remote reranker 호출 결과의 provider runtime mode, base URL, timeout, provider_type, model_id, reranker runtime metadata는 Search Compare, Search Experiment, Golden Question 기반 검색 실험 로그에 재현 가능하게 기록되어야 한다.
+- Search Compare UI는 `reranked_vector_cosine` profile을 명시적으로 선택할 수 있어야 하며, 선택 시 1차 후보 검색에 사용할 source vector profile과 현재 reranker runtime mode/base URL/timeout/profile/model 상태를 함께 표시해야 한다.
+- Search Compare UI는 reranked profile 결과에서 source vector profile, candidate_top_k, candidate_count, reranker provider/profile/backend/device/latency metadata를 profile별 runtime panel에 표시해 remote/mock reranker 실행 여부를 사용자가 확인할 수 있어야 한다.
 - Qwen3-Reranker-4B remote runtime provider는 `sentence-transformers` CrossEncoder backend를 통해 query/document pair score를 계산하고, score 내림차순과 source rank tie-breaker 기준으로 top-k rerank 결과를 반환해야 한다.
 - reranker runtime service는 `NEX_PCX_RERANKER_PROVIDER_BACKEND`, `NEX_PCX_RERANKER_PROVIDER_MODELS_DIR`, `NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME`, `NEX_PCX_RERANKER_PROVIDER_DEVICE`, `NEX_PCX_RERANKER_PROVIDER_READY` 설정으로 DGX 환경의 모델 경로, device, readiness를 제어할 수 있어야 한다.
 - Qwen3-Reranker-4B remote provider는 embedding provider 기본 포트 9101~9103과 충돌하지 않도록 기본 포트 `9104`를 사용하며, foreground launch script와 health smoke runner를 통해 DGX에서 `/healthz` 계약을 검증할 수 있어야 한다.

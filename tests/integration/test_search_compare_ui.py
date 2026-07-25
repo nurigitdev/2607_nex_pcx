@@ -51,6 +51,19 @@ def test_search_compare_page_renders_actor_and_profile_options(
     assert 'name="hybrid_vector_profile_name"' in response.text
     assert "hybrid_vector_profile_name: fieldValue" in response.text
     assert "updateHybridVectorProfileAvailability" in response.text
+    assert 'value="reranked_vector_cosine"' in response.text
+    assert "Reranked Vector" in response.text
+    assert 'data-profile-kind="reranked"' in response.text
+    assert 'id="reranked_vector_profile_name"' in response.text
+    assert 'name="reranked_vector_profile_name"' in response.text
+    assert "Rerank Source Vector Profile" in response.text
+    assert "reranked_vector_profile_name: fieldValue" in response.text
+    assert "updateRerankedVectorProfileAvailability" in response.text
+    assert "rerankedProfileNames" in response.text
+    assert 'id="search-reranker-runtime-controls"' in response.text
+    assert 'data-reranker-runtime-mode="mock"' in response.text
+    assert "runtimeLabels.rerankerMode" in response.text
+    assert "runtimeLabels.sourceVectorProfile" in response.text
     assert "selectedReadinessProfiles" in response.text
     assert "selectedEmbeddingProfiles" in response.text
     assert "keywordProfileNames" in response.text
@@ -176,7 +189,7 @@ def test_search_history_detail_renders_permission_explainability(
             file_type=".md",
             chunk_policy_name="heading_512_64",
             top_k=5,
-            profiles=("kure_v1_1024", "bge_m3_1024"),
+            profiles=("kure_v1_1024", "bge_m3_1024", "reranked_vector_cosine"),
             query_runtime_metadata={
                 "adapter": "query_embedding_bridge",
                 "search_mode": "history_reproducibility",
@@ -201,6 +214,16 @@ def test_search_history_detail_renders_permission_explainability(
                         "error_code": "query_embedding_failed",
                         "error_message": "Remote provider request failed",
                         "elapsed_ms": 176,
+                    }
+                },
+                "profile_reranked_searches": {
+                    "reranked_vector_cosine": {
+                        "source_vector_profile_name": "bge_m3_1024",
+                        "candidate_top_k": 10,
+                        "candidate_count": 5,
+                        "provider_runtime_mode": "remote",
+                        "provider_runtime_base_url": "http://192.168.20.243:9104",
+                        "provider_runtime_timeout_seconds": 90.0,
                     }
                 },
             },
@@ -409,6 +432,10 @@ def test_search_history_detail_renders_permission_explainability(
         assert 'value="heading_512_64"' in replay_response.text
         assert 'value="kure_v1_1024"' in replay_response.text
         assert 'value="bge_m3_1024"' in replay_response.text
+        assert 'value="reranked_vector_cosine"' in replay_response.text
+        assert "reranked_vector_profile_name=bge_m3_1024" in replay_url
+        assert 'id="reranked_vector_profile_name"' in replay_response.text
+        assert 'value="bge_m3_1024"\n          selected' in replay_response.text
     finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)
         _delete_search_log(migrated_database_url, duplicate_log.search_log_id)
