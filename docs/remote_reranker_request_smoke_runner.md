@@ -77,3 +77,7 @@ The markdown report includes:
 
 This smoke runner intentionally does not launch or stop the remote provider. Use
 `scripts/run_remote_reranker_foreground_smoke.py` for foreground lifecycle validation.
+
+After this request smoke passes, run
+`scripts/run_search_compare_remote_reranker_e2e_smoke.py` to validate the full
+Search Compare `reranked_vector_cosine` path against the remote reranker provider.
