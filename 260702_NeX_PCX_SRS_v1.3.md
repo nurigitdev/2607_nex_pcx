@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.24**
+**Software Requirements Specification v1.25**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.24
+문서 상태: Draft v1.25
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.24 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.25 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.24 |
+| 문서 버전 | v1.25 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -49,6 +49,7 @@
 | 1.22 | 2026-07-25 | Remote reranker request smoke runner, `/v1/rerank` 응답 계약과 score/rank evidence 요구사항 보강 |
 | 1.23 | 2026-07-25 | Search Compare remote reranker E2E smoke, query embedding부터 search log metadata까지 검증 요구사항 보강 |
 | 1.24 | 2026-07-25 | Search Compare reranker runtime controls UI, reranked source vector profile 선택 및 runtime metadata 표시 요구사항 보강 |
+| 1.25 | 2026-07-25 | DGX remote reranker foreground health/request smoke 결과와 운영 실행 증적 요구사항 보강 |
 
 # 목차
 
@@ -474,6 +475,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - remote reranker foreground smoke는 실행 전 기존 health endpoint 활성 여부를 확인하고, 실행 후 provider_type, provider_model_id, reranker_profile_name, device, backend, model_dir readiness가 기대값과 일치하는지 검증한 뒤 process stop과 health endpoint 종료까지 확인해야 한다.
 - remote reranker request smoke는 `/v1/rerank`에 query와 후보 chunk text를 전달하여 provider_type, reranker_model_id, reranker_profile_name, retrieval_strategy, candidate_count, returned_count, top_k, rank sequence, finite score, runtime_metadata(service/backend/device)를 검증하고, score/rank preview를 markdown evidence로 남길 수 있어야 한다.
 - Search Compare remote reranker E2E smoke는 `reranked_vector_cosine` profile 실행 시 query embedding, vector 후보 검색, remote reranker 호출, reranked result 생성, search log 저장, profile runtime metadata 기록이 하나의 흐름으로 동작하는지 검증하고, search_log_id, result score preview, provider_runtime_mode/base_url/timeout, reranker runtime metadata를 evidence로 남길 수 있어야 한다.
+- 운영 전 DGX remote reranker 검증 증적은 service source 배치 상태, `/healthz` startup attempts, model shard load, `/v1/rerank` request/provider latency, finite score preview, runtime metadata, foreground shutdown 및 post-stop port close 상태를 함께 기록해야 한다.
 
 - 검색 결과에는 rank, score/distance, 문서명, page/slide/sheet, heading_path, chunk preview, 피드백 버튼을 포함한다.
 
