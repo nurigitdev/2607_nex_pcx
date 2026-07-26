@@ -1787,6 +1787,21 @@ main.container-fluid {
   min-width: 48rem;
 }
 
+.generation-detail-compact-value {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.generation-detail-kv-table th {
+  width: 12rem;
+}
+
+.generation-metadata-preview {
+  max-height: 24rem;
+}
+
 .generation-status-text {
   font-size: 1rem;
   line-height: 1.2;

@@ -165,6 +165,9 @@
     <div class="d-flex flex-wrap gap-2">
       <span class="badge text-bg-{{ run_status_class }}">{{ selected_run.status }}</span>
       <span class="badge text-bg-light border">{{ selected_run.guardrail_status }}</span>
+      <a class="btn btn-outline-primary btn-sm" href="/generation/runs/{{ selected_run.generation_run_id }}">
+        {{ t("generation.open_detail") }}
+      </a>
       <a class="btn btn-outline-secondary btn-sm" href="/api/generation/runs/{{ selected_run.generation_run_id }}">
         {{ t("retrieval_context.open_api") }}
       </a>

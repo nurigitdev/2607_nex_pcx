@@ -270,6 +270,12 @@ def test_generation_run_repository_persists_run_and_citations(
         _delete_search_log(migrated_database_url, search_log.search_log_id)
 
 
+def test_generation_run_repository_returns_none_for_missing_run(
+    migrated_database_url: str,
+) -> None:
+    assert get_generation_run(migrated_database_url, 999999999) is None
+
+
 @pytest.mark.parametrize(
     ("field_name", "run_input"),
     (

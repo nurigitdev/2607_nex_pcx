@@ -7,6 +7,7 @@ PROMPT_DOC_PATH = PROJECT_ROOT / "docs" / "generation_prompt_package_builder.md"
 MOCK_EXECUTOR_DOC_PATH = PROJECT_ROOT / "docs" / "generation_mock_executor.md"
 GENERATION_API_DOC_PATH = PROJECT_ROOT / "docs" / "generation_run_api.md"
 GENERATION_UI_DOC_PATH = PROJECT_ROOT / "docs" / "generation_run_ui_mvp.md"
+GENERATION_DETAIL_UI_DOC_PATH = PROJECT_ROOT / "docs" / "generation_run_detail_ui.md"
 
 
 def _read(path: Path) -> str:
@@ -16,7 +17,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.36" in srs_text
+    assert "Software Requirements Specification v1.37" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -27,6 +28,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-055" in srs_text
     assert "FR-056" in srs_text
     assert "FR-057" in srs_text
+    assert "FR-058" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
 
@@ -83,3 +85,13 @@ def test_generation_run_ui_doc_defines_mock_result_panel() -> None:
     assert "`POST /generation/runs/mock`" in ui_text
     assert "citation trace" in ui_text
     assert "vLLM generation runs" in ui_text
+
+
+def test_generation_run_detail_ui_doc_defines_reproducibility_panel() -> None:
+    detail_text = _read(GENERATION_DETAIL_UI_DOC_PATH)
+
+    assert "Generation Run Detail UI" in detail_text
+    assert "`GET /generation/runs/{generation_run_id}`" in detail_text
+    assert "prompt hash" in detail_text
+    assert "guardrail metadata" in detail_text
+    assert "vLLM runs" in detail_text

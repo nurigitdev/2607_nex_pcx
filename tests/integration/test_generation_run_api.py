@@ -1,3 +1,4 @@
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
@@ -255,8 +256,49 @@ def test_generation_run_ui_loads_context_and_creates_mock_run(
         assert detail_response.status_code == 200
         assert "Mock 생성 실행이 완료되었습니다." in detail_response.text
         assert "생성 결과" in detail_response.text
+        assert "상세" in detail_response.text
         assert "제공된 문서 근거에 따르면" in detail_response.text
         assert "Citation Trace" in detail_response.text
         assert "RCP-001" in detail_response.text
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_generation_run_detail_ui_shows_prompt_metadata_and_citations(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            post_response = client.post(
+                "/generation/runs/mock",
+                data={
+                    "search_log_id": str(search_log_id),
+                    "max_context_chars": "4000",
+                    "max_items": "5",
+                },
+                follow_redirects=False,
+            )
+            location = post_response.headers["location"]
+            query = parse_qs(urlsplit(location).query)
+            run_id = int(query["generation_run_id"][0])
+            detail_response = client.get(f"/generation/runs/{run_id}")
+            missing_response = client.get("/generation/runs/999999999")
+
+        assert post_response.status_code == 303
+        assert detail_response.status_code == 200
+        assert "생성 실행 상세" in detail_response.text
+        assert "Prompt Messages" in detail_response.text
+        assert "Request Metadata" in detail_response.text
+        assert "Response Metadata" in detail_response.text
+        assert "Guardrail Metadata" in detail_response.text
+        assert "grounded_answer_v1" in detail_response.text
+        assert "generation_ui_mock" in detail_response.text
+        assert "RCP-001" in detail_response.text
+        assert "Generation API document" in detail_response.text
+        assert missing_response.status_code == 200
+        assert "Generation run not found." in missing_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)

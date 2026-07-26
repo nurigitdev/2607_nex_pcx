@@ -13999,6 +13999,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    @app.get("/generation/runs/{generation_run_id}", response_class=HTMLResponse)
+    def generation_run_detail_page(
+        request: Request,
+        generation_run_id: int,
+    ) -> HTMLResponse:
+        selected_run: GenerationRunRecord | None = None
+        selected_citations: tuple[GenerationRunCitationRecord, ...] = ()
+        error_message: str | None = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                selected_run = get_generation_run(settings.database_url, generation_run_id)
+                if selected_run is None:
+                    error_message = "Generation run not found."
+                else:
+                    selected_citations = list_generation_run_citations(
+                        settings.database_url,
+                        selected_run.generation_run_id,
+                    )
+            except InvalidGenerationRunError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "generation_run_detail.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                selected_run=selected_run,
+                selected_citations=selected_citations,
+                error_message=error_message,
+            ),
+        )
+
     @app.get("/search/experiments", response_class=HTMLResponse)
     def search_experiments_page(
         request: Request,

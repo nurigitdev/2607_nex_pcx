@@ -11,7 +11,7 @@ from app.core.citation_readiness import (
     CITATION_READINESS_READY,
     CITATION_READINESS_WARNING,
 )
-from app.core.database import connect, fetch_one
+from app.core.database import connect
 from app.core.retrieval_confidence import (
     RETRIEVAL_CONFIDENCE_ANSWERABLE,
     RETRIEVAL_CONFIDENCE_FAILED,
@@ -304,16 +304,16 @@ def get_default_generation_provider_config(
 
 def get_generation_run(database_url: str, generation_run_id: int) -> GenerationRunRecord | None:
     _validate_positive(generation_run_id, "generation_run_id")
-    row = fetch_one(
-        database_url,
-        """
-        SELECT *
-        FROM generation_runs
-        WHERE generation_run_id = %s
-        """,
-        (generation_run_id,),
-    )
-    return _generation_run_from_row(row) if row else None
+    with connect(database_url) as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM generation_runs
+            WHERE generation_run_id = %s
+            """,
+            (generation_run_id,),
+        ).fetchone()
+    return _generation_run_from_row(dict(row)) if row else None
 
 
 def create_generation_run(
