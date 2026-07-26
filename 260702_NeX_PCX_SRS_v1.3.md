@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.28**
+**Software Requirements Specification v1.31**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.28
+문서 상태: Draft v1.31
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.28 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.31 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
-| 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560 |
-| 문서 버전 | v1.30 |
+| 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
+| 문서 버전 | v1.31 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -55,6 +55,7 @@
 | 1.28 | 2026-07-25 | Remote reranker operations status API/UI, process/health/request smoke 운영 표시와 runtime 설정 점검 요구사항 보강 |
 | 1.29 | 2026-07-25 | Retrieval Context Package API/UI, 생성 단계 입력용 검색 결과 정규화, citation/source anchor/context budget 요구사항 보강 |
 | 1.30 | 2026-07-25 | Citation Coverage + Source Anchor Readiness Check, 생성 전 근거 품질 gate와 issue code 요구사항 보강 |
+| 1.31 | 2026-07-26 | Generation provider strategy, vLLM OpenAI-compatible runtime contract, Qwen3.6-27B-NVFP4 기본 LLM 후보와 mock-first 검증 원칙 보강 |
 
 # 목차
 
@@ -117,13 +118,14 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | 검색 | 동일 query에 대한 4개 embedding profile, BM25 keyword baseline, hybrid, reranked 검색 결과 표시 |
 | 평가 | 검색 결과 정답/부분정답/오답 피드백 저장, 검색 로그/latency 저장 |
 | 계정/권한 | 테스트용 사용자, 조직 계층, 역할, 문서 접근 범위, query 검색 범위 metadata 저장 |
+| 생성 실험 | Retrieval context package를 기반으로 mock 또는 vLLM OpenAI-compatible LLM runtime에 grounded answer 생성을 요청하고 실행 조건과 runtime metadata를 저장 |
 | 품질관리 | pytest, Playwright, pytest-cov, 독립 test DB, quality gate 절차 적용 |
 
 ## 1.4 범위 제외
 
 | 항목 | 제외 사유 / 향후 계획 |
 | --- | --- |
-| LLM 답변 생성 | MVP에서는 검색 품질 검증이 우선이다. LLM 답변 생성은 Phase 6 이후 확장한다. |
+| 운영용 챗봇/업무 자동화 | NeX_PCX의 생성 기능은 검색 결과와 prompt/provider 계약 검증용 실험 기능으로 제한한다. 최종 사용자용 대화 UX, 장기 메모리, workflow automation은 NeX-CX 본 개발에서 확정한다. |
 | 완전한 GraphRAG | 초기에는 heading/section/chunk metadata를 축적하고, 이후 graph-assisted retrieval로 확장한다. |
 | 고도화된 이미지 embedding | 1차에서는 그림 원본/페이지/주변 텍스트/캡션 metadata 저장 수준으로 제한한다. |
 | 운영용 SSO/HR 연동 | NeX_PCX에서는 테스트용 계정/조직 seed와 권한 시뮬레이션으로 제한한다. 운영 SSO/HR 연동은 NeX-CX 본 개발에서 확정한다. |
@@ -136,6 +138,9 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | NeX_PCX | NeX-CX 본 개발 이전의 pre-CX 실험 플랫폼 |
 | NeX-CX | Context Intelligence Transformation을 위한 사내 문서 ingestion, embedding, 검색 기반 제품/플랫폼 |
 | RAG | Retrieval-Augmented Generation. 검색 결과를 LLM 답변 생성의 근거로 사용하는 방식 |
+| Generation Provider | Retrieval context package와 user query를 입력으로 받아 grounded answer를 생성하는 LLM runtime. NeX_PCX는 mock과 vLLM OpenAI-compatible remote runtime을 우선 지원한다. |
+| vLLM Runtime | DGX-Spark 등 GPU 서버에서 LLM을 OpenAI-compatible HTTP API로 제공하는 serving runtime |
+| OpenAI-compatible Chat API | `/v1/chat/completions` 형식의 messages 기반 HTTP 생성 API. NeX_PCX의 remote LLM provider 기본 호출 계약으로 사용한다. |
 | Embedding Profile | 특정 모델명, dimension, normalization, pooling 설정을 포함한 embedding 실행 단위 |
 | Embedding Job | 특정 chunk와 embedding profile 조합에 대해 embedding 생성, 저장, 실패/재시도를 추적하는 background 작업 단위 |
 | Search Profile | 검색 비교 화면과 검색 로그에서 하나의 결과 column/lane으로 표시되는 검색 실행 단위. embedding profile, BM25 keyword baseline, hybrid, reranked strategy를 포괄한다. |
@@ -307,6 +312,9 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Embedding Provider Client | local adapter 또는 remote GPU provider API를 동일한 request/response contract로 호출 |
 | Remote Embedding Provider | GPU 서버에서 model preload, batch embedding, provider health, latency metadata를 제공 |
 | Search Service | query embedding 생성, BM25 keyword search, pgvector 검색, hybrid fusion, profile/strategy별 결과 병렬 반환 |
+| Retrieval Context Service | 검색 로그 결과를 생성 입력으로 정규화하고 citation, source anchor, permission scope, confidence metadata를 포함한 context package를 제공 |
+| Generation Provider Client | mock 또는 remote OpenAI-compatible vLLM runtime을 호출하고 model/provider/prompt/runtime metadata를 generation run에 기록 |
+| Remote vLLM Runtime | DGX-Spark 등 GPU 서버에서 Qwen3.6-27B-NVFP4 등 LLM을 OpenAI-compatible `/v1/chat/completions` 계약으로 제공 |
 | Statistics Service | 문서/chunk/vector/job/검색 통계 산출 |
 | Model Distribution Tooling | KURE, bge-m3, Qwen3 embedding model을 `models/` bundle로 사전 다운로드하고 설치 환경에서 검증 |
 | Quality/Test Framework | pytest, Playwright, coverage, 독립 test DB 기반 품질 검증 |
@@ -321,6 +329,8 @@ web-app: FastAPI + Bootstrap templates
 postgres: PostgreSQL + pgvector
 worker-default: text extraction, parsing, chunking, light embedding job 처리
 worker-qwen: Qwen3-Embedding-4B 1000/2560 profile 전용 worker
+generation-mock: 개발/test 환경의 deterministic mock generation runtime
+vllm-qwen: DGX-Spark 외부 프로세스, Qwen3.6-27B-NVFP4 OpenAI-compatible chat completions runtime
 playwright-test: E2E test runner (CI 또는 local gate)
 ```
 
@@ -390,6 +400,10 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-048 | Hybrid 검색 비교 | BM25 결과와 vector 결과를 fusion하여 embedding-only, BM25-only, hybrid 방식을 같은 query/golden set으로 비교한다. | SHOULD |
 | FR-049 | Retrieval context package | 검색 로그의 top-k 결과를 생성 단계에서 사용할 수 있는 context package로 정규화하고 citation, source anchor, 권한 scope, runtime metadata, context budget을 함께 제공한다. | MUST |
 | FR-050 | Citation readiness check | 생성 단계로 넘기기 전 retrieval context의 citation key, 문서/파일 식별자, chunk 식별자, source anchor/location/lineage coverage를 점검하고 issue code를 표시한다. | MUST |
+| FR-051 | Generation provider strategy | 생성 기능은 provider mode를 `mock`과 `remote_openai_compatible`로 분리하고, 개발/test 환경에서는 deterministic mock provider로 schema/API/UI 계약을 먼저 검증한다. | MUST |
+| FR-052 | vLLM runtime contract | remote LLM provider는 vLLM OpenAI-compatible `/v1/chat/completions` 계약을 기본으로 사용하며 base URL, model id, API key 사용 여부, timeout, max tokens, temperature, top_p를 runtime 설정으로 관리한다. | MUST |
+| FR-053 | 기본 LLM 후보 | NeX_PCX의 기본 remote LLM 후보는 `nvidia/Qwen3.6-27B-NVFP4`로 정의하되, 실제 DGX-Spark 연결 smoke가 완료되기 전까지 운영 test는 mock provider를 기본값으로 사용한다. | SHOULD |
+| FR-054 | Grounded generation gate | 생성 실행은 retrieval confidence가 `answerable`이고 citation readiness가 `failed`가 아닌 context package를 우선 대상으로 하며, `low_confidence` 또는 `no_relevant_context` 상태에서는 no-answer 응답 또는 실행 차단을 기록한다. | MUST |
 
 ## 4.3 대시보드 요구사항
 
@@ -500,6 +514,16 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Citation readiness check는 retrieval context package 후보별로 citation key, document/file identity, chunk id/policy, generation text, source_anchor, page/slide/sheet/cell 또는 heading_path 위치 힌트, artifact_id/block_id lineage reference를 점검해야 한다.
 
 - Citation readiness 결과는 ready/warning/failed 상태, source anchor coverage percent, citation ready percent, 후보별 issue code를 API와 UI에서 제공하여 생성 단계 진입 전 근거 품질 gate로 사용할 수 있어야 한다.
+
+- Generation provider runtime은 embedding/reranker remote provider처럼 NeX_PCX 내부에 별도 heavy model wrapper를 만들기보다, 1차로 vLLM이 제공하는 OpenAI-compatible HTTP runtime을 직접 호출한다. NeX_PCX backend는 provider 설정, prompt packaging, retrieval/citation/confidence gate, 실행 로그, 응답 metadata 저장에 집중한다.
+
+- Remote vLLM 호출의 기본 endpoint는 `/v1/chat/completions`로 하며, request에는 model, messages, max_tokens, temperature, top_p, optional stop sequence, trace metadata를 포함한다. response에서는 answer text, finish_reason, token usage, model id, provider latency, raw response summary를 generation run metadata로 저장할 수 있어야 한다.
+
+- 기본 remote LLM 후보는 `nvidia/Qwen3.6-27B-NVFP4`로 두되, 로컬 개발 환경과 remote DGX-Spark 접속이 불가능한 환경에서는 deterministic mock provider가 동일한 request/response shape로 동작해야 한다.
+
+- Prompt package는 system instruction, user query, retrieval context blocks, citation rules, no-answer rule, response language preference를 분리해 구성하고, prompt version과 rendered prompt hash를 generation run에 기록해야 한다.
+
+- `low_confidence`, `no_relevant_context`, citation readiness `failed` 상태의 retrieval package에 대해서는 LLM에 임의 context를 전달하지 않아야 한다. UI/API는 no-answer 또는 blocked status와 reason code를 사용자에게 표시해야 한다.
 
 ## 4.6 Chunk policy 요구사항
 
@@ -690,6 +714,9 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | search_logs | 검색 query, 조건, profile별 latency 로그 |
 | search_log_results | 검색 로그별 profile/rank/chunk 결과 |
 | search_result_feedback | 검색 결과별 정답/부분정답/오답 피드백 |
+| generation_provider_configs | mock/vLLM 등 생성 provider 설정, model id, endpoint, timeout, decoding option |
+| generation_runs | search_log/retrieval package/prompt/provider 조합별 생성 실행 이력, status, answer, token usage, latency, guardrail metadata |
+| generation_run_citations | 생성 답변에서 참조한 retrieval context citation key와 chunk/source anchor lineage |
 
 ## 5.3 계정/조직/역할 테이블 요구사항
 
@@ -1529,11 +1556,7 @@ tests/
 ```bash
 ruff check app tests
 black --check app tests
-pytest tests/unit
-pytest tests/integration
-pytest tests/regression
-pytest tests/smoke
-pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=html
+pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=json:/tmp/nex_pcx_coverage.json tests/unit tests/smoke tests/integration tests/regression
 pytest tests/e2e
 ```
 
@@ -1551,6 +1574,8 @@ pytest tests/e2e
 | Phase 5 | 검색 비교 UI | embedding-only 검색 화면, search_logs/search_log_results/feedback 저장 | 동일 query에 대한 4개 embedding profile top-k 결과 표시, 재현성 metadata 기록, 피드백 저장 |
 | Phase 5.5 | BM25/Hybrid 검색 비교 | BM25 keyword index, BM25 baseline, hybrid fusion, strategy 비교 UI | 동일 query/golden set에서 BM25-only, embedding-only, hybrid top-k 결과와 품질 지표 비교 |
 | Phase 6 | 평가 자동화 | golden question set, Recall@k/MRR/nDCG 리포트 | 질문셋 기반 profile별 평가 리포트 생성 |
+| Phase 6.5 | Retrieval-to-Generation Handoff | retrieval context package, citation readiness, low-confidence/no-answer guardrail | 검색 결과가 생성 입력으로 전달 가능한지 package/citation/confidence gate 검증 |
+| Phase 7 | Grounded Generation MVP | generation run schema, prompt package builder, mock generation provider, vLLM OpenAI-compatible runtime config | mock provider로 생성 실행 로그와 citation trace가 저장되고, DGX vLLM smoke 전환 조건이 정의됨 |
 
 ## 10.1 MVP 완료 기준
 
@@ -1584,6 +1609,10 @@ pytest tests/e2e
 
 - 검색 결과에 대해 정답/부분정답/오답 피드백을 저장할 수 있다.
 
+- 검색 로그 기반 retrieval context package, citation readiness, retrieval confidence gate를 통해 생성 실행 가능 여부를 판단할 수 있다.
+
+- 생성 단계의 초기 실행은 deterministic mock provider로 가능해야 하며, remote DGX-Spark 접속 가능 시 vLLM OpenAI-compatible runtime smoke를 통해 Qwen3.6-27B-NVFP4 전환 가능성을 검증한다.
+
 - pytest 기반 unit/regression/smoke test와 Playwright UI test가 통과한다.
 
 - coverage 목표를 측정할 수 있고, 미달 시 품질 리포트를 생성한다.
@@ -1608,6 +1637,9 @@ pytest tests/e2e
 | BM25 tokenizer 품질 부족 | 한국어 keyword baseline이 실제 문서 의미를 충분히 반영하지 못함 | `unicode_word_v1`을 기본 재현 baseline으로 유지하고 `unicode_word_ko_2_3gram_v1`와 optional Mecab-ko 후보를 별도 실험 strategy로 비교 |
 | 한국어 형태소 analyzer 라이선스/배포 리스크 | 고객사 설치 시 GPL/JVM/사전 배포 이슈가 발생할 수 있음 | KoNLPy는 보류하고 Mecab-ko는 `korean-tokenizers` optional dependency와 설치 evidence로 관리하며, 기본 tokenizer는 외부 의존성 없는 `unicode_word_v1`로 유지 |
 | Hybrid score 왜곡 | 서로 다른 score scale을 단순 합산하여 품질을 오판 | 1차 hybrid는 RRF 기반 rank fusion으로 구현하고 score_components를 search log에 저장 |
+| Retrieval confidence gate 미적용 | 관련 없는 검색 결과를 근거로 LLM이 그럴듯한 오답을 생성 | `answerable` 상태와 citation readiness를 generation run 전제 조건으로 기록하고, low/no-context는 no-answer 또는 blocked status로 처리 |
+| vLLM remote runtime 장애 | 생성 실행 실패, timeout, 운영자 혼선 | mock provider를 기본 fallback으로 유지하고 provider base URL/model/timeout/health smoke evidence를 generation runtime metadata로 기록 |
+| Qwen3.6-27B-NVFP4 GPU 자원 부족 | DGX memory pressure, 긴 latency, context length 제한 | 초기 context budget을 보수적으로 제한하고 max_tokens/temperature/top_p/context budget을 설정화하며, office network에서 별도 smoke 후 활성화 |
 | 권한 필터 누락 | 접근 권한이 없는 문서/chunk가 검색 결과에 노출 | permission pre-filter를 repository/search SQL 단계에서 적용하고 permission matrix regression test 추가 |
 | 사후 필터링으로 인한 top-k 왜곡 | 권한 없는 결과 제거 후 관련 chunk가 누락되어 검색 품질 오판 | vector search 후보군 생성 전 actor/scope 조건을 pre-filter로 적용 |
 | 권한 metadata 미기록 | 같은 query 결과 차이를 재현하거나 설명하기 어려움 | search_logs에 actor, requested/effective scope, permission filter metadata 저장 |
@@ -1630,6 +1662,7 @@ pytest tests/e2e
 | IAM | Identity and Access Management. 계정, 조직, 역할, 접근 범위 요구사항 |
 | ACL | Access Control List / Scope. 문서 접근 범위와 permission filter 요구사항 |
 | PIPE | Pipeline Processing. 비동기 문서 처리, queue, worker, 진행 상태 요구사항 |
+| GEN | Grounded Generation. retrieval context 기반 LLM 생성, provider runtime, prompt/citation/guardrail 요구사항 |
 | QA | Quality Assurance Requirement. 품질관리 요구사항 |
 | TST | Test Requirement. 테스트 요구사항 |
 | ACC | Acceptance Criteria. 인수 기준 |
@@ -1645,6 +1678,10 @@ pytest tests/e2e
 - BAAI/bge-m3 model card: https://huggingface.co/BAAI/bge-m3
 
 - BGE-M3 documentation: https://bge-model.com/bge/bge_m3.html
+
+- vLLM OpenAI-compatible server documentation: https://docs.vllm.ai/en/latest/serving/openai_compatible_server/
+
+- NVIDIA Qwen3.6-27B-NVFP4 model card: https://huggingface.co/nvidia/Qwen3.6-27B-NVFP4
 
 - pgvector GitHub: https://github.com/pgvector/pgvector
 
