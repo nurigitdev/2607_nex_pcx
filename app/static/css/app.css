@@ -1791,7 +1791,8 @@ main.container-fluid {
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.25;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .generation-detail-kv-table th {
@@ -1800,6 +1801,25 @@ main.container-fluid {
 
 .generation-metadata-preview {
   max-height: 24rem;
+}
+
+.generation-prompt-message-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.generation-prompt-message-block {
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  padding: 0.875rem;
+}
+
+.generation-prompt-message {
+  max-height: 18rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .generation-status-text {

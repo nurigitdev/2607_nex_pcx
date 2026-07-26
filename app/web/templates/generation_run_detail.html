@@ -163,7 +163,16 @@
   <div class="col-12 col-xl-6">
     <div class="metric-card bg-white p-3 h-100">
       <div class="metric-label mb-2">{{ t("generation.prompt_messages") }}</div>
-      <pre class="json-preview operations-json-preview generation-metadata-preview mb-0">{{ (selected_run.request_metadata.get("messages") or []) | tojson(indent=2) }}</pre>
+      <div class="generation-prompt-message-list">
+        {% for message in selected_run.request_metadata.get("messages") or [] %}
+        <div class="generation-prompt-message-block">
+          <div class="metric-label mb-2"><code>{{ message.role }}</code></div>
+          <pre class="generation-prompt-message mb-0">{{ message.content }}</pre>
+        </div>
+        {% else %}
+        <div class="text-secondary">{{ t("generation.no_prompt_messages") }}</div>
+        {% endfor %}
+      </div>
     </div>
   </div>
   <div class="col-12 col-xl-6">

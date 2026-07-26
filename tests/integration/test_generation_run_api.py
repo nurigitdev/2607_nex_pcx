@@ -166,6 +166,20 @@ def _cleanup_file(database_url: str, file_id: int) -> None:
             cursor.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
 
 
+def _generation_run_count(database_url: str, search_log_id: int) -> int:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT count(*) AS run_count
+                FROM generation_runs
+                WHERE search_log_id = %s
+                """,
+                (search_log_id,),
+            )
+            return int(cursor.fetchone()["run_count"])
+
+
 def test_mock_generation_run_api_creates_and_reads_generation_run(
     migrated_database_url: str,
 ) -> None:
@@ -210,15 +224,56 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         _cleanup_file(migrated_database_url, file_id)
 
 
+def test_generation_prompt_preview_api_returns_messages_without_creating_run(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        before_count = _generation_run_count(migrated_database_url, search_log_id)
+        with TestClient(app) as client:
+            preview_response = client.get(
+                f"/api/search/logs/{search_log_id}/generation-prompt/preview",
+                params={
+                    "max_context_chars": "4000",
+                    "include_neighbors": "false",
+                    "max_items": "5",
+                    "response_language": "ko",
+                },
+            )
+            missing_response = client.get("/api/search/logs/999999999/generation-prompt/preview")
+
+        after_count = _generation_run_count(migrated_database_url, search_log_id)
+        body = preview_response.json()
+        prompt_package = body["prompt_package"]
+        assert preview_response.status_code == 200
+        assert body["retrieval_context"]["search_log"]["search_log_id"] == search_log_id
+        assert prompt_package["messages"][0]["role"] == "system"
+        assert prompt_package["messages"][1]["role"] == "user"
+        assert prompt_package["response_language"] == "ko"
+        assert prompt_package["blocked"] is False
+        assert prompt_package["block_reason"] is None
+        assert prompt_package["citation_keys"] == ["RCP-001"]
+        assert prompt_package["prompt_hash"]
+        assert prompt_package["context_hash"]
+        assert after_count == before_count
+        assert missing_response.status_code == 404
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
 def test_generation_run_api_returns_503_without_database() -> None:
     app = create_app(Settings(database_url=None))
 
     with TestClient(app) as client:
         create_response = client.post("/api/search/logs/1/generation-runs/mock")
         read_response = client.get("/api/generation/runs/1")
+        preview_response = client.get("/api/search/logs/1/generation-prompt/preview")
 
     assert create_response.status_code == 503
     assert read_response.status_code == 503
+    assert preview_response.status_code == 503
 
 
 def test_generation_run_ui_loads_context_and_creates_mock_run(
@@ -250,6 +305,8 @@ def test_generation_run_ui_loads_context_and_creates_mock_run(
         assert "생성 실행" in landing_response.text
         assert context_response.status_code == 200
         assert "생성 입력 준비" in context_response.text
+        assert "Prompt Preview" in context_response.text
+        assert "grounded_answer_v1" in context_response.text
         assert "Mock 생성" in context_response.text
         assert post_response.status_code == 303
         assert "generation_run_id=" in post_response.headers["location"]

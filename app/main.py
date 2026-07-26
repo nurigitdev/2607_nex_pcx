@@ -337,6 +337,11 @@ from app.core.generation_executor import (
     GenerationExecutionReport,
     execute_mock_generation_run,
 )
+from app.core.generation_prompts import (
+    GenerationPromptPackage,
+    InvalidGenerationPromptError,
+    build_generation_prompt_package,
+)
 from app.core.generation_runs import (
     GenerationProviderConfigRecord,
     GenerationRunCitationRecord,
@@ -4195,25 +4200,31 @@ def generation_run_citation_payload(
     }
 
 
+def generation_prompt_package_payload(
+    prompt_package: GenerationPromptPackage,
+) -> dict[str, object]:
+    return {
+        "prompt_version": prompt_package.prompt_version,
+        "response_language": prompt_package.response_language,
+        "query_text": prompt_package.query_text,
+        "retrieval_package_key": prompt_package.retrieval_package_key,
+        "search_log_id": prompt_package.search_log_id,
+        "messages": prompt_package.openai_messages,
+        "citation_keys": list(prompt_package.citation_keys),
+        "context_text": prompt_package.context_text,
+        "prompt_hash": prompt_package.prompt_hash,
+        "context_hash": prompt_package.context_hash,
+        "blocked": prompt_package.blocked,
+        "block_reason": prompt_package.block_reason,
+    }
+
+
 def generation_execution_report_payload(
     report: GenerationExecutionReport,
 ) -> dict[str, object]:
     return {
         "provider": generation_provider_config_payload(report.provider),
-        "prompt_package": {
-            "prompt_version": report.prompt_package.prompt_version,
-            "response_language": report.prompt_package.response_language,
-            "query_text": report.prompt_package.query_text,
-            "retrieval_package_key": report.prompt_package.retrieval_package_key,
-            "search_log_id": report.prompt_package.search_log_id,
-            "messages": report.prompt_package.openai_messages,
-            "citation_keys": list(report.prompt_package.citation_keys),
-            "context_text": report.prompt_package.context_text,
-            "prompt_hash": report.prompt_package.prompt_hash,
-            "context_hash": report.prompt_package.context_hash,
-            "blocked": report.prompt_package.blocked,
-            "block_reason": report.prompt_package.block_reason,
-        },
+        "prompt_package": generation_prompt_package_payload(report.prompt_package),
         "run": generation_run_payload(report.run),
         "citations": [generation_run_citation_payload(citation) for citation in report.citations],
     }
@@ -11356,6 +11367,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=generation_execution_report_payload(report),
         )
 
+    @app.get("/api/search/logs/{search_log_id}/generation-prompt/preview")
+    def api_preview_generation_prompt(
+        search_log_id: int,
+        max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
+        include_neighbors: bool = True,
+        max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+        response_language: str = Query(default="ko", min_length=1, max_length=16),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            package = build_retrieval_context_package(
+                settings.database_url,
+                RetrievalContextInput(
+                    search_log_id=search_log_id,
+                    max_context_chars=max_context_chars,
+                    include_neighbors=include_neighbors,
+                    max_items=max_items,
+                ),
+            )
+            if package is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Search log retrieval context not found.",
+                )
+            prompt_package = build_generation_prompt_package(
+                package,
+                response_language=response_language,
+            )
+        except InvalidRetrievalContextError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except InvalidGenerationPromptError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            content={
+                "retrieval_context": retrieval_context_package_payload(package),
+                "prompt_package": generation_prompt_package_payload(prompt_package),
+            }
+        )
+
     @app.get("/api/generation/runs/{generation_run_id}")
     def api_get_generation_run(generation_run_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -13888,6 +13944,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> HTMLResponse:
         latest_logs: list[SearchLogListItem] = []
         package: RetrievalContextPackage | None = None
+        prompt_preview: GenerationPromptPackage | None = None
         selected_run: GenerationRunRecord | None = None
         selected_citations: tuple[GenerationRunCitationRecord, ...] = ()
         error_message = generation_error
@@ -13920,8 +13977,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     if package is None and error_message is None:
                         error_message = "Search log retrieval context not found."
+                    elif package is not None:
+                        prompt_preview = build_generation_prompt_package(package)
             except (
                 InvalidGenerationRunError,
+                InvalidGenerationPromptError,
                 InvalidRetrievalContextError,
                 InvalidSearchLogError,
             ) as exc:
@@ -13940,6 +14000,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 include_neighbors=include_neighbors,
                 max_items=max_items,
                 package=package,
+                prompt_preview=prompt_preview,
                 selected_run=selected_run,
                 selected_citations=selected_citations,
                 generation_status=generation_status or "",
