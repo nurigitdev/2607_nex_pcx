@@ -19,6 +19,9 @@ GENERATION_PROVIDER_METRIC_SNAPSHOT_UI_DOC_PATH = (
     PROJECT_ROOT / "docs" / "generation_provider_metric_snapshot_ui.md"
 )
 GENERATION_OPENAI_VLLM_CLIENT_DOC_PATH = PROJECT_ROOT / "docs" / "generation_openai_vllm_client.md"
+DGX_VLLM_GENERATION_SMOKE_RUNNER_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "dgx_vllm_generation_smoke_runner.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -28,7 +31,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.42" in srs_text
+    assert "Software Requirements Specification v1.43" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -45,9 +48,11 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-061" in srs_text
     assert "FR-062" in srs_text
     assert "FR-063" in srs_text
+    assert "FR-064" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
+    assert "DGX vLLM generation smoke evidence" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -161,3 +166,17 @@ def test_generation_openai_vllm_client_doc_defines_client_contract() -> None:
     assert "`GenerationProviderMetrics`" in client_text
     assert "`GenerationProviderRequestError`" in client_text
     assert "`error_code=invalid_json`" in client_text
+    assert "`extra_body`" in client_text
+
+
+def test_dgx_vllm_generation_smoke_runner_doc_defines_live_evidence_contract() -> None:
+    smoke_text = _read(DGX_VLLM_GENERATION_SMOKE_RUNNER_DOC_PATH)
+
+    assert "DGX vLLM Generation Smoke Runner" in smoke_text
+    assert "`192.168.20.243`" in smoke_text
+    assert "`12000`" in smoke_text
+    assert "`/v1/chat/completions`" in smoke_text
+    assert "`NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY`" in smoke_text
+    assert "not the secret value" in smoke_text
+    assert "provider_metrics.succeeded=true" in smoke_text
+    assert "enable_thinking" in smoke_text

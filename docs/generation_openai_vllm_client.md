@@ -33,6 +33,8 @@ The payload is intentionally small and vLLM-friendly:
 - `stream=false`
 - optional `stop`
 - optional `user` trace id
+- optional `extra_body` values such as
+  `chat_template_kwargs.enable_thinking=false` for Qwen smoke checks
 
 Prompt preview output can be converted through
 `generation_chat_request_from_openai_messages(...)`.

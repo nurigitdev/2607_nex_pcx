@@ -59,6 +59,7 @@ class GenerationChatCompletionRequest:
     top_p: float = DEFAULT_GENERATION_TOP_P
     stop_sequences: tuple[str, ...] = ()
     trace_id: str | None = None
+    extra_body: Mapping[str, Any] = field(default_factory=dict)
     runtime_metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -375,6 +376,7 @@ def validate_generation_chat_completion_request(
         _validate_nonblank(sequence, "stop sequence") for sequence in request.stop_sequences
     )
     trace_id = _optional_nonblank(request.trace_id, "trace_id")
+    extra_body = _normalize_extra_body(request.extra_body)
     return GenerationChatCompletionRequest(
         messages=messages,
         model_id=model_id,
@@ -383,6 +385,7 @@ def validate_generation_chat_completion_request(
         top_p=request.top_p,
         stop_sequences=stop_sequences,
         trace_id=trace_id,
+        extra_body=extra_body,
         runtime_metadata=dict(request.runtime_metadata),
     )
 
@@ -415,6 +418,7 @@ def openai_chat_completion_request_payload(
         payload["stop"] = list(validated.stop_sequences)
     if validated.trace_id:
         payload["user"] = validated.trace_id
+    payload.update(validated.extra_body)
     return payload
 
 
@@ -427,6 +431,7 @@ def generation_chat_request_from_openai_messages(
     top_p: float = DEFAULT_GENERATION_TOP_P,
     stop_sequences: tuple[str, ...] = (),
     trace_id: str | None = None,
+    extra_body: Mapping[str, Any] | None = None,
     runtime_metadata: Mapping[str, Any] | None = None,
 ) -> GenerationChatCompletionRequest:
     return validate_generation_chat_completion_request(
@@ -444,6 +449,7 @@ def generation_chat_request_from_openai_messages(
             top_p=top_p,
             stop_sequences=stop_sequences,
             trace_id=trace_id,
+            extra_body=dict(extra_body or {}),
             runtime_metadata=dict(runtime_metadata or {}),
         )
     )
@@ -531,6 +537,28 @@ def _normalize_remote_headers(headers: Mapping[str, str]) -> dict[str, str]:
             raise InvalidGenerationProviderError("header value contains invalid characters")
         normalized_headers[header_name] = header_value
     return normalized_headers
+
+
+def _normalize_extra_body(extra_body: Mapping[str, Any]) -> dict[str, Any]:
+    reserved_keys = {
+        "model",
+        "messages",
+        "max_tokens",
+        "temperature",
+        "top_p",
+        "stream",
+        "stop",
+        "user",
+    }
+    normalized: dict[str, Any] = {}
+    for key, value in extra_body.items():
+        normalized_key = _validate_nonblank(str(key), "extra_body key")
+        if normalized_key in reserved_keys:
+            raise InvalidGenerationProviderError(
+                f"extra_body must not override reserved request field: {normalized_key}"
+            )
+        normalized[normalized_key] = value
+    return normalized
 
 
 def _headers_with_api_key(

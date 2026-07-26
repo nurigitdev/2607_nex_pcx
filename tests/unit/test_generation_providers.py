@@ -156,12 +156,16 @@ def test_build_generation_provider_rejects_mock_mode() -> None:
 
 def test_chat_completion_request_validation_and_payload() -> None:
     request = validate_generation_chat_completion_request(
-        _request(messages=(GenerationChatMessage(role=" USER ", content=" hello "),))
+        _request(
+            messages=(GenerationChatMessage(role=" USER ", content=" hello "),),
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        )
     )
     payload = openai_chat_completion_request_payload(request)
 
     assert request.messages[0] == GenerationChatMessage(role="user", content="hello")
     assert request.trace_id == "trace-001"
+    assert request.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
     assert payload == {
         "model": DEFAULT_GENERATION_MODEL_ID,
         "messages": [{"role": "user", "content": "hello"}],
@@ -171,6 +175,7 @@ def test_chat_completion_request_validation_and_payload() -> None:
         "stream": False,
         "stop": ["</answer>"],
         "user": "trace-001",
+        "chat_template_kwargs": {"enable_thinking": False},
     }
 
 
@@ -185,6 +190,8 @@ def test_chat_completion_request_validation_and_payload() -> None:
         (_request(max_tokens=0), "max_tokens"),
         (_request(temperature=-0.1), "temperature"),
         (_request(top_p=1.1), "top_p"),
+        (_request(extra_body={"model": "override"}), "reserved"),
+        (_request(extra_body={" ": "value"}), "extra_body key"),
     ),
 )
 def test_chat_completion_request_validation_rejects_bad_values(
@@ -206,11 +213,13 @@ def test_generation_chat_request_from_openai_messages_normalizes_prompt_preview_
         temperature=0,
         top_p=1,
         trace_id="run-24",
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
     assert request.model_id == "qwen"
     assert [message.role for message in request.messages] == ["system", "user"]
     assert request.trace_id == "run-24"
+    assert request.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def test_openai_compatible_client_posts_chat_completion_and_parses_metrics() -> None:
