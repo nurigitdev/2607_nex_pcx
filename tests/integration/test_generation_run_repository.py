@@ -405,6 +405,12 @@ def test_mock_generation_executor_persists_answer_and_citations(
         assert report.run.prompt_hash == report.prompt_package.prompt_hash
         assert report.run.request_metadata["messages"][0]["role"] == "system"
         assert report.run.response_metadata["deterministic"] is True
+        provider_metrics = report.run.response_metadata["provider_metrics"]
+        assert provider_metrics["provider_name"] == "mock_qwen36_27b_nvfp4"
+        assert provider_metrics["provider_mode"] == "mock"
+        assert provider_metrics["finish_reason"] == MOCK_FINISH_REASON_COMPLETED
+        assert provider_metrics["total_token_count"] == report.run.total_token_count
+        assert provider_metrics["succeeded"] is True
         assert len(report.citations) == 1
         assert report.citations[0].was_cited is True
         assert report.citations[0].citation_payload["original_file_name"] == "security_policy.md"

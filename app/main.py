@@ -342,6 +342,12 @@ from app.core.generation_prompts import (
     InvalidGenerationPromptError,
     build_generation_prompt_package,
 )
+from app.core.generation_provider_metric_snapshots import (
+    DEFAULT_GENERATION_PROVIDER_METRIC_SNAPSHOT_LIMIT,
+    InvalidGenerationProviderMetricSnapshotError,
+    generation_provider_metric_snapshot_payload,
+    get_generation_provider_metric_snapshot,
+)
 from app.core.generation_runs import (
     GenerationProviderConfigRecord,
     GenerationRunCitationRecord,
@@ -11439,6 +11445,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "citations": [generation_run_citation_payload(citation) for citation in citations],
             }
         )
+
+    @app.get("/api/admin/generation-provider-metrics/snapshot")
+    def api_get_generation_provider_metrics_snapshot(
+        limit: int = Query(default=DEFAULT_GENERATION_PROVIDER_METRIC_SNAPSHOT_LIMIT),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            snapshot = get_generation_provider_metric_snapshot(
+                settings.database_url,
+                limit=limit,
+            )
+        except InvalidGenerationProviderMetricSnapshotError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(content=generation_provider_metric_snapshot_payload(snapshot))
 
     @app.post("/api/search/logs/{search_log_id}/retry-profile")
     def api_retry_search_log_profile(

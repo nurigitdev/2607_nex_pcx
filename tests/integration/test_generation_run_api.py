@@ -270,10 +270,54 @@ def test_generation_run_api_returns_503_without_database() -> None:
         create_response = client.post("/api/search/logs/1/generation-runs/mock")
         read_response = client.get("/api/generation/runs/1")
         preview_response = client.get("/api/search/logs/1/generation-prompt/preview")
+        metrics_response = client.get("/api/admin/generation-provider-metrics/snapshot")
 
     assert create_response.status_code == 503
     assert read_response.status_code == 503
     assert preview_response.status_code == 503
+    assert metrics_response.status_code == 503
+
+
+def test_generation_provider_metric_snapshot_api_reads_mock_persisted_metrics(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/mock",
+                params={"include_neighbors": "false"},
+            )
+            run_id = create_response.json()["run"]["generation_run_id"]
+            snapshot_response = client.get(
+                "/api/admin/generation-provider-metrics/snapshot",
+                params={"limit": "10"},
+            )
+            invalid_limit_response = client.get(
+                "/api/admin/generation-provider-metrics/snapshot",
+                params={"limit": "0"},
+            )
+
+        snapshot_body = snapshot_response.json()
+        matching_runs = [run for run in snapshot_body["runs"] if run["generation_run_id"] == run_id]
+        assert create_response.status_code == 201
+        assert snapshot_response.status_code == 200
+        assert snapshot_body["summary"]["run_count"] >= 1
+        assert snapshot_body["summary"]["metric_present_count"] >= 1
+        assert matching_runs
+        assert matching_runs[0]["provider_name"] == "mock_qwen36_27b_nvfp4"
+        assert matching_runs[0]["metric_present"] is True
+        assert matching_runs[0]["succeeded"] is True
+        assert matching_runs[0]["finish_reason"] == "mock_completed"
+        assert (
+            matching_runs[0]["total_token_count"]
+            == create_response.json()["run"]["total_token_count"]
+        )
+        assert invalid_limit_response.status_code == 400
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
 
 
 def test_generation_run_ui_loads_context_and_creates_mock_run(

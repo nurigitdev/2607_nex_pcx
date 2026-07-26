@@ -12,6 +12,10 @@ from app.core.generation_prompts import (
     GenerationPromptPackage,
     build_generation_prompt_package,
 )
+from app.core.generation_provider_metrics import (
+    generation_provider_metrics_payload,
+    parse_openai_chat_completion_metrics,
+)
 from app.core.generation_runs import (
     GENERATION_GUARDRAIL_ALLOWED,
     GENERATION_GUARDRAIL_NO_ANSWER,
@@ -169,6 +173,36 @@ def execute_mock_generation_run(
     )
     output_token_count = _estimate_token_count(answer_text)
     finished_at = datetime.now(UTC)
+    token_total = input_token_count + output_token_count
+    provider_metrics = parse_openai_chat_completion_metrics(
+        {
+            "id": f"mock-generation-{prompt_package.search_log_id}",
+            "object": "chat.completion",
+            "created": int(finished_at.timestamp()),
+            "model": provider.model_id,
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": finish_reason,
+                    "message": {
+                        "role": "assistant",
+                        "content": answer_text,
+                    },
+                }
+            ],
+            "usage": {
+                "prompt_tokens": input_token_count,
+                "completion_tokens": output_token_count,
+                "total_tokens": token_total,
+            },
+        },
+        provider_name=provider.provider_name,
+        provider_mode=provider.provider_mode,
+        requested_model_id=provider.model_id,
+        http_status_code=200,
+        elapsed_ms=elapsed_ms,
+        provider_elapsed_ms=elapsed_ms,
+    )
 
     run = create_generation_run(
         database_url,
@@ -191,13 +225,14 @@ def execute_mock_generation_run(
             finish_reason=finish_reason,
             input_token_count=input_token_count,
             output_token_count=output_token_count,
-            total_token_count=input_token_count + output_token_count,
+            total_token_count=token_total,
             elapsed_ms=elapsed_ms,
             request_metadata=_request_metadata(prompt_package),
             response_metadata={
                 "provider_mode": provider.provider_mode,
                 "model_id": provider.model_id,
                 "deterministic": True,
+                "provider_metrics": generation_provider_metrics_payload(provider_metrics),
             },
             guardrail_metadata=_guardrail_metadata(
                 prompt_package=prompt_package,
