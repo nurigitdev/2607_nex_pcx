@@ -333,6 +333,18 @@ from app.core.foreground_worker_runtime import (
     build_foreground_worker_runtime_report,
     foreground_worker_runtime_report_payload,
 )
+from app.core.generation_executor import (
+    GenerationExecutionReport,
+    execute_mock_generation_run,
+)
+from app.core.generation_runs import (
+    GenerationProviderConfigRecord,
+    GenerationRunCitationRecord,
+    GenerationRunRecord,
+    InvalidGenerationRunError,
+    get_generation_run,
+    list_generation_run_citations,
+)
 from app.core.go_live_readiness import (
     build_go_live_readiness_report,
     go_live_readiness_report_payload,
@@ -4092,6 +4104,109 @@ def citation_readiness_report_payload(
         "candidates": [
             citation_readiness_candidate_payload(candidate) for candidate in report.candidates
         ],
+    }
+
+
+def generation_provider_config_payload(
+    provider: GenerationProviderConfigRecord,
+) -> dict[str, object]:
+    return {
+        "provider_config_id": provider.provider_config_id,
+        "provider_name": provider.provider_name,
+        "provider_mode": provider.provider_mode,
+        "provider_base_url": provider.provider_base_url,
+        "model_id": provider.model_id,
+        "is_default": provider.is_default,
+        "is_active": provider.is_active,
+        "request_timeout_seconds": provider.request_timeout_seconds,
+        "max_tokens": provider.max_tokens,
+        "temperature": provider.temperature,
+        "top_p": provider.top_p,
+        "runtime_options": provider.runtime_options,
+        "created_by": provider.created_by,
+        "created_by_user_id": provider.created_by_user_id,
+        "created_at": _datetime_response(provider.created_at),
+        "updated_at": _datetime_response(provider.updated_at),
+    }
+
+
+def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
+    return {
+        "generation_run_id": run.generation_run_id,
+        "search_log_id": run.search_log_id,
+        "retrieval_package_key": run.retrieval_package_key,
+        "provider_config_id": run.provider_config_id,
+        "provider_name": run.provider_name,
+        "provider_mode": run.provider_mode,
+        "model_id": run.model_id,
+        "prompt_version": run.prompt_version,
+        "prompt_hash": run.prompt_hash,
+        "context_hash": run.context_hash,
+        "status": run.status,
+        "guardrail_status": run.guardrail_status,
+        "retrieval_confidence_status": run.retrieval_confidence_status,
+        "citation_readiness_status": run.citation_readiness_status,
+        "query_text": run.query_text,
+        "answer_text": run.answer_text,
+        "finish_reason": run.finish_reason,
+        "input_token_count": run.input_token_count,
+        "output_token_count": run.output_token_count,
+        "total_token_count": run.total_token_count,
+        "elapsed_ms": run.elapsed_ms,
+        "request_metadata": run.request_metadata,
+        "response_metadata": run.response_metadata,
+        "guardrail_metadata": run.guardrail_metadata,
+        "error_message": run.error_message,
+        "created_by": run.created_by,
+        "created_by_user_id": run.created_by_user_id,
+        "started_at": _datetime_response(run.started_at),
+        "finished_at": _datetime_response(run.finished_at),
+        "created_at": _datetime_response(run.created_at),
+        "updated_at": _datetime_response(run.updated_at),
+    }
+
+
+def generation_run_citation_payload(
+    citation: GenerationRunCitationRecord,
+) -> dict[str, object]:
+    return {
+        "generation_run_citation_id": citation.generation_run_citation_id,
+        "generation_run_id": citation.generation_run_id,
+        "citation_key": citation.citation_key,
+        "citation_index": citation.citation_index,
+        "search_log_result_id": citation.search_log_result_id,
+        "chunk_id": citation.chunk_id,
+        "document_id": citation.document_id,
+        "file_id": citation.file_id,
+        "source_label": citation.source_label,
+        "source_anchor": citation.source_anchor,
+        "citation_payload": citation.citation_payload,
+        "was_cited": citation.was_cited,
+        "created_at": _datetime_response(citation.created_at),
+    }
+
+
+def generation_execution_report_payload(
+    report: GenerationExecutionReport,
+) -> dict[str, object]:
+    return {
+        "provider": generation_provider_config_payload(report.provider),
+        "prompt_package": {
+            "prompt_version": report.prompt_package.prompt_version,
+            "response_language": report.prompt_package.response_language,
+            "query_text": report.prompt_package.query_text,
+            "retrieval_package_key": report.prompt_package.retrieval_package_key,
+            "search_log_id": report.prompt_package.search_log_id,
+            "messages": report.prompt_package.openai_messages,
+            "citation_keys": list(report.prompt_package.citation_keys),
+            "context_text": report.prompt_package.context_text,
+            "prompt_hash": report.prompt_package.prompt_hash,
+            "context_hash": report.prompt_package.context_hash,
+            "blocked": report.prompt_package.blocked,
+            "block_reason": report.prompt_package.block_reason,
+        },
+        "run": generation_run_payload(report.run),
+        "citations": [generation_run_citation_payload(citation) for citation in report.citations],
     }
 
 
@@ -11186,6 +11301,79 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return JSONResponse(content=citation_readiness_report_payload(report))
+
+    @app.post("/api/search/logs/{search_log_id}/generation-runs/mock")
+    def api_create_mock_generation_run(
+        search_log_id: int,
+        max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
+        include_neighbors: bool = True,
+        max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            package = build_retrieval_context_package(
+                settings.database_url,
+                RetrievalContextInput(
+                    search_log_id=search_log_id,
+                    max_context_chars=max_context_chars,
+                    include_neighbors=include_neighbors,
+                    max_items=max_items,
+                ),
+            )
+        except InvalidRetrievalContextError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if package is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log retrieval context not found.",
+            )
+
+        try:
+            report = execute_mock_generation_run(
+                settings.database_url,
+                package,
+                created_by="api_mock_generation",
+            )
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content=generation_execution_report_payload(report),
+        )
+
+    @app.get("/api/generation/runs/{generation_run_id}")
+    def api_get_generation_run(generation_run_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            run = get_generation_run(settings.database_url, generation_run_id)
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if run is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generation run not found.",
+            )
+        citations = list_generation_run_citations(
+            settings.database_url,
+            generation_run_id,
+        )
+        return JSONResponse(
+            content={
+                "run": generation_run_payload(run),
+                "citations": [generation_run_citation_payload(citation) for citation in citations],
+            }
+        )
 
     @app.post("/api/search/logs/{search_log_id}/retry-profile")
     def api_retry_search_log_profile(
