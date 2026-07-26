@@ -2401,6 +2401,15 @@ def _bm25_index_coverage_redirect_url(params: dict[str, object]) -> str:
     return f"/admin/bm25-index-coverage?{urlencode(clean_params)}"
 
 
+def _generation_redirect_url(params: dict[str, object]) -> str:
+    clean_params = {
+        key: value for key, value in params.items() if value is not None and value != ""
+    }
+    if not clean_params:
+        return "/generation"
+    return f"/generation?{urlencode(clean_params)}"
+
+
 def embedding_coverage_document_payload(
     document: EmbeddingCoverageDocument,
 ) -> dict[str, object]:
@@ -13864,6 +13873,130 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 report_json=report_json,
                 error_message=error_message,
             ),
+        )
+
+    @app.get("/generation", response_class=HTMLResponse)
+    def generation_page(
+        request: Request,
+        search_log_id: int | None = Query(default=None, ge=1),
+        generation_run_id: int | None = Query(default=None, ge=1),
+        max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
+        include_neighbors: bool = True,
+        max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+        generation_status: str | None = None,
+        generation_error: str | None = None,
+    ) -> HTMLResponse:
+        latest_logs: list[SearchLogListItem] = []
+        package: RetrievalContextPackage | None = None
+        selected_run: GenerationRunRecord | None = None
+        selected_citations: tuple[GenerationRunCitationRecord, ...] = ()
+        error_message = generation_error
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                latest_logs = list_search_logs(settings.database_url, limit=12)
+                if generation_run_id is not None:
+                    selected_run = get_generation_run(settings.database_url, generation_run_id)
+                    if selected_run is None:
+                        error_message = "Generation run not found."
+                    else:
+                        selected_citations = list_generation_run_citations(
+                            settings.database_url,
+                            selected_run.generation_run_id,
+                        )
+                        if search_log_id is None:
+                            search_log_id = selected_run.search_log_id
+                if search_log_id is not None:
+                    package = build_retrieval_context_package(
+                        settings.database_url,
+                        RetrievalContextInput(
+                            search_log_id=search_log_id,
+                            max_context_chars=max_context_chars,
+                            include_neighbors=include_neighbors,
+                            max_items=max_items,
+                        ),
+                    )
+                    if package is None and error_message is None:
+                        error_message = "Search log retrieval context not found."
+            except (
+                InvalidGenerationRunError,
+                InvalidRetrievalContextError,
+                InvalidSearchLogError,
+            ) as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "generation.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                latest_logs=latest_logs,
+                selected_search_log_id=search_log_id,
+                selected_generation_run_id=generation_run_id,
+                max_context_chars=max_context_chars,
+                include_neighbors=include_neighbors,
+                max_items=max_items,
+                package=package,
+                selected_run=selected_run,
+                selected_citations=selected_citations,
+                generation_status=generation_status or "",
+                error_message=error_message,
+            ),
+        )
+
+    @app.post("/generation/runs/mock")
+    def generation_mock_run_page(
+        search_log_id: int = Form(...),
+        max_context_chars: int = Form(DEFAULT_CONTEXT_CHAR_BUDGET),
+        include_neighbors: bool = Form(False),
+        max_items: int = Form(DEFAULT_CONTEXT_MAX_ITEMS),
+    ) -> RedirectResponse:
+        redirect_params: dict[str, object] = {
+            "search_log_id": search_log_id,
+            "max_context_chars": max_context_chars,
+            "include_neighbors": str(include_neighbors).lower(),
+            "max_items": max_items,
+        }
+        if not settings.database_url:
+            redirect_params["generation_error"] = "NEX_PCX_DATABASE_URL is not configured."
+            return RedirectResponse(
+                _generation_redirect_url(redirect_params),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+        try:
+            package = build_retrieval_context_package(
+                settings.database_url,
+                RetrievalContextInput(
+                    search_log_id=search_log_id,
+                    max_context_chars=max_context_chars,
+                    include_neighbors=include_neighbors,
+                    max_items=max_items,
+                ),
+            )
+            if package is None:
+                redirect_params["generation_error"] = "Search log retrieval context not found."
+            else:
+                report = execute_mock_generation_run(
+                    settings.database_url,
+                    package,
+                    created_by="generation_ui_mock",
+                )
+                redirect_params["generation_run_id"] = report.run.generation_run_id
+                redirect_params["generation_status"] = "created"
+        except (
+            InvalidGenerationRunError,
+            InvalidRetrievalContextError,
+            InvalidSearchLogError,
+        ) as exc:
+            redirect_params["generation_error"] = str(exc)
+
+        return RedirectResponse(
+            _generation_redirect_url(redirect_params),
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @app.get("/search/experiments", response_class=HTMLResponse)

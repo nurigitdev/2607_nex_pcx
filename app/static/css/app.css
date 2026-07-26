@@ -1767,7 +1767,8 @@ main.container-fluid {
 
 .retrieval-context-text,
 .retrieval-context-json,
-.citation-readiness-json {
+.citation-readiness-json,
+.generation-answer-text {
   max-height: 28rem;
   overflow: auto;
   white-space: pre-wrap;
@@ -1780,6 +1781,16 @@ main.container-fluid {
 
 .citation-readiness-table {
   min-width: 58rem;
+}
+
+.generation-citation-table {
+  min-width: 48rem;
+}
+
+.generation-status-text {
+  font-size: 1rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .model-readiness-table td {
@@ -2622,6 +2633,13 @@ main.container-fluid {
 .metric-value {
   font-size: 1.75rem;
   font-weight: 700;
+}
+
+.metric-value.generation-status-text {
+  font-size: 1rem;
+  line-height: 1.2;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .status-dot {

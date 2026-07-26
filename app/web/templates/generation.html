@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("generation.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("generation.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/search/context">{{ t("generation.open_context") }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/search/logs">{{ t("retrieval_context.open_history") }}</a>
+  </div>
+</div>
+
+{% if generation_status == "created" %}
+<div class="alert alert-success" role="alert">{{ t("generation.created") }}</div>
+{% endif %}
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <form class="row g-3 align-items-end" method="get">
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="search_log_id">{{ t("retrieval_context.search_log_id") }}</label>
+      <input
+        class="form-control"
+        id="search_log_id"
+        name="search_log_id"
+        type="number"
+        min="1"
+        value="{{ selected_search_log_id or '' }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="max_context_chars">{{ t("retrieval_context.max_context_chars") }}</label>
+      <input
+        class="form-control"
+        id="max_context_chars"
+        name="max_context_chars"
+        type="number"
+        min="500"
+        max="50000"
+        step="500"
+        value="{{ max_context_chars }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="max_items">{{ t("retrieval_context.max_items") }}</label>
+      <input
+        class="form-control"
+        id="max_items"
+        name="max_items"
+        type="number"
+        min="1"
+        max="100"
+        value="{{ max_items }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <div class="form-check mb-2">
+        <input
+          class="form-check-input"
+          id="include_neighbors"
+          name="include_neighbors"
+          type="checkbox"
+          value="true"
+          {% if include_neighbors %}checked{% endif %}
+          {% if not database_configured %}disabled{% endif %}
+        >
+        <label class="form-check-label" for="include_neighbors">{{ t("retrieval_context.include_neighbors") }}</label>
+      </div>
+    </div>
+    <div class="col-12 col-md-2">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("generation.load") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if package %}
+{% set confidence = package.confidence_assessment %}
+<section class="bg-white border rounded-2 p-3 mb-4" data-generation-package>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation.context_ready") }}</h2>
+      <div class="text-secondary small">{{ t("retrieval_context.package_key") }}: {{ package.package_key }}</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <a
+        class="btn btn-outline-secondary btn-sm"
+        href="/search/context?search_log_id={{ package.search_log.search_log.search_log_id }}&max_context_chars={{ max_context_chars }}&include_neighbors={{ 'true' if include_neighbors else 'false' }}&max_items={{ max_items }}"
+      >
+        {{ t("generation.open_context") }}
+      </a>
+      <form method="post" action="/generation/runs/mock">
+        <input type="hidden" name="search_log_id" value="{{ package.search_log.search_log.search_log_id }}">
+        <input type="hidden" name="max_context_chars" value="{{ max_context_chars }}">
+        <input type="hidden" name="max_items" value="{{ max_items }}">
+        {% if include_neighbors %}
+        <input type="hidden" name="include_neighbors" value="true">
+        {% endif %}
+        <button class="btn btn-primary btn-sm" type="submit" {% if not database_configured %}disabled{% endif %}>
+          {{ t("generation.run_mock") }}
+        </button>
+      </form>
+    </div>
+  </div>
+  <div class="row g-3 mt-1">
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_confidence.title") }}</div>
+        <div class="metric-value generation-status-text">{{ confidence.status if confidence else "answerable" }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.included") }}</div>
+        <div class="metric-value">{{ package.summary.included_count }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.used_chars") }}</div>
+        <div class="metric-value">{{ package.summary.used_context_chars }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.truncated") }}</div>
+        <div class="metric-value">{{ package.summary.truncated_count }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("retrieval_context.citations") }}</div>
+        <div class="metric-value">{{ package.included_candidates | length }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">Search Log</div>
+        <div class="metric-value">#{{ package.search_log.search_log.search_log_id }}</div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if selected_run %}
+{% set run_status_class = "success" if selected_run.status == "succeeded" else ("warning" if selected_run.status == "no_answer" else "secondary") %}
+<section class="bg-white border rounded-2 p-3 mb-4" data-generation-run-result>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation.result") }}</h2>
+      <div class="text-secondary small">
+        #{{ selected_run.generation_run_id }} · {{ selected_run.provider_name }} · {{ selected_run.model_id }}
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <span class="badge text-bg-{{ run_status_class }}">{{ selected_run.status }}</span>
+      <span class="badge text-bg-light border">{{ selected_run.guardrail_status }}</span>
+      <a class="btn btn-outline-secondary btn-sm" href="/api/generation/runs/{{ selected_run.generation_run_id }}">
+        {{ t("retrieval_context.open_api") }}
+      </a>
+    </div>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("generation.input_tokens") }}</div>
+        <div class="metric-value">{{ selected_run.input_token_count or 0 }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("generation.output_tokens") }}</div>
+        <div class="metric-value">{{ selected_run.output_token_count or 0 }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("generation.elapsed_ms") }}</div>
+        <div class="metric-value">{{ selected_run.elapsed_ms or 0 }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("generation.citation_count") }}</div>
+        <div class="metric-value">{{ selected_citations | length }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("generation.confidence") }}</div>
+        <div class="metric-value generation-status-text">{{ selected_run.retrieval_confidence_status }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-card">
+        <div class="metric-label">{{ t("generation.citation_readiness") }}</div>
+        <div class="metric-value generation-status-text">{{ selected_run.citation_readiness_status }}</div>
+      </div>
+    </div>
+  </div>
+  <h3 class="h6 mb-2">{{ t("generation.answer") }}</h3>
+  <pre class="generation-answer-text mb-0">{{ selected_run.answer_text or "" }}</pre>
+</section>
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <h2 class="h5 mb-3">{{ t("generation.citations") }}</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle generation-citation-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("citation_readiness.citation") }}</th>
+          <th scope="col">{{ t("retrieval_context.document") }}</th>
+          <th scope="col">{{ t("generation.was_cited") }}</th>
+          <th scope="col">{{ t("retrieval_context.chunk_id") }}</th>
+          <th scope="col">{{ t("retrieval_context.open") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for citation in selected_citations %}
+        <tr>
+          <td><span class="badge text-bg-primary">{{ citation.citation_key }}</span></td>
+          <td class="text-break">
+            <div>{{ citation.citation_payload.document_title or citation.citation_payload.original_file_name or "-" }}</div>
+            <div class="text-secondary small">{{ citation.source_label }}</div>
+          </td>
+          <td>
+            {% if citation.was_cited %}
+            <span class="badge text-bg-success">{{ t("common.yes") }}</span>
+            {% else %}
+            <span class="badge text-bg-light border">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+          <td>{{ citation.citation_payload.chunk_id or citation.chunk_id or "-" }}</td>
+          <td>
+            <a class="btn btn-outline-secondary btn-sm" href="/api/generation/runs/{{ selected_run.generation_run_id }}">
+              {{ t("common.api") }}
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-secondary">{{ t("generation.no_citations") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% elif not package %}
+<section class="bg-white border rounded-2 p-3">
+  <h2 class="h5 mb-3">{{ t("retrieval_context.recent_logs") }}</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">{{ t("retrieval_context.query") }}</th>
+          <th scope="col">{{ t("retrieval_context.scope") }}</th>
+          <th scope="col">{{ t("retrieval_context.results") }}</th>
+          <th scope="col">{{ t("generation.run_mock") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in latest_logs %}
+        <tr>
+          <td>{{ item.search_log.search_log_id }}</td>
+          <td class="text-break">{{ item.search_log.query_text }}</td>
+          <td>{{ item.search_log.effective_search_scope or "-" }}</td>
+          <td>{{ item.result_count }}</td>
+          <td>
+            <a class="btn btn-outline-primary btn-sm" href="/generation?search_log_id={{ item.search_log.search_log_id }}">
+              {{ t("generation.open") }}
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-secondary">{{ t("retrieval_context.no_recent_logs") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -218,3 +218,45 @@ def test_generation_run_api_returns_503_without_database() -> None:
 
     assert create_response.status_code == 503
     assert read_response.status_code == 503
+
+
+def test_generation_run_ui_loads_context_and_creates_mock_run(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            landing_response = client.get("/generation")
+            context_response = client.get(
+                "/generation",
+                params={"search_log_id": search_log_id, "include_neighbors": "false"},
+            )
+            post_response = client.post(
+                "/generation/runs/mock",
+                data={
+                    "search_log_id": str(search_log_id),
+                    "max_context_chars": "4000",
+                    "max_items": "5",
+                },
+                follow_redirects=False,
+            )
+            detail_response = client.get(post_response.headers["location"])
+
+        assert landing_response.status_code == 200
+        assert 'href="/generation"' in landing_response.text
+        assert "생성 실행" in landing_response.text
+        assert context_response.status_code == 200
+        assert "생성 입력 준비" in context_response.text
+        assert "Mock 생성" in context_response.text
+        assert post_response.status_code == 303
+        assert "generation_run_id=" in post_response.headers["location"]
+        assert detail_response.status_code == 200
+        assert "Mock 생성 실행이 완료되었습니다." in detail_response.text
+        assert "생성 결과" in detail_response.text
+        assert "제공된 문서 근거에 따르면" in detail_response.text
+        assert "Citation Trace" in detail_response.text
+        assert "RCP-001" in detail_response.text
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
