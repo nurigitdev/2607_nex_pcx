@@ -1,5 +1,6 @@
 """Generation provider config and run repository helpers."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -62,6 +63,14 @@ GENERATION_CITATION_READINESS_STATUSES = {
     CITATION_READINESS_WARNING,
     CITATION_READINESS_FAILED,
 }
+DGX_VLLM_GENERATION_PROVIDER_NAME = "dgx_vllm_qwen36_27b_nvfp4"
+DGX_VLLM_GENERATION_BASE_URL = "http://192.168.20.243:12000"
+DGX_VLLM_GENERATION_MODEL_ID = "/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4"
+DGX_VLLM_GENERATION_API_KEY_ENV = "NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY"
+DGX_VLLM_GENERATION_TIMEOUT_SECONDS = 300
+DGX_VLLM_GENERATION_MAX_TOKENS = 1024
+DGX_VLLM_GENERATION_TEMPERATURE = 0.2
+DGX_VLLM_GENERATION_TOP_P = 0.9
 
 
 @dataclass(frozen=True)
@@ -82,6 +91,23 @@ class GenerationProviderConfigRecord:
     created_by_user_id: int | None
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True)
+class GenerationProviderConfigInput:
+    provider_name: str
+    provider_mode: str
+    model_id: str
+    provider_base_url: str | None = None
+    is_default: bool = False
+    is_active: bool = True
+    request_timeout_seconds: int = 120
+    max_tokens: int = 1024
+    temperature: float = 0.2
+    top_p: float = 0.9
+    runtime_options: Mapping[str, Any] = field(default_factory=dict)
+    created_by: str | None = None
+    created_by_user_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -212,6 +238,118 @@ def _validate_optional_positive(value: int | None, field_name: str) -> int | Non
     return value
 
 
+def _validate_provider_mode(value: str) -> str:
+    normalized = _validate_non_empty(value, "provider_mode").lower()
+    if normalized not in GENERATION_PROVIDER_MODES:
+        raise InvalidGenerationRunError("provider_mode is not supported")
+    return normalized
+
+
+def _validate_provider_base_url(value: str | None, provider_mode: str) -> str | None:
+    if value is None:
+        if provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
+            raise InvalidGenerationRunError("provider_base_url is required for remote provider")
+        return None
+    normalized = value.strip().rstrip("/")
+    if not normalized:
+        if provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
+            raise InvalidGenerationRunError("provider_base_url is required for remote provider")
+        return None
+    return normalized
+
+
+def _validate_temperature(value: float) -> float:
+    normalized = float(value)
+    if not 0 <= normalized <= 2:
+        raise InvalidGenerationRunError("temperature must be between 0 and 2")
+    return normalized
+
+
+def _validate_top_p(value: float) -> float:
+    normalized = float(value)
+    if not 0 < normalized <= 1:
+        raise InvalidGenerationRunError("top_p must be greater than 0 and less than or equal to 1")
+    return normalized
+
+
+def _validate_runtime_options(value: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise InvalidGenerationRunError("runtime_options must be a mapping")
+    normalized = dict(value)
+    _reject_secret_runtime_options(normalized)
+    return normalized
+
+
+def _reject_secret_runtime_options(value: object, *, path: tuple[str, ...] = ()) -> None:
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            key_name = str(key).strip()
+            lowered_key = key_name.lower()
+            child_path = (*path, key_name)
+            if _is_forbidden_secret_runtime_option_key(lowered_key):
+                dotted = ".".join(child_path)
+                raise InvalidGenerationRunError(
+                    f"runtime_options.{dotted} must reference an environment variable, "
+                    "not a secret value"
+                )
+            _reject_secret_runtime_options(child, path=child_path)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _reject_secret_runtime_options(child, path=(*path, str(index)))
+
+
+def _is_forbidden_secret_runtime_option_key(key: str) -> bool:
+    if key.endswith("_env") or key in {"api_key_env", "secret_env"}:
+        return False
+    return key in {
+        "api_key",
+        "authorization",
+        "bearer_token",
+        "password",
+        "secret",
+        "token",
+    }
+
+
+def validate_generation_provider_config_input(
+    config_input: GenerationProviderConfigInput,
+) -> GenerationProviderConfigInput:
+    provider_name = _validate_non_empty(config_input.provider_name, "provider_name")
+    provider_mode = _validate_provider_mode(config_input.provider_mode)
+    model_id = _validate_non_empty(config_input.model_id, "model_id")
+    provider_base_url = _validate_provider_base_url(
+        config_input.provider_base_url,
+        provider_mode,
+    )
+    request_timeout_seconds = _validate_positive(
+        config_input.request_timeout_seconds,
+        "request_timeout_seconds",
+    )
+    max_tokens = _validate_positive(config_input.max_tokens, "max_tokens")
+    runtime_options = _validate_runtime_options(config_input.runtime_options)
+    created_by = (
+        _validate_non_empty(config_input.created_by, "created_by")
+        if config_input.created_by is not None
+        else None
+    )
+    _validate_optional_positive(config_input.created_by_user_id, "created_by_user_id")
+    return GenerationProviderConfigInput(
+        provider_name=provider_name,
+        provider_mode=provider_mode,
+        provider_base_url=provider_base_url,
+        model_id=model_id,
+        is_default=bool(config_input.is_default),
+        is_active=bool(config_input.is_active),
+        request_timeout_seconds=request_timeout_seconds,
+        max_tokens=max_tokens,
+        temperature=_validate_temperature(config_input.temperature),
+        top_p=_validate_top_p(config_input.top_p),
+        runtime_options=runtime_options,
+        created_by=created_by,
+        created_by_user_id=config_input.created_by_user_id,
+    )
+
+
 def _provider_config_from_row(row: dict[str, Any]) -> GenerationProviderConfigRecord:
     return GenerationProviderConfigRecord(
         provider_config_id=int(row["provider_config_id"]),
@@ -300,6 +438,197 @@ def get_default_generation_provider_config(
             LIMIT 1
             """).fetchone()
     return _provider_config_from_row(row) if row else None
+
+
+def list_generation_provider_configs(
+    database_url: str,
+    *,
+    include_inactive: bool = True,
+) -> tuple[GenerationProviderConfigRecord, ...]:
+    with connect(database_url) as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM generation_provider_configs
+            WHERE (%s OR is_active)
+            ORDER BY is_default DESC, provider_name, provider_config_id
+            """,
+            (include_inactive,),
+        ).fetchall()
+    return tuple(_provider_config_from_row(dict(row)) for row in rows)
+
+
+def get_generation_provider_config_by_name(
+    database_url: str,
+    provider_name: str,
+) -> GenerationProviderConfigRecord | None:
+    normalized_provider_name = _validate_non_empty(provider_name, "provider_name")
+    with connect(database_url) as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM generation_provider_configs
+            WHERE provider_name = %s
+            """,
+            (normalized_provider_name,),
+        ).fetchone()
+    return _provider_config_from_row(dict(row)) if row else None
+
+
+def upsert_generation_provider_config(
+    database_url: str,
+    config_input: GenerationProviderConfigInput,
+) -> GenerationProviderConfigRecord:
+    validated = validate_generation_provider_config_input(config_input)
+    with connect(database_url) as conn:
+        if validated.is_default:
+            conn.execute("""
+                UPDATE generation_provider_configs
+                SET is_default = false,
+                    updated_at = now()
+                WHERE is_default
+                """)
+        row = conn.execute(
+            """
+            INSERT INTO generation_provider_configs (
+                provider_name,
+                provider_mode,
+                provider_base_url,
+                model_id,
+                is_default,
+                is_active,
+                request_timeout_seconds,
+                max_tokens,
+                temperature,
+                top_p,
+                runtime_options,
+                created_by,
+                created_by_user_id
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT (provider_name) DO UPDATE
+            SET provider_mode = EXCLUDED.provider_mode,
+                provider_base_url = EXCLUDED.provider_base_url,
+                model_id = EXCLUDED.model_id,
+                is_default = EXCLUDED.is_default,
+                is_active = EXCLUDED.is_active,
+                request_timeout_seconds = EXCLUDED.request_timeout_seconds,
+                max_tokens = EXCLUDED.max_tokens,
+                temperature = EXCLUDED.temperature,
+                top_p = EXCLUDED.top_p,
+                runtime_options = EXCLUDED.runtime_options,
+                created_by = COALESCE(EXCLUDED.created_by, generation_provider_configs.created_by),
+                created_by_user_id = COALESCE(
+                    EXCLUDED.created_by_user_id,
+                    generation_provider_configs.created_by_user_id
+                ),
+                updated_at = now()
+            RETURNING *
+            """,
+            (
+                validated.provider_name,
+                validated.provider_mode,
+                validated.provider_base_url,
+                validated.model_id,
+                validated.is_default,
+                validated.is_active,
+                validated.request_timeout_seconds,
+                validated.max_tokens,
+                validated.temperature,
+                validated.top_p,
+                Json(validated.runtime_options),
+                validated.created_by,
+                validated.created_by_user_id,
+            ),
+        ).fetchone()
+        conn.commit()
+    assert row is not None
+    return _provider_config_from_row(dict(row))
+
+
+def build_dgx_vllm_generation_provider_config_input(
+    *,
+    provider_name: str = DGX_VLLM_GENERATION_PROVIDER_NAME,
+    provider_base_url: str = DGX_VLLM_GENERATION_BASE_URL,
+    model_id: str = DGX_VLLM_GENERATION_MODEL_ID,
+    api_key_env: str = DGX_VLLM_GENERATION_API_KEY_ENV,
+    request_timeout_seconds: int = DGX_VLLM_GENERATION_TIMEOUT_SECONDS,
+    max_tokens: int = DGX_VLLM_GENERATION_MAX_TOKENS,
+    temperature: float = DGX_VLLM_GENERATION_TEMPERATURE,
+    top_p: float = DGX_VLLM_GENERATION_TOP_P,
+    is_default: bool = False,
+    is_active: bool = True,
+    thinking_disabled: bool = True,
+    created_by: str | None = "slice_349_seed",
+    created_by_user_id: int | None = None,
+) -> GenerationProviderConfigInput:
+    return validate_generation_provider_config_input(
+        GenerationProviderConfigInput(
+            provider_name=provider_name,
+            provider_mode=GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+            provider_base_url=provider_base_url,
+            model_id=model_id,
+            is_default=is_default,
+            is_active=is_active,
+            request_timeout_seconds=request_timeout_seconds,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            runtime_options={
+                "contract": "openai_chat_completions",
+                "endpoint": "/v1/chat/completions",
+                "api_key_env": api_key_env,
+                "extra_body": {
+                    "chat_template_kwargs": {
+                        "enable_thinking": not thinking_disabled,
+                    }
+                },
+                "serving_max_model_len": "200k",
+                "smoke_evidence": "docs/dgx_vllm_generation_smoke_result.md",
+                "secret_storage": "environment_variable_only",
+                "slice": 349,
+            },
+            created_by=created_by,
+            created_by_user_id=created_by_user_id,
+        )
+    )
+
+
+def seed_dgx_vllm_generation_provider_config(
+    database_url: str,
+    *,
+    provider_name: str = DGX_VLLM_GENERATION_PROVIDER_NAME,
+    provider_base_url: str = DGX_VLLM_GENERATION_BASE_URL,
+    model_id: str = DGX_VLLM_GENERATION_MODEL_ID,
+    api_key_env: str = DGX_VLLM_GENERATION_API_KEY_ENV,
+    request_timeout_seconds: int = DGX_VLLM_GENERATION_TIMEOUT_SECONDS,
+    max_tokens: int = DGX_VLLM_GENERATION_MAX_TOKENS,
+    temperature: float = DGX_VLLM_GENERATION_TEMPERATURE,
+    top_p: float = DGX_VLLM_GENERATION_TOP_P,
+    is_default: bool = False,
+    is_active: bool = True,
+    thinking_disabled: bool = True,
+    created_by: str | None = "slice_349_seed",
+    created_by_user_id: int | None = None,
+) -> GenerationProviderConfigRecord:
+    config_input = build_dgx_vllm_generation_provider_config_input(
+        provider_name=provider_name,
+        provider_base_url=provider_base_url,
+        model_id=model_id,
+        api_key_env=api_key_env,
+        request_timeout_seconds=request_timeout_seconds,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        is_default=is_default,
+        is_active=is_active,
+        thinking_disabled=thinking_disabled,
+        created_by=created_by,
+        created_by_user_id=created_by_user_id,
+    )
+    return upsert_generation_provider_config(database_url, config_input)
 
 
 def get_generation_run(database_url: str, generation_run_id: int) -> GenerationRunRecord | None:

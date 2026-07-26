@@ -349,13 +349,28 @@ from app.core.generation_provider_metric_snapshots import (
     generation_provider_metric_snapshot_payload,
     get_generation_provider_metric_snapshot,
 )
+from app.core.generation_providers import (
+    InvalidGenerationProviderError,
+    generation_provider_runtime_config_from_record,
+)
 from app.core.generation_runs import (
+    DGX_VLLM_GENERATION_API_KEY_ENV,
+    DGX_VLLM_GENERATION_BASE_URL,
+    DGX_VLLM_GENERATION_MAX_TOKENS,
+    DGX_VLLM_GENERATION_MODEL_ID,
+    DGX_VLLM_GENERATION_PROVIDER_NAME,
+    DGX_VLLM_GENERATION_TEMPERATURE,
+    DGX_VLLM_GENERATION_TIMEOUT_SECONDS,
+    DGX_VLLM_GENERATION_TOP_P,
     GenerationProviderConfigRecord,
     GenerationRunCitationRecord,
     GenerationRunRecord,
     InvalidGenerationRunError,
+    get_default_generation_provider_config,
     get_generation_run,
+    list_generation_provider_configs,
     list_generation_run_citations,
+    seed_dgx_vllm_generation_provider_config,
 )
 from app.core.go_live_readiness import (
     build_go_live_readiness_report,
@@ -808,6 +823,42 @@ class ProviderPreflightScheduleRequest(BaseModel):
 class ProviderPreflightScheduleRunDueRequest(BaseModel):
     schedule_name: str | None = Field(default=None, max_length=120)
     limit: int = Field(default=20, ge=1, le=100)
+
+
+class GenerationProviderDgxVllmSeedRequest(BaseModel):
+    provider_name: str = Field(
+        default=DGX_VLLM_GENERATION_PROVIDER_NAME,
+        min_length=1,
+        max_length=120,
+    )
+    provider_base_url: str = Field(
+        default=DGX_VLLM_GENERATION_BASE_URL,
+        min_length=1,
+        max_length=500,
+    )
+    model_id: str = Field(
+        default=DGX_VLLM_GENERATION_MODEL_ID,
+        min_length=1,
+        max_length=500,
+    )
+    api_key_env: str = Field(
+        default=DGX_VLLM_GENERATION_API_KEY_ENV,
+        min_length=1,
+        max_length=120,
+    )
+    request_timeout_seconds: int = Field(
+        default=DGX_VLLM_GENERATION_TIMEOUT_SECONDS,
+        ge=1,
+        le=3600,
+    )
+    max_tokens: int = Field(default=DGX_VLLM_GENERATION_MAX_TOKENS, ge=1, le=200000)
+    temperature: float = Field(default=DGX_VLLM_GENERATION_TEMPERATURE, ge=0, le=2)
+    top_p: float = Field(default=DGX_VLLM_GENERATION_TOP_P, gt=0, le=1)
+    is_default: bool = False
+    is_active: bool = True
+    thinking_disabled: bool = True
+    created_by: str | None = Field(default="generation-provider-config-api", max_length=120)
+    created_by_user_id: int | None = Field(default=None, ge=1)
 
 
 class DocumentPermissionUpdateRequest(BaseModel):
@@ -4128,6 +4179,75 @@ def citation_readiness_report_payload(
     }
 
 
+def _is_sensitive_generation_runtime_key(key: str) -> bool:
+    normalized = key.strip().lower()
+    if normalized.endswith("_env"):
+        return False
+    return normalized in {
+        "api_key",
+        "authorization",
+        "bearer_token",
+        "password",
+        "secret",
+        "token",
+    }
+
+
+def redacted_generation_runtime_options(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            str(key): (
+                "<redacted>"
+                if _is_sensitive_generation_runtime_key(str(key))
+                else redacted_generation_runtime_options(child)
+            )
+            for key, child in value.items()
+        }
+    if isinstance(value, list):
+        return [redacted_generation_runtime_options(child) for child in value]
+    return value
+
+
+def generation_provider_runtime_config_payload(
+    provider: GenerationProviderConfigRecord,
+    settings: Settings,
+) -> dict[str, object]:
+    try:
+        runtime_config = generation_provider_runtime_config_from_record(provider)
+    except InvalidGenerationProviderError as exc:
+        return {
+            "valid": False,
+            "error_message": str(exc),
+            "mode": provider.provider_mode,
+            "remote_base_url": provider.provider_base_url,
+            "model_id": provider.model_id,
+        }
+
+    api_key_env = provider.runtime_options.get("api_key_env")
+    api_key_configured = (
+        bool(settings.remote_generation_provider_api_key)
+        if api_key_env == DGX_VLLM_GENERATION_API_KEY_ENV
+        else None
+    )
+    extra_body = provider.runtime_options.get("extra_body", {})
+    return {
+        "valid": True,
+        "error_message": None,
+        "mode": runtime_config.mode,
+        "remote_base_url": runtime_config.remote_base_url,
+        "remote_timeout_seconds": runtime_config.remote_timeout_seconds,
+        "model_id": runtime_config.model_id,
+        "max_tokens": runtime_config.max_tokens,
+        "temperature": runtime_config.temperature,
+        "top_p": runtime_config.top_p,
+        "api_key_env": api_key_env if isinstance(api_key_env, str) else None,
+        "api_key_configured": api_key_configured,
+        "remote_header_names": sorted(runtime_config.remote_headers),
+        "extra_body": redacted_generation_runtime_options(extra_body),
+        "secret_policy": "secret values are provided through environment variables only",
+    }
+
+
 def generation_provider_config_payload(
     provider: GenerationProviderConfigRecord,
 ) -> dict[str, object]:
@@ -4143,7 +4263,7 @@ def generation_provider_config_payload(
         "max_tokens": provider.max_tokens,
         "temperature": provider.temperature,
         "top_p": provider.top_p,
-        "runtime_options": provider.runtime_options,
+        "runtime_options": redacted_generation_runtime_options(provider.runtime_options),
         "created_by": provider.created_by,
         "created_by_user_id": provider.created_by_user_id,
         "created_at": _datetime_response(provider.created_at),
@@ -11464,6 +11584,118 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except InvalidGenerationProviderMetricSnapshotError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return JSONResponse(content=generation_provider_metric_snapshot_payload(snapshot))
+
+    @app.get("/api/admin/generation-provider-configs")
+    def api_list_generation_provider_runtime_configs(
+        include_inactive: bool = True,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        providers = list_generation_provider_configs(
+            settings.database_url,
+            include_inactive=include_inactive,
+        )
+        provider_payloads = [
+            {
+                **generation_provider_config_payload(provider),
+                "runtime_config": generation_provider_runtime_config_payload(provider, settings),
+            }
+            for provider in providers
+        ]
+        default_provider = next((provider for provider in providers if provider.is_default), None)
+        return JSONResponse(
+            content={
+                "summary": {
+                    "provider_count": len(providers),
+                    "active_provider_count": sum(1 for provider in providers if provider.is_active),
+                    "default_provider_name": (
+                        default_provider.provider_name if default_provider else None
+                    ),
+                    "include_inactive": include_inactive,
+                },
+                "default_provider": (
+                    {
+                        **generation_provider_config_payload(default_provider),
+                        "runtime_config": generation_provider_runtime_config_payload(
+                            default_provider,
+                            settings,
+                        ),
+                    }
+                    if default_provider
+                    else None
+                ),
+                "providers": provider_payloads,
+            }
+        )
+
+    @app.get("/api/admin/generation-provider-configs/default")
+    def api_get_default_generation_provider_runtime_config() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        provider = get_default_generation_provider_config(settings.database_url)
+        if provider is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Default generation provider config not found.",
+            )
+        return JSONResponse(
+            content={
+                "provider": generation_provider_config_payload(provider),
+                "runtime_config": generation_provider_runtime_config_payload(provider, settings),
+            }
+        )
+
+    @app.post("/api/admin/generation-provider-configs/seed-dgx-vllm")
+    def api_seed_dgx_vllm_generation_provider_runtime_config(
+        payload: GenerationProviderDgxVllmSeedRequest | None = None,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        seed_payload = payload or GenerationProviderDgxVllmSeedRequest()
+        try:
+            provider = seed_dgx_vllm_generation_provider_config(
+                settings.database_url,
+                provider_name=seed_payload.provider_name,
+                provider_base_url=seed_payload.provider_base_url,
+                model_id=seed_payload.model_id,
+                api_key_env=seed_payload.api_key_env,
+                request_timeout_seconds=seed_payload.request_timeout_seconds,
+                max_tokens=seed_payload.max_tokens,
+                temperature=seed_payload.temperature,
+                top_p=seed_payload.top_p,
+                is_default=seed_payload.is_default,
+                is_active=seed_payload.is_active,
+                thinking_disabled=seed_payload.thinking_disabled,
+                created_by=seed_payload.created_by,
+                created_by_user_id=seed_payload.created_by_user_id,
+            )
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={
+                "provider": generation_provider_config_payload(provider),
+                "runtime_config": generation_provider_runtime_config_payload(provider, settings),
+                "seed": {
+                    "provider_name": provider.provider_name,
+                    "is_default": provider.is_default,
+                    "api_key_env": provider.runtime_options.get("api_key_env"),
+                    "secret_persisted": False,
+                },
+            },
+        )
 
     @app.post("/api/search/logs/{search_log_id}/retry-profile")
     def api_retry_search_log_profile(
