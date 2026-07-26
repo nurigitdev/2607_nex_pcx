@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260725_0032"
+HEAD_REVISION = "20260726_0033"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -93,6 +93,23 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
           AND is_active
         """,
     )
+    generation_run_table = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.generation_runs') AS table_name",
+    )
+    generation_citation_table = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.generation_run_citations') AS table_name",
+    )
+    default_generation_provider = fetch_one(
+        test_database_url,
+        """
+        SELECT provider_mode, model_id
+        FROM generation_provider_configs
+        WHERE provider_name = 'mock_qwen36_27b_nvfp4'
+          AND is_default
+        """,
+    )
     keyword_index_table = fetch_one(
         test_database_url,
         "SELECT to_regclass('public.chunk_keyword_terms') AS table_name",
@@ -121,6 +138,10 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert search_profile_table["table_name"] == "search_profiles"
     assert bm25_profile_count["count"] == 1
     assert reranked_profile_count["count"] == 1
+    assert generation_run_table["table_name"] == "generation_runs"
+    assert generation_citation_table["table_name"] == "generation_run_citations"
+    assert default_generation_provider["provider_mode"] == "mock"
+    assert default_generation_provider["model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
     assert keyword_index_table["table_name"] == "chunk_keyword_terms"
     assert keyword_indexing_stage_constraint["enabled"] is True
 

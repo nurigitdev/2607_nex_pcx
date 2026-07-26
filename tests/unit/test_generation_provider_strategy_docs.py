@@ -12,7 +12,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.31" in srs_text
+    assert "Software Requirements Specification v1.32" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
