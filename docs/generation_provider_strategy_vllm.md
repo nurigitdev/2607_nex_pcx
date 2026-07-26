@@ -76,4 +76,5 @@ Generation must not pass arbitrary weak context to the LLM.
 2. Prompt package builder.
 3. Mock generation API and UI.
 4. OpenAI-compatible vLLM client foundation.
-5. Remote vLLM smoke when DGX-Spark is reachable.
+5. Remote generation executor wiring from retrieval package to vLLM client.
+6. Remote vLLM smoke when DGX-Spark is reachable.

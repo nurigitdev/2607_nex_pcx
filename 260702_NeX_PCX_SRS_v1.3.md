@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.41**
+**Software Requirements Specification v1.42**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.41
+문서 상태: Draft v1.42
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.41 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.42 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.41 |
+| 문서 버전 | v1.42 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -66,6 +66,7 @@
 | 1.39 | 2026-07-26 | vLLM generation provider metrics contract, OpenAI-compatible response usage/finish/error parser 요구사항 보강 |
 | 1.40 | 2026-07-26 | Generation provider metrics snapshot API, mock generation run provider_metrics persistence 요구사항 보강 |
 | 1.41 | 2026-07-26 | Generation provider metrics snapshot UI, 최근 generation run token/latency/success 운영 패널 요구사항 보강 |
+| 1.42 | 2026-07-27 | OpenAI-compatible vLLM client foundation, remote chat completion request/response/error metrics 계약 보강 |
 
 # 목차
 
@@ -422,6 +423,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-060 | vLLM generation provider metrics contract | remote OpenAI-compatible vLLM 응답에서 model/id, finish_reason, usage token count, HTTP status, latency, retry count, error code/message를 표준 metrics payload로 파싱해 generation run metadata와 운영 모니터링에서 재사용할 수 있어야 한다. | MUST |
 | FR-061 | Generation provider metrics snapshot API | mock 및 future vLLM generation run은 `response_metadata.provider_metrics`에 표준 metrics payload를 저장하고, 운영 API는 최근 generation run의 성공/실패, no-answer, token, latency, provider elapsed summary를 조회할 수 있어야 한다. | MUST |
 | FR-062 | Generation provider metrics snapshot UI | Web UI는 최근 generation run의 provider metrics snapshot을 요약 카드, 실행별 token/latency table, raw JSON evidence로 표시하고 각 run detail로 이동할 수 있어야 한다. | SHOULD |
+| FR-063 | OpenAI-compatible vLLM client foundation | remote generation provider client는 `/v1/chat/completions` request payload를 구성하고 answer text, finish reason, token usage, latency, HTTP error payload를 표준 metrics와 함께 반환하거나 실패 객체로 보존할 수 있어야 한다. | MUST |
 
 ## 4.3 대시보드 요구사항
 
@@ -536,6 +538,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Generation provider runtime은 embedding/reranker remote provider처럼 NeX_PCX 내부에 별도 heavy model wrapper를 만들기보다, 1차로 vLLM이 제공하는 OpenAI-compatible HTTP runtime을 직접 호출한다. NeX_PCX backend는 provider 설정, prompt packaging, retrieval/citation/confidence gate, 실행 로그, 응답 metadata 저장에 집중한다.
 
 - Remote vLLM 호출의 기본 endpoint는 `/v1/chat/completions`로 하며, request에는 model, messages, max_tokens, temperature, top_p, optional stop sequence, trace metadata를 포함한다. response에서는 answer text, finish_reason, token usage, model id, provider latency, raw response summary를 generation run metadata로 저장할 수 있어야 한다.
+
+- OpenAI-compatible vLLM client는 transport error, invalid JSON, non-object JSON, HTTP error response를 구분해 표준 provider metrics와 error payload를 보존해야 하며, DGX-Spark 연결 전에도 mock HTTP transport 기반으로 request/response 계약을 검증할 수 있어야 한다.
 
 - 기본 remote LLM 후보는 `nvidia/Qwen3.6-27B-NVFP4`로 두되, 로컬 개발 환경과 remote DGX-Spark 접속이 불가능한 환경에서는 deterministic mock provider가 동일한 request/response shape로 동작해야 한다.
 
@@ -1593,7 +1597,7 @@ pytest tests/e2e
 | Phase 5.5 | BM25/Hybrid 검색 비교 | BM25 keyword index, BM25 baseline, hybrid fusion, strategy 비교 UI | 동일 query/golden set에서 BM25-only, embedding-only, hybrid top-k 결과와 품질 지표 비교 |
 | Phase 6 | 평가 자동화 | golden question set, Recall@k/MRR/nDCG 리포트 | 질문셋 기반 profile별 평가 리포트 생성 |
 | Phase 6.5 | Retrieval-to-Generation Handoff | retrieval context package, citation readiness, low-confidence/no-answer guardrail | 검색 결과가 생성 입력으로 전달 가능한지 package/citation/confidence gate 검증 |
-| Phase 7 | Grounded Generation MVP | generation run schema, prompt package builder, mock generation provider, vLLM OpenAI-compatible runtime config | mock provider로 생성 실행 로그와 citation trace가 저장되고, DGX vLLM smoke 전환 조건이 정의됨 |
+| Phase 7 | Grounded Generation MVP | generation run schema, prompt package builder, mock generation provider, vLLM OpenAI-compatible runtime config/client | mock provider로 생성 실행 로그와 citation trace가 저장되고, DGX vLLM smoke 전환 조건과 HTTP client 계약이 정의됨 |
 
 ## 10.1 MVP 완료 기준
 

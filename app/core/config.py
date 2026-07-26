@@ -29,6 +29,14 @@ class Settings:
     reranker_provider_mode: str = "mock"
     remote_reranker_provider_url: str | None = None
     remote_reranker_provider_timeout_seconds: float = 60.0
+    generation_provider_mode: str = "mock"
+    remote_generation_provider_url: str | None = None
+    remote_generation_provider_timeout_seconds: float = 120.0
+    remote_generation_provider_api_key: str | None = None
+    generation_model_id: str = "nvidia/Qwen3.6-27B-NVFP4"
+    generation_max_tokens: int = 1024
+    generation_temperature: float = 0.2
+    generation_top_p: float = 0.9
     embedding_require_route_readiness: bool = False
     embedding_route_readiness_failure_mode: str = "fail"
     embedding_route_readiness_defer_seconds: int = 300
@@ -53,6 +61,19 @@ def get_settings() -> Settings:
         remote_reranker_provider_timeout_seconds=float(
             getenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_TIMEOUT_SECONDS", "60.0")
         ),
+        generation_provider_mode=getenv("NEX_PCX_GENERATION_PROVIDER_MODE", "mock"),
+        remote_generation_provider_url=getenv("NEX_PCX_REMOTE_GENERATION_PROVIDER_URL"),
+        remote_generation_provider_timeout_seconds=float(
+            getenv("NEX_PCX_REMOTE_GENERATION_PROVIDER_TIMEOUT_SECONDS", "120.0")
+        ),
+        remote_generation_provider_api_key=getenv("NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY"),
+        generation_model_id=getenv(
+            "NEX_PCX_GENERATION_MODEL_ID",
+            "nvidia/Qwen3.6-27B-NVFP4",
+        ),
+        generation_max_tokens=int(getenv("NEX_PCX_GENERATION_MAX_TOKENS", "1024")),
+        generation_temperature=float(getenv("NEX_PCX_GENERATION_TEMPERATURE", "0.2")),
+        generation_top_p=float(getenv("NEX_PCX_GENERATION_TOP_P", "0.9")),
         embedding_require_route_readiness=_env_bool(
             "NEX_PCX_EMBEDDING_REQUIRE_ROUTE_READINESS",
             False,

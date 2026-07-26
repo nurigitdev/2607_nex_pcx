@@ -18,6 +18,7 @@ GENERATION_PROVIDER_METRIC_SNAPSHOT_DOC_PATH = (
 GENERATION_PROVIDER_METRIC_SNAPSHOT_UI_DOC_PATH = (
     PROJECT_ROOT / "docs" / "generation_provider_metric_snapshot_ui.md"
 )
+GENERATION_OPENAI_VLLM_CLIENT_DOC_PATH = PROJECT_ROOT / "docs" / "generation_openai_vllm_client.md"
 
 
 def _read(path: Path) -> str:
@@ -27,7 +28,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.41" in srs_text
+    assert "Software Requirements Specification v1.42" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -43,8 +44,10 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-060" in srs_text
     assert "FR-061" in srs_text
     assert "FR-062" in srs_text
+    assert "FR-063" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
+    assert "OpenAI-compatible vLLM client foundation" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -147,3 +150,14 @@ def test_generation_provider_metric_snapshot_ui_doc_defines_operator_panel() -> 
     assert "`GET /admin/generation-provider-metrics`" in snapshot_ui_text
     assert "Summary cards" in snapshot_ui_text
     assert "Raw snapshot JSON" in snapshot_ui_text
+
+
+def test_generation_openai_vllm_client_doc_defines_client_contract() -> None:
+    client_text = _read(GENERATION_OPENAI_VLLM_CLIENT_DOC_PATH)
+
+    assert "OpenAI-Compatible vLLM Client Foundation" in client_text
+    assert "`GenerationProviderRuntimeConfig`" in client_text
+    assert "`POST /v1/chat/completions`" in client_text
+    assert "`GenerationProviderMetrics`" in client_text
+    assert "`GenerationProviderRequestError`" in client_text
+    assert "`error_code=invalid_json`" in client_text
