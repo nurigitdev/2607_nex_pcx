@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.32**
+**Software Requirements Specification v1.33**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.32
+문서 상태: Draft v1.33
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.32 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.33 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.32 |
+| 문서 버전 | v1.33 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -57,6 +57,7 @@
 | 1.30 | 2026-07-25 | Citation Coverage + Source Anchor Readiness Check, 생성 전 근거 품질 gate와 issue code 요구사항 보강 |
 | 1.31 | 2026-07-26 | Generation provider strategy, vLLM OpenAI-compatible runtime contract, Qwen3.6-27B-NVFP4 기본 LLM 후보와 mock-first 검증 원칙 보강 |
 | 1.32 | 2026-07-26 | Generation run schema, retrieval package linkage, provider config seed, citation trace table 요구사항 보강 |
+| 1.33 | 2026-07-26 | Generation prompt package builder, OpenAI-compatible messages 변환, prompt/context hash와 low-confidence blocked prompt 요구사항 보강 |
 
 # 목차
 

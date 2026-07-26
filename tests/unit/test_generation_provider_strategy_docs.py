@@ -3,6 +3,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRS_PATH = PROJECT_ROOT / "260702_NeX_PCX_SRS_v1.3.md"
 STRATEGY_DOC_PATH = PROJECT_ROOT / "docs" / "generation_provider_strategy_vllm.md"
+PROMPT_DOC_PATH = PROJECT_ROOT / "docs" / "generation_prompt_package_builder.md"
 
 
 def _read(path: Path) -> str:
@@ -12,7 +13,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.32" in srs_text
+    assert "Software Requirements Specification v1.33" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -33,3 +34,15 @@ def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> 
     assert "nvidia/Qwen3.6-27B-NVFP4" in strategy_text
     assert "low_confidence" in strategy_text
     assert "no_relevant_context" in strategy_text
+
+
+def test_generation_prompt_package_doc_defines_guarded_openai_messages() -> None:
+    prompt_text = _read(PROMPT_DOC_PATH)
+
+    assert "OpenAI-compatible chat" in prompt_text
+    assert "`messages`" in prompt_text
+    assert "`prompt_hash`" in prompt_text
+    assert "`context_hash`" in prompt_text
+    assert "`blocked`" in prompt_text
+    assert "`block_reason`" in prompt_text
+    assert "no-answer response" in prompt_text
