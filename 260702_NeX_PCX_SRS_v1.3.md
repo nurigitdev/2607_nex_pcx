@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.33**
+**Software Requirements Specification v1.34**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.33
+문서 상태: Draft v1.34
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.33 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.34 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.33 |
+| 문서 버전 | v1.34 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -58,6 +58,7 @@
 | 1.31 | 2026-07-26 | Generation provider strategy, vLLM OpenAI-compatible runtime contract, Qwen3.6-27B-NVFP4 기본 LLM 후보와 mock-first 검증 원칙 보강 |
 | 1.32 | 2026-07-26 | Generation run schema, retrieval package linkage, provider config seed, citation trace table 요구사항 보강 |
 | 1.33 | 2026-07-26 | Generation prompt package builder, OpenAI-compatible messages 변환, prompt/context hash와 low-confidence blocked prompt 요구사항 보강 |
+| 1.34 | 2026-07-26 | Generation run repository와 deterministic mock executor, no-answer guardrail 실행 기록, citation persistence 요구사항 보강 |
 
 # 목차
 
@@ -406,6 +407,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-052 | vLLM runtime contract | remote LLM provider는 vLLM OpenAI-compatible `/v1/chat/completions` 계약을 기본으로 사용하며 base URL, model id, API key 사용 여부, timeout, max tokens, temperature, top_p를 runtime 설정으로 관리한다. | MUST |
 | FR-053 | 기본 LLM 후보 | NeX_PCX의 기본 remote LLM 후보는 `nvidia/Qwen3.6-27B-NVFP4`로 정의하되, 실제 DGX-Spark 연결 smoke가 완료되기 전까지 운영 test는 mock provider를 기본값으로 사용한다. | SHOULD |
 | FR-054 | Grounded generation gate | 생성 실행은 retrieval confidence가 `answerable`이고 citation readiness가 `failed`가 아닌 context package를 우선 대상으로 하며, `low_confidence` 또는 `no_relevant_context` 상태에서는 no-answer 응답 또는 실행 차단을 기록한다. | MUST |
+| FR-055 | Generation run execution persistence | 생성 실행기는 prompt package, provider snapshot, retrieval confidence, citation readiness, answer/no-answer 결과, token/latency 추정치, citation 사용 여부를 `generation_runs`와 `generation_run_citations`에 재현 가능하게 저장한다. | MUST |
 
 ## 4.3 대시보드 요구사항
 

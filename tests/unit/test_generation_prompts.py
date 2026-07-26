@@ -1,7 +1,14 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
 
+from app.core.generation_executor import (
+    MOCK_NO_ANSWER_TEXT,
+    _estimate_token_count,
+    _mock_answer,
+    _retrieval_confidence_status,
+)
 from app.core.generation_prompts import (
     DEFAULT_GENERATION_PROMPT_VERSION,
     GENERATION_BLOCK_LOW_CONFIDENCE,
@@ -211,3 +218,21 @@ def test_build_generation_prompt_package_blocks_low_confidence_context() -> None
 def test_build_generation_prompt_package_rejects_empty_prompt_version() -> None:
     with pytest.raises(InvalidGenerationPromptError, match="prompt_version"):
         build_generation_prompt_package(_package(), prompt_version=" ")
+
+
+def test_generation_executor_helpers_handle_empty_and_missing_metadata() -> None:
+    package = _package()
+    no_confidence_package = replace(package, confidence_assessment=None)
+    missing_citation_candidate = replace(
+        _candidate(),
+        citation=replace(_candidate().citation, citation_key=None),
+    )
+    missing_citation_package = replace(
+        package,
+        candidates=(missing_citation_candidate,),
+        generation_context_text=missing_citation_candidate.context_text,
+    )
+
+    assert _estimate_token_count("  \n ") == 0
+    assert _retrieval_confidence_status(no_confidence_package) == RETRIEVAL_CONFIDENCE_ANSWERABLE
+    assert _mock_answer(missing_citation_package) == MOCK_NO_ANSWER_TEXT

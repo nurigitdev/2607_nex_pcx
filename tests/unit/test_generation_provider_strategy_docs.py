@@ -4,6 +4,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRS_PATH = PROJECT_ROOT / "260702_NeX_PCX_SRS_v1.3.md"
 STRATEGY_DOC_PATH = PROJECT_ROOT / "docs" / "generation_provider_strategy_vllm.md"
 PROMPT_DOC_PATH = PROJECT_ROOT / "docs" / "generation_prompt_package_builder.md"
+MOCK_EXECUTOR_DOC_PATH = PROJECT_ROOT / "docs" / "generation_mock_executor.md"
 
 
 def _read(path: Path) -> str:
@@ -13,7 +14,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.33" in srs_text
+    assert "Software Requirements Specification v1.34" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -21,6 +22,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-052" in srs_text
     assert "FR-053" in srs_text
     assert "FR-054" in srs_text
+    assert "FR-055" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
 
@@ -46,3 +48,14 @@ def test_generation_prompt_package_doc_defines_guarded_openai_messages() -> None
     assert "`blocked`" in prompt_text
     assert "`block_reason`" in prompt_text
     assert "no-answer response" in prompt_text
+
+
+def test_generation_mock_executor_doc_defines_persistent_no_answer_path() -> None:
+    executor_text = _read(MOCK_EXECUTOR_DOC_PATH)
+
+    assert "Generation Mock Executor" in executor_text
+    assert "`generation_runs`" in executor_text
+    assert "`generation_run_citations`" in executor_text
+    assert "`mock_completed`" in executor_text
+    assert "`guardrail_no_answer`" in executor_text
+    assert "Remote vLLM Handoff" in executor_text
