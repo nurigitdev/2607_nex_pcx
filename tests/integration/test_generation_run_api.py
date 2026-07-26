@@ -320,6 +320,55 @@ def test_generation_provider_metric_snapshot_api_reads_mock_persisted_metrics(
         _cleanup_file(migrated_database_url, file_id)
 
 
+def test_generation_provider_metric_snapshot_ui_shows_recent_metrics(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/mock",
+                params={"include_neighbors": "false"},
+            )
+            run_id = create_response.json()["run"]["generation_run_id"]
+            page_response = client.get(
+                "/admin/generation-provider-metrics",
+                params={"limit": "10"},
+            )
+            invalid_limit_response = client.get(
+                "/admin/generation-provider-metrics",
+                params={"limit": "0"},
+            )
+
+        assert create_response.status_code == 201
+        assert page_response.status_code == 200
+        assert "생성 Provider Metrics" in page_response.text
+        assert "data-generation-provider-metrics-summary" in page_response.text
+        assert "data-generation-provider-metrics-runs" in page_response.text
+        assert "mock_qwen36_27b_nvfp4" in page_response.text
+        assert "mock_completed" in page_response.text
+        assert f'href="/generation/runs/{run_id}"' in page_response.text
+        assert "/api/admin/generation-provider-metrics/snapshot?limit=10" in page_response.text
+        assert "Raw Snapshot JSON" in page_response.text
+        assert invalid_limit_response.status_code == 200
+        assert "limit must be between 1 and 500" in invalid_limit_response.text
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_generation_provider_metric_snapshot_ui_reports_missing_database() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        page_response = client.get("/admin/generation-provider-metrics")
+
+    assert page_response.status_code == 200
+    assert "생성 Provider Metrics" in page_response.text
+    assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
+
+
 def test_generation_run_ui_loads_context_and_creates_mock_run(
     migrated_database_url: str,
 ) -> None:

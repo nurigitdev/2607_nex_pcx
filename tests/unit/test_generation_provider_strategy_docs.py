@@ -15,6 +15,9 @@ GENERATION_PROVIDER_METRICS_DOC_PATH = (
 GENERATION_PROVIDER_METRIC_SNAPSHOT_DOC_PATH = (
     PROJECT_ROOT / "docs" / "generation_provider_metric_snapshot_api.md"
 )
+GENERATION_PROVIDER_METRIC_SNAPSHOT_UI_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "generation_provider_metric_snapshot_ui.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -24,7 +27,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.40" in srs_text
+    assert "Software Requirements Specification v1.41" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -39,6 +42,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-059" in srs_text
     assert "FR-060" in srs_text
     assert "FR-061" in srs_text
+    assert "FR-062" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
 
@@ -134,3 +138,12 @@ def test_generation_provider_metric_snapshot_doc_defines_admin_api() -> None:
     assert "`GET /api/admin/generation-provider-metrics/snapshot`" in snapshot_text
     assert "`generation_runs.response_metadata.provider_metrics`" in snapshot_text
     assert "`metric_present=false`" in snapshot_text
+
+
+def test_generation_provider_metric_snapshot_ui_doc_defines_operator_panel() -> None:
+    snapshot_ui_text = _read(GENERATION_PROVIDER_METRIC_SNAPSHOT_UI_DOC_PATH)
+
+    assert "Generation Provider Metric Snapshot UI" in snapshot_ui_text
+    assert "`GET /admin/generation-provider-metrics`" in snapshot_ui_text
+    assert "Summary cards" in snapshot_ui_text
+    assert "Raw snapshot JSON" in snapshot_ui_text

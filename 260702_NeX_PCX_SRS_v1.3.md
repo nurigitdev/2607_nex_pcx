@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.40**
+**Software Requirements Specification v1.41**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.40
+문서 상태: Draft v1.41
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.40 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.41 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.40 |
+| 문서 버전 | v1.41 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -65,6 +65,7 @@
 | 1.38 | 2026-07-26 | Generation Prompt Preview API/UI, 저장 전 OpenAI-compatible messages, prompt/context hash, block reason 표시 요구사항 보강 |
 | 1.39 | 2026-07-26 | vLLM generation provider metrics contract, OpenAI-compatible response usage/finish/error parser 요구사항 보강 |
 | 1.40 | 2026-07-26 | Generation provider metrics snapshot API, mock generation run provider_metrics persistence 요구사항 보강 |
+| 1.41 | 2026-07-26 | Generation provider metrics snapshot UI, 최근 generation run token/latency/success 운영 패널 요구사항 보강 |
 
 # 목차
 
@@ -420,6 +421,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-059 | Generation Prompt Preview API/UI | 생성 실행 전 검색 로그 기반 retrieval context를 prompt package로 변환해 OpenAI-compatible messages, response language, citation keys, prompt/context hash, blocked 여부와 block reason을 저장 없이 조회할 수 있어야 한다. | MUST |
 | FR-060 | vLLM generation provider metrics contract | remote OpenAI-compatible vLLM 응답에서 model/id, finish_reason, usage token count, HTTP status, latency, retry count, error code/message를 표준 metrics payload로 파싱해 generation run metadata와 운영 모니터링에서 재사용할 수 있어야 한다. | MUST |
 | FR-061 | Generation provider metrics snapshot API | mock 및 future vLLM generation run은 `response_metadata.provider_metrics`에 표준 metrics payload를 저장하고, 운영 API는 최근 generation run의 성공/실패, no-answer, token, latency, provider elapsed summary를 조회할 수 있어야 한다. | MUST |
+| FR-062 | Generation provider metrics snapshot UI | Web UI는 최근 generation run의 provider metrics snapshot을 요약 카드, 실행별 token/latency table, raw JSON evidence로 표시하고 각 run detail로 이동할 수 있어야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 

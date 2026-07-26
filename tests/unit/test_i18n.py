@@ -136,6 +136,9 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("search_feedback.comment_placeholder") == "Reason or review note"
     assert korean("search_feedback.comments_title") == "피드백 메모 리뷰"
     assert english("search_feedback.comments_title") == "Feedback Comment Review"
+    assert korean("nav.generation_metrics") == "생성 Metrics"
+    assert english("generation_metrics.title") == "Generation Provider Metrics"
+    assert korean("generation_metrics.recent_runs") == "최근 생성 실행"
 
 
 def test_translator_falls_back_to_key_when_missing() -> None:

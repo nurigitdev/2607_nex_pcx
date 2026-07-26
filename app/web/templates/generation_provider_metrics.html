@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("generation_metrics.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("generation_metrics.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/generation-provider-metrics?limit={{ selected_limit }}">{{ t("generation_metrics.refresh") }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/generation">{{ t("generation_metrics.open_generation") }}</a>
+    <a class="btn btn-outline-primary btn-sm" href="/api/admin/generation-provider-metrics/snapshot?limit={{ selected_limit }}">{{ t("common.api") }}</a>
+  </div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <form class="row g-3 align-items-end" method="get">
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="limit">{{ t("generation_metrics.limit") }}</label>
+      <input
+        class="form-control"
+        id="limit"
+        name="limit"
+        type="number"
+        min="1"
+        max="{{ max_limit }}"
+        value="{{ selected_limit }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-3">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("generation_metrics.apply") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if snapshot %}
+{% set summary = snapshot.summary %}
+<section class="document-detail-grid mb-4" data-generation-provider-metrics-summary>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_metrics.run_count") }}</div>
+    <div class="metric-value">{{ summary.run_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_metrics.metric_present") }}</div>
+    <div class="metric-value">{{ summary.metric_present_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_metrics.succeeded_failed") }}</div>
+    <div class="metric-value">{{ summary.succeeded_count }} / {{ summary.failed_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_metrics.no_answer") }}</div>
+    <div class="metric-value">{{ summary.no_answer_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_metrics.total_tokens") }}</div>
+    <div class="metric-value">{{ summary.total_token_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_metrics.avg_elapsed") }}</div>
+    <div class="metric-value">{{ summary.average_elapsed_ms if summary.average_elapsed_ms is not none else "-" }} ms</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_metrics.avg_provider_elapsed") }}</div>
+    <div class="metric-value">{{ summary.average_provider_elapsed_ms if summary.average_provider_elapsed_ms is not none else "-" }} ms</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_metrics.generated_at") }}</div>
+    <div class="generation-detail-compact-value">{{ snapshot.generated_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-generation-provider-metrics-runs>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation_metrics.recent_runs") }}</h2>
+      <div class="text-secondary">{{ t("generation_metrics.recent_runs_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("generation_metrics.run") }}</th>
+          <th>{{ t("generation.provider") }}</th>
+          <th>{{ t("generation.status") }}</th>
+          <th>{{ t("generation_metrics.metric") }}</th>
+          <th>{{ t("generation_metrics.finish_reason") }}</th>
+          <th class="text-end">{{ t("generation_metrics.tokens") }}</th>
+          <th class="text-end">{{ t("generation_metrics.latency") }}</th>
+          <th>{{ t("generation_metrics.created_at") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in snapshot.runs %}
+        {% set status_badge = "success" if run.succeeded else ("warning" if run.status == "no_answer" else "danger") %}
+        <tr>
+          <td>
+            <a href="/generation/runs/{{ run.generation_run_id }}">#{{ run.generation_run_id }}</a>
+            <div class="text-secondary small">Search #{{ run.search_log_id }}</div>
+          </td>
+          <td>
+            <div>{{ run.provider_name }}</div>
+            <span class="badge text-bg-light border">{{ run.provider_mode }}</span>
+            <div class="model-path small mt-1">{{ run.model_id }}</div>
+          </td>
+          <td>
+            <span class="badge text-bg-{{ status_badge }}">{{ run.status }}</span>
+            <div class="text-secondary small">{{ run.guardrail_status }}</div>
+          </td>
+          <td>
+            <span class="badge text-bg-{{ 'success' if run.metric_present else 'warning' }}">
+              {{ t("common.yes") if run.metric_present else t("common.no") }}
+            </span>
+          </td>
+          <td>{{ run.finish_reason or "-" }}</td>
+          <td class="text-end">{{ run.total_token_count if run.total_token_count is not none else "-" }}</td>
+          <td class="text-end">
+            <div>{{ run.elapsed_ms if run.elapsed_ms is not none else "-" }} ms</div>
+            <div class="text-secondary small">
+              {{ t("generation_metrics.provider_elapsed_short") }}:
+              {{ run.provider_elapsed_ms if run.provider_elapsed_ms is not none else "-" }} ms
+            </div>
+          </td>
+          <td class="text-nowrap">{{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-center text-secondary py-4" colspan="8">
+            {{ t("generation_metrics.no_runs") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-3" data-generation-provider-metrics-json>
+  <div class="metric-label mb-2">{{ t("generation_metrics.raw_snapshot") }}</div>
+  <pre class="json-preview operations-json-preview mb-0">{{ snapshot_json }}</pre>
+</section>
+{% endif %}
+{% endblock %}

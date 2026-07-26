@@ -344,6 +344,7 @@ from app.core.generation_prompts import (
 )
 from app.core.generation_provider_metric_snapshots import (
     DEFAULT_GENERATION_PROVIDER_METRIC_SNAPSHOT_LIMIT,
+    MAX_GENERATION_PROVIDER_METRIC_SNAPSHOT_LIMIT,
     InvalidGenerationProviderMetricSnapshotError,
     generation_provider_metric_snapshot_payload,
     get_generation_provider_metric_snapshot,
@@ -14116,6 +14117,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 database_configured=bool(settings.database_url),
                 selected_run=selected_run,
                 selected_citations=selected_citations,
+                error_message=error_message,
+            ),
+        )
+
+    @app.get("/admin/generation-provider-metrics", response_class=HTMLResponse)
+    def generation_provider_metrics_page(
+        request: Request,
+        limit: int = DEFAULT_GENERATION_PROVIDER_METRIC_SNAPSHOT_LIMIT,
+    ) -> HTMLResponse:
+        snapshot = None
+        snapshot_json = ""
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                snapshot = get_generation_provider_metric_snapshot(
+                    settings.database_url,
+                    limit=limit,
+                )
+                snapshot_json = json.dumps(
+                    generation_provider_metric_snapshot_payload(snapshot),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            except InvalidGenerationProviderMetricSnapshotError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "generation_provider_metrics.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                snapshot=snapshot,
+                snapshot_json=snapshot_json,
+                selected_limit=limit,
+                max_limit=MAX_GENERATION_PROVIDER_METRIC_SNAPSHOT_LIMIT,
                 error_message=error_message,
             ),
         )
