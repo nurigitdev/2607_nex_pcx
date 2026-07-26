@@ -9,6 +9,9 @@ GENERATION_API_DOC_PATH = PROJECT_ROOT / "docs" / "generation_run_api.md"
 GENERATION_UI_DOC_PATH = PROJECT_ROOT / "docs" / "generation_run_ui_mvp.md"
 GENERATION_DETAIL_UI_DOC_PATH = PROJECT_ROOT / "docs" / "generation_run_detail_ui.md"
 GENERATION_PROMPT_PREVIEW_DOC_PATH = PROJECT_ROOT / "docs" / "generation_prompt_preview_api_ui.md"
+GENERATION_PROVIDER_METRICS_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "generation_provider_metrics_contract.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -18,7 +21,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.38" in srs_text
+    assert "Software Requirements Specification v1.39" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -31,6 +34,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-057" in srs_text
     assert "FR-058" in srs_text
     assert "FR-059" in srs_text
+    assert "FR-060" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
 
@@ -107,3 +111,13 @@ def test_generation_prompt_preview_doc_defines_non_persistent_preview() -> None:
     assert "`generation_runs`" in preview_text
     assert "does not create rows" in preview_text
     assert "OpenAI-compatible `messages`" in preview_text
+
+
+def test_generation_provider_metrics_doc_defines_vllm_usage_contract() -> None:
+    metrics_text = _read(GENERATION_PROVIDER_METRICS_DOC_PATH)
+
+    assert "Generation Provider Metrics Contract" in metrics_text
+    assert "`parse_openai_chat_completion_metrics(...)`" in metrics_text
+    assert "`choices[0].finish_reason`" in metrics_text
+    assert "token usage" in metrics_text
+    assert "DGX runtime" in metrics_text
