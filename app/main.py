@@ -4547,6 +4547,128 @@ def generation_template_payload(template: GenerationTemplateRecord) -> dict[str,
     }
 
 
+def _generation_run_export_template(run: GenerationRunRecord) -> dict[str, object]:
+    response_template = run.response_metadata.get("template")
+    if isinstance(response_template, dict):
+        return dict(response_template)
+    request_template = run.request_metadata.get("generation_template")
+    if isinstance(request_template, dict):
+        return {
+            "template_key": request_template.get("template_key")
+            or run.request_metadata.get("template_key"),
+            "template_name": request_template.get("template_name"),
+            "template_version": request_template.get("template_version")
+            or run.request_metadata.get("template_version"),
+            "document_type": request_template.get("document_type")
+            or run.request_metadata.get("document_type"),
+            "output_format": request_template.get("output_format")
+            or run.request_metadata.get("output_format"),
+        }
+    return {
+        "template_key": run.request_metadata.get("template_key") or "-",
+        "template_version": run.request_metadata.get("template_version") or "-",
+        "document_type": run.request_metadata.get("document_type") or "-",
+        "output_format": run.request_metadata.get("output_format") or "-",
+    }
+
+
+def _generation_run_export_datetime(value: datetime | None) -> str:
+    return value.strftime("%Y-%m-%d %H:%M:%S") if value is not None else "-"
+
+
+def _generation_run_markdown_export(
+    run: GenerationRunRecord,
+    citations: tuple[GenerationRunCitationRecord, ...],
+) -> str:
+    template = _generation_run_export_template(run)
+    answer_quality = run.response_metadata.get("answer_quality")
+    answer_quality_status = (
+        answer_quality.get("status")
+        if isinstance(answer_quality, dict)
+        else run.guardrail_metadata.get("answer_quality_status")
+    )
+    template_label = " ".join(
+        str(part)
+        for part in (
+            template.get("template_name"),
+            f"({template.get('template_key')})" if template.get("template_key") else None,
+            template.get("template_version"),
+        )
+        if part
+    )
+    lines = [
+        f"# Generation Run #{run.generation_run_id}",
+        "",
+        "## Metadata",
+        f"- Search Log: #{run.search_log_id}",
+        f"- Query: {run.query_text}",
+        f"- Status: {run.status}",
+        f"- Guardrail: {run.guardrail_status}",
+        f"- Retrieval Confidence: {run.retrieval_confidence_status}",
+        f"- Citation Readiness: {run.citation_readiness_status}",
+        f"- Answer Quality: {answer_quality_status or '-'}",
+        f"- Provider: {run.provider_name} ({run.provider_mode})",
+        f"- Model: {run.model_id}",
+        f"- Template: {template_label or '-'}",
+        f"- Document Type: {template.get('document_type') or '-'}",
+        f"- Output Format: {template.get('output_format') or '-'}",
+        f"- Prompt Version: {run.prompt_version}",
+        f"- Prompt Hash: {run.prompt_hash or '-'}",
+        f"- Context Hash: {run.context_hash or '-'}",
+        f"- Retrieval Package: {run.retrieval_package_key}",
+        f"- Started At: {_generation_run_export_datetime(run.started_at)}",
+        f"- Finished At: {_generation_run_export_datetime(run.finished_at)}",
+        "",
+        "## Answer",
+        "",
+        run.answer_text or "",
+        "",
+        "## Citations",
+        "",
+    ]
+    if citations:
+        for citation in citations:
+            payload = citation.citation_payload
+            source_label = citation.source_label or str(
+                payload.get("document_title") or payload.get("original_file_name") or "-"
+            )
+            anchor = (
+                json.dumps(citation.source_anchor, ensure_ascii=False, sort_keys=True)
+                if citation.source_anchor
+                else "-"
+            )
+            lines.extend(
+                (
+                    f"- [{citation.citation_key}] {source_label}",
+                    f"  - Used In Answer: {'yes' if citation.was_cited else 'no'}",
+                    f"  - Search Result ID: {citation.search_log_result_id or '-'}",
+                    f"  - Chunk ID: {citation.chunk_id or payload.get('chunk_id') or '-'}",
+                    f"  - Document ID: {citation.document_id or payload.get('document_id') or '-'}",
+                    f"  - File ID: {citation.file_id or payload.get('file_id') or '-'}",
+                    f"  - Source Anchor: `{anchor}`",
+                )
+            )
+    else:
+        lines.append("- No citation trace was stored.")
+    lines.extend(("", "## Raw Runtime Metadata", ""))
+    lines.append("```json")
+    lines.append(
+        json.dumps(
+            {
+                "request_metadata": run.request_metadata,
+                "response_metadata": run.response_metadata,
+                "guardrail_metadata": run.guardrail_metadata,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+            default=str,
+        )
+    )
+    lines.append("```")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def generation_execution_report_payload(
     report: GenerationExecutionReport,
 ) -> dict[str, object]:
@@ -11984,6 +12106,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "run": generation_run_payload(run),
                 "citations": [generation_run_citation_payload(citation) for citation in citations],
             }
+        )
+
+    @app.get("/api/generation/runs/{generation_run_id}/export/markdown")
+    def api_export_generation_run_markdown(generation_run_id: int) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            run = get_generation_run(settings.database_url, generation_run_id)
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if run is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generation run not found.",
+            )
+        citations = list_generation_run_citations(
+            settings.database_url,
+            generation_run_id,
+        )
+        markdown = _generation_run_markdown_export(run, citations)
+        filename = f"generation-run-{generation_run_id}.md"
+        return Response(
+            content=markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     @app.get("/api/admin/generation-provider-metrics/snapshot")

@@ -546,6 +546,9 @@
       <a class="btn btn-outline-primary btn-sm" href="/generation/runs/{{ selected_run.generation_run_id }}">
         {{ t("generation.open_detail") }}
       </a>
+      <a class="btn btn-outline-success btn-sm" href="/api/generation/runs/{{ selected_run.generation_run_id }}/export/markdown">
+        {{ t("generation.export_markdown") }}
+      </a>
       <a class="btn btn-outline-secondary btn-sm" href="/api/generation/runs/{{ selected_run.generation_run_id }}">
         {{ t("retrieval_context.open_api") }}
       </a>

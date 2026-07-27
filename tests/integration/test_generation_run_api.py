@@ -343,8 +343,14 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
             create_body = create_response.json()
             run_id = create_body["run"]["generation_run_id"]
             read_response = client.get(f"/api/generation/runs/{run_id}")
+            export_response = client.get(
+                f"/api/generation/runs/{run_id}/export/markdown",
+            )
             invalid_response = client.get("/api/generation/runs/0")
             missing_response = client.post("/api/search/logs/999999999/generation-runs/mock")
+            missing_export_response = client.get(
+                "/api/generation/runs/999999999/export/markdown",
+            )
 
         read_body = read_response.json()
         assert create_response.status_code == 201
@@ -376,8 +382,21 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert read_response.status_code == 200
         assert read_body["run"]["generation_run_id"] == run_id
         assert read_body["citations"][0]["source_label"].endswith("/ p.2")
+        assert export_response.status_code == 200
+        assert export_response.headers["content-type"].startswith("text/markdown")
+        assert export_response.headers["content-disposition"] == (
+            f'attachment; filename="generation-run-{run_id}.md"'
+        )
+        assert f"# Generation Run #{run_id}" in export_response.text
+        assert "## Metadata" in export_response.text
+        assert "## Answer" in export_response.text
+        assert "## Citations" in export_response.text
+        assert "- [RCP-001]" in export_response.text
+        assert "## Raw Runtime Metadata" in export_response.text
+        assert "grounded_answer" in export_response.text
         assert invalid_response.status_code == 400
         assert missing_response.status_code == 404
+        assert missing_export_response.status_code == 404
     finally:
         _cleanup_file(migrated_database_url, file_id)
 
@@ -575,6 +594,15 @@ def test_generation_template_list_api_returns_active_templates(
     assert report_template["output_format"] == "markdown"
     assert report_template["section_schema"]
     assert no_database_response.status_code == 503
+
+
+def test_generation_run_markdown_export_returns_503_without_database() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.get("/api/generation/runs/1/export/markdown")
+
+    assert response.status_code == 503
 
 
 def test_generation_run_api_returns_503_without_database() -> None:
@@ -1092,6 +1120,8 @@ def test_generation_run_detail_ui_shows_prompt_metadata_and_citations(
         assert "Request Metadata" in detail_response.text
         assert "Response Metadata" in detail_response.text
         assert "Guardrail Metadata" in detail_response.text
+        assert "Markdown 내보내기" in detail_response.text
+        assert f"/api/generation/runs/{run_id}/export/markdown" in detail_response.text
         assert "grounded_answer_v1" in detail_response.text
         assert "generation_ui_mock" in detail_response.text
         assert "RCP-001" in detail_response.text

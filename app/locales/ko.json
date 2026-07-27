@@ -131,6 +131,7 @@
     "open": "열기",
     "open_detail": "상세",
     "open_run_context": "Context 보기",
+    "export_markdown": "Markdown 내보내기",
     "created": "Mock 생성 실행이 완료되었습니다.",
     "remote_created": "Remote vLLM 생성 실행이 완료되었습니다.",
     "direct_created": "직접 생성 실행이 완료되었습니다.",

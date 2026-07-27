@@ -366,6 +366,8 @@ def test_direct_generation_ui_runs_query_and_displays_result(
         assert "data-generation-run-result" in result_response.text
         assert "RCP-001" in result_response.text
         assert "답변 품질" in result_response.text
+        assert "Markdown 내보내기" in result_response.text
+        assert "/export/markdown" in result_response.text
         assert "report" in result_response.text
     finally:
         _cleanup_fixture(migrated_database_url, file_id, chunk_policy_name)
