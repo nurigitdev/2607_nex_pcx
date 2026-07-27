@@ -372,6 +372,7 @@ from app.core.generation_runs import (
     DGX_VLLM_GENERATION_TIMEOUT_SECONDS,
     DGX_VLLM_GENERATION_TOP_P,
     GENERATION_ANSWER_QUALITY_NOT_AVAILABLE,
+    GENERATION_PROVIDER_MODE_MOCK,
     GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
     GENERATION_RUN_HISTORY_FILTER_ALL,
     MAX_GENERATION_RUN_HISTORY_LIMIT,
@@ -14515,6 +14516,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         default_generation_provider: dict[str, object] | None = None
         default_generation_runtime: dict[str, object] | None = None
         remote_generation_available = False
+        actor_options: list[dict[str, object]] = []
+        profile_options: list[str] = []
+        chunk_policy_options: list[ChunkPolicySummaryRecord] = []
+        bm25_tokenizer_options = [asdict(tokenizer) for tokenizer in list_bm25_tokenizers()]
         error_message = generation_error
 
         if not settings.database_url:
@@ -14522,6 +14527,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             try:
                 latest_logs = list_search_logs(settings.database_url, limit=12)
+                actor_options = list_search_actor_options(settings.database_url)
+                profile_options = [
+                    profile.profile_name
+                    for profile in list_active_embedding_profiles(settings.database_url)
+                ]
+                if BM25_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(BM25_SEARCH_PROFILE_NAME)
+                if HYBRID_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(HYBRID_SEARCH_PROFILE_NAME)
+                if RERANKED_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(RERANKED_SEARCH_PROFILE_NAME)
+                chunk_policy_options = list_chunk_policy_summaries(settings.database_url)
                 provider = get_default_generation_provider_config(settings.database_url)
                 if provider is not None:
                     default_generation_provider = generation_provider_config_payload(provider)
@@ -14560,12 +14577,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     elif package is not None:
                         prompt_preview = build_generation_prompt_package(package)
             except (
+                InvalidChunkPolicyManagementError,
+                InvalidEmbeddingJobError,
                 InvalidGenerationRunError,
                 InvalidGenerationPromptError,
                 InvalidRetrievalContextError,
                 InvalidSearchLogError,
             ) as exc:
                 error_message = str(exc)
+
+        direct_default_provider_mode = (
+            GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+            if remote_generation_available
+            else GENERATION_PROVIDER_MODE_MOCK
+        )
+        default_actor_id = actor_options[0]["user_id"] if actor_options else ""
+        default_profile_name = (
+            RERANKED_SEARCH_PROFILE_NAME
+            if RERANKED_SEARCH_PROFILE_NAME in profile_options
+            else (profile_options[0] if profile_options else BM25_SEARCH_PROFILE_NAME)
+        )
 
         return TEMPLATES.TemplateResponse(
             request,
@@ -14586,9 +14617,107 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 default_generation_provider=default_generation_provider,
                 default_generation_runtime=default_generation_runtime,
                 remote_generation_available=remote_generation_available,
+                actor_options=actor_options,
+                default_actor_id=default_actor_id,
+                search_scope_options=SEARCH_COMPARE_SCOPE_OPTIONS,
+                direct_generation_provider_modes=(
+                    GENERATION_PROVIDER_MODE_MOCK,
+                    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                ),
+                direct_default_provider_mode=direct_default_provider_mode,
+                profile_options=profile_options,
+                default_profile_name=default_profile_name,
+                search_file_type_options=SEARCH_COMPARE_FILE_TYPES,
+                chunk_policy_options=chunk_policy_options,
+                bm25_tokenizer_options=bm25_tokenizer_options,
+                default_bm25_tokenizer_name=DEFAULT_BM25_TOKENIZER_NAME,
                 generation_status=generation_status or "",
                 error_message=error_message,
             ),
+        )
+
+    @app.post("/generation/direct-runs")
+    def generation_direct_run_page(
+        direct_query_text: str = Form(...),
+        direct_actor_user_id: int = Form(...),
+        direct_requested_search_scope: str = Form("company"),
+        direct_provider_mode: str = Form(GENERATION_PROVIDER_MODE_MOCK),
+        direct_top_k: int = Form(5),
+        direct_profile_name: str = Form(BM25_SEARCH_PROFILE_NAME),
+        direct_chunk_policy_name: str = Form(""),
+        direct_document_group: str = Form(""),
+        direct_file_type: str = Form(""),
+        direct_bm25_tokenizer_name: str = Form(DEFAULT_BM25_TOKENIZER_NAME),
+        direct_max_context_chars: int = Form(DEFAULT_CONTEXT_CHAR_BUDGET),
+        direct_include_neighbors: bool = Form(False),
+        direct_max_items: int = Form(DEFAULT_CONTEXT_MAX_ITEMS),
+    ) -> RedirectResponse:
+        redirect_params: dict[str, object] = {
+            "max_context_chars": direct_max_context_chars,
+            "include_neighbors": str(direct_include_neighbors).lower(),
+            "max_items": direct_max_items,
+        }
+        if not settings.database_url:
+            redirect_params["generation_error"] = "NEX_PCX_DATABASE_URL is not configured."
+            return RedirectResponse(
+                _generation_redirect_url(redirect_params),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+        api_key: str | None = None
+        try:
+            provider_mode = direct_provider_mode.strip().lower()
+            if provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
+                provider = get_default_generation_provider_config(settings.database_url)
+                if provider is None:
+                    raise InvalidGenerationRunError(
+                        "default generation provider config was not found"
+                    )
+                api_key = resolve_generation_provider_api_key(provider, settings)
+            profile_name = direct_profile_name.strip()
+            result = run_direct_generation_query(
+                settings.database_url,
+                DirectGenerationInput(
+                    query_text=direct_query_text,
+                    actor_user_id=direct_actor_user_id,
+                    requested_search_scope=direct_requested_search_scope,
+                    provider_mode=provider_mode,
+                    top_k=direct_top_k,
+                    profiles=(profile_name,) if profile_name else None,
+                    chunk_policy_name=direct_chunk_policy_name.strip() or None,
+                    document_group=direct_document_group.strip() or None,
+                    file_type=direct_file_type.strip() or None,
+                    bm25_tokenizer_name=(direct_bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME),
+                    allow_mock_fallback=True,
+                    max_context_chars=direct_max_context_chars,
+                    include_neighbors=direct_include_neighbors,
+                    max_items=direct_max_items,
+                ),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+                fallback_reranker_runtime_config=reranker_runtime_config_from_settings(settings),
+                api_key=api_key,
+            )
+            redirect_params["search_log_id"] = result.search_result.search_log_id
+            redirect_params["generation_run_id"] = result.generation_report.run.generation_run_id
+            redirect_params["generation_status"] = "direct_created"
+        except (
+            InvalidDirectGenerationError,
+            InvalidEmbeddingProviderError,
+            InvalidGenerationProviderError,
+            InvalidGenerationRunError,
+            InvalidPermissionError,
+            InvalidQueryEmbeddingError,
+            InvalidRerankerError,
+            InvalidRetrievalContextError,
+            InvalidSearchCompareError,
+            InvalidSearchLogError,
+            InvalidVectorSearchError,
+        ) as exc:
+            redirect_params["generation_error"] = str(exc)
+
+        return RedirectResponse(
+            _generation_redirect_url(redirect_params),
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @app.post("/generation/runs/mock")

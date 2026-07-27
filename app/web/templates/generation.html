@@ -17,11 +17,231 @@
 <div class="alert alert-success" role="alert">{{ t("generation.created") }}</div>
 {% elif generation_status == "remote_created" %}
 <div class="alert alert-success" role="alert">{{ t("generation.remote_created") }}</div>
+{% elif generation_status == "direct_created" %}
+<div class="alert alert-success" role="alert">{{ t("generation.direct_created") }}</div>
 {% endif %}
 
 {% if error_message %}
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4" data-direct-generation-form>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation.direct_title") }}</h2>
+      <div class="text-secondary small">{{ t("generation.direct_subtitle") }}</div>
+    </div>
+    {% if direct_default_provider_mode == "remote_openai_compatible" %}
+    <span class="badge text-bg-success">{{ t("generation.remote_ready") }}</span>
+    {% else %}
+    <span class="badge text-bg-light border">{{ t("generation.direct_mock_default") }}</span>
+    {% endif %}
+  </div>
+  <form method="post" action="/generation/direct-runs">
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label" for="direct_query_text">{{ t("generation.direct_query") }}</label>
+        <textarea
+          class="form-control"
+          id="direct_query_text"
+          name="direct_query_text"
+          rows="3"
+          placeholder="{{ t("generation.direct_query_placeholder") }}"
+          required
+          {% if not database_configured %}disabled{% endif %}
+        ></textarea>
+      </div>
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="direct_actor_user_id">{{ t("generation.direct_actor") }}</label>
+        <select
+          class="form-select"
+          id="direct_actor_user_id"
+          name="direct_actor_user_id"
+          required
+          {% if not database_configured or not actor_options %}disabled{% endif %}
+        >
+          {% for actor in actor_options %}
+          <option value="{{ actor.user_id }}" {% if actor.user_id == default_actor_id %}selected{% endif %}>
+            {{ actor.display_name }} ({{ actor.login_id }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="direct_requested_search_scope">{{ t("generation.direct_scope") }}</label>
+        <select
+          class="form-select"
+          id="direct_requested_search_scope"
+          name="direct_requested_search_scope"
+          {% if not database_configured %}disabled{% endif %}
+        >
+          {% for scope in search_scope_options %}
+          <option value="{{ scope }}" {% if scope == "company" %}selected{% endif %}>{{ scope }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="direct_provider_mode">{{ t("generation.direct_provider_mode") }}</label>
+        <select
+          class="form-select"
+          id="direct_provider_mode"
+          name="direct_provider_mode"
+          {% if not database_configured %}disabled{% endif %}
+        >
+          {% for provider_mode in direct_generation_provider_modes %}
+          <option value="{{ provider_mode }}" {% if provider_mode == direct_default_provider_mode %}selected{% endif %}>
+            {{ provider_mode }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-lg-3">
+        <label class="form-label" for="direct_profile_name">{{ t("generation.direct_profile") }}</label>
+        <select
+          class="form-select"
+          id="direct_profile_name"
+          name="direct_profile_name"
+          {% if not database_configured %}disabled{% endif %}
+        >
+          {% for profile_name in profile_options %}
+          <option value="{{ profile_name }}" {% if profile_name == default_profile_name %}selected{% endif %}>
+            {{ profile_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-lg-1">
+        <label class="form-label" for="direct_top_k">{{ t("generation.direct_top_k") }}</label>
+        <input
+          class="form-control"
+          id="direct_top_k"
+          name="direct_top_k"
+          type="number"
+          min="1"
+          max="50"
+          value="5"
+          {% if not database_configured %}disabled{% endif %}
+        >
+      </div>
+      <div class="col-12 col-lg-1 d-grid align-items-end">
+        <button
+          class="btn btn-primary"
+          type="submit"
+          {% if not database_configured or not actor_options %}disabled{% endif %}
+        >
+          {{ t("generation.direct_run") }}
+        </button>
+      </div>
+      <div class="col-12">
+        <div class="border-top pt-3">
+          <div class="row g-3">
+            <div class="col-12 col-lg-3">
+              <label class="form-label" for="direct_chunk_policy_name">{{ t("generation.direct_chunk_policy") }}</label>
+              <select
+                class="form-select"
+                id="direct_chunk_policy_name"
+                name="direct_chunk_policy_name"
+                {% if not database_configured %}disabled{% endif %}
+              >
+                <option value="">{{ t("common.all") }}</option>
+                {% for policy in chunk_policy_options %}
+                <option value="{{ policy.chunk_policy_name }}">{{ policy.chunk_policy_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6 col-lg-2">
+              <label class="form-label" for="direct_file_type">{{ t("generation.direct_file_type") }}</label>
+              <select
+                class="form-select"
+                id="direct_file_type"
+                name="direct_file_type"
+                {% if not database_configured %}disabled{% endif %}
+              >
+                <option value="">{{ t("common.all") }}</option>
+                {% for file_type in search_file_type_options %}
+                <option value="{{ file_type }}">{{ file_type }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-lg-3">
+              <label class="form-label" for="direct_bm25_tokenizer_name">{{ t("generation.direct_bm25_tokenizer") }}</label>
+              <select
+                class="form-select"
+                id="direct_bm25_tokenizer_name"
+                name="direct_bm25_tokenizer_name"
+                {% if not database_configured %}disabled{% endif %}
+              >
+                {% for tokenizer in bm25_tokenizer_options %}
+                <option
+                  value="{{ tokenizer.tokenizer_name }}"
+                  {% if tokenizer.tokenizer_name == default_bm25_tokenizer_name %}selected{% endif %}
+                  {% if not tokenizer.available %}disabled{% endif %}
+                >
+                  {{ tokenizer.tokenizer_name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label" for="direct_document_group">{{ t("generation.direct_document_group") }}</label>
+              <input
+                class="form-control"
+                id="direct_document_group"
+                name="direct_document_group"
+                type="text"
+                placeholder="default"
+                {% if not database_configured %}disabled{% endif %}
+              >
+            </div>
+            <div class="col-6 col-lg-2">
+              <label class="form-label" for="direct_max_items">{{ t("retrieval_context.max_items") }}</label>
+              <input
+                class="form-control"
+                id="direct_max_items"
+                name="direct_max_items"
+                type="number"
+                min="1"
+                max="100"
+                value="{{ max_items }}"
+                {% if not database_configured %}disabled{% endif %}
+              >
+            </div>
+            <div class="col-6 col-lg-2">
+              <label class="form-label" for="direct_max_context_chars">{{ t("retrieval_context.max_context_chars") }}</label>
+              <input
+                class="form-control"
+                id="direct_max_context_chars"
+                name="direct_max_context_chars"
+                type="number"
+                min="500"
+                max="50000"
+                step="500"
+                value="{{ max_context_chars }}"
+                {% if not database_configured %}disabled{% endif %}
+              >
+            </div>
+            <div class="col-12 col-lg-3">
+              <div class="form-check mt-lg-4">
+                <input
+                  class="form-check-input"
+                  id="direct_include_neighbors"
+                  name="direct_include_neighbors"
+                  type="checkbox"
+                  value="true"
+                  {% if include_neighbors %}checked{% endif %}
+                  {% if not database_configured %}disabled{% endif %}
+                >
+                <label class="form-check-label" for="direct_include_neighbors">
+                  {{ t("retrieval_context.include_neighbors") }}
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+</section>
 
 <section class="bg-white border rounded-2 p-3 mb-4">
   <form class="row g-3 align-items-end" method="get">

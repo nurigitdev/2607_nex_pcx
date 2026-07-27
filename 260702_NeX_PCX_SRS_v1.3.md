@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.54**
+**Software Requirements Specification v1.55**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.54
+문서 상태: Draft v1.55
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.54 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.55 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.54 |
+| 문서 버전 | v1.55 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -79,6 +79,7 @@
 | 1.52 | 2026-07-27 | Generation answer quality badge/detail UI, 생성 결과와 상세 화면에서 품질 status, citation coverage, reason code를 즉시 확인하는 요구사항 보강 |
 | 1.53 | 2026-07-27 | Generation run history와 quality filter API/UI, 생성 실행 이력을 답변 품질, provider mode, 실행 상태 기준으로 조회하는 요구사항 보강 |
 | 1.54 | 2026-07-27 | Direct generation query orchestrator API, 사용자가 prompt query를 직접 입력하면 내부 검색, retrieval context packaging, generation run 저장까지 연결하는 요구사항 보강 |
+| 1.55 | 2026-07-27 | Direct Generation UI MVP, 사용자가 생성 화면에서 질문, 검색 profile, provider mode, context 옵션을 지정해 검색-패키징-생성을 실행하는 요구사항 보강 |
 
 # 목차
 
@@ -448,6 +449,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-073 | Generation answer quality badge/detail UI | Web UI는 생성 결과와 generation run 상세 화면에서 `response_metadata.answer_quality`를 badge와 detail panel로 표시해 status, citation coverage, expected/used/missing/unknown citation key, reason code를 raw JSON을 열기 전에도 확인할 수 있어야 한다. | SHOULD |
 | FR-074 | Generation run history quality filter | API와 Web UI는 저장된 generation run 이력을 최근순으로 조회하고, answer quality status, provider mode, run status, limit 기준으로 필터링해 품질별 run count, citation coverage, token/latency, 상세 화면 링크를 제공해야 한다. | SHOULD |
 | FR-075 | Direct generation query orchestrator API | API는 사용자가 입력한 prompt query를 기반으로 내부 검색을 실행하고, 검색 로그를 retrieval context package로 변환한 뒤, 선택한 generation provider mode에 따라 mock 또는 remote LLM 생성 실행을 저장하며 search log, context package, generation run, citation trace, quality metadata를 하나의 응답으로 반환해야 한다. | SHOULD |
+| FR-076 | Direct Generation UI MVP | Web UI는 생성 화면에서 사용자가 prompt query, 검색 사용자/범위/profile, provider mode, chunk policy/tokenizer/context 옵션을 지정해 직접 generation run을 실행하고, 생성 결과, citation trace, 품질 badge, 상세 링크를 같은 화면에서 확인할 수 있어야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 

@@ -173,6 +173,7 @@ def _cleanup_fixture(database_url: str, file_id: int, chunk_policy_name: str) ->
             cursor.execute("""
                 DELETE FROM search_logs
                 WHERE document_group LIKE 'slice-359-%'
+                   OR document_group LIKE 'slice-360-%'
                 """)
             cursor.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
             cursor.execute(
@@ -285,3 +286,110 @@ def test_direct_generation_query_api_returns_503_without_database() -> None:
         )
 
     assert response.status_code == 503
+
+
+def test_direct_generation_ui_runs_query_and_displays_result(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    document_group = f"slice-360-{uuid4()}"
+    chunk_policy_name = f"direct_generation_ui_{uuid4().hex}"
+    _create_chunk_policy(migrated_database_url, chunk_policy_name)
+    file_id, _chunk_id = _create_direct_generation_chunk(
+        migrated_database_url,
+        owner_org_unit_id=ids["NeX Company"],
+        document_group=document_group,
+        chunk_policy_name=chunk_policy_name,
+    )
+    _restore_mock_generation_provider(migrated_database_url)
+    refresh_chunk_policy_keyword_index(
+        migrated_database_url,
+        chunk_policy_name=chunk_policy_name,
+        tokenizer_name=KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            page_response = client.get("/generation")
+            response = client.post(
+                "/generation/direct-runs",
+                data={
+                    "direct_query_text": "direct generation BM25 anchor",
+                    "direct_actor_user_id": str(ids["alice.member"]),
+                    "direct_requested_search_scope": "company",
+                    "direct_provider_mode": GENERATION_PROVIDER_MODE_MOCK,
+                    "direct_top_k": "3",
+                    "direct_profile_name": "bm25_keyword",
+                    "direct_chunk_policy_name": chunk_policy_name,
+                    "direct_document_group": document_group,
+                    "direct_file_type": "",
+                    "direct_bm25_tokenizer_name": KOREAN_NGRAM_BM25_TOKENIZER_NAME,
+                    "direct_max_context_chars": "4000",
+                    "direct_max_items": "5",
+                },
+                follow_redirects=False,
+            )
+            location = response.headers["location"]
+            result_response = client.get(location)
+
+        assert page_response.status_code == 200
+        assert "data-direct-generation-form" in page_response.text
+        assert "직접 질문 생성" in page_response.text
+        assert response.status_code == 303
+        assert "generation_status=direct_created" in location
+        assert "search_log_id=" in location
+        assert "generation_run_id=" in location
+        assert result_response.status_code == 200
+        assert "직접 생성 실행이 완료되었습니다." in result_response.text
+        assert "data-generation-run-result" in result_response.text
+        assert "RCP-001" in result_response.text
+        assert "답변 품질" in result_response.text
+    finally:
+        _cleanup_fixture(migrated_database_url, file_id, chunk_policy_name)
+
+
+def test_direct_generation_ui_redirects_error_without_database() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        page_response = client.get("/generation")
+        response = client.post(
+            "/generation/direct-runs",
+            data={
+                "direct_query_text": "direct generation",
+                "direct_actor_user_id": "1",
+                "direct_provider_mode": GENERATION_PROVIDER_MODE_MOCK,
+            },
+            follow_redirects=False,
+        )
+
+    assert page_response.status_code == 200
+    assert "data-direct-generation-form" in page_response.text
+    assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
+    assert response.status_code == 303
+    assert "generation_error=NEX_PCX_DATABASE_URL" in response.headers["location"]
+
+
+def test_direct_generation_ui_redirects_validation_error(
+    migrated_database_url: str,
+) -> None:
+    ids = _seed_ids(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/generation/direct-runs",
+            data={
+                "direct_query_text": " ",
+                "direct_actor_user_id": str(ids["alice.member"]),
+                "direct_provider_mode": GENERATION_PROVIDER_MODE_MOCK,
+            },
+            follow_redirects=False,
+        )
+        result_response = client.get(response.headers["location"])
+
+    assert response.status_code == 303
+    assert "generation_error=query_text+must+not+be+blank" in response.headers["location"]
+    assert result_response.status_code == 200
+    assert "query_text must not be blank" in result_response.text
