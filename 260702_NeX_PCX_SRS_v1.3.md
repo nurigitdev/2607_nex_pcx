@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.52**
+**Software Requirements Specification v1.53**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.52
+문서 상태: Draft v1.53
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.52 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.53 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.52 |
+| 문서 버전 | v1.53 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -77,6 +77,7 @@
 | 1.50 | 2026-07-27 | DGX vLLM generation run live E2E verification, retrieval context package에서 remote generation run/citation/metrics persistence까지 검증하는 운영 증적 요구사항 보강 |
 | 1.51 | 2026-07-27 | Generation answer citation guardrail, 생성 답변의 citation 사용, no-answer 위반, empty answer, provider failure 품질 metadata 저장 요구사항 보강 |
 | 1.52 | 2026-07-27 | Generation answer quality badge/detail UI, 생성 결과와 상세 화면에서 품질 status, citation coverage, reason code를 즉시 확인하는 요구사항 보강 |
+| 1.53 | 2026-07-27 | Generation run history와 quality filter API/UI, 생성 실행 이력을 답변 품질, provider mode, 실행 상태 기준으로 조회하는 요구사항 보강 |
 
 # 목차
 
@@ -444,6 +445,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-071 | DGX vLLM generation run live E2E verification | 운영자는 DGX-Spark vLLM runtime을 대상으로 임시 검색 로그 fixture에서 retrieval context package를 생성하고, remote generation executor 실행 결과가 `generation_runs`, `generation_run_citations`, provider metrics에 secret 없이 저장되는지 검증하는 CLI 증적을 남길 수 있어야 한다. | MUST |
 | FR-072 | Generation answer citation guardrail | 생성 실행기는 provider 실행 status와 답변 품질 status를 분리해 저장해야 하며, 답변이 비어 있거나, answerable context에서 no-answer를 반환하거나, 기대 citation key를 하나도 사용하지 않거나, 알 수 없는 citation key를 사용하는 경우 `response_metadata.answer_quality`와 `guardrail_metadata`에 status/reason/coverage metadata를 남겨야 한다. | MUST |
 | FR-073 | Generation answer quality badge/detail UI | Web UI는 생성 결과와 generation run 상세 화면에서 `response_metadata.answer_quality`를 badge와 detail panel로 표시해 status, citation coverage, expected/used/missing/unknown citation key, reason code를 raw JSON을 열기 전에도 확인할 수 있어야 한다. | SHOULD |
+| FR-074 | Generation run history quality filter | API와 Web UI는 저장된 generation run 이력을 최근순으로 조회하고, answer quality status, provider mode, run status, limit 기준으로 필터링해 품질별 run count, citation coverage, token/latency, 상세 화면 링크를 제공해야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 

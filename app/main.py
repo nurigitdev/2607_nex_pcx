@@ -356,6 +356,7 @@ from app.core.generation_providers import (
     generation_provider_runtime_config_from_record,
 )
 from app.core.generation_runs import (
+    DEFAULT_GENERATION_RUN_HISTORY_LIMIT,
     DGX_VLLM_GENERATION_API_KEY_ENV,
     DGX_VLLM_GENERATION_BASE_URL,
     DGX_VLLM_GENERATION_MAX_TOKENS,
@@ -364,14 +365,21 @@ from app.core.generation_runs import (
     DGX_VLLM_GENERATION_TEMPERATURE,
     DGX_VLLM_GENERATION_TIMEOUT_SECONDS,
     DGX_VLLM_GENERATION_TOP_P,
+    GENERATION_ANSWER_QUALITY_NOT_AVAILABLE,
+    GENERATION_RUN_HISTORY_FILTER_ALL,
+    MAX_GENERATION_RUN_HISTORY_LIMIT,
     GenerationProviderConfigRecord,
     GenerationRunCitationRecord,
+    GenerationRunHistory,
+    GenerationRunHistoryFilter,
+    GenerationRunHistoryItem,
     GenerationRunRecord,
     InvalidGenerationRunError,
     get_default_generation_provider_config,
     get_generation_run,
     list_generation_provider_configs,
     list_generation_run_citations,
+    list_generation_run_history,
     seed_dgx_vllm_generation_provider_config,
 )
 from app.core.go_live_readiness import (
@@ -4386,6 +4394,55 @@ def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
         "finished_at": _datetime_response(run.finished_at),
         "created_at": _datetime_response(run.created_at),
         "updated_at": _datetime_response(run.updated_at),
+    }
+
+
+def generation_run_history_item_payload(item: GenerationRunHistoryItem) -> dict[str, object]:
+    run = item.run
+    return {
+        "generation_run_id": run.generation_run_id,
+        "search_log_id": run.search_log_id,
+        "query_text": run.query_text,
+        "provider_name": run.provider_name,
+        "provider_mode": run.provider_mode,
+        "model_id": run.model_id,
+        "status": run.status,
+        "guardrail_status": run.guardrail_status,
+        "answer_quality_status": item.answer_quality_status,
+        "answer_quality_reason_codes": list(item.answer_quality_reason_codes),
+        "citation_coverage_percent": item.citation_coverage_percent,
+        "expected_citation_count": item.expected_citation_count,
+        "cited_citation_count": item.cited_citation_count,
+        "missing_citation_count": item.missing_citation_count,
+        "unrecognized_citation_count": item.unrecognized_citation_count,
+        "retrieval_confidence_status": run.retrieval_confidence_status,
+        "citation_readiness_status": run.citation_readiness_status,
+        "finish_reason": run.finish_reason,
+        "total_token_count": run.total_token_count,
+        "elapsed_ms": run.elapsed_ms,
+        "created_by": run.created_by,
+        "created_at": _datetime_response(run.created_at),
+        "updated_at": _datetime_response(run.updated_at),
+    }
+
+
+def generation_run_history_payload(history: GenerationRunHistory) -> dict[str, object]:
+    return {
+        "filters": {
+            "limit": history.filters.limit,
+            "answer_quality_status": history.filters.answer_quality_status,
+            "provider_mode": history.filters.provider_mode,
+            "run_status": history.filters.run_status,
+        },
+        "summary": {
+            "run_count": history.summary.run_count,
+            "passed_count": history.summary.passed_count,
+            "warning_count": history.summary.warning_count,
+            "failed_count": history.summary.failed_count,
+            "not_evaluated_count": history.summary.not_evaluated_count,
+            "not_available_count": history.summary.not_available_count,
+        },
+        "runs": [generation_run_history_item_payload(item) for item in history.runs],
     }
 
 
@@ -11671,6 +11728,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/generation/runs")
+    def api_list_generation_runs(
+        limit: int = Query(default=DEFAULT_GENERATION_RUN_HISTORY_LIMIT),
+        answer_quality_status: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+        provider_mode: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+        run_status: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            history = list_generation_run_history(
+                settings.database_url,
+                history_filter=GenerationRunHistoryFilter(
+                    limit=limit,
+                    answer_quality_status=answer_quality_status,
+                    provider_mode=provider_mode,
+                    run_status=run_status,
+                ),
+            )
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(content=generation_run_history_payload(history))
+
     @app.get("/api/generation/runs/{generation_run_id}")
     def api_get_generation_run(generation_run_id: int) -> JSONResponse:
         if not settings.database_url:
@@ -14500,6 +14584,81 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return RedirectResponse(
             _generation_redirect_url(redirect_params),
             status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.get("/generation/runs", response_class=HTMLResponse)
+    def generation_run_history_page(
+        request: Request,
+        limit: int = Query(default=DEFAULT_GENERATION_RUN_HISTORY_LIMIT),
+        answer_quality_status: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+        provider_mode: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+        run_status: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+    ) -> HTMLResponse:
+        history: GenerationRunHistory | None = None
+        history_json = ""
+        error_message: str | None = None
+
+        history_filter = GenerationRunHistoryFilter(
+            limit=limit,
+            answer_quality_status=answer_quality_status,
+            provider_mode=provider_mode,
+            run_status=run_status,
+        )
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                history = list_generation_run_history(
+                    settings.database_url,
+                    history_filter=history_filter,
+                )
+                history_json = json.dumps(
+                    generation_run_history_payload(history),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                history_filter = history.filters
+            except InvalidGenerationRunError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "generation_run_history.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                history=history,
+                history_json=history_json,
+                selected_limit=history_filter.limit,
+                selected_answer_quality_status=history_filter.answer_quality_status,
+                selected_provider_mode=history_filter.provider_mode,
+                selected_run_status=history_filter.run_status,
+                max_limit=MAX_GENERATION_RUN_HISTORY_LIMIT,
+                answer_quality_status_options=(
+                    GENERATION_RUN_HISTORY_FILTER_ALL,
+                    "passed",
+                    "warning",
+                    "failed",
+                    "not_evaluated",
+                    GENERATION_ANSWER_QUALITY_NOT_AVAILABLE,
+                ),
+                provider_mode_options=(
+                    GENERATION_RUN_HISTORY_FILTER_ALL,
+                    "mock",
+                    "remote_openai_compatible",
+                ),
+                run_status_options=(
+                    GENERATION_RUN_HISTORY_FILTER_ALL,
+                    "succeeded",
+                    "failed",
+                    "no_answer",
+                    "blocked",
+                    "running",
+                    "pending",
+                    "canceled",
+                ),
+                error_message=error_message,
+            ),
         )
 
     @app.get("/generation/runs/{generation_run_id}", response_class=HTMLResponse)

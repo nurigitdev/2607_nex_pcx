@@ -38,6 +38,9 @@ GENERATION_ANSWER_CITATION_GUARDRAIL_DOC_PATH = (
 GENERATION_ANSWER_QUALITY_BADGE_UI_DOC_PATH = (
     PROJECT_ROOT / "docs" / "generation_answer_quality_badge_ui.md"
 )
+GENERATION_RUN_HISTORY_QUALITY_FILTER_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "generation_run_history_quality_filter.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -47,7 +50,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.52" in srs_text
+    assert "Software Requirements Specification v1.53" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -74,6 +77,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-071" in srs_text
     assert "FR-072" in srs_text
     assert "FR-073" in srs_text
+    assert "FR-074" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -87,6 +91,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "DGX vLLM generation run live E2E verification" in srs_text
     assert "Generation answer citation guardrail" in srs_text
     assert "Generation answer quality badge/detail UI" in srs_text
+    assert "Generation run history" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -318,3 +323,15 @@ def test_generation_answer_quality_badge_ui_doc_defines_operator_panels() -> Non
     assert "`response_metadata.answer_quality`" in ui_text
     assert "expected/used/missing/unknown" in ui_text
     assert "FR-073" in _read(SRS_PATH)
+
+
+def test_generation_run_history_quality_filter_doc_defines_filter_contract() -> None:
+    history_text = _read(GENERATION_RUN_HISTORY_QUALITY_FILTER_DOC_PATH)
+
+    assert "Generation Run History + Quality Filter API/UI" in history_text
+    assert "`GET /api/generation/runs`" in history_text
+    assert "`GET /generation/runs`" in history_text
+    assert "`answer_quality_status`" in history_text
+    assert "`remote_openai_compatible`" in history_text
+    assert "raw JSON evidence" in history_text
+    assert "FR-074" in _read(SRS_PATH)

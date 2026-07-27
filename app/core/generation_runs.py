@@ -13,6 +13,7 @@ from app.core.citation_readiness import (
     CITATION_READINESS_WARNING,
 )
 from app.core.database import connect
+from app.core.generation_answer_quality import GENERATION_ANSWER_QUALITY_STATUSES
 from app.core.retrieval_confidence import (
     RETRIEVAL_CONFIDENCE_ANSWERABLE,
     RETRIEVAL_CONFIDENCE_FAILED,
@@ -71,6 +72,14 @@ DGX_VLLM_GENERATION_TIMEOUT_SECONDS = 300
 DGX_VLLM_GENERATION_MAX_TOKENS = 1024
 DGX_VLLM_GENERATION_TEMPERATURE = 0.2
 DGX_VLLM_GENERATION_TOP_P = 0.9
+DEFAULT_GENERATION_RUN_HISTORY_LIMIT = 50
+MAX_GENERATION_RUN_HISTORY_LIMIT = 500
+GENERATION_RUN_HISTORY_FILTER_ALL = "all"
+GENERATION_ANSWER_QUALITY_NOT_AVAILABLE = "not_available"
+GENERATION_ANSWER_QUALITY_HISTORY_STATUSES = {
+    *GENERATION_ANSWER_QUALITY_STATUSES,
+    GENERATION_ANSWER_QUALITY_NOT_AVAILABLE,
+}
 
 
 @dataclass(frozen=True)
@@ -209,6 +218,43 @@ class GenerationRunCitationRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class GenerationRunHistoryFilter:
+    limit: int = DEFAULT_GENERATION_RUN_HISTORY_LIMIT
+    answer_quality_status: str = GENERATION_RUN_HISTORY_FILTER_ALL
+    provider_mode: str = GENERATION_RUN_HISTORY_FILTER_ALL
+    run_status: str = GENERATION_RUN_HISTORY_FILTER_ALL
+
+
+@dataclass(frozen=True)
+class GenerationRunHistoryItem:
+    run: GenerationRunRecord
+    answer_quality_status: str
+    answer_quality_reason_codes: tuple[str, ...]
+    citation_coverage_percent: float | None
+    expected_citation_count: int
+    cited_citation_count: int
+    missing_citation_count: int
+    unrecognized_citation_count: int
+
+
+@dataclass(frozen=True)
+class GenerationRunHistorySummary:
+    run_count: int
+    passed_count: int
+    warning_count: int
+    failed_count: int
+    not_evaluated_count: int
+    not_available_count: int
+
+
+@dataclass(frozen=True)
+class GenerationRunHistory:
+    filters: GenerationRunHistoryFilter
+    summary: GenerationRunHistorySummary
+    runs: tuple[GenerationRunHistoryItem, ...]
+
+
 class InvalidGenerationRunError(ValueError):
     """Raised when generation run repository input is invalid."""
 
@@ -270,6 +316,51 @@ def _validate_top_p(value: float) -> float:
     if not 0 < normalized <= 1:
         raise InvalidGenerationRunError("top_p must be greater than 0 and less than or equal to 1")
     return normalized
+
+
+def validate_generation_run_history_limit(limit: int) -> int:
+    if limit < 1 or limit > MAX_GENERATION_RUN_HISTORY_LIMIT:
+        raise InvalidGenerationRunError(
+            "limit must be between 1 and " f"{MAX_GENERATION_RUN_HISTORY_LIMIT}"
+        )
+    return limit
+
+
+def _validate_optional_filter(
+    value: str,
+    *,
+    field_name: str,
+    allowed_values: set[str],
+) -> str:
+    normalized = _validate_non_empty(value, field_name).lower()
+    if normalized == GENERATION_RUN_HISTORY_FILTER_ALL:
+        return normalized
+    if normalized not in allowed_values:
+        raise InvalidGenerationRunError(f"{field_name} is not supported")
+    return normalized
+
+
+def validate_generation_run_history_filter(
+    history_filter: GenerationRunHistoryFilter,
+) -> GenerationRunHistoryFilter:
+    return GenerationRunHistoryFilter(
+        limit=validate_generation_run_history_limit(history_filter.limit),
+        answer_quality_status=_validate_optional_filter(
+            history_filter.answer_quality_status,
+            field_name="answer_quality_status",
+            allowed_values=GENERATION_ANSWER_QUALITY_HISTORY_STATUSES,
+        ),
+        provider_mode=_validate_optional_filter(
+            history_filter.provider_mode,
+            field_name="provider_mode",
+            allowed_values=GENERATION_PROVIDER_MODES,
+        ),
+        run_status=_validate_optional_filter(
+            history_filter.run_status,
+            field_name="run_status",
+            allowed_values=GENERATION_STATUSES,
+        ),
+    )
 
 
 def _validate_runtime_options(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -643,6 +734,129 @@ def get_generation_run(database_url: str, generation_run_id: int) -> GenerationR
             (generation_run_id,),
         ).fetchone()
     return _generation_run_from_row(dict(row)) if row else None
+
+
+def _string_list(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    items: list[str] = []
+    for item in value:
+        normalized = str(item).strip()
+        if normalized:
+            items.append(normalized)
+    return tuple(items)
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _answer_quality_mapping(run: GenerationRunRecord) -> dict[str, Any]:
+    answer_quality = run.response_metadata.get("answer_quality")
+    return dict(answer_quality) if isinstance(answer_quality, Mapping) else {}
+
+
+def _answer_quality_status(run: GenerationRunRecord) -> str:
+    answer_quality = _answer_quality_mapping(run)
+    status = answer_quality.get("status") or run.guardrail_metadata.get("answer_quality_status")
+    if isinstance(status, str) and status.strip():
+        normalized = status.strip().lower()
+        if normalized in GENERATION_ANSWER_QUALITY_HISTORY_STATUSES:
+            return normalized
+    return GENERATION_ANSWER_QUALITY_NOT_AVAILABLE
+
+
+def _history_item_from_run(run: GenerationRunRecord) -> GenerationRunHistoryItem:
+    answer_quality = _answer_quality_mapping(run)
+    return GenerationRunHistoryItem(
+        run=run,
+        answer_quality_status=_answer_quality_status(run),
+        answer_quality_reason_codes=(
+            _string_list(answer_quality.get("reason_codes"))
+            or _string_list(run.guardrail_metadata.get("answer_quality_reason_codes"))
+        ),
+        citation_coverage_percent=_optional_float(answer_quality.get("citation_coverage_percent")),
+        expected_citation_count=len(_string_list(answer_quality.get("expected_citation_keys"))),
+        cited_citation_count=len(_string_list(answer_quality.get("cited_citation_keys"))),
+        missing_citation_count=len(_string_list(answer_quality.get("missing_citation_keys"))),
+        unrecognized_citation_count=len(
+            _string_list(answer_quality.get("unrecognized_citation_keys"))
+        ),
+    )
+
+
+def _history_summary(
+    runs: tuple[GenerationRunHistoryItem, ...],
+) -> GenerationRunHistorySummary:
+    return GenerationRunHistorySummary(
+        run_count=len(runs),
+        passed_count=sum(1 for item in runs if item.answer_quality_status == "passed"),
+        warning_count=sum(1 for item in runs if item.answer_quality_status == "warning"),
+        failed_count=sum(1 for item in runs if item.answer_quality_status == "failed"),
+        not_evaluated_count=sum(
+            1 for item in runs if item.answer_quality_status == "not_evaluated"
+        ),
+        not_available_count=sum(
+            1 for item in runs if item.answer_quality_status == "not_available"
+        ),
+    )
+
+
+def list_generation_run_history(
+    database_url: str,
+    *,
+    history_filter: GenerationRunHistoryFilter | None = None,
+) -> GenerationRunHistory:
+    validated = validate_generation_run_history_filter(
+        history_filter or GenerationRunHistoryFilter()
+    )
+    with connect(database_url) as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM generation_runs
+            WHERE (
+                %s = 'all'
+                OR CASE
+                    WHEN lower(btrim(COALESCE(
+                        response_metadata #>> '{answer_quality,status}',
+                        guardrail_metadata ->> 'answer_quality_status',
+                        ''
+                    ))) = ANY(%s) THEN lower(btrim(COALESCE(
+                        response_metadata #>> '{answer_quality,status}',
+                        guardrail_metadata ->> 'answer_quality_status',
+                        ''
+                    )))
+                    ELSE 'not_available'
+                END = %s
+            )
+              AND (%s = 'all' OR provider_mode = %s)
+              AND (%s = 'all' OR status = %s)
+            ORDER BY created_at DESC, generation_run_id DESC
+            LIMIT %s
+            """,
+            (
+                validated.answer_quality_status,
+                sorted(GENERATION_ANSWER_QUALITY_HISTORY_STATUSES),
+                validated.answer_quality_status,
+                validated.provider_mode,
+                validated.provider_mode,
+                validated.run_status,
+                validated.run_status,
+                validated.limit,
+            ),
+        ).fetchall()
+    runs = tuple(_history_item_from_run(_generation_run_from_row(dict(row))) for row in rows)
+    return GenerationRunHistory(
+        filters=validated,
+        summary=_history_summary(runs),
+        runs=runs,
+    )
 
 
 def create_generation_run(

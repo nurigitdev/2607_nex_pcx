@@ -1,3 +1,4 @@
+import re
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
@@ -16,6 +17,8 @@ from app.core.generation_providers import (
 from app.core.generation_runs import (
     DGX_VLLM_GENERATION_MODEL_ID,
     GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+    GenerationRunInput,
+    create_generation_run,
     seed_dgx_vllm_generation_provider_config,
 )
 from app.core.search_logs import (
@@ -233,6 +236,49 @@ def _generation_run_count(database_url: str, search_log_id: int) -> int:
                 (search_log_id,),
             )
             return int(cursor.fetchone()["run_count"])
+
+
+def _create_failed_answer_quality_run(database_url: str, search_log_id: int) -> int:
+    run = create_generation_run(
+        database_url,
+        GenerationRunInput(
+            search_log_id=search_log_id,
+            retrieval_package_key="pytest-history-failed",
+            provider_name=MOCK_PROVIDER_NAME,
+            provider_mode="mock",
+            model_id="nvidia/Qwen3.6-27B-NVFP4",
+            retrieval_confidence_status="answerable",
+            citation_readiness_status="warning",
+            query_text="generation history failed quality",
+            status="succeeded",
+            guardrail_status="allowed",
+            answer_text="citation 없는 생성 답변입니다.",
+            finish_reason="mock_completed",
+            input_token_count=4,
+            output_token_count=4,
+            total_token_count=8,
+            elapsed_ms=11,
+            response_metadata={
+                "answer_quality": {
+                    "contract_version": "generation_answer_quality_v1",
+                    "status": "failed",
+                    "expected_citation_keys": ["RCP-001"],
+                    "cited_citation_keys": [],
+                    "recognized_citation_keys": [],
+                    "missing_citation_keys": ["RCP-001"],
+                    "unrecognized_citation_keys": [],
+                    "citation_coverage_percent": 0.0,
+                    "reason_codes": ["missing_required_citation"],
+                }
+            },
+            guardrail_metadata={
+                "answer_quality_status": "failed",
+                "answer_quality_reason_codes": ["missing_required_citation"],
+            },
+            created_by="generation_history_fixture",
+        ),
+    )
+    return run.generation_run_id
 
 
 def _remote_response(provider_name: str) -> GenerationChatCompletionResponse:
@@ -493,15 +539,130 @@ def test_generation_run_api_returns_503_without_database() -> None:
     with TestClient(app) as client:
         create_response = client.post("/api/search/logs/1/generation-runs/mock")
         remote_create_response = client.post("/api/search/logs/1/generation-runs/remote")
+        list_response = client.get("/api/generation/runs")
         read_response = client.get("/api/generation/runs/1")
         preview_response = client.get("/api/search/logs/1/generation-prompt/preview")
         metrics_response = client.get("/api/admin/generation-provider-metrics/snapshot")
 
     assert create_response.status_code == 503
     assert remote_create_response.status_code == 503
+    assert list_response.status_code == 503
     assert read_response.status_code == 503
     assert preview_response.status_code == 503
     assert metrics_response.status_code == 503
+
+
+def test_generation_run_history_api_filters_answer_quality(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/mock",
+                params={"include_neighbors": "false"},
+            )
+            passed_run_id = create_response.json()["run"]["generation_run_id"]
+            failed_run_id = _create_failed_answer_quality_run(
+                migrated_database_url,
+                search_log_id,
+            )
+            passed_response = client.get(
+                "/api/generation/runs",
+                params={
+                    "answer_quality_status": "passed",
+                    "provider_mode": "mock",
+                    "run_status": "succeeded",
+                    "limit": "25",
+                },
+            )
+            failed_response = client.get(
+                "/api/generation/runs",
+                params={
+                    "answer_quality_status": "failed",
+                    "provider_mode": "mock",
+                    "run_status": "succeeded",
+                    "limit": "25",
+                },
+            )
+            invalid_response = client.get(
+                "/api/generation/runs",
+                params={"answer_quality_status": "unsupported"},
+            )
+
+        passed_body = passed_response.json()
+        failed_body = failed_response.json()
+        passed_ids = {run["generation_run_id"] for run in passed_body["runs"]}
+        failed_ids = {run["generation_run_id"] for run in failed_body["runs"]}
+        assert create_response.status_code == 201
+        assert passed_response.status_code == 200
+        assert passed_body["filters"]["answer_quality_status"] == "passed"
+        assert passed_body["summary"]["passed_count"] >= 1
+        assert passed_run_id in passed_ids
+        assert failed_run_id not in passed_ids
+        assert failed_response.status_code == 200
+        assert failed_body["filters"]["answer_quality_status"] == "failed"
+        assert failed_body["summary"]["failed_count"] >= 1
+        assert failed_run_id in failed_ids
+        failed_run = next(
+            run for run in failed_body["runs"] if run["generation_run_id"] == failed_run_id
+        )
+        assert failed_run["answer_quality_reason_codes"] == ["missing_required_citation"]
+        assert failed_run["citation_coverage_percent"] == 0.0
+        assert invalid_response.status_code == 400
+        assert "answer_quality_status is not supported" in invalid_response.text
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_generation_run_history_ui_shows_quality_filter_and_detail_links(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/mock",
+                params={"include_neighbors": "false"},
+            )
+            run_id = create_response.json()["run"]["generation_run_id"]
+            page_response = client.get(
+                "/generation/runs",
+                params={
+                    "answer_quality_status": "passed",
+                    "provider_mode": "mock",
+                    "run_status": "succeeded",
+                    "limit": "10",
+                },
+            )
+
+        assert create_response.status_code == 201
+        assert page_response.status_code == 200
+        assert "생성 이력" in page_response.text
+        assert "data-generation-run-history-filters" in page_response.text
+        assert "data-generation-run-history-summary" in page_response.text
+        assert "data-generation-run-history-table" in page_response.text
+        assert "답변 품질" in page_response.text
+        assert "100.00%" in page_response.text
+        assert f'href="/generation/runs/{run_id}"' in page_response.text
+        api_link_match = re.search(
+            r'href="(?P<href>/api/generation/runs[^"]*)"',
+            page_response.text,
+        )
+        assert api_link_match is not None
+        api_link = urlsplit(api_link_match.group("href"))
+        api_query = parse_qs(api_link.query)
+        assert api_link.path == "/api/generation/runs"
+        assert api_query["limit"] == ["10"]
+        assert api_query["answer_quality_status"] == ["passed"]
+        assert api_query["provider_mode"] == ["mock"]
+        assert api_query["run_status"] == ["succeeded"]
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
 
 
 def test_generation_provider_metric_snapshot_api_reads_mock_persisted_metrics(
