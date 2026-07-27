@@ -28,6 +28,7 @@ GENERATION_PROVIDER_RUNTIME_CONFIG_API_DOC_PATH = (
 GENERATION_PROVIDER_RUNTIME_CONFIG_UI_DOC_PATH = (
     PROJECT_ROOT / "docs" / "generation_provider_runtime_config_ui.md"
 )
+GENERATION_REMOTE_EXECUTOR_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_executor.md"
 
 
 def _read(path: Path) -> str:
@@ -37,7 +38,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.45" in srs_text
+    assert "Software Requirements Specification v1.46" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -57,12 +58,14 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-064" in srs_text
     assert "FR-065" in srs_text
     assert "FR-066" in srs_text
+    assert "FR-067" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
     assert "DGX vLLM generation smoke evidence" in srs_text
     assert "Generation provider runtime config API" in srs_text
     assert "Generation provider runtime config UI" in srs_text
+    assert "Remote vLLM generation executor foundation" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -214,3 +217,15 @@ def test_generation_provider_runtime_config_ui_doc_defines_operator_page() -> No
     assert "runtime validation status" in ui_text
     assert "`NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY`" in ui_text
     assert "Korean is the default UI language" in ui_text
+
+
+def test_generation_remote_executor_doc_defines_persistence_contract() -> None:
+    executor_text = _read(GENERATION_REMOTE_EXECUTOR_DOC_PATH)
+
+    assert "Remote vLLM Generation Executor Foundation" in executor_text
+    assert "`execute_remote_generation_run(...)`" in executor_text
+    assert "`remote_openai_compatible`" in executor_text
+    assert "`status=no_answer`" in executor_text
+    assert "`status=failed`" in executor_text
+    assert "GenerationProviderRequestError" in executor_text
+    assert "injected fake provider" in executor_text

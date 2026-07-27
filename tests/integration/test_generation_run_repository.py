@@ -8,9 +8,20 @@ from app.core.generation_executor import (
     MOCK_FINISH_REASON_NO_ANSWER,
     MOCK_NO_ANSWER_TEXT,
     execute_mock_generation_run,
+    execute_remote_generation_run,
+)
+from app.core.generation_provider_metrics import parse_openai_chat_completion_metrics
+from app.core.generation_providers import (
+    GenerationChatCompletionRequest,
+    GenerationChatCompletionResponse,
+    GenerationProviderRequestError,
 )
 from app.core.generation_runs import (
+    DGX_VLLM_GENERATION_BASE_URL,
+    DGX_VLLM_GENERATION_MODEL_ID,
     GENERATION_PROVIDER_MODE_MOCK,
+    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+    GENERATION_STATUS_FAILED,
     GENERATION_STATUS_NO_ANSWER,
     GENERATION_STATUS_SUCCEEDED,
     GenerationRunCitationInput,
@@ -21,6 +32,7 @@ from app.core.generation_runs import (
     get_default_generation_provider_config,
     get_generation_run,
     list_generation_run_citations,
+    seed_dgx_vllm_generation_provider_config,
 )
 from app.core.retrieval_confidence import (
     RETRIEVAL_CONFIDENCE_ANSWERABLE,
@@ -45,11 +57,63 @@ from app.core.search_logs import (
 pytestmark = pytest.mark.integration
 
 NOW = datetime(2026, 7, 26, 10, 0, tzinfo=UTC)
+MOCK_PROVIDER_NAME = "mock_qwen36_27b_nvfp4"
+
+
+class _FakeRemoteGenerationProvider:
+    def __init__(
+        self,
+        *,
+        response: GenerationChatCompletionResponse | None = None,
+        error: GenerationProviderRequestError | None = None,
+    ) -> None:
+        self.response = response
+        self.error = error
+        self.requests: list[GenerationChatCompletionRequest] = []
+
+    def complete(
+        self,
+        request: GenerationChatCompletionRequest,
+    ) -> GenerationChatCompletionResponse:
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        assert self.response is not None
+        return self.response
 
 
 def _delete_search_log(database_url: str, search_log_id: int) -> None:
     with connect(database_url) as conn:
         conn.execute("DELETE FROM search_logs WHERE search_log_id = %s", (search_log_id,))
+        conn.commit()
+
+
+def _restore_generation_provider_defaults(database_url: str, provider_name: str) -> None:
+    with connect(database_url) as conn:
+        conn.execute(
+            "DELETE FROM generation_provider_configs WHERE provider_name = %s",
+            (provider_name,),
+        )
+        conn.execute(
+            """
+            UPDATE generation_provider_configs
+            SET is_default = false
+            WHERE is_default
+              AND provider_name <> %s
+            """,
+            (MOCK_PROVIDER_NAME,),
+        )
+        conn.execute(
+            """
+            UPDATE generation_provider_configs
+            SET provider_mode = 'mock',
+                provider_base_url = NULL,
+                is_default = true,
+                is_active = true
+            WHERE provider_name = %s
+            """,
+            (MOCK_PROVIDER_NAME,),
+        )
         conn.commit()
 
 
@@ -182,6 +246,72 @@ def _confidence(status: str = RETRIEVAL_CONFIDENCE_ANSWERABLE) -> RetrievalConfi
         failed_profile_count=0,
         reason_codes=() if answerable else ("weak_source_vector_score",),
         profiles=(),
+    )
+
+
+def _remote_response(provider_name: str, model_id: str) -> GenerationChatCompletionResponse:
+    answer_text = "사내 보안 규정은 계정 공유를 금지합니다. [RCP-001]"
+    metrics = parse_openai_chat_completion_metrics(
+        {
+            "id": "chatcmpl-pytest-remote",
+            "object": "chat.completion",
+            "created": 1785000000,
+            "model": model_id,
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": answer_text},
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 12,
+                "total_tokens": 132,
+            },
+        },
+        provider_name=provider_name,
+        provider_mode=GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+        requested_model_id=model_id,
+        http_status_code=200,
+        elapsed_ms=88,
+        provider_elapsed_ms=80,
+    )
+    return GenerationChatCompletionResponse(
+        answer_text=answer_text,
+        finish_reason="stop",
+        provider_model_id=model_id,
+        response_id="chatcmpl-pytest-remote",
+        input_token_count=120,
+        output_token_count=12,
+        total_token_count=132,
+        elapsed_ms=88,
+        provider_metrics=metrics,
+        response_metadata={"provider_name": provider_name, "metrics": {"succeeded": True}},
+        raw_response={},
+    )
+
+
+def _remote_error(provider_name: str, model_id: str) -> GenerationProviderRequestError:
+    metrics = parse_openai_chat_completion_metrics(
+        {
+            "error": {
+                "message": "model is warming up",
+                "type": "server_error",
+                "code": "overloaded",
+            }
+        },
+        provider_name=provider_name,
+        provider_mode=GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+        requested_model_id=model_id,
+        http_status_code=503,
+        elapsed_ms=44,
+        provider_elapsed_ms=40,
+    )
+    return GenerationProviderRequestError(
+        "Remote generation provider returned HTTP 503: model is warming up",
+        metrics=metrics,
+        payload={"error": {"message": "model is warming up", "code": "overloaded"}},
     )
 
 
@@ -510,4 +640,137 @@ def test_mock_generation_executor_fails_when_default_provider_is_remote(
                 (provider.provider_config_id,),
             )
             conn.commit()
+        _delete_search_log(migrated_database_url, search_log.search_log_id)
+
+
+def test_remote_generation_executor_persists_success_and_citation_trace(
+    migrated_database_url: str,
+) -> None:
+    search_log = _search_log(migrated_database_url)
+    provider_name = f"pytest_remote_generation_{search_log.search_log_id}"
+    provider = seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        is_default=True,
+    )
+    fake_provider = _FakeRemoteGenerationProvider(
+        response=_remote_response(provider.provider_name, provider.model_id)
+    )
+
+    try:
+        report = execute_remote_generation_run(
+            migrated_database_url,
+            _package(search_log),
+            provider_client=fake_provider,
+            api_key="pytest-secret",
+            created_by="pytest-remote",
+        )
+        stored = get_generation_run(migrated_database_url, report.run.generation_run_id)
+        citations = list_generation_run_citations(
+            migrated_database_url,
+            report.run.generation_run_id,
+        )
+
+        assert len(fake_provider.requests) == 1
+        assert fake_provider.requests[0].model_id == DGX_VLLM_GENERATION_MODEL_ID
+        assert fake_provider.requests[0].extra_body == {
+            "chat_template_kwargs": {"enable_thinking": False}
+        }
+        assert report.provider.provider_name == provider_name
+        assert report.run.status == GENERATION_STATUS_SUCCEEDED
+        assert report.run.provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+        assert report.run.answer_text == "사내 보안 규정은 계정 공유를 금지합니다. [RCP-001]"
+        assert report.run.finish_reason == "stop"
+        assert report.run.total_token_count == 132
+        assert report.run.response_metadata["provider_model_id"] == provider.model_id
+        assert report.run.response_metadata["response_id"] == "chatcmpl-pytest-remote"
+        assert report.run.response_metadata["provider_metrics"]["succeeded"] is True
+        assert report.run.request_metadata["extra_body"] == {
+            "chat_template_kwargs": {"enable_thinking": False}
+        }
+        assert stored == report.run
+        assert len(citations) == 1
+        assert citations[0].was_cited is True
+        assert citations[0].citation_key == "RCP-001"
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+        _delete_search_log(migrated_database_url, search_log.search_log_id)
+
+
+def test_remote_generation_executor_persists_provider_failure(
+    migrated_database_url: str,
+) -> None:
+    search_log = _search_log(migrated_database_url)
+    provider_name = f"pytest_remote_generation_failure_{search_log.search_log_id}"
+    provider = seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        provider_base_url=DGX_VLLM_GENERATION_BASE_URL,
+        is_default=True,
+    )
+    fake_provider = _FakeRemoteGenerationProvider(
+        error=_remote_error(provider.provider_name, provider.model_id)
+    )
+
+    try:
+        report = execute_remote_generation_run(
+            migrated_database_url,
+            _package(search_log),
+            provider_client=fake_provider,
+        )
+
+        assert len(fake_provider.requests) == 1
+        assert report.run.status == GENERATION_STATUS_FAILED
+        assert report.run.error_message is not None
+        assert "HTTP 503" in report.run.error_message
+        assert report.run.elapsed_ms == 44
+        assert report.run.response_metadata["provider_error"] is True
+        assert report.run.response_metadata["provider_metrics"]["error_code"] == "overloaded"
+        assert report.run.response_metadata["provider_metrics"]["succeeded"] is False
+        assert report.citations == ()
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+        _delete_search_log(migrated_database_url, search_log.search_log_id)
+
+
+def test_remote_generation_executor_skips_provider_call_for_low_confidence(
+    migrated_database_url: str,
+) -> None:
+    search_log = _search_log(migrated_database_url)
+    provider_name = f"pytest_remote_generation_guardrail_{search_log.search_log_id}"
+    seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        is_default=True,
+    )
+    fake_provider = _FakeRemoteGenerationProvider(
+        response=_remote_response(provider_name, DGX_VLLM_GENERATION_MODEL_ID)
+    )
+
+    try:
+        report = execute_remote_generation_run(
+            migrated_database_url,
+            _package(search_log, confidence_status=RETRIEVAL_CONFIDENCE_LOW),
+            provider_client=fake_provider,
+        )
+
+        assert fake_provider.requests == []
+        assert report.run.status == GENERATION_STATUS_NO_ANSWER
+        assert report.run.answer_text == MOCK_NO_ANSWER_TEXT
+        assert report.run.response_metadata["skipped_provider_call"] is True
+        assert report.citations == ()
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+        _delete_search_log(migrated_database_url, search_log.search_log_id)
+
+
+def test_remote_generation_executor_fails_when_default_provider_is_mock(
+    migrated_database_url: str,
+) -> None:
+    search_log = _search_log(migrated_database_url)
+
+    try:
+        with pytest.raises(InvalidGenerationRunError, match="remote_openai_compatible"):
+            execute_remote_generation_run(migrated_database_url, _package(search_log))
+    finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)

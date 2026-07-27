@@ -16,10 +16,19 @@ from app.core.generation_provider_metrics import (
     generation_provider_metrics_payload,
     parse_openai_chat_completion_metrics,
 )
+from app.core.generation_providers import (
+    GenerationProvider,
+    GenerationProviderRequestError,
+    build_generation_provider_from_runtime_config,
+    generation_chat_request_from_openai_messages,
+    generation_provider_runtime_config_from_record,
+)
 from app.core.generation_runs import (
     GENERATION_GUARDRAIL_ALLOWED,
     GENERATION_GUARDRAIL_NO_ANSWER,
     GENERATION_PROVIDER_MODE_MOCK,
+    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+    GENERATION_STATUS_FAILED,
     GENERATION_STATUS_NO_ANSWER,
     GENERATION_STATUS_SUCCEEDED,
     GenerationProviderConfigRecord,
@@ -40,6 +49,7 @@ from app.core.retrieval_context import RetrievalContextCandidate, RetrievalConte
 MOCK_NO_ANSWER_TEXT = "제공된 문서 근거만으로는 답변할 수 없습니다."
 MOCK_FINISH_REASON_COMPLETED = "mock_completed"
 MOCK_FINISH_REASON_NO_ANSWER = "guardrail_no_answer"
+REMOTE_FINISH_REASON_GUARDRAIL_NO_ANSWER = "guardrail_no_answer"
 
 
 @dataclass(frozen=True)
@@ -108,6 +118,32 @@ def _guardrail_metadata(
     }
 
 
+def _runtime_extra_body(provider: GenerationProviderConfigRecord) -> dict[str, object]:
+    extra_body = provider.runtime_options.get("extra_body", {})
+    return dict(extra_body) if isinstance(extra_body, dict) else {}
+
+
+def _create_citations_for_answer(
+    database_url: str,
+    *,
+    run: GenerationRunRecord,
+    package: RetrievalContextPackage,
+    answer_text: str,
+) -> tuple[GenerationRunCitationRecord, ...]:
+    return tuple(
+        create_generation_run_citation(
+            database_url,
+            _citation_input(
+                run=run,
+                candidate=candidate,
+                citation_index=index,
+                answer_text=answer_text,
+            ),
+        )
+        for index, candidate in enumerate(package.included_candidates, start=1)
+    )
+
+
 def _citation_input(
     *,
     run: GenerationRunRecord,
@@ -135,6 +171,49 @@ def _citation_input(
         },
         was_cited=f"[{citation_key}]" in answer_text,
     )
+
+
+def _remote_request_metadata(
+    prompt_package: GenerationPromptPackage,
+    *,
+    provider: GenerationProviderConfigRecord,
+) -> dict[str, object]:
+    return {
+        **_request_metadata(prompt_package),
+        "provider_config_id": provider.provider_config_id,
+        "provider_name": provider.provider_name,
+        "provider_mode": provider.provider_mode,
+        "model_id": provider.model_id,
+        "max_tokens": provider.max_tokens,
+        "temperature": provider.temperature,
+        "top_p": provider.top_p,
+        "extra_body": _runtime_extra_body(provider),
+    }
+
+
+def _remote_response_metadata(
+    *,
+    provider: GenerationProviderConfigRecord,
+    provider_metrics: object | None,
+    response_metadata: dict[str, object] | None = None,
+    provider_model_id: str | None = None,
+    response_id: str | None = None,
+) -> dict[str, object]:
+    metadata: dict[str, object] = {
+        "provider_mode": provider.provider_mode,
+        "model_id": provider.model_id,
+        "remote_base_url": provider.provider_base_url,
+        "runtime_options": provider.runtime_options,
+    }
+    if provider_model_id:
+        metadata["provider_model_id"] = provider_model_id
+    if response_id:
+        metadata["response_id"] = response_id
+    if response_metadata:
+        metadata.update(response_metadata)
+    if provider_metrics is not None:
+        metadata["provider_metrics"] = generation_provider_metrics_payload(provider_metrics)
+    return metadata
 
 
 def execute_mock_generation_run(
@@ -248,18 +327,232 @@ def execute_mock_generation_run(
     citations = (
         ()
         if guardrail_blocks
-        else tuple(
-            create_generation_run_citation(
-                database_url,
-                _citation_input(
-                    run=run,
-                    candidate=candidate,
-                    citation_index=index,
-                    answer_text=answer_text,
-                ),
-            )
-            for index, candidate in enumerate(package.included_candidates, start=1)
+        else _create_citations_for_answer(
+            database_url,
+            run=run,
+            package=package,
+            answer_text=answer_text,
         )
+    )
+    return GenerationExecutionReport(
+        provider=provider,
+        prompt_package=prompt_package,
+        run=run,
+        citations=citations,
+    )
+
+
+def execute_remote_generation_run(
+    database_url: str,
+    package: RetrievalContextPackage,
+    *,
+    provider_client: GenerationProvider | None = None,
+    api_key: str | None = None,
+    created_by: str | None = None,
+    created_by_user_id: int | None = None,
+) -> GenerationExecutionReport:
+    """Persist a remote OpenAI-compatible generation run from a retrieval package."""
+
+    provider = get_default_generation_provider_config(database_url)
+    if provider is None:
+        raise InvalidGenerationRunError("default generation provider config was not found")
+    if provider.provider_mode != GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
+        raise InvalidGenerationRunError(
+            "default generation provider is not remote_openai_compatible"
+        )
+
+    started_at = datetime.now(UTC)
+    started_monotonic = perf_counter()
+    prompt_package = build_generation_prompt_package(package)
+    citation_report = assess_citation_readiness_package(package)
+    retrieval_status = _retrieval_confidence_status(package)
+    citation_status = citation_report.summary.status
+    guardrail_blocks = prompt_package.blocked or citation_status == CITATION_READINESS_FAILED
+    guardrail_status = (
+        GENERATION_GUARDRAIL_NO_ANSWER if guardrail_blocks else GENERATION_GUARDRAIL_ALLOWED
+    )
+
+    if guardrail_blocks:
+        finished_at = datetime.now(UTC)
+        elapsed_ms = int((perf_counter() - started_monotonic) * 1000)
+        run = create_generation_run(
+            database_url,
+            GenerationRunInput(
+                search_log_id=prompt_package.search_log_id,
+                retrieval_package_key=prompt_package.retrieval_package_key,
+                provider_config_id=provider.provider_config_id,
+                provider_name=provider.provider_name,
+                provider_mode=provider.provider_mode,
+                model_id=provider.model_id,
+                prompt_version=prompt_package.prompt_version,
+                prompt_hash=prompt_package.prompt_hash,
+                context_hash=prompt_package.context_hash,
+                status=GENERATION_STATUS_NO_ANSWER,
+                guardrail_status=guardrail_status,
+                retrieval_confidence_status=retrieval_status,
+                citation_readiness_status=citation_status,
+                query_text=prompt_package.query_text,
+                answer_text=MOCK_NO_ANSWER_TEXT,
+                finish_reason=REMOTE_FINISH_REASON_GUARDRAIL_NO_ANSWER,
+                elapsed_ms=elapsed_ms,
+                request_metadata=_remote_request_metadata(prompt_package, provider=provider),
+                response_metadata=_remote_response_metadata(
+                    provider=provider,
+                    provider_metrics=None,
+                    response_metadata={"skipped_provider_call": True},
+                ),
+                guardrail_metadata=_guardrail_metadata(
+                    prompt_package=prompt_package,
+                    retrieval_confidence_status=retrieval_status,
+                    citation_readiness_status=citation_status,
+                ),
+                created_by=created_by,
+                created_by_user_id=created_by_user_id,
+                started_at=started_at,
+                finished_at=finished_at,
+            ),
+        )
+        return GenerationExecutionReport(
+            provider=provider,
+            prompt_package=prompt_package,
+            run=run,
+            citations=(),
+        )
+
+    runtime_config = generation_provider_runtime_config_from_record(provider, api_key=api_key)
+    owns_provider_client = provider_client is None
+    generation_provider = provider_client or build_generation_provider_from_runtime_config(
+        runtime_config,
+        provider_name=provider.provider_name,
+    )
+    chat_request = generation_chat_request_from_openai_messages(
+        prompt_package.openai_messages,
+        model_id=provider.model_id,
+        max_tokens=provider.max_tokens,
+        temperature=provider.temperature,
+        top_p=provider.top_p,
+        trace_id=f"generation-run-search-log-{prompt_package.search_log_id}",
+        extra_body=_runtime_extra_body(provider),
+        runtime_metadata={
+            "search_log_id": prompt_package.search_log_id,
+            "retrieval_package_key": prompt_package.retrieval_package_key,
+            "provider_config_id": provider.provider_config_id,
+        },
+    )
+
+    try:
+        response = generation_provider.complete(chat_request)
+    except GenerationProviderRequestError as exc:
+        finished_at = datetime.now(UTC)
+        elapsed_ms = (
+            exc.metrics.elapsed_ms
+            if exc.metrics is not None and exc.metrics.elapsed_ms is not None
+            else int((perf_counter() - started_monotonic) * 1000)
+        )
+        run = create_generation_run(
+            database_url,
+            GenerationRunInput(
+                search_log_id=prompt_package.search_log_id,
+                retrieval_package_key=prompt_package.retrieval_package_key,
+                provider_config_id=provider.provider_config_id,
+                provider_name=provider.provider_name,
+                provider_mode=provider.provider_mode,
+                model_id=provider.model_id,
+                prompt_version=prompt_package.prompt_version,
+                prompt_hash=prompt_package.prompt_hash,
+                context_hash=prompt_package.context_hash,
+                status=GENERATION_STATUS_FAILED,
+                guardrail_status=guardrail_status,
+                retrieval_confidence_status=retrieval_status,
+                citation_readiness_status=citation_status,
+                query_text=prompt_package.query_text,
+                finish_reason=exc.metrics.finish_reason if exc.metrics is not None else None,
+                input_token_count=(
+                    exc.metrics.input_token_count if exc.metrics is not None else None
+                ),
+                output_token_count=(
+                    exc.metrics.output_token_count if exc.metrics is not None else None
+                ),
+                total_token_count=(
+                    exc.metrics.total_token_count if exc.metrics is not None else None
+                ),
+                elapsed_ms=elapsed_ms,
+                request_metadata=_remote_request_metadata(prompt_package, provider=provider),
+                response_metadata=_remote_response_metadata(
+                    provider=provider,
+                    provider_metrics=exc.metrics,
+                    response_metadata={"provider_error": True, "error_payload": exc.payload},
+                ),
+                guardrail_metadata=_guardrail_metadata(
+                    prompt_package=prompt_package,
+                    retrieval_confidence_status=retrieval_status,
+                    citation_readiness_status=citation_status,
+                ),
+                error_message=str(exc),
+                created_by=created_by,
+                created_by_user_id=created_by_user_id,
+                started_at=started_at,
+                finished_at=finished_at,
+            ),
+        )
+        return GenerationExecutionReport(
+            provider=provider,
+            prompt_package=prompt_package,
+            run=run,
+            citations=(),
+        )
+    finally:
+        if owns_provider_client and hasattr(generation_provider, "close"):
+            generation_provider.close()  # type: ignore[attr-defined]
+
+    finished_at = datetime.now(UTC)
+    run = create_generation_run(
+        database_url,
+        GenerationRunInput(
+            search_log_id=prompt_package.search_log_id,
+            retrieval_package_key=prompt_package.retrieval_package_key,
+            provider_config_id=provider.provider_config_id,
+            provider_name=provider.provider_name,
+            provider_mode=provider.provider_mode,
+            model_id=provider.model_id,
+            prompt_version=prompt_package.prompt_version,
+            prompt_hash=prompt_package.prompt_hash,
+            context_hash=prompt_package.context_hash,
+            status=GENERATION_STATUS_SUCCEEDED,
+            guardrail_status=guardrail_status,
+            retrieval_confidence_status=retrieval_status,
+            citation_readiness_status=citation_status,
+            query_text=prompt_package.query_text,
+            answer_text=response.answer_text,
+            finish_reason=response.finish_reason,
+            input_token_count=response.input_token_count,
+            output_token_count=response.output_token_count,
+            total_token_count=response.total_token_count,
+            elapsed_ms=response.elapsed_ms,
+            request_metadata=_remote_request_metadata(prompt_package, provider=provider),
+            response_metadata=_remote_response_metadata(
+                provider=provider,
+                provider_metrics=response.provider_metrics,
+                response_metadata=dict(response.response_metadata),
+                provider_model_id=response.provider_model_id,
+                response_id=response.response_id,
+            ),
+            guardrail_metadata=_guardrail_metadata(
+                prompt_package=prompt_package,
+                retrieval_confidence_status=retrieval_status,
+                citation_readiness_status=citation_status,
+            ),
+            created_by=created_by,
+            created_by_user_id=created_by_user_id,
+            started_at=started_at,
+            finished_at=finished_at,
+        ),
+    )
+    citations = _create_citations_for_answer(
+        database_url,
+        run=run,
+        package=package,
+        answer_text=response.answer_text,
     )
     return GenerationExecutionReport(
         provider=provider,
