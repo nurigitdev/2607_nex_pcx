@@ -131,7 +131,7 @@ class GenerationRunInput:
     query_text: str
     generation_template_id: int | None = None
     provider_config_id: int | None = None
-    prompt_version: str = "grounded_answer_v1"
+    prompt_version: str = "grounded_answer_v1_prompt_v1"
     prompt_hash: str | None = None
     context_hash: str | None = None
     status: str = GENERATION_STATUS_PENDING

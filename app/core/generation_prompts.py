@@ -1,5 +1,6 @@
 """Prompt package builder for grounded generation runs."""
 
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 from json import dumps
@@ -15,11 +16,14 @@ from app.core.retrieval_confidence import (
 )
 from app.core.retrieval_context import RetrievalContextCandidate, RetrievalContextPackage
 
-DEFAULT_GENERATION_PROMPT_VERSION = "grounded_answer_v1"
+GENERATION_PROMPT_CONTRACT_VERSION = "template_aware_prompt_v1"
+GENERATION_PROMPT_RENDERER_VERSION = "prompt_v1"
+DEFAULT_GENERATION_PROMPT_VERSION = "grounded_answer_v1_prompt_v1"
 DEFAULT_GENERATION_RESPONSE_LANGUAGE = "ko"
 GENERATION_BLOCK_NO_INCLUDED_CONTEXT = "no_included_context"
 GENERATION_BLOCK_LOW_CONFIDENCE = "retrieval_confidence_blocked"
 GENERATION_BLOCK_EMPTY_QUERY = "empty_query"
+GENERATION_PROMPT_VERSION_TOKEN_PATTERN = re.compile(r"[^a-z0-9]+")
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,7 @@ class GenerationPromptMessage:
 @dataclass(frozen=True)
 class GenerationPromptPackage:
     prompt_version: str
+    prompt_contract_version: str
     response_language: str
     generation_template_id: int | None
     template_key: str
@@ -70,6 +75,20 @@ def _normalize_language(language: str | None) -> str:
     return normalized
 
 
+def _prompt_version_token(value: str) -> str:
+    token = GENERATION_PROMPT_VERSION_TOKEN_PATTERN.sub("_", value.strip().lower())
+    token = re.sub(r"_+", "_", token).strip("_")
+    return token or "template"
+
+
+def generation_prompt_version_for_template(template: GenerationTemplateRecord) -> str:
+    """Return the default prompt version for a selected generation template."""
+
+    template_token = _prompt_version_token(template.template_family or template.template_key)
+    version_token = _prompt_version_token(template.template_version)
+    return f"{template_token}_{version_token}_{GENERATION_PROMPT_RENDERER_VERSION}"
+
+
 def _query_text(package: RetrievalContextPackage) -> str:
     return package.search_log.search_log.query_text.strip()
 
@@ -99,12 +118,13 @@ def _blocked_reason(package: RetrievalContextPackage, query_text: str) -> str | 
 def _system_instruction(language: str) -> str:
     return "\n".join(
         (
-            "You are NeX-PCX grounded generation assistant.",
-            "Answer only from the provided retrieval context.",
+            "You are NeX-PCX retrieval-grounded generation assistant.",
+            "Create the requested output only from the provided retrieval context.",
+            "Follow the selected generation template and document contract.",
             "Use citation keys such as [RCP-001] for every factual claim.",
-            "If the context is insufficient, say that the answer cannot be determined "
+            "If the context is insufficient, say that the requested output cannot be determined "
             "from the provided documents.",
-            f"Write the answer in language code: {language}.",
+            f"Write the output in language code: {language}.",
         )
     )
 
@@ -137,6 +157,8 @@ def _template_instruction(template: GenerationTemplateRecord) -> str:
         (
             "Generation template:",
             f"- template_key: {template.template_key}",
+            f"- template_family: {template.template_family}",
+            f"- template_name: {template.template_name}",
             f"- template_version: {template.template_version}",
             f"- document_type: {template.document_type}",
             f"- output_format: {template.output_format}",
@@ -164,7 +186,7 @@ def _user_instruction(
     search_log = package.search_log.search_log
     citation_line = ", ".join(citation_keys) if citation_keys else "(none)"
     lines = [
-        f"Question: {query_text}",
+        f"User request: {query_text}",
         "",
         "Retrieval metadata:",
         f"- search_log_id: {search_log.search_log_id}",
@@ -177,10 +199,10 @@ def _user_instruction(
         "Context:",
         context_text.strip(),
         "",
-        "Answer requirements:",
+        "Generation requirements:",
+        "- Match the selected generation template, document type, and section schema.",
         "- Use only the context above.",
-        "- Keep the answer concise.",
-        "- Include citation keys inline.",
+        "- Include citation keys inline for factual claims.",
         "- Do not invent policy, date, amount, role, or source details.",
     ]
     suffix = template.user_instruction_suffix.strip()
@@ -198,7 +220,7 @@ def _blocked_instruction(
 ) -> str:
     return "\n".join(
         (
-            f"Question: {query_text or '(empty)'}",
+            f"User request: {query_text or '(empty)'}",
             "",
             "Generation is blocked before LLM execution.",
             f"- search_log_id: {package.search_log.search_log.search_log_id}",
@@ -215,18 +237,22 @@ def _blocked_instruction(
 def build_generation_prompt_package(
     package: RetrievalContextPackage,
     *,
-    prompt_version: str = DEFAULT_GENERATION_PROMPT_VERSION,
+    prompt_version: str | None = None,
     response_language: str | None = DEFAULT_GENERATION_RESPONSE_LANGUAGE,
     generation_template: GenerationTemplateRecord | None = None,
 ) -> GenerationPromptPackage:
     """Build OpenAI-compatible chat messages from a retrieval context package."""
 
-    normalized_version = prompt_version.strip()
+    language = _normalize_language(response_language)
+    template = generation_template or default_generation_template_record(language=language)
+    normalized_version = (
+        generation_prompt_version_for_template(template)
+        if prompt_version is None
+        else prompt_version.strip()
+    )
     if not normalized_version:
         raise InvalidGenerationPromptError("prompt_version must not be empty")
 
-    language = _normalize_language(response_language)
-    template = generation_template or default_generation_template_record(language=language)
     template_snapshot = generation_template_snapshot(template)
     query_text = _query_text(package)
     block_reason = _blocked_reason(package, query_text)
@@ -257,6 +283,7 @@ def build_generation_prompt_package(
     rendered_prompt = "\n\n".join(f"{message.role}:\n{message.content}" for message in messages)
     hash_payload = dumps(
         {
+            "prompt_contract_version": GENERATION_PROMPT_CONTRACT_VERSION,
             "prompt_version": normalized_version,
             "response_language": language,
             "template": template_snapshot,
@@ -268,6 +295,7 @@ def build_generation_prompt_package(
 
     return GenerationPromptPackage(
         prompt_version=normalized_version,
+        prompt_contract_version=GENERATION_PROMPT_CONTRACT_VERSION,
         response_language=language,
         generation_template_id=template.generation_template_id,
         template_key=template.template_key,

@@ -12,8 +12,10 @@ from app.core.generation_executor import (
 from app.core.generation_prompts import (
     DEFAULT_GENERATION_PROMPT_VERSION,
     GENERATION_BLOCK_LOW_CONFIDENCE,
+    GENERATION_PROMPT_CONTRACT_VERSION,
     InvalidGenerationPromptError,
     build_generation_prompt_package,
+    generation_prompt_version_for_template,
 )
 from app.core.generation_templates import GenerationTemplateRecord
 from app.core.retrieval_confidence import (
@@ -220,6 +222,7 @@ def test_build_generation_prompt_package_returns_openai_messages() -> None:
     package = build_generation_prompt_package(_package(), response_language="ko")
 
     assert package.prompt_version == DEFAULT_GENERATION_PROMPT_VERSION
+    assert package.prompt_contract_version == GENERATION_PROMPT_CONTRACT_VERSION
     assert package.response_language == "ko"
     assert package.generation_template_id is None
     assert package.template_key == "grounded_answer"
@@ -235,11 +238,14 @@ def test_build_generation_prompt_package_returns_openai_messages() -> None:
     assert package.prompt_hash
     assert package.openai_messages[0]["role"] == "system"
     assert package.openai_messages[1]["role"] == "user"
+    assert "Create the requested output only" in package.messages[0].content
     assert "Use citation keys such as [RCP-001]" in package.messages[0].content
     assert "Generation template:" in package.messages[0].content
     assert "template_key: grounded_answer" in package.messages[0].content
+    assert "template_family: grounded_answer" in package.messages[0].content
     assert "사내 보안 규정은 계정 공유를 금지" in package.messages[1].content
     assert "citations: RCP-001" in package.messages[1].content
+    assert "Generation requirements:" in package.messages[1].content
 
 
 def test_build_generation_prompt_package_injects_custom_template_snapshot() -> None:
@@ -250,16 +256,42 @@ def test_build_generation_prompt_package_injects_custom_template_snapshot() -> N
     )
 
     assert report_package.generation_template_id == 22
+    assert report_package.prompt_version == "report_v1_prompt_v1"
+    assert report_package.prompt_contract_version == GENERATION_PROMPT_CONTRACT_VERSION
     assert report_package.template_key == "report"
     assert report_package.template_name == "보고서 초안"
     assert report_package.document_type == "report"
     assert report_package.output_format == "markdown"
     assert report_package.template_snapshot["section_schema"][1]["key"] == "findings"
     assert "template_key: report" in report_package.messages[0].content
+    assert "template_name: 보고서 초안" in report_package.messages[0].content
     assert "Template-specific requirement:" in report_package.messages[1].content
     assert "각 주요 주장에는 citation key" in report_package.messages[1].content
     assert report_package.prompt_hash != default_package.prompt_hash
     assert report_package.context_hash == default_package.context_hash
+
+
+def test_generation_prompt_version_for_template_uses_family_and_version() -> None:
+    template = replace(
+        _report_template(),
+        template_key="report_current",
+        template_family="executive-report",
+        template_version="Draft A",
+    )
+
+    assert generation_prompt_version_for_template(_report_template()) == "report_v1_prompt_v1"
+    assert generation_prompt_version_for_template(template) == "executive_report_draft_a_prompt_v1"
+
+
+def test_build_generation_prompt_package_preserves_explicit_prompt_version() -> None:
+    prompt_package = build_generation_prompt_package(
+        _package(),
+        prompt_version="custom_prompt_v9",
+        generation_template=_report_template(),
+    )
+
+    assert prompt_package.prompt_version == "custom_prompt_v9"
+    assert prompt_package.template_key == "report"
 
 
 def test_build_generation_prompt_package_blocks_low_confidence_context() -> None:

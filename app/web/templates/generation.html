@@ -479,17 +479,21 @@
     </a>
   </div>
   <div class="row g-3 p-3 border-top">
-    <div class="col-6 col-lg-2">
+    <div class="col-12 col-md-6 col-lg-3">
       <div class="metric-label">{{ t("generation.prompt_version") }}</div>
-      <div class="generation-detail-compact-value">{{ prompt_preview.prompt_version }}</div>
+      <div class="model-path fw-semibold">{{ prompt_preview.prompt_version }}</div>
     </div>
-    <div class="col-6 col-lg-2">
+    <div class="col-12 col-md-6 col-lg-3">
+      <div class="metric-label">{{ t("generation.prompt_contract_version") }}</div>
+      <div class="model-path fw-semibold">{{ prompt_preview.prompt_contract_version }}</div>
+    </div>
+    <div class="col-6 col-lg-1">
       <div class="metric-label">{{ t("generation.response_language") }}</div>
       <div class="generation-detail-compact-value">{{ prompt_preview.response_language }}</div>
     </div>
     <div class="col-6 col-lg-2">
       <div class="metric-label">{{ t("generation.template") }}</div>
-      <div class="generation-detail-compact-value">{{ prompt_preview.template_key }}</div>
+      <div class="generation-detail-compact-value">{{ prompt_preview.template_key }} / {{ prompt_preview.template_version }}</div>
     </div>
     <div class="col-6 col-lg-2">
       <div class="metric-label">{{ t("generation.prompt_blocked") }}</div>
@@ -497,11 +501,11 @@
         {{ prompt_preview.block_reason or t("generation.allowed") }}
       </span>
     </div>
-    <div class="col-6 col-lg-2">
+    <div class="col-6 col-lg-1">
       <div class="metric-label">{{ t("generation.citation_count") }}</div>
       <div class="generation-detail-compact-value">{{ prompt_preview.citation_keys | length }}</div>
     </div>
-    <div class="col-12 col-lg-2">
+    <div class="col-12">
       <div class="metric-label">{{ t("generation.prompt_hash") }}</div>
       <div class="model-path">{{ prompt_preview.prompt_hash }}</div>
     </div>

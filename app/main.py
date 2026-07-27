@@ -4571,6 +4571,7 @@ def generation_prompt_package_payload(
     prompt_package: GenerationPromptPackage,
 ) -> dict[str, object]:
     return {
+        "prompt_contract_version": prompt_package.prompt_contract_version,
         "prompt_version": prompt_package.prompt_version,
         "response_language": prompt_package.response_language,
         "generation_template_id": prompt_package.generation_template_id,

@@ -304,6 +304,8 @@
 </section>
 
 <section class="metric-card bg-white p-0 overflow-hidden mb-4">
+  {% set metadata_template = selected_run.request_metadata.get("generation_template") %}
+  {% set run_template = metadata_template if metadata_template is mapping else {} %}
   <div class="dashboard-panel-header p-3">
     <div>
       <h2 class="h5 mb-1">{{ t("generation.run_identity") }}</h2>
@@ -316,6 +318,23 @@
         <tr>
           <th scope="row">{{ t("generation.prompt_version") }}</th>
           <td><code>{{ selected_run.prompt_version }}</code></td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("generation.prompt_contract_version") }}</th>
+          <td><code>{{ selected_run.request_metadata.get("prompt_contract_version") or "-" }}</code></td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("generation.template") }}</th>
+          <td>
+            <code>{{ selected_run.request_metadata.get("template_key") or run_template.get("template_key") or "-" }}</code>
+            <span class="text-secondary">
+              / {{ selected_run.request_metadata.get("template_version") or run_template.get("template_version") or "-" }}
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">{{ t("generation.document_type") }}</th>
+          <td><code>{{ selected_run.request_metadata.get("document_type") or run_template.get("document_type") or "-" }}</code></td>
         </tr>
         <tr>
           <th scope="row">{{ t("generation.prompt_hash") }}</th>

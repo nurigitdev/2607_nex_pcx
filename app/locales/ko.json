@@ -169,6 +169,8 @@
     "confidence": "검색 신뢰도",
     "citation_readiness": "Citation 준비도",
     "answer_quality": "답변 품질",
+    "prompt_contract_version": "Prompt Contract",
+    "document_type": "Document Type",
     "answer_quality_help": "생성 답변이 기대 citation을 사용했는지와 no-answer 품질 상태를 확인합니다.",
     "answer_quality_detail_help": "생성 답변의 citation coverage, 누락/미인식 citation key, 품질 사유를 확인합니다.",
     "answer_quality_status_passed": "통과",

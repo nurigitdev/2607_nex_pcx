@@ -159,6 +159,7 @@ def _retrieval_confidence_status(package: RetrievalContextPackage) -> str:
 def _request_metadata(prompt_package: GenerationPromptPackage) -> dict[str, object]:
     return {
         "contract": "openai_chat_completions",
+        "prompt_contract_version": prompt_package.prompt_contract_version,
         "prompt_version": prompt_package.prompt_version,
         "prompt_hash": prompt_package.prompt_hash,
         "context_hash": prompt_package.context_hash,

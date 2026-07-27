@@ -169,6 +169,8 @@
     "confidence": "Retrieval Confidence",
     "citation_readiness": "Citation Readiness",
     "answer_quality": "Answer Quality",
+    "prompt_contract_version": "Prompt Contract",
+    "document_type": "Document Type",
     "answer_quality_help": "Review whether the generated answer used expected citations and respected no-answer quality checks.",
     "answer_quality_detail_help": "Review citation coverage, missing or unknown citation keys, and answer quality reasons.",
     "answer_quality_status_passed": "Passed",

@@ -386,6 +386,10 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert create_body["run"]["guardrail_metadata"]["answer_quality_status"] == "passed"
         assert "[RCP-001]" in create_body["run"]["answer_text"]
         assert create_body["prompt_package"]["messages"][0]["role"] == "system"
+        assert create_body["prompt_package"]["prompt_version"] == "grounded_answer_v1_prompt_v1"
+        assert (
+            create_body["prompt_package"]["prompt_contract_version"] == "template_aware_prompt_v1"
+        )
         assert create_body["prompt_package"]["template_key"] == "grounded_answer"
         assert create_body["prompt_package"]["generation_template"]["template_key"] == (
             "grounded_answer"
@@ -581,9 +585,13 @@ def test_generation_prompt_preview_api_returns_messages_without_creating_run(
         assert prompt_package["messages"][0]["role"] == "system"
         assert prompt_package["messages"][1]["role"] == "user"
         assert prompt_package["response_language"] == "ko"
+        assert prompt_package["prompt_version"] == "report_v1_prompt_v1"
+        assert prompt_package["prompt_contract_version"] == "template_aware_prompt_v1"
         assert prompt_package["template_key"] == "report"
+        assert prompt_package["template_version"] == "v1"
         assert prompt_package["output_format"] == "markdown"
         assert prompt_package["generation_template"]["template_key"] == "report"
+        assert "template_name: 보고서 초안" in prompt_package["messages"][0]["content"]
         assert prompt_package["blocked"] is False
         assert prompt_package["block_reason"] is None
         assert prompt_package["citation_keys"] == ["RCP-001"]
@@ -975,7 +983,8 @@ def test_generation_run_ui_loads_context_and_creates_mock_run(
         assert context_response.status_code == 200
         assert "생성 입력 준비" in context_response.text
         assert "Prompt Preview" in context_response.text
-        assert "grounded_answer_v1" in context_response.text
+        assert "grounded_answer_v1_prompt_v1" in context_response.text
+        assert "template_aware_prompt_v1" in context_response.text
         assert "Mock 생성" in context_response.text
         assert "Remote vLLM Runtime" in context_response.text
         assert "Remote vLLM 생성" in context_response.text
@@ -1161,7 +1170,8 @@ def test_generation_run_detail_ui_shows_prompt_metadata_and_citations(
         assert "Guardrail Metadata" in detail_response.text
         assert "Markdown 내보내기" in detail_response.text
         assert f"/api/generation/runs/{run_id}/export/markdown" in detail_response.text
-        assert "grounded_answer_v1" in detail_response.text
+        assert "grounded_answer_v1_prompt_v1" in detail_response.text
+        assert "template_aware_prompt_v1" in detail_response.text
         assert "generation_ui_mock" in detail_response.text
         assert "RCP-001" in detail_response.text
         assert "Generation API document" in detail_response.text

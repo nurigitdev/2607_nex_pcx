@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260728_0035"
+HEAD_REVISION = "20260728_0036"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -97,6 +97,16 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         test_database_url,
         "SELECT to_regclass('public.generation_runs') AS table_name",
     )
+    generation_run_prompt_version_default = fetch_one(
+        test_database_url,
+        """
+        SELECT column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'generation_runs'
+          AND column_name = 'prompt_version'
+        """,
+    )
     generation_citation_table = fetch_one(
         test_database_url,
         "SELECT to_regclass('public.generation_run_citations') AS table_name",
@@ -155,6 +165,7 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert bm25_profile_count["count"] == 1
     assert reranked_profile_count["count"] == 1
     assert generation_run_table["table_name"] == "generation_runs"
+    assert "grounded_answer_v1_prompt_v1" in generation_run_prompt_version_default["column_default"]
     assert generation_citation_table["table_name"] == "generation_run_citations"
     assert generation_template_table["table_name"] == "generation_templates"
     assert default_generation_template["template_key"] == "grounded_answer"
