@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260726_0033"
+HEAD_REVISION = "20260727_0034"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -101,6 +101,18 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         test_database_url,
         "SELECT to_regclass('public.generation_run_citations') AS table_name",
     )
+    generation_template_table = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.generation_templates') AS table_name",
+    )
+    default_generation_template = fetch_one(
+        test_database_url,
+        """
+        SELECT template_key, document_type, output_format
+        FROM generation_templates
+        WHERE is_default
+        """,
+    )
     default_generation_provider = fetch_one(
         test_database_url,
         """
@@ -140,6 +152,10 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert reranked_profile_count["count"] == 1
     assert generation_run_table["table_name"] == "generation_runs"
     assert generation_citation_table["table_name"] == "generation_run_citations"
+    assert generation_template_table["table_name"] == "generation_templates"
+    assert default_generation_template["template_key"] == "grounded_answer"
+    assert default_generation_template["document_type"] == "grounded_answer"
+    assert default_generation_template["output_format"] == "markdown"
     assert default_generation_provider["provider_mode"] == "mock"
     assert default_generation_provider["model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
     assert keyword_index_table["table_name"] == "chunk_keyword_terms"
