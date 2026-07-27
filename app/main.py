@@ -120,6 +120,12 @@ from app.core.dgx_ingestion_benchmarks import (
     get_dgx_ingestion_benchmark_detail,
     list_dgx_ingestion_benchmark_runs,
 )
+from app.core.direct_generation import (
+    DirectGenerationInput,
+    DirectGenerationResult,
+    InvalidDirectGenerationError,
+    run_direct_generation_query,
+)
 from app.core.document_inventory import (
     DocumentInventoryItem,
     DocumentPermissionUpdateInput,
@@ -366,6 +372,7 @@ from app.core.generation_runs import (
     DGX_VLLM_GENERATION_TIMEOUT_SECONDS,
     DGX_VLLM_GENERATION_TOP_P,
     GENERATION_ANSWER_QUALITY_NOT_AVAILABLE,
+    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
     GENERATION_RUN_HISTORY_FILTER_ALL,
     MAX_GENERATION_RUN_HISTORY_LIMIT,
     GenerationProviderConfigRecord,
@@ -660,6 +667,25 @@ class SearchCompareRequest(BaseModel):
     hybrid_vector_profile_name: str | None = None
     reranked_vector_profile_name: str | None = None
     allow_mock_fallback: bool = True
+
+
+class DirectGenerationRequest(BaseModel):
+    query_text: str = Field(min_length=1)
+    actor_user_id: int = Field(ge=1)
+    requested_search_scope: str = "company"
+    provider_mode: str = GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+    top_k: int = Field(default=5, ge=1)
+    profiles: list[str] | None = None
+    chunk_policy_name: str | None = None
+    document_group: str | None = None
+    file_type: str | None = None
+    bm25_tokenizer_name: str | None = None
+    hybrid_vector_profile_name: str | None = None
+    reranked_vector_profile_name: str | None = None
+    allow_mock_fallback: bool = True
+    max_context_chars: int = Field(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000)
+    include_neighbors: bool = True
+    max_items: int = Field(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100)
 
 
 class SearchChunkPolicyCompareRequest(BaseModel):
@@ -4493,6 +4519,26 @@ def generation_execution_report_payload(
         "prompt_package": generation_prompt_package_payload(report.prompt_package),
         "run": generation_run_payload(report.run),
         "citations": [generation_run_citation_payload(citation) for citation in report.citations],
+    }
+
+
+def direct_generation_result_payload(
+    result: DirectGenerationResult,
+) -> dict[str, object]:
+    search_log_id = result.search_result.search_log_id
+    generation_run_id = result.generation_report.run.generation_run_id
+    return {
+        "mode": "direct_query",
+        "search_log_id": search_log_id,
+        "generation_run_id": generation_run_id,
+        "links": {
+            "search_log": f"/search/logs?search_log_id={search_log_id}",
+            "retrieval_context": f"/search/context?search_log_id={search_log_id}",
+            "generation_run": f"/generation/runs/{generation_run_id}",
+        },
+        "search": search_compare_payload(result.search_result),
+        "retrieval_context": retrieval_context_package_payload(result.retrieval_package),
+        "generation": generation_execution_report_payload(result.generation_report),
     }
 
 
@@ -11587,6 +11633,77 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return JSONResponse(content=citation_readiness_report_payload(report))
+
+    @app.post("/api/generation/direct-runs")
+    def api_create_direct_generation_run(payload: DirectGenerationRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        api_key: str | None = None
+        if payload.provider_mode.strip().lower() == (
+            GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+        ):
+            try:
+                provider = get_default_generation_provider_config(settings.database_url)
+                if provider is None:
+                    raise InvalidGenerationRunError(
+                        "default generation provider config was not found"
+                    )
+                api_key = resolve_generation_provider_api_key(provider, settings)
+            except (InvalidGenerationRunError, InvalidGenerationProviderError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(exc),
+                ) from exc
+
+        try:
+            result = run_direct_generation_query(
+                settings.database_url,
+                DirectGenerationInput(
+                    query_text=payload.query_text,
+                    actor_user_id=payload.actor_user_id,
+                    requested_search_scope=payload.requested_search_scope,
+                    provider_mode=payload.provider_mode,
+                    top_k=payload.top_k,
+                    profiles=tuple(payload.profiles) if payload.profiles is not None else None,
+                    chunk_policy_name=payload.chunk_policy_name,
+                    document_group=payload.document_group,
+                    file_type=payload.file_type,
+                    bm25_tokenizer_name=(
+                        payload.bm25_tokenizer_name or DEFAULT_BM25_TOKENIZER_NAME
+                    ),
+                    hybrid_vector_profile_name=payload.hybrid_vector_profile_name,
+                    reranked_vector_profile_name=payload.reranked_vector_profile_name,
+                    allow_mock_fallback=payload.allow_mock_fallback,
+                    max_context_chars=payload.max_context_chars,
+                    include_neighbors=payload.include_neighbors,
+                    max_items=payload.max_items,
+                ),
+                fallback_runtime_config=embedding_provider_runtime_config_from_settings(settings),
+                fallback_reranker_runtime_config=reranker_runtime_config_from_settings(settings),
+                api_key=api_key,
+            )
+        except (
+            InvalidDirectGenerationError,
+            InvalidEmbeddingProviderError,
+            InvalidGenerationRunError,
+            InvalidPermissionError,
+            InvalidQueryEmbeddingError,
+            InvalidRerankerError,
+            InvalidRetrievalContextError,
+            InvalidSearchCompareError,
+            InvalidSearchLogError,
+            InvalidVectorSearchError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content=direct_generation_result_payload(result),
+        )
 
     @app.post("/api/search/logs/{search_log_id}/generation-runs/mock")
     def api_create_mock_generation_run(

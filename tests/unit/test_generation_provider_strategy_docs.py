@@ -41,6 +41,9 @@ GENERATION_ANSWER_QUALITY_BADGE_UI_DOC_PATH = (
 GENERATION_RUN_HISTORY_QUALITY_FILTER_DOC_PATH = (
     PROJECT_ROOT / "docs" / "generation_run_history_quality_filter.md"
 )
+DIRECT_GENERATION_QUERY_ORCHESTRATOR_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "direct_generation_query_orchestrator_api.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -50,7 +53,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.53" in srs_text
+    assert "Software Requirements Specification v1.54" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -78,6 +81,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-072" in srs_text
     assert "FR-073" in srs_text
     assert "FR-074" in srs_text
+    assert "FR-075" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -92,6 +96,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "Generation answer citation guardrail" in srs_text
     assert "Generation answer quality badge/detail UI" in srs_text
     assert "Generation run history" in srs_text
+    assert "Direct generation query orchestrator API" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -335,3 +340,15 @@ def test_generation_run_history_quality_filter_doc_defines_filter_contract() -> 
     assert "`remote_openai_compatible`" in history_text
     assert "raw JSON evidence" in history_text
     assert "FR-074" in _read(SRS_PATH)
+
+
+def test_direct_generation_query_orchestrator_doc_defines_api_contract() -> None:
+    direct_text = _read(DIRECT_GENERATION_QUERY_ORCHESTRATOR_DOC_PATH)
+
+    assert "Direct Generation Query Orchestrator API" in direct_text
+    assert "`POST /api/generation/direct-runs`" in direct_text
+    assert "`remote_openai_compatible`" in direct_text
+    assert "`retrieval_context`" in direct_text
+    assert "`generation`" in direct_text
+    assert "Secrets are not included" in direct_text
+    assert "FR-075" in _read(SRS_PATH)
