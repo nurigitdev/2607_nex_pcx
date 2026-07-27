@@ -18,6 +18,7 @@ The detail screen shows:
 - prompt version, prompt hash, context hash, and retrieval package key
 - token and latency counters
 - citation trace rows with source anchor payloads
+- answer quality status, citation coverage, citation key sets, and reason codes
 - request, response, and guardrail metadata JSON previews
 
 This keeps mock and future vLLM runs reviewable through the same UI contract.

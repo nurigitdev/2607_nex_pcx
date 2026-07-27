@@ -273,6 +273,13 @@
 
 {% if selected_run %}
 {% set run_status_class = "success" if selected_run.status == "succeeded" else ("warning" if selected_run.status == "no_answer" else "secondary") %}
+{% set answer_quality = (selected_run.response_metadata or {}).get("answer_quality") or {} %}
+{% set answer_quality_status = answer_quality.get("status") or (selected_run.guardrail_metadata or {}).get("answer_quality_status") or "not_available" %}
+{% set answer_quality_status_class = "success" if answer_quality_status == "passed" else ("warning" if answer_quality_status == "warning" else ("danger" if answer_quality_status == "failed" else "secondary")) %}
+{% set answer_quality_reasons = answer_quality.get("reason_codes") or (selected_run.guardrail_metadata or {}).get("answer_quality_reason_codes") or [] %}
+{% set answer_quality_expected = answer_quality.get("expected_citation_keys") or [] %}
+{% set answer_quality_cited = answer_quality.get("cited_citation_keys") or [] %}
+{% set answer_quality_coverage = answer_quality.get("citation_coverage_percent") %}
 <section class="bg-white border rounded-2 p-3 mb-4" data-generation-run-result>
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
     <div>
@@ -284,6 +291,9 @@
     <div class="d-flex flex-wrap gap-2">
       <span class="badge text-bg-{{ run_status_class }}">{{ selected_run.status }}</span>
       <span class="badge text-bg-light border">{{ selected_run.guardrail_status }}</span>
+      <span class="badge text-bg-{{ answer_quality_status_class }}">
+        {{ t("generation.answer_quality") }}: {{ t("generation.answer_quality_status_" ~ answer_quality_status) }}
+      </span>
       <a class="btn btn-outline-primary btn-sm" href="/generation/runs/{{ selected_run.generation_run_id }}">
         {{ t("generation.open_detail") }}
       </a>
@@ -328,6 +338,51 @@
         <div class="metric-label">{{ t("generation.citation_readiness") }}</div>
         <div class="metric-value generation-status-text">{{ selected_run.citation_readiness_status }}</div>
       </div>
+    </div>
+  </div>
+  <div class="border rounded-2 p-3 mb-3" data-generation-answer-quality>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+      <div>
+        <h3 class="h6 mb-1">{{ t("generation.answer_quality") }}</h3>
+        <div class="text-secondary small">{{ t("generation.answer_quality_help") }}</div>
+      </div>
+      <span class="badge text-bg-{{ answer_quality_status_class }}">
+        {{ t("generation.answer_quality_status_" ~ answer_quality_status) }}
+      </span>
+    </div>
+    <div class="row g-3">
+      <div class="col-6 col-lg-3">
+        <div class="metric-label">{{ t("generation.answer_quality_expected_citations") }}</div>
+        <div class="generation-detail-compact-value">{{ answer_quality_expected | length }}</div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="metric-label">{{ t("generation.answer_quality_cited_citations") }}</div>
+        <div class="generation-detail-compact-value">{{ answer_quality_cited | length }}</div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="metric-label">{{ t("generation.answer_quality_coverage") }}</div>
+        <div class="generation-detail-compact-value">
+          {% if answer_quality_coverage is not none %}
+          {{ "%.2f"|format(answer_quality_coverage) }}%
+          {% else %}
+          -
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="metric-label">{{ t("generation.answer_quality_reasons") }}</div>
+        <div class="generation-detail-compact-value">{{ answer_quality_reasons | length }}</div>
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      {% for reason in answer_quality_reasons %}
+      <span class="badge text-bg-light border">
+        {{ t("generation.answer_quality_reason_" ~ reason) }}
+        <code class="text-reset">{{ reason }}</code>
+      </span>
+      {% else %}
+      <span class="text-secondary small">{{ t("generation.answer_quality_no_reasons") }}</span>
+      {% endfor %}
     </div>
   </div>
   <h3 class="h6 mb-2">{{ t("generation.answer") }}</h3>

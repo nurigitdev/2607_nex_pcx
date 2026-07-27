@@ -35,6 +35,9 @@ DGX_VLLM_GENERATION_RUN_E2E_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_vllm_generat
 GENERATION_ANSWER_CITATION_GUARDRAIL_DOC_PATH = (
     PROJECT_ROOT / "docs" / "generation_answer_citation_guardrail.md"
 )
+GENERATION_ANSWER_QUALITY_BADGE_UI_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "generation_answer_quality_badge_ui.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -44,7 +47,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.51" in srs_text
+    assert "Software Requirements Specification v1.52" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -70,6 +73,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-070" in srs_text
     assert "FR-071" in srs_text
     assert "FR-072" in srs_text
+    assert "FR-073" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -82,6 +86,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "Generation provider metrics mode breakdown" in srs_text
     assert "DGX vLLM generation run live E2E verification" in srs_text
     assert "Generation answer citation guardrail" in srs_text
+    assert "Generation answer quality badge/detail UI" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -135,6 +140,7 @@ def test_generation_run_ui_doc_defines_mock_result_panel() -> None:
     assert "`GET /generation`" in ui_text
     assert "`POST /generation/runs/mock`" in ui_text
     assert "citation trace" in ui_text
+    assert "`response_metadata.answer_quality`" in ui_text
     assert "vLLM generation runs" in ui_text
 
 
@@ -145,6 +151,7 @@ def test_generation_run_detail_ui_doc_defines_reproducibility_panel() -> None:
     assert "`GET /generation/runs/{generation_run_id}`" in detail_text
     assert "prompt hash" in detail_text
     assert "guardrail metadata" in detail_text
+    assert "answer quality status" in detail_text
     assert "vLLM runs" in detail_text
 
 
@@ -300,3 +307,14 @@ def test_generation_answer_citation_guardrail_doc_defines_quality_metadata() -> 
     assert "provider execution health" in quality_text
     assert "grounded answer" in quality_text
     assert "quality independently measurable" in quality_text
+
+
+def test_generation_answer_quality_badge_ui_doc_defines_operator_panels() -> None:
+    ui_text = _read(GENERATION_ANSWER_QUALITY_BADGE_UI_DOC_PATH)
+
+    assert "Generation Answer Quality Badge + Detail UI" in ui_text
+    assert "`GET /generation`" in ui_text
+    assert "`GET /generation/runs/{generation_run_id}`" in ui_text
+    assert "`response_metadata.answer_quality`" in ui_text
+    assert "expected/used/missing/unknown" in ui_text
+    assert "FR-073" in _read(SRS_PATH)

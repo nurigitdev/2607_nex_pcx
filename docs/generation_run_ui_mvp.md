@@ -13,6 +13,7 @@ The page supports:
 - mock generation execution
 - generation answer display
 - run status, guardrail status, token counts, latency, and citation trace
+- answer quality badge and summary panel from `response_metadata.answer_quality`
 
 ## Execution
 

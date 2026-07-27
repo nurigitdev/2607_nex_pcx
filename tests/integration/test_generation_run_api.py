@@ -308,6 +308,12 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert create_body["run"]["finish_reason"] == "mock_completed"
         assert create_body["run"]["retrieval_confidence_status"] == "answerable"
         assert create_body["run"]["citation_readiness_status"] == "warning"
+        assert create_body["run"]["response_metadata"]["answer_quality"]["status"] == "passed"
+        assert (
+            create_body["run"]["response_metadata"]["answer_quality"]["citation_coverage_percent"]
+            == 100.0
+        )
+        assert create_body["run"]["guardrail_metadata"]["answer_quality_status"] == "passed"
         assert "[RCP-001]" in create_body["run"]["answer_text"]
         assert create_body["prompt_package"]["messages"][0]["role"] == "system"
         assert create_body["prompt_package"]["blocked"] is False
@@ -864,12 +870,19 @@ def test_generation_run_detail_ui_shows_prompt_metadata_and_citations(
             location = post_response.headers["location"]
             query = parse_qs(urlsplit(location).query)
             run_id = int(query["generation_run_id"][0])
+            result_response = client.get(location)
             detail_response = client.get(f"/generation/runs/{run_id}")
             missing_response = client.get("/generation/runs/999999999")
 
         assert post_response.status_code == 303
+        assert result_response.status_code == 200
+        assert "data-generation-answer-quality" in result_response.text
+        assert "답변 품질" in result_response.text
+        assert "100.00%" in result_response.text
         assert detail_response.status_code == 200
         assert "생성 실행 상세" in detail_response.text
+        assert "data-generation-answer-quality-detail" in detail_response.text
+        assert "기대 Citation Key" in detail_response.text
         assert "Prompt Messages" in detail_response.text
         assert "Request Metadata" in detail_response.text
         assert "Response Metadata" in detail_response.text
