@@ -43,7 +43,7 @@ from app.core.generation_runs import (
     InvalidGenerationRunError,
     create_generation_run,
     create_generation_run_citation,
-    get_default_generation_provider_config,
+    get_generation_provider_config_for_mode,
 )
 from app.core.retrieval_confidence import (
     RETRIEVAL_CONFIDENCE_ANSWERABLE,
@@ -183,6 +183,10 @@ def _citation_input(
         generation_run_id=run.generation_run_id,
         citation_key=citation_key,
         citation_index=citation_index,
+        search_log_result_id=candidate.primary_result.search_log_result_id,
+        chunk_id=citation.chunk_id,
+        document_id=citation.document_id,
+        file_id=citation.file_id,
         source_label=citation.source_label,
         source_anchor=citation.source_anchor,
         citation_payload={
@@ -251,11 +255,9 @@ def execute_mock_generation_run(
 ) -> GenerationExecutionReport:
     """Persist a deterministic mock generation run from a retrieval context package."""
 
-    provider = get_default_generation_provider_config(database_url)
+    provider = get_generation_provider_config_for_mode(database_url, GENERATION_PROVIDER_MODE_MOCK)
     if provider is None:
-        raise InvalidGenerationRunError("default generation provider config was not found")
-    if provider.provider_mode != GENERATION_PROVIDER_MODE_MOCK:
-        raise InvalidGenerationRunError("default generation provider is not mock")
+        raise InvalidGenerationRunError("active mock generation provider config was not found")
 
     started_at = datetime.now(UTC)
     started_monotonic = perf_counter()
@@ -386,12 +388,13 @@ def execute_remote_generation_run(
 ) -> GenerationExecutionReport:
     """Persist a remote OpenAI-compatible generation run from a retrieval package."""
 
-    provider = get_default_generation_provider_config(database_url)
+    provider = get_generation_provider_config_for_mode(
+        database_url,
+        GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+    )
     if provider is None:
-        raise InvalidGenerationRunError("default generation provider config was not found")
-    if provider.provider_mode != GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
         raise InvalidGenerationRunError(
-            "default generation provider is not remote_openai_compatible"
+            "active remote_openai_compatible generation provider config was not found"
         )
 
     started_at = datetime.now(UTC)

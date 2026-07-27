@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
+from psycopg.types.json import Json
 
 from app.core.database import connect
 from app.core.generation_executor import (
@@ -51,7 +53,9 @@ from app.core.search_logs import (
     SearchLogDetailRecord,
     SearchLogInput,
     SearchLogRecord,
+    SearchLogResultInput,
     create_search_log,
+    create_search_log_results,
 )
 
 pytestmark = pytest.mark.integration
@@ -85,6 +89,12 @@ class _FakeRemoteGenerationProvider:
 def _delete_search_log(database_url: str, search_log_id: int) -> None:
     with connect(database_url) as conn:
         conn.execute("DELETE FROM search_logs WHERE search_log_id = %s", (search_log_id,))
+        conn.commit()
+
+
+def _delete_file(database_url: str, file_id: int) -> None:
+    with connect(database_url) as conn:
+        conn.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
         conn.commit()
 
 
@@ -139,6 +149,122 @@ def _search_log(
     )
 
 
+def _create_citation_source_fixture(
+    database_url: str,
+    search_log: SearchLogRecord,
+) -> dict[str, int | str]:
+    checksum = f"generation-run-citation-{uuid4()}"
+    chunk_text = "사내 보안 규정은 계정 공유를 금지하고 정기적인 비밀번호 변경을 요구한다."
+    chunk_policy_name = "heading_512_64"
+    with connect(database_url) as conn:
+        file_row = conn.execute(
+            """
+            INSERT INTO files (
+                original_file_name,
+                stored_file_name,
+                file_ext,
+                file_size_bytes,
+                sha256_checksum,
+                storage_path,
+                document_group
+            )
+            VALUES (%s, %s, '.md', 128, %s, %s, 'policy')
+            RETURNING file_id
+            """,
+            (
+                f"{checksum}.md",
+                f"{checksum}.stored.md",
+                checksum,
+                f"/tmp/{checksum}.md",
+            ),
+        ).fetchone()
+        assert file_row is not None
+        file_id = int(file_row["file_id"])
+
+        document_row = conn.execute(
+            """
+            INSERT INTO documents (
+                file_id,
+                document_title,
+                document_group,
+                access_scope
+            )
+            VALUES (%s, '사내 보안 규정', 'policy', 'company')
+            RETURNING document_id
+            """,
+            (file_id,),
+        ).fetchone()
+        assert document_row is not None
+        document_id = int(document_row["document_id"])
+
+        chunk_row = conn.execute(
+            """
+            INSERT INTO chunks (
+                document_id,
+                chunk_seq,
+                chunk_type,
+                chunk_text,
+                content_markdown,
+                content_hash,
+                chunk_policy_name,
+                heading_path,
+                source_anchor,
+                page_no,
+                source_char_start,
+                source_char_end,
+                token_count,
+                char_count,
+                metadata
+            )
+            VALUES (
+                %s, 1, 'text', %s, %s, %s, %s,
+                %s, %s, 1, 0, %s, 20, %s, %s
+            )
+            RETURNING chunk_id
+            """,
+            (
+                document_id,
+                chunk_text,
+                chunk_text,
+                f"chunk-{checksum}",
+                chunk_policy_name,
+                ["보안", "계정 관리"],
+                Json({"start_line": 3, "end_line": 8}),
+                len(chunk_text),
+                len(chunk_text),
+                Json({"fixture": "generation-run-citation"}),
+            ),
+        ).fetchone()
+        assert chunk_row is not None
+        chunk_id = int(chunk_row["chunk_id"])
+        conn.commit()
+
+    result = create_search_log_results(
+        database_url,
+        [
+            SearchLogResultInput(
+                search_log_id=search_log.search_log_id,
+                profile_name="reranked_vector_cosine",
+                search_profile_name="reranked_vector_cosine",
+                retrieval_strategy="reranked",
+                rank=1,
+                chunk_id=chunk_id,
+                distance=0.1,
+                score=0.9,
+                score_components={"source_score": 0.8, "raw_cross_encoder_score": 2.5},
+                profile_elapsed_ms=45,
+            )
+        ],
+    )[0]
+    return {
+        "file_id": file_id,
+        "document_id": document_id,
+        "chunk_id": chunk_id,
+        "search_log_result_id": result.search_log_result_id,
+        "chunk_policy_name": chunk_policy_name,
+    }
+
+
 def _search_detail(search_log: SearchLogRecord) -> SearchLogDetailRecord:
     return SearchLogDetailRecord(
         search_log=search_log,
@@ -148,14 +274,18 @@ def _search_detail(search_log: SearchLogRecord) -> SearchLogDetailRecord:
     )
 
 
-def _result_reference() -> RetrievalContextResultReference:
+def _result_reference(
+    *,
+    search_log_result_id: int = 501,
+    chunk_id: int = 1001,
+) -> RetrievalContextResultReference:
     return RetrievalContextResultReference(
-        search_log_result_id=501,
+        search_log_result_id=search_log_result_id,
         profile_name="reranked_vector_cosine",
         search_profile_name="reranked_vector_cosine",
         retrieval_strategy="reranked",
         rank=1,
-        chunk_id=1001,
+        chunk_id=chunk_id,
         distance=0.1,
         score=0.9,
         score_components={"source_score": 0.8, "raw_cross_encoder_score": 2.5},
@@ -164,17 +294,25 @@ def _result_reference() -> RetrievalContextResultReference:
     )
 
 
-def _candidate(*, citation_key: str | None = "RCP-001") -> RetrievalContextCandidate:
+def _candidate(
+    *,
+    citation_key: str | None = "RCP-001",
+    search_log_result_id: int = 501,
+    chunk_id: int = 1001,
+    document_id: int = 10,
+    file_id: int = 20,
+    chunk_policy_name: str = "heading_1000_100",
+) -> RetrievalContextCandidate:
     citation = RetrievalContextCitation(
         citation_key=citation_key,
-        chunk_id=1001,
-        document_id=10,
-        file_id=20,
+        chunk_id=chunk_id,
+        document_id=document_id,
+        file_id=file_id,
         document_title="사내 보안 규정",
         original_file_name="security_policy.md",
         file_ext="md",
         document_group="policy",
-        chunk_policy_name="heading_1000_100",
+        chunk_policy_name=chunk_policy_name,
         chunk_seq=1,
         heading_path=("보안", "계정 관리"),
         page_no=1,
@@ -188,7 +326,7 @@ def _candidate(*, citation_key: str | None = "RCP-001") -> RetrievalContextCandi
     )
     chunk = RetrievalContextChunkEntry(
         position="current",
-        chunk_id=1001,
+        chunk_id=chunk_id,
         chunk_seq=1,
         chunk_text="사내 보안 규정은 계정 공유를 금지하고 정기적인 비밀번호 변경을 요구한다.",
         chunk_preview="사내 보안 규정은 계정 공유를 금지한다.",
@@ -206,7 +344,10 @@ def _candidate(*, citation_key: str | None = "RCP-001") -> RetrievalContextCandi
         included=True,
         exclusion_reason=None,
         citation=citation,
-        primary_result=_result_reference(),
+        primary_result=_result_reference(
+            search_log_result_id=search_log_result_id,
+            chunk_id=chunk_id,
+        ),
         supporting_results=(),
         chunks=(chunk,),
         context_text=context_text,
@@ -323,8 +464,9 @@ def _package(
     search_log: SearchLogRecord,
     *,
     confidence_status: str = RETRIEVAL_CONFIDENCE_ANSWERABLE,
+    candidate: RetrievalContextCandidate | None = None,
 ) -> RetrievalContextPackage:
-    candidate = _candidate()
+    candidate = candidate or _candidate()
     included = confidence_status == RETRIEVAL_CONFIDENCE_ANSWERABLE
     included_candidate = candidate if included else None
     excluded_candidate = (
@@ -524,11 +666,19 @@ def test_mock_generation_executor_persists_answer_and_citations(
     migrated_database_url: str,
 ) -> None:
     search_log = _search_log(migrated_database_url)
+    fixture = _create_citation_source_fixture(migrated_database_url, search_log)
+    candidate = _candidate(
+        search_log_result_id=fixture["search_log_result_id"],
+        chunk_id=fixture["chunk_id"],
+        document_id=fixture["document_id"],
+        file_id=fixture["file_id"],
+        chunk_policy_name=str(fixture["chunk_policy_name"]),
+    )
 
     try:
         report = execute_mock_generation_run(
             migrated_database_url,
-            _package(search_log),
+            _package(search_log, candidate=candidate),
             created_by="pytest",
         )
 
@@ -551,9 +701,14 @@ def test_mock_generation_executor_persists_answer_and_citations(
         assert report.run.guardrail_metadata["answer_quality_status"] == "passed"
         assert len(report.citations) == 1
         assert report.citations[0].was_cited is True
+        assert report.citations[0].search_log_result_id == fixture["search_log_result_id"]
+        assert report.citations[0].chunk_id == fixture["chunk_id"]
+        assert report.citations[0].document_id == fixture["document_id"]
+        assert report.citations[0].file_id == fixture["file_id"]
         assert report.citations[0].citation_payload["original_file_name"] == "security_policy.md"
     finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)
+        _delete_file(migrated_database_url, fixture["file_id"])
 
 
 def test_mock_generation_executor_records_no_answer_for_low_confidence(
@@ -600,7 +755,7 @@ def test_mock_generation_executor_fails_when_default_provider_is_not_active(
             conn.commit()
 
         assert get_default_generation_provider_config(migrated_database_url) is None
-        with pytest.raises(InvalidGenerationRunError, match="default generation provider"):
+        with pytest.raises(InvalidGenerationRunError, match="active mock generation provider"):
             execute_mock_generation_run(migrated_database_url, _package(search_log))
     finally:
         with connect(migrated_database_url) as conn:
@@ -636,7 +791,7 @@ def test_mock_generation_executor_fails_when_default_provider_is_remote(
             )
             conn.commit()
 
-        with pytest.raises(InvalidGenerationRunError, match="not mock"):
+        with pytest.raises(InvalidGenerationRunError, match="active mock generation provider"):
             execute_mock_generation_run(migrated_database_url, _package(search_log))
     finally:
         with connect(migrated_database_url) as conn:
@@ -657,12 +812,23 @@ def test_remote_generation_executor_persists_success_and_citation_trace(
     migrated_database_url: str,
 ) -> None:
     search_log = _search_log(migrated_database_url)
+    fixture = _create_citation_source_fixture(migrated_database_url, search_log)
+    candidate = _candidate(
+        search_log_result_id=fixture["search_log_result_id"],
+        chunk_id=fixture["chunk_id"],
+        document_id=fixture["document_id"],
+        file_id=fixture["file_id"],
+        chunk_policy_name=str(fixture["chunk_policy_name"]),
+    )
     provider_name = f"pytest_remote_generation_{search_log.search_log_id}"
     provider = seed_dgx_vllm_generation_provider_config(
         migrated_database_url,
         provider_name=provider_name,
-        is_default=True,
+        is_default=False,
     )
+    default_provider = get_default_generation_provider_config(migrated_database_url)
+    assert default_provider is not None
+    assert default_provider.provider_name == MOCK_PROVIDER_NAME
     fake_provider = _FakeRemoteGenerationProvider(
         response=_remote_response(provider.provider_name, provider.model_id)
     )
@@ -670,7 +836,7 @@ def test_remote_generation_executor_persists_success_and_citation_trace(
     try:
         report = execute_remote_generation_run(
             migrated_database_url,
-            _package(search_log),
+            _package(search_log, candidate=candidate),
             provider_client=fake_provider,
             api_key="pytest-secret",
             created_by="pytest-remote",
@@ -707,9 +873,14 @@ def test_remote_generation_executor_persists_success_and_citation_trace(
         assert len(citations) == 1
         assert citations[0].was_cited is True
         assert citations[0].citation_key == "RCP-001"
+        assert citations[0].search_log_result_id == fixture["search_log_result_id"]
+        assert citations[0].chunk_id == fixture["chunk_id"]
+        assert citations[0].document_id == fixture["document_id"]
+        assert citations[0].file_id == fixture["file_id"]
     finally:
         _restore_generation_provider_defaults(migrated_database_url, provider_name)
         _delete_search_log(migrated_database_url, search_log.search_log_id)
+        _delete_file(migrated_database_url, fixture["file_id"])
 
 
 def test_remote_generation_executor_persists_provider_failure(
@@ -788,6 +959,14 @@ def test_remote_generation_executor_records_failed_answer_quality_for_missing_ci
     migrated_database_url: str,
 ) -> None:
     search_log = _search_log(migrated_database_url)
+    fixture = _create_citation_source_fixture(migrated_database_url, search_log)
+    candidate = _candidate(
+        search_log_result_id=fixture["search_log_result_id"],
+        chunk_id=fixture["chunk_id"],
+        document_id=fixture["document_id"],
+        file_id=fixture["file_id"],
+        chunk_policy_name=str(fixture["chunk_policy_name"]),
+    )
     provider_name = f"pytest_remote_generation_quality_{search_log.search_log_id}"
     provider = seed_dgx_vllm_generation_provider_config(
         migrated_database_url,
@@ -805,7 +984,7 @@ def test_remote_generation_executor_records_failed_answer_quality_for_missing_ci
     try:
         report = execute_remote_generation_run(
             migrated_database_url,
-            _package(search_log),
+            _package(search_log, candidate=candidate),
             provider_client=fake_provider,
         )
 
@@ -816,9 +995,14 @@ def test_remote_generation_executor_records_failed_answer_quality_for_missing_ci
         assert answer_quality["missing_citation_keys"] == ["RCP-001"]
         assert report.run.guardrail_metadata["answer_quality_status"] == "failed"
         assert report.citations[0].was_cited is False
+        assert report.citations[0].search_log_result_id == fixture["search_log_result_id"]
+        assert report.citations[0].chunk_id == fixture["chunk_id"]
+        assert report.citations[0].document_id == fixture["document_id"]
+        assert report.citations[0].file_id == fixture["file_id"]
     finally:
         _restore_generation_provider_defaults(migrated_database_url, provider_name)
         _delete_search_log(migrated_database_url, search_log.search_log_id)
+        _delete_file(migrated_database_url, fixture["file_id"])
 
 
 def test_remote_generation_executor_fails_when_default_provider_is_mock(

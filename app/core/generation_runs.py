@@ -531,6 +531,34 @@ def get_default_generation_provider_config(
     return _provider_config_from_row(row) if row else None
 
 
+def get_generation_provider_config_for_mode(
+    database_url: str,
+    provider_mode: str,
+) -> GenerationProviderConfigRecord | None:
+    normalized_provider_mode = _validate_provider_mode(provider_mode)
+    preferred_provider_name = (
+        DGX_VLLM_GENERATION_PROVIDER_NAME
+        if normalized_provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+        else ""
+    )
+    with connect(database_url) as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM generation_provider_configs
+            WHERE provider_mode = %s
+              AND is_active
+            ORDER BY
+                is_default DESC,
+                CASE WHEN provider_name = %s THEN 0 ELSE 1 END,
+                provider_config_id
+            LIMIT 1
+            """,
+            (normalized_provider_mode, preferred_provider_name),
+        ).fetchone()
+    return _provider_config_from_row(row) if row else None
+
+
 def list_generation_provider_configs(
     database_url: str,
     *,

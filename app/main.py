@@ -384,6 +384,7 @@ from app.core.generation_runs import (
     GenerationRunRecord,
     InvalidGenerationRunError,
     get_default_generation_provider_config,
+    get_generation_provider_config_for_mode,
     get_generation_run,
     list_generation_provider_configs,
     list_generation_run_citations,
@@ -11648,10 +11649,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
         ):
             try:
-                provider = get_default_generation_provider_config(settings.database_url)
+                provider = get_generation_provider_config_for_mode(
+                    settings.database_url,
+                    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                )
                 if provider is None:
                     raise InvalidGenerationRunError(
-                        "default generation provider config was not found"
+                        "active remote_openai_compatible generation provider config was not found"
                     )
                 api_key = resolve_generation_provider_api_key(provider, settings)
             except (InvalidGenerationRunError, InvalidGenerationProviderError) as exc:
@@ -11783,9 +11787,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         try:
-            provider = get_default_generation_provider_config(settings.database_url)
+            provider = get_generation_provider_config_for_mode(
+                settings.database_url,
+                GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+            )
             if provider is None:
-                raise InvalidGenerationRunError("default generation provider config was not found")
+                raise InvalidGenerationRunError(
+                    "active remote_openai_compatible generation provider config was not found"
+                )
             api_key = resolve_generation_provider_api_key(provider, settings)
             report = execute_remote_generation_run(
                 settings.database_url,
@@ -14539,7 +14548,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if RERANKED_SEARCH_PROFILE_NAME not in profile_options:
                     profile_options.append(RERANKED_SEARCH_PROFILE_NAME)
                 chunk_policy_options = list_chunk_policy_summaries(settings.database_url)
-                provider = get_default_generation_provider_config(settings.database_url)
+                provider = get_generation_provider_config_for_mode(
+                    settings.database_url,
+                    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                ) or get_default_generation_provider_config(settings.database_url)
                 if provider is not None:
                     default_generation_provider = generation_provider_config_payload(provider)
                     default_generation_runtime = generation_provider_runtime_config_payload(
@@ -14668,10 +14680,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             provider_mode = direct_provider_mode.strip().lower()
             if provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
-                provider = get_default_generation_provider_config(settings.database_url)
+                provider = get_generation_provider_config_for_mode(
+                    settings.database_url,
+                    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                )
                 if provider is None:
                     raise InvalidGenerationRunError(
-                        "default generation provider config was not found"
+                        "active remote_openai_compatible generation provider config was not found"
                     )
                 api_key = resolve_generation_provider_api_key(provider, settings)
             profile_name = direct_profile_name.strip()
@@ -14805,10 +14820,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if package is None:
                 redirect_params["generation_error"] = "Search log retrieval context not found."
             else:
-                provider = get_default_generation_provider_config(settings.database_url)
+                provider = get_generation_provider_config_for_mode(
+                    settings.database_url,
+                    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                )
                 if provider is None:
                     raise InvalidGenerationRunError(
-                        "default generation provider config was not found"
+                        "active remote_openai_compatible generation provider config was not found"
                     )
                 api_key = resolve_generation_provider_api_key(provider, settings)
                 report = execute_remote_generation_run(
