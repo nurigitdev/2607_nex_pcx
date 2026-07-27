@@ -129,6 +129,7 @@ class GenerationRunInput:
     retrieval_confidence_status: str
     citation_readiness_status: str
     query_text: str
+    generation_template_id: int | None = None
     provider_config_id: int | None = None
     prompt_version: str = "grounded_answer_v1"
     prompt_hash: str | None = None
@@ -156,6 +157,7 @@ class GenerationRunRecord:
     generation_run_id: int
     search_log_id: int
     retrieval_package_key: str
+    generation_template_id: int | None
     provider_config_id: int | None
     provider_name: str
     provider_mode: str
@@ -467,6 +469,7 @@ def _generation_run_from_row(row: dict[str, Any]) -> GenerationRunRecord:
         generation_run_id=int(row["generation_run_id"]),
         search_log_id=int(row["search_log_id"]),
         retrieval_package_key=str(row["retrieval_package_key"]),
+        generation_template_id=row.get("generation_template_id"),
         provider_config_id=row["provider_config_id"],
         provider_name=str(row["provider_name"]),
         provider_mode=str(row["provider_mode"]),
@@ -902,6 +905,7 @@ def create_generation_run(
     model_id = _validate_non_empty(run_input.model_id, "model_id")
     prompt_version = _validate_non_empty(run_input.prompt_version, "prompt_version")
     _validate_optional_positive(run_input.provider_config_id, "provider_config_id")
+    _validate_optional_positive(run_input.generation_template_id, "generation_template_id")
     if run_input.status not in GENERATION_STATUSES:
         raise InvalidGenerationRunError("status is not supported")
     if run_input.guardrail_status not in GENERATION_GUARDRAIL_STATUSES:
@@ -922,6 +926,7 @@ def create_generation_run(
             INSERT INTO generation_runs (
                 search_log_id,
                 retrieval_package_key,
+                generation_template_id,
                 provider_config_id,
                 provider_name,
                 provider_mode,
@@ -951,13 +956,15 @@ def create_generation_run(
             )
             VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s
             )
             RETURNING *
             """,
             (
                 validated_search_log_id,
                 retrieval_package_key,
+                run_input.generation_template_id,
                 run_input.provider_config_id,
                 provider_name,
                 run_input.provider_mode,

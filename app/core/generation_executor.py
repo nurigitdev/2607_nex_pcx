@@ -45,6 +45,7 @@ from app.core.generation_runs import (
     create_generation_run_citation,
     get_generation_provider_config_for_mode,
 )
+from app.core.generation_templates import get_default_generation_template
 from app.core.retrieval_confidence import (
     RETRIEVAL_CONFIDENCE_ANSWERABLE,
 )
@@ -101,6 +102,12 @@ def _request_metadata(prompt_package: GenerationPromptPackage) -> dict[str, obje
         "prompt_hash": prompt_package.prompt_hash,
         "context_hash": prompt_package.context_hash,
         "response_language": prompt_package.response_language,
+        "generation_template_id": prompt_package.generation_template_id,
+        "template_key": prompt_package.template_key,
+        "template_version": prompt_package.template_version,
+        "document_type": prompt_package.document_type,
+        "output_format": prompt_package.output_format,
+        "generation_template": prompt_package.template_snapshot,
         "messages": prompt_package.openai_messages,
         "citation_keys": list(prompt_package.citation_keys),
         "blocked": prompt_package.blocked,
@@ -261,7 +268,11 @@ def execute_mock_generation_run(
 
     started_at = datetime.now(UTC)
     started_monotonic = perf_counter()
-    prompt_package = build_generation_prompt_package(package)
+    generation_template = get_default_generation_template(database_url)
+    prompt_package = build_generation_prompt_package(
+        package,
+        generation_template=generation_template,
+    )
     citation_report = assess_citation_readiness_package(package)
     retrieval_status = _retrieval_confidence_status(package)
     citation_status = citation_report.summary.status
@@ -321,6 +332,7 @@ def execute_mock_generation_run(
         GenerationRunInput(
             search_log_id=prompt_package.search_log_id,
             retrieval_package_key=prompt_package.retrieval_package_key,
+            generation_template_id=prompt_package.generation_template_id,
             provider_config_id=provider.provider_config_id,
             provider_name=provider.provider_name,
             provider_mode=provider.provider_mode,
@@ -399,7 +411,11 @@ def execute_remote_generation_run(
 
     started_at = datetime.now(UTC)
     started_monotonic = perf_counter()
-    prompt_package = build_generation_prompt_package(package)
+    generation_template = get_default_generation_template(database_url)
+    prompt_package = build_generation_prompt_package(
+        package,
+        generation_template=generation_template,
+    )
     citation_report = assess_citation_readiness_package(package)
     retrieval_status = _retrieval_confidence_status(package)
     citation_status = citation_report.summary.status
@@ -421,6 +437,7 @@ def execute_remote_generation_run(
             GenerationRunInput(
                 search_log_id=prompt_package.search_log_id,
                 retrieval_package_key=prompt_package.retrieval_package_key,
+                generation_template_id=prompt_package.generation_template_id,
                 provider_config_id=provider.provider_config_id,
                 provider_name=provider.provider_name,
                 provider_mode=provider.provider_mode,
@@ -481,6 +498,8 @@ def execute_remote_generation_run(
         runtime_metadata={
             "search_log_id": prompt_package.search_log_id,
             "retrieval_package_key": prompt_package.retrieval_package_key,
+            "template_key": prompt_package.template_key,
+            "template_version": prompt_package.template_version,
             "provider_config_id": provider.provider_config_id,
         },
     )
@@ -505,6 +524,7 @@ def execute_remote_generation_run(
             GenerationRunInput(
                 search_log_id=prompt_package.search_log_id,
                 retrieval_package_key=prompt_package.retrieval_package_key,
+                generation_template_id=prompt_package.generation_template_id,
                 provider_config_id=provider.provider_config_id,
                 provider_name=provider.provider_name,
                 provider_mode=provider.provider_mode,
@@ -572,6 +592,7 @@ def execute_remote_generation_run(
         GenerationRunInput(
             search_log_id=prompt_package.search_log_id,
             retrieval_package_key=prompt_package.retrieval_package_key,
+            generation_template_id=prompt_package.generation_template_id,
             provider_config_id=provider.provider_config_id,
             provider_name=provider.provider_name,
             provider_mode=provider.provider_mode,

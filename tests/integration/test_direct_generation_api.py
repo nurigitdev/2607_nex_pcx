@@ -239,7 +239,14 @@ def test_direct_generation_query_api_searches_packages_and_creates_mock_run(
         run_row = fetch_one(
             migrated_database_url,
             """
-            SELECT search_log_id, provider_mode, status, created_by, created_by_user_id
+            SELECT
+                search_log_id,
+                provider_mode,
+                status,
+                generation_template_id,
+                request_metadata,
+                created_by,
+                created_by_user_id
             FROM generation_runs
             WHERE generation_run_id = %s
             """,
@@ -259,11 +266,17 @@ def test_direct_generation_query_api_searches_packages_and_creates_mock_run(
         )
         assert body["generation"]["run"]["provider_mode"] == "mock"
         assert body["generation"]["run"]["status"] == "succeeded"
+        assert body["generation"]["prompt_package"]["template_key"] == "grounded_answer"
         assert body["generation"]["run"]["created_by"] == "api_direct_generation"
         assert body["generation"]["run"]["created_by_user_id"] == ids["alice.member"]
         assert body["links"]["generation_run"] == f"/generation/runs/{body['generation_run_id']}"
         assert run_row["search_log_id"] == body["search_log_id"]
         assert run_row["provider_mode"] == "mock"
+        assert (
+            run_row["generation_template_id"]
+            == body["generation"]["prompt_package"]["generation_template_id"]
+        )
+        assert run_row["request_metadata"]["template_key"] == "grounded_answer"
         assert run_row["created_by"] == "api_direct_generation"
         assert run_row["created_by_user_id"] == ids["alice.member"]
         assert invalid_response.status_code == 400

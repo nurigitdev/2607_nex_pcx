@@ -391,6 +391,7 @@ from app.core.generation_runs import (
     list_generation_run_history,
     seed_dgx_vllm_generation_provider_config,
 )
+from app.core.generation_templates import get_default_generation_template
 from app.core.go_live_readiness import (
     build_go_live_readiness_report,
     go_live_readiness_report_payload,
@@ -4394,6 +4395,7 @@ def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
         "generation_run_id": run.generation_run_id,
         "search_log_id": run.search_log_id,
         "retrieval_package_key": run.retrieval_package_key,
+        "generation_template_id": run.generation_template_id,
         "provider_config_id": run.provider_config_id,
         "provider_name": run.provider_name,
         "provider_mode": run.provider_mode,
@@ -4500,6 +4502,13 @@ def generation_prompt_package_payload(
     return {
         "prompt_version": prompt_package.prompt_version,
         "response_language": prompt_package.response_language,
+        "generation_template_id": prompt_package.generation_template_id,
+        "template_key": prompt_package.template_key,
+        "template_name": prompt_package.template_name,
+        "template_version": prompt_package.template_version,
+        "document_type": prompt_package.document_type,
+        "output_format": prompt_package.output_format,
+        "generation_template": prompt_package.template_snapshot,
         "query_text": prompt_package.query_text,
         "retrieval_package_key": prompt_package.retrieval_package_key,
         "search_log_id": prompt_package.search_log_id,
@@ -11842,6 +11851,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             prompt_package = build_generation_prompt_package(
                 package,
                 response_language=response_language,
+                generation_template=get_default_generation_template(settings.database_url),
             )
         except InvalidRetrievalContextError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

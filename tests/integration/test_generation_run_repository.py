@@ -686,8 +686,14 @@ def test_mock_generation_executor_persists_answer_and_citations(
         assert report.run.finish_reason == MOCK_FINISH_REASON_COMPLETED
         assert report.run.guardrail_status == "allowed"
         assert "[RCP-001]" in (report.run.answer_text or "")
+        assert report.run.generation_template_id == report.prompt_package.generation_template_id
+        assert report.prompt_package.template_key == "grounded_answer"
         assert report.run.prompt_hash == report.prompt_package.prompt_hash
         assert report.run.request_metadata["messages"][0]["role"] == "system"
+        assert report.run.request_metadata["template_key"] == "grounded_answer"
+        assert report.run.request_metadata["generation_template"]["template_key"] == (
+            "grounded_answer"
+        )
         assert report.run.response_metadata["deterministic"] is True
         provider_metrics = report.run.response_metadata["provider_metrics"]
         assert provider_metrics["provider_name"] == "mock_qwen36_27b_nvfp4"

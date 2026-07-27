@@ -352,6 +352,10 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert create_body["run"]["search_log_id"] == search_log_id
         assert create_body["run"]["status"] == "succeeded"
         assert create_body["run"]["finish_reason"] == "mock_completed"
+        assert (
+            create_body["run"]["generation_template_id"]
+            == create_body["prompt_package"]["generation_template_id"]
+        )
         assert create_body["run"]["retrieval_confidence_status"] == "answerable"
         assert create_body["run"]["citation_readiness_status"] == "warning"
         assert create_body["run"]["response_metadata"]["answer_quality"]["status"] == "passed"
@@ -362,6 +366,10 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert create_body["run"]["guardrail_metadata"]["answer_quality_status"] == "passed"
         assert "[RCP-001]" in create_body["run"]["answer_text"]
         assert create_body["prompt_package"]["messages"][0]["role"] == "system"
+        assert create_body["prompt_package"]["template_key"] == "grounded_answer"
+        assert create_body["prompt_package"]["generation_template"]["template_key"] == (
+            "grounded_answer"
+        )
         assert create_body["prompt_package"]["blocked"] is False
         assert create_body["citations"][0]["citation_key"] == "RCP-001"
         assert create_body["citations"][0]["was_cited"] is True
@@ -522,6 +530,9 @@ def test_generation_prompt_preview_api_returns_messages_without_creating_run(
         assert prompt_package["messages"][0]["role"] == "system"
         assert prompt_package["messages"][1]["role"] == "user"
         assert prompt_package["response_language"] == "ko"
+        assert prompt_package["template_key"] == "grounded_answer"
+        assert prompt_package["output_format"] == "markdown"
+        assert prompt_package["generation_template"]["template_key"] == "grounded_answer"
         assert prompt_package["blocked"] is False
         assert prompt_package["block_reason"] is None
         assert prompt_package["citation_keys"] == ["RCP-001"]

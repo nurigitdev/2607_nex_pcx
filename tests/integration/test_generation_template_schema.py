@@ -2,6 +2,11 @@ import pytest
 from psycopg import errors
 
 from app.core.database import connect, fetch_one
+from app.core.generation_templates import (
+    get_default_generation_template,
+    get_generation_template_by_key,
+    list_generation_templates,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -70,6 +75,76 @@ def test_generation_templates_seed_default_set(migrated_database_url: str) -> No
     assert default_template["section_schema"][0]["key"] == "answer"
     assert default_template["style_guidance"]["tone"] == "concise"
     assert default_template["citation_policy"]["required"] is True
+
+
+def test_generation_template_repository_reads_seeded_templates(
+    migrated_database_url: str,
+) -> None:
+    templates = list_generation_templates(migrated_database_url)
+    default_template = get_default_generation_template(migrated_database_url)
+    report_template = get_generation_template_by_key(migrated_database_url, " REPORT ")
+
+    assert len(templates) >= 5
+    assert default_template is not None
+    assert default_template.template_key == "grounded_answer"
+    assert default_template.is_default is True
+    assert report_template is not None
+    assert report_template.template_key == "report"
+    assert report_template.document_type == "report"
+    assert report_template.section_schema[0]["key"] == "title"
+
+
+def test_generation_template_repository_hides_inactive_templates_by_default(
+    migrated_database_url: str,
+) -> None:
+    with connect(migrated_database_url) as conn:
+        row = conn.execute("""
+            INSERT INTO generation_templates (
+                template_key,
+                template_name,
+                document_type,
+                section_schema,
+                system_instruction,
+                is_active
+            )
+            VALUES (
+                'inactive_repository_template',
+                'Inactive Repository Template',
+                'summary',
+                '[]'::jsonb,
+                'inactive repository smoke',
+                false
+            )
+            ON CONFLICT (template_key) DO UPDATE
+            SET is_active = false,
+                updated_at = now()
+            RETURNING template_key
+            """).fetchone()
+        conn.commit()
+    assert row is not None
+
+    hidden = get_generation_template_by_key(
+        migrated_database_url,
+        "inactive_repository_template",
+    )
+    visible = get_generation_template_by_key(
+        migrated_database_url,
+        "inactive_repository_template",
+        include_inactive=True,
+    )
+    active_keys = {
+        template.template_key for template in list_generation_templates(migrated_database_url)
+    }
+    all_keys = {
+        template.template_key
+        for template in list_generation_templates(migrated_database_url, include_inactive=True)
+    }
+
+    assert hidden is None
+    assert visible is not None
+    assert visible.is_active is False
+    assert "inactive_repository_template" not in active_keys
+    assert "inactive_repository_template" in all_keys
 
 
 @pytest.mark.parametrize(

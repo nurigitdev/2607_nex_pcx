@@ -15,6 +15,7 @@ from app.core.generation_prompts import (
     InvalidGenerationPromptError,
     build_generation_prompt_package,
 )
+from app.core.generation_templates import GenerationTemplateRecord
 from app.core.retrieval_confidence import (
     RETRIEVAL_CONFIDENCE_ANSWERABLE,
     RETRIEVAL_CONFIDENCE_LOW,
@@ -31,6 +32,33 @@ from app.core.retrieval_context import (
 from app.core.search_logs import SearchLogDetailRecord, SearchLogRecord
 
 NOW = datetime(2026, 7, 26, 9, 0, tzinfo=UTC)
+
+
+def _report_template() -> GenerationTemplateRecord:
+    return GenerationTemplateRecord(
+        generation_template_id=22,
+        template_key="report",
+        template_name="보고서 초안",
+        template_version="v1",
+        document_type="report",
+        language="ko",
+        output_format="markdown",
+        section_schema=(
+            {"key": "overview", "heading": "요약", "required": True},
+            {"key": "findings", "heading": "주요 내용", "required": True},
+            {"key": "evidence", "heading": "근거", "required": True},
+        ),
+        system_instruction="검색 근거를 바탕으로 내부 보고서 형식의 Markdown 초안을 작성한다.",
+        user_instruction_suffix="각 주요 주장에는 citation key를 붙인다.",
+        style_guidance={"tone": "formal", "audience": "manager"},
+        citation_policy={"required": True, "placement": "per_section"},
+        is_default=False,
+        is_active=True,
+        created_by=None,
+        created_by_user_id=None,
+        created_at=None,
+        updated_at=None,
+    )
 
 
 def _search_log(query_text: str = "사내 보안 규정은 무엇인가?") -> SearchLogDetailRecord:
@@ -190,6 +218,12 @@ def test_build_generation_prompt_package_returns_openai_messages() -> None:
 
     assert package.prompt_version == DEFAULT_GENERATION_PROMPT_VERSION
     assert package.response_language == "ko"
+    assert package.generation_template_id is None
+    assert package.template_key == "grounded_answer"
+    assert package.template_version == "v1"
+    assert package.document_type == "grounded_answer"
+    assert package.output_format == "markdown"
+    assert package.template_snapshot["template_key"] == "grounded_answer"
     assert package.blocked is False
     assert package.citation_keys == ("RCP-001",)
     assert package.search_log_id == 77
@@ -199,19 +233,44 @@ def test_build_generation_prompt_package_returns_openai_messages() -> None:
     assert package.openai_messages[0]["role"] == "system"
     assert package.openai_messages[1]["role"] == "user"
     assert "Use citation keys such as [RCP-001]" in package.messages[0].content
+    assert "Generation template:" in package.messages[0].content
+    assert "template_key: grounded_answer" in package.messages[0].content
     assert "사내 보안 규정은 계정 공유를 금지" in package.messages[1].content
     assert "citations: RCP-001" in package.messages[1].content
 
 
+def test_build_generation_prompt_package_injects_custom_template_snapshot() -> None:
+    default_package = build_generation_prompt_package(_package())
+    report_package = build_generation_prompt_package(
+        _package(),
+        generation_template=_report_template(),
+    )
+
+    assert report_package.generation_template_id == 22
+    assert report_package.template_key == "report"
+    assert report_package.template_name == "보고서 초안"
+    assert report_package.document_type == "report"
+    assert report_package.output_format == "markdown"
+    assert report_package.template_snapshot["section_schema"][1]["key"] == "findings"
+    assert "template_key: report" in report_package.messages[0].content
+    assert "Template-specific requirement:" in report_package.messages[1].content
+    assert "각 주요 주장에는 citation key" in report_package.messages[1].content
+    assert report_package.prompt_hash != default_package.prompt_hash
+    assert report_package.context_hash == default_package.context_hash
+
+
 def test_build_generation_prompt_package_blocks_low_confidence_context() -> None:
     prompt_package = build_generation_prompt_package(
-        _package(confidence_status=RETRIEVAL_CONFIDENCE_LOW)
+        _package(confidence_status=RETRIEVAL_CONFIDENCE_LOW),
+        generation_template=_report_template(),
     )
 
     assert prompt_package.blocked is True
     assert prompt_package.block_reason == GENERATION_BLOCK_LOW_CONFIDENCE
+    assert prompt_package.template_key == "report"
     assert prompt_package.context_text == ""
     assert "Generation is blocked before LLM execution." in prompt_package.messages[1].content
+    assert "template_key: report" in prompt_package.messages[1].content
     assert "unsupported context" in prompt_package.messages[1].content
 
 
