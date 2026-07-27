@@ -45,9 +45,7 @@ DIRECT_GENERATION_QUERY_ORCHESTRATOR_DOC_PATH = (
     PROJECT_ROOT / "docs" / "direct_generation_query_orchestrator_api.md"
 )
 DIRECT_GENERATION_UI_DOC_PATH = PROJECT_ROOT / "docs" / "direct_generation_ui_mvp.md"
-GENERATION_TEMPLATE_STRATEGY_DOC_PATH = (
-    PROJECT_ROOT / "docs" / "generation_template_strategy.md"
-)
+GENERATION_TEMPLATE_STRATEGY_DOC_PATH = PROJECT_ROOT / "docs" / "generation_template_strategy.md"
 
 
 def _read(path: Path) -> str:

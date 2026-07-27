@@ -294,4 +294,32 @@ def test_generation_executor_helpers_handle_empty_and_missing_metadata() -> None
 
     assert _estimate_token_count("  \n ") == 0
     assert _retrieval_confidence_status(no_confidence_package) == RETRIEVAL_CONFIDENCE_ANSWERABLE
-    assert _mock_answer(missing_citation_package) == MOCK_NO_ANSWER_TEXT
+    prompt_package = build_generation_prompt_package(missing_citation_package)
+    assert _mock_answer(missing_citation_package, prompt_package) == MOCK_NO_ANSWER_TEXT
+
+
+@pytest.mark.parametrize(
+    ("document_type", "expected_heading"),
+    (
+        ("proposal", "## 제안 목적"),
+        ("summary", "## 핵심 요약"),
+        ("meeting_minutes", "## 안건"),
+    ),
+)
+def test_mock_answer_shapes_specialized_template_document_types(
+    document_type: str,
+    expected_heading: str,
+) -> None:
+    package = _package()
+    template = replace(
+        _report_template(),
+        template_key=document_type,
+        template_name=document_type,
+        document_type=document_type,
+    )
+    prompt_package = build_generation_prompt_package(package, generation_template=template)
+
+    answer = _mock_answer(package, prompt_package)
+
+    assert expected_heading in answer
+    assert "[RCP-001]" in answer

@@ -418,15 +418,18 @@ def test_remote_generation_run_api_creates_remote_generation_run(
         database_url: str,
         package: object,
         *,
+        generation_template_key: str | None = None,
         api_key: str | None = None,
         created_by: str | None = None,
         created_by_user_id: int | None = None,
     ):
+        assert generation_template_key is None
         assert api_key == "pytest-remote-secret"
         assert created_by == "api_remote_generation"
         return execute_remote_generation_run(
             database_url,
             package,  # type: ignore[arg-type]
+            generation_template_key=generation_template_key,
             provider_client=fake_provider,
             api_key=api_key,
             created_by=created_by,
@@ -813,14 +816,17 @@ def test_generation_provider_metric_snapshot_api_groups_provider_modes(
             database_url: str,
             package: object,
             *,
+            generation_template_key: str | None = None,
             api_key: str | None = None,
             created_by: str | None = None,
             created_by_user_id: int | None = None,
         ):
+            assert generation_template_key is None
             assert api_key == "pytest-metrics-secret"
             return execute_remote_generation_run(
                 database_url,
                 package,  # type: ignore[arg-type]
+                generation_template_key=generation_template_key,
                 provider_client=fake_provider,
                 api_key=api_key,
                 created_by=created_by,
@@ -978,15 +984,18 @@ def test_generation_run_ui_creates_remote_run_with_runtime_feedback(
         database_url: str,
         package: object,
         *,
+        generation_template_key: str | None = None,
         api_key: str | None = None,
         created_by: str | None = None,
         created_by_user_id: int | None = None,
     ):
+        assert generation_template_key is None
         assert api_key == "pytest-ui-secret"
         assert created_by == "generation_ui_remote"
         return execute_remote_generation_run(
             database_url,
             package,  # type: ignore[arg-type]
+            generation_template_key=generation_template_key,
             provider_client=fake_provider,
             api_key=api_key,
             created_by=created_by,
