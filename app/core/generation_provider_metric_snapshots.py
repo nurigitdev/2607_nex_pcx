@@ -46,10 +46,24 @@ class GenerationProviderMetricSnapshotSummary:
 
 
 @dataclass(frozen=True)
+class GenerationProviderMetricModeSummary:
+    provider_mode: str
+    run_count: int
+    metric_present_count: int
+    succeeded_count: int
+    failed_count: int
+    no_answer_count: int
+    total_token_count: int
+    average_elapsed_ms: float | None
+    average_provider_elapsed_ms: float | None
+
+
+@dataclass(frozen=True)
 class GenerationProviderMetricSnapshot:
     generated_at: datetime
     limit: int
     summary: GenerationProviderMetricSnapshotSummary
+    mode_summaries: tuple[GenerationProviderMetricModeSummary, ...]
     runs: tuple[GenerationProviderMetricRunSnapshot, ...]
 
 
@@ -151,6 +165,30 @@ def _summary(
     )
 
 
+def _mode_summaries(
+    runs: tuple[GenerationProviderMetricRunSnapshot, ...],
+) -> tuple[GenerationProviderMetricModeSummary, ...]:
+    provider_modes = sorted({run.provider_mode for run in runs})
+    summaries: list[GenerationProviderMetricModeSummary] = []
+    for provider_mode in provider_modes:
+        mode_runs = tuple(run for run in runs if run.provider_mode == provider_mode)
+        summary = _summary(mode_runs)
+        summaries.append(
+            GenerationProviderMetricModeSummary(
+                provider_mode=provider_mode,
+                run_count=summary.run_count,
+                metric_present_count=summary.metric_present_count,
+                succeeded_count=summary.succeeded_count,
+                failed_count=summary.failed_count,
+                no_answer_count=summary.no_answer_count,
+                total_token_count=summary.total_token_count,
+                average_elapsed_ms=summary.average_elapsed_ms,
+                average_provider_elapsed_ms=summary.average_provider_elapsed_ms,
+            )
+        )
+    return tuple(summaries)
+
+
 def get_generation_provider_metric_snapshot(
     database_url: str,
     *,
@@ -187,6 +225,7 @@ def get_generation_provider_metric_snapshot(
         generated_at=datetime.now(UTC),
         limit=validated_limit,
         summary=_summary(runs),
+        mode_summaries=_mode_summaries(runs),
         runs=runs,
     )
 
@@ -207,6 +246,20 @@ def generation_provider_metric_snapshot_payload(
             "average_elapsed_ms": snapshot.summary.average_elapsed_ms,
             "average_provider_elapsed_ms": snapshot.summary.average_provider_elapsed_ms,
         },
+        "mode_summaries": [
+            {
+                "provider_mode": summary.provider_mode,
+                "run_count": summary.run_count,
+                "metric_present_count": summary.metric_present_count,
+                "succeeded_count": summary.succeeded_count,
+                "failed_count": summary.failed_count,
+                "no_answer_count": summary.no_answer_count,
+                "total_token_count": summary.total_token_count,
+                "average_elapsed_ms": summary.average_elapsed_ms,
+                "average_provider_elapsed_ms": summary.average_provider_elapsed_ms,
+            }
+            for summary in snapshot.mode_summaries
+        ],
         "runs": [
             {
                 "generation_run_id": run.generation_run_id,

@@ -25,6 +25,8 @@ The response contains:
 
 - `summary`: run count, metric-present count, succeeded/failed/no-answer count,
   total tokens, average elapsed, and average provider elapsed
+- `mode_summaries`: the same operational counters grouped by provider mode, so
+  mock and `remote_openai_compatible` generation runs can be compared separately
 - `runs`: recent generation run metric rows
 
 Older rows without `provider_metrics` are still included with

@@ -40,7 +40,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.48" in srs_text
+    assert "Software Requirements Specification v1.49" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -63,6 +63,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-067" in srs_text
     assert "FR-068" in srs_text
     assert "FR-069" in srs_text
+    assert "FR-070" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -72,6 +73,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "Remote vLLM generation executor foundation" in srs_text
     assert "Remote generation run API" in srs_text
     assert "Remote generation run UI controls" in srs_text
+    assert "Generation provider metrics mode breakdown" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -165,6 +167,8 @@ def test_generation_provider_metric_snapshot_doc_defines_admin_api() -> None:
     assert "`GET /api/admin/generation-provider-metrics/snapshot`" in snapshot_text
     assert "`generation_runs.response_metadata.provider_metrics`" in snapshot_text
     assert "`metric_present=false`" in snapshot_text
+    assert "`mode_summaries`" in snapshot_text
+    assert "`remote_openai_compatible`" in snapshot_text
 
 
 def test_generation_provider_metric_snapshot_ui_doc_defines_operator_panel() -> None:
@@ -173,6 +177,8 @@ def test_generation_provider_metric_snapshot_ui_doc_defines_operator_panel() -> 
     assert "Generation Provider Metric Snapshot UI" in snapshot_ui_text
     assert "`GET /admin/generation-provider-metrics`" in snapshot_ui_text
     assert "Summary cards" in snapshot_ui_text
+    assert "provider mode breakdown table" in snapshot_ui_text
+    assert "`remote_openai_compatible`" in snapshot_ui_text
     assert "Raw snapshot JSON" in snapshot_ui_text
 
 

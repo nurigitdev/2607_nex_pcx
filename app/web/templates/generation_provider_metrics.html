@@ -77,6 +77,51 @@
   </div>
 </section>
 
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-generation-provider-metrics-mode-breakdown>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation_metrics.mode_breakdown") }}</h2>
+      <div class="text-secondary">{{ t("generation_metrics.mode_breakdown_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("generation_metrics.provider_mode") }}</th>
+          <th class="text-end">{{ t("generation_metrics.run_count") }}</th>
+          <th class="text-end">{{ t("generation_metrics.metric_present") }}</th>
+          <th class="text-end">{{ t("generation_metrics.succeeded_failed") }}</th>
+          <th class="text-end">{{ t("generation_metrics.no_answer") }}</th>
+          <th class="text-end">{{ t("generation_metrics.total_tokens") }}</th>
+          <th class="text-end">{{ t("generation_metrics.avg_elapsed") }}</th>
+          <th class="text-end">{{ t("generation_metrics.avg_provider_elapsed") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for mode_summary in snapshot.mode_summaries %}
+        <tr>
+          <td><span class="badge text-bg-light border">{{ mode_summary.provider_mode }}</span></td>
+          <td class="text-end">{{ mode_summary.run_count }}</td>
+          <td class="text-end">{{ mode_summary.metric_present_count }}</td>
+          <td class="text-end">{{ mode_summary.succeeded_count }} / {{ mode_summary.failed_count }}</td>
+          <td class="text-end">{{ mode_summary.no_answer_count }}</td>
+          <td class="text-end">{{ mode_summary.total_token_count }}</td>
+          <td class="text-end">{{ mode_summary.average_elapsed_ms if mode_summary.average_elapsed_ms is not none else "-" }} ms</td>
+          <td class="text-end">{{ mode_summary.average_provider_elapsed_ms if mode_summary.average_provider_elapsed_ms is not none else "-" }} ms</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-center text-secondary py-4" colspan="8">
+            {{ t("generation_metrics.no_mode_summaries") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="metric-card bg-white p-0 overflow-hidden mb-4" data-generation-provider-metrics-runs>
   <div class="dashboard-panel-header p-3">
     <div>

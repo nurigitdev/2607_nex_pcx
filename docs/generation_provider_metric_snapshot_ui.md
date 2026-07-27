@@ -19,6 +19,9 @@ The UI shows:
 
 - Summary cards for run count, metrics-present count, success/failure,
   no-answer, total tokens, average elapsed, and average provider elapsed.
+- A provider mode breakdown table separating mock and
+  `remote_openai_compatible` generation runs by success/failure, no-answer,
+  token, elapsed, and provider elapsed metrics.
 - A recent run table linking each generation run to its detail page.
 - Raw snapshot JSON for operator evidence and troubleshooting.
 

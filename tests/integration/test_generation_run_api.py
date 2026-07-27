@@ -526,6 +526,9 @@ def test_generation_provider_metric_snapshot_api_reads_mock_persisted_metrics(
         assert snapshot_response.status_code == 200
         assert snapshot_body["summary"]["run_count"] >= 1
         assert snapshot_body["summary"]["metric_present_count"] >= 1
+        assert any(
+            summary["provider_mode"] == "mock" for summary in snapshot_body["mode_summaries"]
+        )
         assert matching_runs
         assert matching_runs[0]["provider_name"] == "mock_qwen36_27b_nvfp4"
         assert matching_runs[0]["metric_present"] is True
@@ -537,6 +540,86 @@ def test_generation_provider_metric_snapshot_api_reads_mock_persisted_metrics(
         )
         assert invalid_limit_response.status_code == 400
     finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_generation_provider_metric_snapshot_api_groups_provider_modes(
+    monkeypatch: pytest.MonkeyPatch,
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    provider_name = f"pytest_remote_generation_metrics_{search_log_id}"
+    app = create_app(
+        Settings(
+            database_url=migrated_database_url,
+            remote_generation_provider_api_key="pytest-metrics-secret",
+        )
+    )
+
+    try:
+        with TestClient(app) as client:
+            mock_response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/mock",
+                params={"include_neighbors": "false"},
+            )
+
+        seed_dgx_vllm_generation_provider_config(
+            migrated_database_url,
+            provider_name=provider_name,
+            is_default=True,
+        )
+        fake_provider = _FakeRemoteGenerationProvider(_remote_response(provider_name))
+
+        def fake_execute_remote_generation_run(
+            database_url: str,
+            package: object,
+            *,
+            api_key: str | None = None,
+            created_by: str | None = None,
+            created_by_user_id: int | None = None,
+        ):
+            assert api_key == "pytest-metrics-secret"
+            return execute_remote_generation_run(
+                database_url,
+                package,  # type: ignore[arg-type]
+                provider_client=fake_provider,
+                api_key=api_key,
+                created_by=created_by,
+                created_by_user_id=created_by_user_id,
+            )
+
+        monkeypatch.setattr(
+            "app.main.execute_remote_generation_run",
+            fake_execute_remote_generation_run,
+        )
+
+        with TestClient(app) as client:
+            remote_response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/remote",
+                params={"include_neighbors": "false"},
+            )
+            snapshot_response = client.get(
+                "/api/admin/generation-provider-metrics/snapshot",
+                params={"limit": "2"},
+            )
+
+        snapshot_body = snapshot_response.json()
+        summaries = {
+            summary["provider_mode"]: summary for summary in snapshot_body["mode_summaries"]
+        }
+        assert mock_response.status_code == 201
+        assert remote_response.status_code == 201
+        assert snapshot_response.status_code == 200
+        assert snapshot_body["summary"]["run_count"] == 2
+        assert summaries["mock"]["run_count"] == 1
+        assert summaries["mock"]["succeeded_count"] == 1
+        assert summaries["remote_openai_compatible"]["run_count"] == 1
+        assert summaries["remote_openai_compatible"]["metric_present_count"] == 1
+        assert summaries["remote_openai_compatible"]["total_token_count"] == 109
+        assert summaries["remote_openai_compatible"]["average_provider_elapsed_ms"] == 68
+        assert "pytest-metrics-secret" not in snapshot_response.text
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
         _cleanup_file(migrated_database_url, file_id)
 
 
@@ -566,6 +649,8 @@ def test_generation_provider_metric_snapshot_ui_shows_recent_metrics(
         assert page_response.status_code == 200
         assert "생성 Provider Metrics" in page_response.text
         assert "data-generation-provider-metrics-summary" in page_response.text
+        assert "data-generation-provider-metrics-mode-breakdown" in page_response.text
+        assert "Provider Mode Breakdown" in page_response.text
         assert "data-generation-provider-metrics-runs" in page_response.text
         assert "mock_qwen36_27b_nvfp4" in page_response.text
         assert "mock_completed" in page_response.text
