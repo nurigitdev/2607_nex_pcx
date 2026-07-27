@@ -391,6 +391,11 @@ from app.core.generation_runs import (
     list_generation_run_history,
     seed_dgx_vllm_generation_provider_config,
 )
+from app.core.generation_template_completeness import (
+    GenerationTemplateCompletenessAssessment,
+    assess_generation_template_completeness,
+    generation_template_completeness_payload,
+)
 from app.core.generation_templates import (
     GenerationTemplateRecord,
     get_default_generation_template,
@@ -4397,6 +4402,7 @@ def generation_provider_config_payload(
 
 
 def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
+    template_completeness = assess_generation_template_completeness(run)
     return {
         "generation_run_id": run.generation_run_id,
         "search_log_id": run.search_log_id,
@@ -4423,6 +4429,7 @@ def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
         "request_metadata": run.request_metadata,
         "response_metadata": run.response_metadata,
         "guardrail_metadata": run.guardrail_metadata,
+        "template_completeness": generation_template_completeness_payload(template_completeness),
         "error_message": run.error_message,
         "created_by": run.created_by,
         "created_by_user_id": run.created_by_user_id,
@@ -12108,6 +12115,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/generation/runs/{generation_run_id}/template-completeness")
+    def api_get_generation_run_template_completeness(generation_run_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            run = get_generation_run(settings.database_url, generation_run_id)
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if run is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generation run not found.",
+            )
+
+        assessment = assess_generation_template_completeness(run)
+        return JSONResponse(
+            content={
+                "generation_run_id": generation_run_id,
+                "template_completeness": generation_template_completeness_payload(assessment),
+            }
+        )
+
     @app.get("/api/generation/runs/{generation_run_id}/export/markdown")
     def api_export_generation_run_markdown(generation_run_id: int) -> Response:
         if not settings.database_url:
@@ -14750,6 +14783,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         prompt_preview: GenerationPromptPackage | None = None
         selected_run: GenerationRunRecord | None = None
         selected_citations: tuple[GenerationRunCitationRecord, ...] = ()
+        selected_template_completeness: GenerationTemplateCompletenessAssessment | None = None
         default_generation_provider: dict[str, object] | None = None
         default_generation_runtime: dict[str, object] | None = None
         remote_generation_available = False
@@ -14822,6 +14856,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if selected_run is None:
                         error_message = "Generation run not found."
                     else:
+                        selected_template_completeness = assess_generation_template_completeness(
+                            selected_run
+                        )
                         selected_citations = list_generation_run_citations(
                             settings.database_url,
                             selected_run.generation_run_id,
@@ -14883,6 +14920,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 prompt_preview=prompt_preview,
                 selected_run=selected_run,
                 selected_citations=selected_citations,
+                selected_template_completeness=selected_template_completeness,
                 default_generation_provider=default_generation_provider,
                 default_generation_runtime=default_generation_runtime,
                 remote_generation_available=remote_generation_available,
@@ -15203,6 +15241,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> HTMLResponse:
         selected_run: GenerationRunRecord | None = None
         selected_citations: tuple[GenerationRunCitationRecord, ...] = ()
+        selected_template_completeness: GenerationTemplateCompletenessAssessment | None = None
         error_message: str | None = None
 
         if not settings.database_url:
@@ -15213,6 +15252,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if selected_run is None:
                     error_message = "Generation run not found."
                 else:
+                    selected_template_completeness = assess_generation_template_completeness(
+                        selected_run
+                    )
                     selected_citations = list_generation_run_citations(
                         settings.database_url,
                         selected_run.generation_run_id,
@@ -15228,6 +15270,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 database_configured=bool(settings.database_url),
                 selected_run=selected_run,
                 selected_citations=selected_citations,
+                selected_template_completeness=selected_template_completeness,
                 error_message=error_message,
             ),
         )

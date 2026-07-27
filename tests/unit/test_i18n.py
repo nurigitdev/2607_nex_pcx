@@ -139,6 +139,14 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert korean("nav.generation_metrics") == "생성 Metrics"
     assert english("generation_metrics.title") == "Generation Provider Metrics"
     assert korean("generation_metrics.recent_runs") == "최근 생성 실행"
+    assert korean("generation.template_completeness") == "Template 완성도"
+    assert english("generation.template_completeness") == "Template Completeness"
+    assert korean("generation.template_completeness_reason_missing_required_section") == (
+        "필수 section 누락"
+    )
+    assert english("generation.template_completeness_reason_missing_section_citation") == (
+        "Section citation missing"
+    )
 
 
 def test_translator_falls_back_to_key_when_missing() -> None:

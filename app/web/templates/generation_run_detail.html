@@ -37,6 +37,9 @@
 {% set answer_quality_missing = answer_quality.get("missing_citation_keys") or [] %}
 {% set answer_quality_unrecognized = answer_quality.get("unrecognized_citation_keys") or [] %}
 {% set answer_quality_coverage = answer_quality.get("citation_coverage_percent") %}
+{% set template_completeness = selected_template_completeness %}
+{% set template_completeness_status = template_completeness.status if template_completeness else "not_evaluated" %}
+{% set template_completeness_status_class = "success" if template_completeness_status == "passed" else ("warning" if template_completeness_status == "warning" else ("danger" if template_completeness_status == "failed" else "secondary")) %}
 <section class="document-detail-grid mb-4" data-generation-run-detail>
   <div class="metric-card bg-white p-3">
     <div class="metric-label">{{ t("generation.status") }}</div>
@@ -153,6 +156,133 @@
     </div>
   </div>
 </section>
+
+{% if template_completeness %}
+<section class="metric-card bg-white p-3 mb-4" data-generation-template-completeness-detail>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation.template_completeness") }}</h2>
+      <div class="text-secondary small">{{ t("generation.template_completeness_detail_help") }}</div>
+    </div>
+    <span class="badge text-bg-{{ template_completeness_status_class }}">
+      {{ t("generation.template_completeness_status_" ~ template_completeness_status) }}
+    </span>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3">
+      <div class="metric-label">{{ t("generation.template_required_section_coverage") }}</div>
+      <div class="generation-detail-compact-value">
+        {% if template_completeness.required_section_coverage_percent is not none %}
+        {{ "%.2f"|format(template_completeness.required_section_coverage_percent) }}%
+        {% else %}
+        -
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="metric-label">{{ t("generation.template_citation_section_coverage") }}</div>
+      <div class="generation-detail-compact-value">
+        {% if template_completeness.required_section_citation_coverage_percent is not none %}
+        {{ "%.2f"|format(template_completeness.required_section_citation_coverage_percent) }}%
+        {% else %}
+        -
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="metric-label">{{ t("generation.template_required_sections") }}</div>
+      <div class="generation-detail-compact-value">
+        {{ template_completeness.present_required_section_count }}/{{ template_completeness.required_section_count }}
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="metric-label">{{ t("generation.template_cited_sections") }}</div>
+      <div class="generation-detail-compact-value">
+        {{ template_completeness.cited_required_section_count }}/{{ template_completeness.citation_required_section_count }}
+      </div>
+    </div>
+  </div>
+  <div class="table-responsive mb-3">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th scope="col">{{ t("generation.template_section") }}</th>
+          <th scope="col">{{ t("generation.template_required") }}</th>
+          <th scope="col">{{ t("generation.template_present") }}</th>
+          <th scope="col">{{ t("generation.template_citation_required") }}</th>
+          <th scope="col">{{ t("generation.template_cited") }}</th>
+          <th scope="col">{{ t("generation.template_section_citations") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for check in template_completeness.section_checks %}
+        <tr>
+          <td>
+            <div>{{ check.heading }}</div>
+            <code class="small">{{ check.key }}</code>
+          </td>
+          <td>
+            {% if check.required %}
+            <span class="badge text-bg-primary">{{ t("common.yes") }}</span>
+            {% else %}
+            <span class="badge text-bg-light border">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if check.present %}
+            <span class="badge text-bg-success">{{ t("common.yes") }}</span>
+            {% elif not check.required %}
+            <span class="badge text-bg-light border">{{ t("common.no") }}</span>
+            {% else %}
+            <span class="badge text-bg-danger">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if check.citation_required %}
+            <span class="badge text-bg-primary">{{ t("common.yes") }}</span>
+            {% else %}
+            <span class="badge text-bg-light border">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if check.cited %}
+            <span class="badge text-bg-success">{{ t("common.yes") }}</span>
+            {% elif not check.citation_required %}
+            <span class="badge text-bg-light border">{{ t("common.no") }}</span>
+            {% else %}
+            <span class="badge text-bg-warning">{{ t("common.no") }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="d-flex flex-wrap gap-2">
+              {% for citation_key in check.citation_keys %}
+              <span class="badge text-bg-light border">{{ citation_key }}</span>
+              {% else %}
+              <span class="text-secondary small">-</span>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-secondary p-3">{{ t("generation.template_completeness_no_sections") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    {% for reason in template_completeness.reason_codes %}
+    <span class="badge text-bg-light border">
+      {{ t("generation.template_completeness_reason_" ~ reason) }}
+      <code class="text-reset">{{ reason }}</code>
+    </span>
+    {% else %}
+    <span class="text-secondary small">{{ t("generation.template_completeness_no_reasons") }}</span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 
 <section class="metric-card bg-white p-3 mb-4">
   <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">

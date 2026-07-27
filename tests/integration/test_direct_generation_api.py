@@ -272,6 +272,11 @@ def test_direct_generation_query_api_searches_packages_and_creates_mock_run(
         assert body["generation"]["run"]["response_metadata"]["template"]["template_key"] == (
             "report"
         )
+        assert body["generation"]["run"]["template_completeness"]["status"] == "passed"
+        assert (
+            body["generation"]["run"]["template_completeness"]["required_section_coverage_percent"]
+            == 100.0
+        )
         assert body["generation"]["prompt_package"]["template_key"] == "report"
         assert body["generation"]["run"]["created_by"] == "api_direct_generation"
         assert body["generation"]["run"]["created_by_user_id"] == ids["alice.member"]
@@ -366,6 +371,8 @@ def test_direct_generation_ui_runs_query_and_displays_result(
         assert "data-generation-run-result" in result_response.text
         assert "RCP-001" in result_response.text
         assert "답변 품질" in result_response.text
+        assert "Template 완성도" in result_response.text
+        assert "data-generation-template-completeness" in result_response.text
         assert "Markdown 내보내기" in result_response.text
         assert "/export/markdown" in result_response.text
         assert "report" in result_response.text

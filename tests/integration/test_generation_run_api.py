@@ -343,16 +343,26 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
             create_body = create_response.json()
             run_id = create_body["run"]["generation_run_id"]
             read_response = client.get(f"/api/generation/runs/{run_id}")
+            completeness_response = client.get(
+                f"/api/generation/runs/{run_id}/template-completeness"
+            )
             export_response = client.get(
                 f"/api/generation/runs/{run_id}/export/markdown",
             )
             invalid_response = client.get("/api/generation/runs/0")
+            invalid_completeness_response = client.get(
+                "/api/generation/runs/0/template-completeness"
+            )
             missing_response = client.post("/api/search/logs/999999999/generation-runs/mock")
+            missing_completeness_response = client.get(
+                "/api/generation/runs/999999999/template-completeness"
+            )
             missing_export_response = client.get(
                 "/api/generation/runs/999999999/export/markdown",
             )
 
         read_body = read_response.json()
+        completeness_body = completeness_response.json()
         assert create_response.status_code == 201
         assert create_body["provider"]["provider_mode"] == "mock"
         assert create_body["run"]["search_log_id"] == search_log_id
@@ -369,6 +379,10 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
             create_body["run"]["response_metadata"]["answer_quality"]["citation_coverage_percent"]
             == 100.0
         )
+        assert (
+            create_body["run"]["template_completeness"]["contract_version"]
+            == "generation_template_completeness_v1"
+        )
         assert create_body["run"]["guardrail_metadata"]["answer_quality_status"] == "passed"
         assert "[RCP-001]" in create_body["run"]["answer_text"]
         assert create_body["prompt_package"]["messages"][0]["role"] == "system"
@@ -381,7 +395,15 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert create_body["citations"][0]["was_cited"] is True
         assert read_response.status_code == 200
         assert read_body["run"]["generation_run_id"] == run_id
+        assert read_body["run"]["template_completeness"]["template_key"] == "grounded_answer"
         assert read_body["citations"][0]["source_label"].endswith("/ p.2")
+        assert completeness_response.status_code == 200
+        assert completeness_body["generation_run_id"] == run_id
+        assert (
+            completeness_body["template_completeness"]["contract_version"]
+            == "generation_template_completeness_v1"
+        )
+        assert completeness_body["template_completeness"]["template_key"] == "grounded_answer"
         assert export_response.status_code == 200
         assert export_response.headers["content-type"].startswith("text/markdown")
         assert export_response.headers["content-disposition"] == (
@@ -395,7 +417,9 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert "## Raw Runtime Metadata" in export_response.text
         assert "grounded_answer" in export_response.text
         assert invalid_response.status_code == 400
+        assert invalid_completeness_response.status_code == 400
         assert missing_response.status_code == 404
+        assert missing_completeness_response.status_code == 404
         assert missing_export_response.status_code == 404
     finally:
         _cleanup_file(migrated_database_url, file_id)
@@ -616,6 +640,7 @@ def test_generation_run_api_returns_503_without_database() -> None:
         remote_create_response = client.post("/api/search/logs/1/generation-runs/remote")
         list_response = client.get("/api/generation/runs")
         read_response = client.get("/api/generation/runs/1")
+        completeness_response = client.get("/api/generation/runs/1/template-completeness")
         preview_response = client.get("/api/search/logs/1/generation-prompt/preview")
         metrics_response = client.get("/api/admin/generation-provider-metrics/snapshot")
 
@@ -623,6 +648,7 @@ def test_generation_run_api_returns_503_without_database() -> None:
     assert remote_create_response.status_code == 503
     assert list_response.status_code == 503
     assert read_response.status_code == 503
+    assert completeness_response.status_code == 503
     assert preview_response.status_code == 503
     assert metrics_response.status_code == 503
 
@@ -1119,12 +1145,16 @@ def test_generation_run_detail_ui_shows_prompt_metadata_and_citations(
         assert post_response.status_code == 303
         assert result_response.status_code == 200
         assert "data-generation-answer-quality" in result_response.text
+        assert "data-generation-template-completeness" in result_response.text
         assert "답변 품질" in result_response.text
+        assert "Template 완성도" in result_response.text
         assert "100.00%" in result_response.text
         assert detail_response.status_code == 200
         assert "생성 실행 상세" in detail_response.text
         assert "data-generation-answer-quality-detail" in detail_response.text
+        assert "data-generation-template-completeness-detail" in detail_response.text
         assert "기대 Citation Key" in detail_response.text
+        assert "필수 Section Coverage" in detail_response.text
         assert "Prompt Messages" in detail_response.text
         assert "Request Metadata" in detail_response.text
         assert "Response Metadata" in detail_response.text
