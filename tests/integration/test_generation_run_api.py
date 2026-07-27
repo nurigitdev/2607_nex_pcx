@@ -621,6 +621,9 @@ def test_generation_run_ui_loads_context_and_creates_mock_run(
         assert "Prompt Preview" in context_response.text
         assert "grounded_answer_v1" in context_response.text
         assert "Mock 생성" in context_response.text
+        assert "Remote vLLM Runtime" in context_response.text
+        assert "Remote vLLM 생성" in context_response.text
+        assert "Remote 실행 불가" in context_response.text
         assert post_response.status_code == 303
         assert "generation_run_id=" in post_response.headers["location"]
         assert detail_response.status_code == 200
@@ -631,6 +634,128 @@ def test_generation_run_ui_loads_context_and_creates_mock_run(
         assert "Citation Trace" in detail_response.text
         assert "RCP-001" in detail_response.text
     finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_generation_run_ui_creates_remote_run_with_runtime_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    provider_name = f"pytest_remote_generation_ui_{search_log_id}"
+    seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        is_default=True,
+    )
+    fake_provider = _FakeRemoteGenerationProvider(_remote_response(provider_name))
+
+    def fake_execute_remote_generation_run(
+        database_url: str,
+        package: object,
+        *,
+        api_key: str | None = None,
+        created_by: str | None = None,
+        created_by_user_id: int | None = None,
+    ):
+        assert api_key == "pytest-ui-secret"
+        assert created_by == "generation_ui_remote"
+        return execute_remote_generation_run(
+            database_url,
+            package,  # type: ignore[arg-type]
+            provider_client=fake_provider,
+            api_key=api_key,
+            created_by=created_by,
+            created_by_user_id=created_by_user_id,
+        )
+
+    monkeypatch.setattr(
+        "app.main.execute_remote_generation_run",
+        fake_execute_remote_generation_run,
+    )
+    app = create_app(
+        Settings(
+            database_url=migrated_database_url,
+            remote_generation_provider_api_key="pytest-ui-secret",
+        )
+    )
+
+    try:
+        with TestClient(app) as client:
+            context_response = client.get(
+                "/generation",
+                params={"search_log_id": search_log_id, "include_neighbors": "false"},
+            )
+            post_response = client.post(
+                "/generation/runs/remote",
+                data={
+                    "search_log_id": str(search_log_id),
+                    "max_context_chars": "4000",
+                    "max_items": "5",
+                },
+                follow_redirects=False,
+            )
+            detail_response = client.get(post_response.headers["location"])
+
+        assert context_response.status_code == 200
+        assert "Remote vLLM Runtime" in context_response.text
+        assert provider_name in context_response.text
+        assert "Remote 준비됨" in context_response.text
+        assert "env 설정됨" in context_response.text
+        assert "Remote vLLM 생성" in context_response.text
+        assert post_response.status_code == 303
+        assert "generation_status=remote_created" in post_response.headers["location"]
+        assert detail_response.status_code == 200
+        assert "Remote vLLM 생성 실행이 완료되었습니다." in detail_response.text
+        assert "remote vLLM 생성 API 응답입니다." in detail_response.text
+        assert provider_name in detail_response.text
+        assert "pytest-ui-secret" not in detail_response.text
+        assert len(fake_provider.requests) == 1
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_generation_run_ui_disables_remote_action_when_api_key_env_is_missing(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    provider_name = f"pytest_remote_generation_ui_missing_key_{search_log_id}"
+    seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        api_key_env="NEX_PCX_PYTEST_UI_MISSING_GENERATION_API_KEY",
+        is_default=True,
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            context_response = client.get(
+                "/generation",
+                params={"search_log_id": search_log_id, "include_neighbors": "false"},
+            )
+            post_response = client.post(
+                "/generation/runs/remote",
+                data={
+                    "search_log_id": str(search_log_id),
+                    "max_context_chars": "4000",
+                    "max_items": "5",
+                },
+                follow_redirects=False,
+            )
+            error_page_response = client.get(post_response.headers["location"])
+
+        assert context_response.status_code == 200
+        assert "Remote 실행 불가" in context_response.text
+        assert "env 누락" in context_response.text
+        assert "Remote 실행을 위해서는" in context_response.text
+        assert post_response.status_code == 303
+        assert "generation_error=" in post_response.headers["location"]
+        assert error_page_response.status_code == 200
+        assert "environment variable is not set" in error_page_response.text
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
         _cleanup_file(migrated_database_url, file_id)
 
 

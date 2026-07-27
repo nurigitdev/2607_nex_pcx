@@ -30,6 +30,7 @@ GENERATION_PROVIDER_RUNTIME_CONFIG_UI_DOC_PATH = (
 )
 GENERATION_REMOTE_EXECUTOR_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_executor.md"
 GENERATION_REMOTE_RUN_API_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_run_api.md"
+GENERATION_REMOTE_RUN_UI_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_run_ui.md"
 
 
 def _read(path: Path) -> str:
@@ -39,7 +40,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.47" in srs_text
+    assert "Software Requirements Specification v1.48" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -61,6 +62,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-066" in srs_text
     assert "FR-067" in srs_text
     assert "FR-068" in srs_text
+    assert "FR-069" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -69,6 +71,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "Generation provider runtime config UI" in srs_text
     assert "Remote vLLM generation executor foundation" in srs_text
     assert "Remote generation run API" in srs_text
+    assert "Remote generation run UI controls" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -243,3 +246,15 @@ def test_generation_remote_run_api_doc_defines_env_only_contract() -> None:
     assert "`runtime_options.api_key_env`" in api_text
     assert "environment-only" in api_text
     assert "`status=failed`" in api_text
+
+
+def test_generation_remote_run_ui_doc_defines_readiness_controls() -> None:
+    ui_text = _read(GENERATION_REMOTE_RUN_UI_DOC_PATH)
+
+    assert "Remote Generation Run UI Controls" in ui_text
+    assert "`GET /generation`" in ui_text
+    assert "`POST /generation/runs/remote`" in ui_text
+    assert "`Remote vLLM Runtime`" in ui_text
+    assert "`remote_openai_compatible`" in ui_text
+    assert "`runtime_options.api_key_env`" in ui_text
+    assert "Korean remains the default UI language" in ui_text

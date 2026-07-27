@@ -14311,6 +14311,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         prompt_preview: GenerationPromptPackage | None = None
         selected_run: GenerationRunRecord | None = None
         selected_citations: tuple[GenerationRunCitationRecord, ...] = ()
+        default_generation_provider: dict[str, object] | None = None
+        default_generation_runtime: dict[str, object] | None = None
+        remote_generation_available = False
         error_message = generation_error
 
         if not settings.database_url:
@@ -14318,6 +14321,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             try:
                 latest_logs = list_search_logs(settings.database_url, limit=12)
+                provider = get_default_generation_provider_config(settings.database_url)
+                if provider is not None:
+                    default_generation_provider = generation_provider_config_payload(provider)
+                    default_generation_runtime = generation_provider_runtime_config_payload(
+                        provider,
+                        settings,
+                    )
+                    remote_generation_available = (
+                        default_generation_runtime.get("valid") is True
+                        and default_generation_runtime.get("mode") == "remote_openai_compatible"
+                        and default_generation_runtime.get("api_key_configured") is not False
+                    )
                 if generation_run_id is not None:
                     selected_run = get_generation_run(settings.database_url, generation_run_id)
                     if selected_run is None:
@@ -14367,6 +14382,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 prompt_preview=prompt_preview,
                 selected_run=selected_run,
                 selected_citations=selected_citations,
+                default_generation_provider=default_generation_provider,
+                default_generation_runtime=default_generation_runtime,
+                remote_generation_available=remote_generation_available,
                 generation_status=generation_status or "",
                 error_message=error_message,
             ),
@@ -14413,6 +14431,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 redirect_params["generation_run_id"] = report.run.generation_run_id
                 redirect_params["generation_status"] = "created"
         except (
+            InvalidGenerationRunError,
+            InvalidRetrievalContextError,
+            InvalidSearchLogError,
+        ) as exc:
+            redirect_params["generation_error"] = str(exc)
+
+        return RedirectResponse(
+            _generation_redirect_url(redirect_params),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/generation/runs/remote")
+    def generation_remote_run_page(
+        search_log_id: int = Form(...),
+        max_context_chars: int = Form(DEFAULT_CONTEXT_CHAR_BUDGET),
+        include_neighbors: bool = Form(False),
+        max_items: int = Form(DEFAULT_CONTEXT_MAX_ITEMS),
+    ) -> RedirectResponse:
+        redirect_params: dict[str, object] = {
+            "search_log_id": search_log_id,
+            "max_context_chars": max_context_chars,
+            "include_neighbors": str(include_neighbors).lower(),
+            "max_items": max_items,
+        }
+        if not settings.database_url:
+            redirect_params["generation_error"] = "NEX_PCX_DATABASE_URL is not configured."
+            return RedirectResponse(
+                _generation_redirect_url(redirect_params),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+        try:
+            package = build_retrieval_context_package(
+                settings.database_url,
+                RetrievalContextInput(
+                    search_log_id=search_log_id,
+                    max_context_chars=max_context_chars,
+                    include_neighbors=include_neighbors,
+                    max_items=max_items,
+                ),
+            )
+            if package is None:
+                redirect_params["generation_error"] = "Search log retrieval context not found."
+            else:
+                provider = get_default_generation_provider_config(settings.database_url)
+                if provider is None:
+                    raise InvalidGenerationRunError(
+                        "default generation provider config was not found"
+                    )
+                api_key = resolve_generation_provider_api_key(provider, settings)
+                report = execute_remote_generation_run(
+                    settings.database_url,
+                    package,
+                    api_key=api_key,
+                    created_by="generation_ui_remote",
+                )
+                redirect_params["generation_run_id"] = report.run.generation_run_id
+                redirect_params["generation_status"] = "remote_created"
+        except (
+            InvalidGenerationProviderError,
             InvalidGenerationRunError,
             InvalidRetrievalContextError,
             InvalidSearchLogError,
