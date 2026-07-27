@@ -267,6 +267,11 @@ def test_direct_generation_query_api_searches_packages_and_creates_mock_run(
         )
         assert body["generation"]["run"]["provider_mode"] == "mock"
         assert body["generation"]["run"]["status"] == "succeeded"
+        assert body["generation"]["run"]["answer_text"].startswith("# 보고서 초안")
+        assert "## 주요 내용" in body["generation"]["run"]["answer_text"]
+        assert body["generation"]["run"]["response_metadata"]["template"]["template_key"] == (
+            "report"
+        )
         assert body["generation"]["prompt_package"]["template_key"] == "report"
         assert body["generation"]["run"]["created_by"] == "api_direct_generation"
         assert body["generation"]["run"]["created_by_user_id"] == ids["alice.member"]

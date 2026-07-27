@@ -82,14 +82,71 @@ def _first_answerable_candidate(
     return next(iter(package.included_candidates), None)
 
 
-def _mock_answer(package: RetrievalContextPackage) -> str:
+def _candidate_excerpt(candidate: RetrievalContextCandidate) -> str:
+    chunk = next(iter(candidate.chunks), None)
+    excerpt = chunk.chunk_preview if chunk is not None else candidate.context_text
+    return " ".join(excerpt.split())
+
+
+def _candidate_source_label(candidate: RetrievalContextCandidate) -> str:
+    return (
+        candidate.citation.source_label or candidate.citation.document_title or "retrieval context"
+    )
+
+
+def _mock_answer(
+    package: RetrievalContextPackage,
+    prompt_package: GenerationPromptPackage,
+) -> str:
     candidate = _first_answerable_candidate(package)
     if candidate is None or not candidate.citation.citation_key:
         return MOCK_NO_ANSWER_TEXT
-    chunk = next(iter(candidate.chunks), None)
-    excerpt = chunk.chunk_preview if chunk is not None else candidate.context_text
-    excerpt = " ".join(excerpt.split())
+    excerpt = _candidate_excerpt(candidate)
     citation_key = candidate.citation.citation_key
+    source_label = _candidate_source_label(candidate)
+    if prompt_package.document_type == "report":
+        overview = (
+            f"{prompt_package.query_text}에 대해 제공된 문서 근거는 다음과 같습니다. "
+            f"{excerpt} [{citation_key}]"
+        )
+        return "\n\n".join(
+            (
+                "# 보고서 초안",
+                f"## 요약\n{overview}",
+                f"## 주요 내용\n- {excerpt} [{citation_key}]",
+                f"## 근거\n- [{citation_key}] {source_label}",
+                "## 한계\n- 제공된 검색 근거 범위 밖의 세부 사항은 별도 확인 대상으로 남깁니다.",
+            )
+        )
+    if prompt_package.document_type == "proposal":
+        purpose = (
+            f"{prompt_package.query_text} 검토를 위한 근거 기반 제안 초안입니다. "
+            f"[{citation_key}]"
+        )
+        return "\n\n".join(
+            (
+                "## 제안 목적",
+                purpose,
+                f"## 현황\n- {excerpt} [{citation_key}]",
+                f"## 제안 내용\n- 위 근거를 기준으로 후속 검토 항목을 정리합니다. [{citation_key}]",
+                f"## 근거\n- [{citation_key}] {source_label}",
+            )
+        )
+    if prompt_package.document_type == "summary":
+        return "\n\n".join(
+            (
+                f"## 핵심 요약\n- {excerpt} [{citation_key}]",
+                f"## 참고 근거\n- [{citation_key}] {source_label}",
+            )
+        )
+    if prompt_package.document_type == "meeting_minutes":
+        return "\n\n".join(
+            (
+                f"## 안건\n- {prompt_package.query_text} [{citation_key}]",
+                f"## 논의 내용\n- {excerpt} [{citation_key}]",
+                f"## 근거\n- [{citation_key}] {source_label}",
+            )
+        )
     return f"제공된 문서 근거에 따르면, {excerpt} [{citation_key}]"
 
 
@@ -116,6 +173,28 @@ def _request_metadata(prompt_package: GenerationPromptPackage) -> dict[str, obje
         "citation_keys": list(prompt_package.citation_keys),
         "blocked": prompt_package.blocked,
         "block_reason": prompt_package.block_reason,
+    }
+
+
+def _template_response_metadata(prompt_package: GenerationPromptPackage) -> dict[str, object]:
+    section_keys = [
+        str(section.get("key"))
+        for section in prompt_package.template_snapshot.get("section_schema", [])
+        if isinstance(section, dict) and section.get("key")
+    ]
+    required_section_keys = [
+        str(section.get("key"))
+        for section in prompt_package.template_snapshot.get("section_schema", [])
+        if isinstance(section, dict) and section.get("key") and bool(section.get("required"))
+    ]
+    return {
+        "template_key": prompt_package.template_key,
+        "template_name": prompt_package.template_name,
+        "template_version": prompt_package.template_version,
+        "document_type": prompt_package.document_type,
+        "output_format": prompt_package.output_format,
+        "template_section_keys": section_keys,
+        "required_template_section_keys": required_section_keys,
     }
 
 
@@ -299,7 +378,7 @@ def execute_mock_generation_run(
     retrieval_status = _retrieval_confidence_status(package)
     citation_status = citation_report.summary.status
     guardrail_blocks = prompt_package.blocked or citation_status == CITATION_READINESS_FAILED
-    answer_text = MOCK_NO_ANSWER_TEXT if guardrail_blocks else _mock_answer(package)
+    answer_text = MOCK_NO_ANSWER_TEXT if guardrail_blocks else _mock_answer(package, prompt_package)
     status = GENERATION_STATUS_NO_ANSWER if guardrail_blocks else GENERATION_STATUS_SUCCEEDED
     guardrail_status = (
         GENERATION_GUARDRAIL_NO_ANSWER if guardrail_blocks else GENERATION_GUARDRAIL_ALLOWED
@@ -378,6 +457,7 @@ def execute_mock_generation_run(
                 "provider_mode": provider.provider_mode,
                 "model_id": provider.model_id,
                 "deterministic": True,
+                "template": _template_response_metadata(prompt_package),
                 "provider_metrics": generation_provider_metrics_payload(provider_metrics),
                 "answer_quality": answer_quality,
             },
@@ -485,6 +565,7 @@ def execute_remote_generation_run(
                     provider_metrics=None,
                     response_metadata={
                         "skipped_provider_call": True,
+                        "template": _template_response_metadata(prompt_package),
                         "answer_quality": answer_quality,
                     },
                 ),
@@ -581,6 +662,7 @@ def execute_remote_generation_run(
                     response_metadata={
                         "provider_error": True,
                         "error_payload": exc.payload,
+                        "template": _template_response_metadata(prompt_package),
                         "answer_quality": answer_quality,
                     },
                 ),
@@ -643,6 +725,7 @@ def execute_remote_generation_run(
                 provider_metrics=response.provider_metrics,
                 response_metadata={
                     **dict(response.response_metadata),
+                    "template": _template_response_metadata(prompt_package),
                     "answer_quality": answer_quality,
                 },
                 provider_model_id=response.provider_model_id,

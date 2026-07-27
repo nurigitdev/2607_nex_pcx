@@ -717,6 +717,67 @@ def test_mock_generation_executor_persists_answer_and_citations(
         _delete_file(migrated_database_url, fixture["file_id"])
 
 
+def test_mock_generation_executor_shapes_report_template_output(
+    migrated_database_url: str,
+) -> None:
+    search_log = _search_log(migrated_database_url)
+    fixture = _create_citation_source_fixture(migrated_database_url, search_log)
+    candidate = _candidate(
+        search_log_result_id=fixture["search_log_result_id"],
+        chunk_id=fixture["chunk_id"],
+        document_id=fixture["document_id"],
+        file_id=fixture["file_id"],
+        chunk_policy_name=str(fixture["chunk_policy_name"]),
+    )
+
+    try:
+        report = execute_mock_generation_run(
+            migrated_database_url,
+            _package(search_log, candidate=candidate),
+            generation_template_key=" report ",
+            created_by="pytest-report-template",
+        )
+
+        assert report.run.status == GENERATION_STATUS_SUCCEEDED
+        assert report.prompt_package.template_key == "report"
+        assert report.run.request_metadata["template_key"] == "report"
+        assert report.run.answer_text is not None
+        assert report.run.answer_text.startswith("# 보고서 초안")
+        assert "## 요약" in report.run.answer_text
+        assert "## 주요 내용" in report.run.answer_text
+        assert "## 근거" in report.run.answer_text
+        assert "## 한계" in report.run.answer_text
+        assert "[RCP-001]" in report.run.answer_text
+        assert report.run.response_metadata["template"] == {
+            "template_key": "report",
+            "template_name": "보고서 초안",
+            "template_version": "v1",
+            "document_type": "report",
+            "output_format": "markdown",
+            "template_section_keys": [
+                "title",
+                "overview",
+                "background",
+                "findings",
+                "evidence",
+                "risks",
+                "next_steps",
+            ],
+            "required_template_section_keys": [
+                "title",
+                "overview",
+                "findings",
+                "evidence",
+            ],
+        }
+        assert report.run.response_metadata["answer_quality"]["status"] == "passed"
+        assert len(report.citations) == 1
+        assert report.citations[0].was_cited is True
+    finally:
+        _delete_search_log(migrated_database_url, search_log.search_log_id)
+        _delete_file(migrated_database_url, fixture["file_id"])
+
+
 def test_mock_generation_executor_records_no_answer_for_low_confidence(
     migrated_database_url: str,
 ) -> None:
@@ -737,6 +798,22 @@ def test_mock_generation_executor_records_no_answer_for_low_confidence(
         assert report.run.response_metadata["answer_quality"]["status"] == "passed"
         assert report.run.guardrail_metadata["answer_quality_status"] == "passed"
         assert report.citations == ()
+    finally:
+        _delete_search_log(migrated_database_url, search_log.search_log_id)
+
+
+def test_mock_generation_executor_rejects_missing_template_key(
+    migrated_database_url: str,
+) -> None:
+    search_log = _search_log(migrated_database_url)
+
+    try:
+        with pytest.raises(InvalidGenerationRunError, match="generation template"):
+            execute_mock_generation_run(
+                migrated_database_url,
+                _package(search_log),
+                generation_template_key="missing_template",
+            )
     finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)
 
@@ -867,6 +944,11 @@ def test_remote_generation_executor_persists_success_and_citation_trace(
         assert report.run.response_metadata["provider_model_id"] == provider.model_id
         assert report.run.response_metadata["response_id"] == "chatcmpl-pytest-remote"
         assert report.run.response_metadata["provider_metrics"]["succeeded"] is True
+        assert report.run.response_metadata["template"]["template_key"] == "grounded_answer"
+        assert report.run.response_metadata["template"]["required_template_section_keys"] == [
+            "answer",
+            "evidence",
+        ]
         assert report.run.response_metadata["answer_quality"]["status"] == "passed"
         assert report.run.response_metadata["answer_quality"]["recognized_citation_keys"] == [
             "RCP-001"
