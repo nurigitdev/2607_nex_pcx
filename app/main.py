@@ -397,10 +397,18 @@ from app.core.generation_template_completeness import (
     generation_template_completeness_payload,
 )
 from app.core.generation_templates import (
+    GENERATION_TEMPLATE_DOCUMENT_TYPES,
+    GENERATION_TEMPLATE_LANGUAGES,
+    GENERATION_TEMPLATE_OUTPUT_FORMAT_MARKDOWN,
+    GenerationTemplateInput,
     GenerationTemplateRecord,
+    InvalidGenerationTemplateError,
     get_default_generation_template,
     get_generation_template_by_key,
     list_generation_templates,
+    set_generation_template_active,
+    set_generation_template_default,
+    upsert_generation_template,
 )
 from app.core.go_live_readiness import (
     build_go_live_readiness_report,
@@ -700,6 +708,28 @@ class DirectGenerationRequest(BaseModel):
     max_context_chars: int = Field(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000)
     include_neighbors: bool = True
     max_items: int = Field(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100)
+
+
+class GenerationTemplateManagementRequest(BaseModel):
+    template_key: str = Field(min_length=1, max_length=64)
+    template_name: str = Field(min_length=1, max_length=200)
+    template_version: str = Field(default="v1", min_length=1, max_length=80)
+    document_type: str = Field(default="grounded_answer", min_length=1, max_length=80)
+    language: str = Field(default="ko", min_length=2, max_length=16)
+    output_format: str = Field(default="markdown", min_length=1, max_length=40)
+    section_schema: list[dict[str, object]] = Field(default_factory=list)
+    system_instruction: str = Field(min_length=1)
+    user_instruction_suffix: str = ""
+    style_guidance: dict[str, object] = Field(default_factory=dict)
+    citation_policy: dict[str, object] = Field(default_factory=dict)
+    is_default: bool = False
+    is_active: bool = True
+    created_by: str | None = Field(default="generation-template-api", max_length=120)
+    created_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class GenerationTemplateActiveRequest(BaseModel):
+    is_active: bool
 
 
 class SearchChunkPolicyCompareRequest(BaseModel):
@@ -2521,6 +2551,15 @@ def _generation_redirect_url(params: dict[str, object]) -> str:
     if not clean_params:
         return "/generation"
     return f"/generation?{urlencode(clean_params)}"
+
+
+def _generation_templates_redirect_url(params: dict[str, object]) -> str:
+    clean_params = {
+        key: value for key, value in params.items() if value is not None and value != ""
+    }
+    if not clean_params:
+        return "/admin/generation-templates"
+    return f"/admin/generation-templates?{urlencode(clean_params)}"
 
 
 def embedding_coverage_document_payload(
@@ -4545,13 +4584,83 @@ def generation_template_payload(template: GenerationTemplateRecord) -> dict[str,
         "language": template.language,
         "output_format": template.output_format,
         "section_schema": [dict(section) for section in template.section_schema],
+        "system_instruction": template.system_instruction,
+        "user_instruction_suffix": template.user_instruction_suffix,
         "style_guidance": template.style_guidance,
         "citation_policy": template.citation_policy,
         "is_default": template.is_default,
         "is_active": template.is_active,
+        "created_by": template.created_by,
+        "created_by_user_id": template.created_by_user_id,
         "created_at": _datetime_response(template.created_at),
         "updated_at": _datetime_response(template.updated_at),
     }
+
+
+def generation_template_collection_payload(
+    templates: tuple[GenerationTemplateRecord, ...],
+    *,
+    include_inactive: bool,
+) -> dict[str, object]:
+    default_template = next(
+        (template for template in templates if template.is_default and template.is_active),
+        None,
+    )
+    return {
+        "summary": {
+            "template_count": len(templates),
+            "active_template_count": sum(1 for template in templates if template.is_active),
+            "default_template_key": (
+                default_template.template_key if default_template is not None else None
+            ),
+            "document_types": sorted(
+                {template.document_type for template in templates if template.is_active}
+            ),
+            "languages": sorted(
+                {template.language for template in templates if template.is_active}
+            ),
+        },
+        "include_inactive": include_inactive,
+        "default_template": (
+            generation_template_payload(default_template) if default_template is not None else None
+        ),
+        "templates": [generation_template_payload(template) for template in templates],
+    }
+
+
+def generation_template_input_from_request(
+    payload: GenerationTemplateManagementRequest,
+) -> GenerationTemplateInput:
+    return GenerationTemplateInput(
+        template_key=payload.template_key,
+        template_name=payload.template_name,
+        template_version=payload.template_version,
+        document_type=payload.document_type,
+        language=payload.language,
+        output_format=payload.output_format,
+        section_schema=payload.section_schema,
+        system_instruction=payload.system_instruction,
+        user_instruction_suffix=payload.user_instruction_suffix,
+        style_guidance=payload.style_guidance,
+        citation_policy=payload.citation_policy,
+        is_default=payload.is_default,
+        is_active=payload.is_active,
+        created_by=payload.created_by,
+        created_by_user_id=payload.created_by_user_id,
+    )
+
+
+def _generation_template_json_field(
+    raw_value: str,
+    field_name: str,
+    *,
+    default_json: str,
+) -> object:
+    value = raw_value.strip() or default_json
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise InvalidGenerationTemplateError(f"{field_name} must be valid JSON") from exc
 
 
 def _generation_run_export_template(run: GenerationRunRecord) -> dict[str, object]:
@@ -11825,6 +11934,140 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
+    @app.get("/api/admin/generation-templates")
+    def api_admin_list_generation_templates(include_inactive: bool = True) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        templates = list_generation_templates(
+            settings.database_url,
+            include_inactive=include_inactive,
+        )
+        return JSONResponse(
+            content=generation_template_collection_payload(
+                templates,
+                include_inactive=include_inactive,
+            )
+        )
+
+    @app.get("/api/admin/generation-templates/{template_key}")
+    def api_admin_get_generation_template(template_key: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            template = get_generation_template_by_key(
+                settings.database_url,
+                template_key,
+                include_inactive=True,
+            )
+        except InvalidGenerationTemplateError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if template is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generation template not found.",
+            )
+        return JSONResponse(content={"template": generation_template_payload(template)})
+
+    @app.post("/api/admin/generation-templates")
+    def api_admin_create_generation_template(
+        payload: GenerationTemplateManagementRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            template = upsert_generation_template(
+                settings.database_url,
+                generation_template_input_from_request(payload),
+            )
+        except InvalidGenerationTemplateError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"template": generation_template_payload(template)},
+        )
+
+    @app.put("/api/admin/generation-templates/{template_key}")
+    def api_admin_update_generation_template(
+        template_key: str,
+        payload: GenerationTemplateManagementRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        if payload.template_key.strip().lower() != template_key.strip().lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="template_key path and payload must match.",
+            )
+
+        try:
+            template = upsert_generation_template(
+                settings.database_url,
+                generation_template_input_from_request(payload),
+            )
+        except InvalidGenerationTemplateError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(content={"template": generation_template_payload(template)})
+
+    @app.patch("/api/admin/generation-templates/{template_key}/active")
+    def api_admin_update_generation_template_active(
+        template_key: str,
+        payload: GenerationTemplateActiveRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            template = set_generation_template_active(
+                settings.database_url,
+                template_key,
+                is_active=payload.is_active,
+            )
+        except InvalidGenerationTemplateError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if template is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generation template not found.",
+            )
+        return JSONResponse(content={"template": generation_template_payload(template)})
+
+    @app.post("/api/admin/generation-templates/{template_key}/default")
+    def api_admin_set_generation_template_default(template_key: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            template = set_generation_template_default(settings.database_url, template_key)
+        except InvalidGenerationTemplateError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if template is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generation template not found.",
+            )
+        return JSONResponse(content={"template": generation_template_payload(template)})
+
     @app.post("/api/generation/direct-runs")
     def api_create_direct_generation_run(payload: DirectGenerationRequest) -> JSONResponse:
         if not settings.database_url:
@@ -15273,6 +15516,221 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_template_completeness=selected_template_completeness,
                 error_message=error_message,
             ),
+        )
+
+    @app.get("/admin/generation-templates", response_class=HTMLResponse)
+    def generation_templates_page(
+        request: Request,
+        include_inactive: bool = True,
+        template_key: str | None = None,
+        new_template: bool = False,
+        saved_template: str | None = None,
+        template_error: str | None = None,
+    ) -> HTMLResponse:
+        templates: tuple[GenerationTemplateRecord, ...] = ()
+        collection_payload: dict[str, object] | None = None
+        collection_json = ""
+        selected_template: GenerationTemplateRecord | None = None
+        selected_template_payload: dict[str, object] | None = None
+        section_schema_json = "[]"
+        style_guidance_json = "{}"
+        citation_policy_json = "{}"
+        error_message = template_error
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                templates = list_generation_templates(
+                    settings.database_url,
+                    include_inactive=include_inactive,
+                )
+                collection_payload = generation_template_collection_payload(
+                    templates,
+                    include_inactive=include_inactive,
+                )
+                collection_json = json.dumps(collection_payload, ensure_ascii=False, indent=2)
+                if template_key and not new_template:
+                    selected_template = get_generation_template_by_key(
+                        settings.database_url,
+                        template_key,
+                        include_inactive=True,
+                    )
+                    if selected_template is None:
+                        error_message = "Generation template not found."
+                if selected_template is None and templates and not new_template:
+                    selected_template = next(
+                        (template for template in templates if template.is_default),
+                        templates[0],
+                    )
+                if selected_template is not None:
+                    selected_template_payload = generation_template_payload(selected_template)
+                    section_schema_json = json.dumps(
+                        selected_template_payload["section_schema"],
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    style_guidance_json = json.dumps(
+                        selected_template_payload["style_guidance"],
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    citation_policy_json = json.dumps(
+                        selected_template_payload["citation_policy"],
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+            except InvalidGenerationTemplateError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "generation_templates.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                templates=templates,
+                collection_payload=collection_payload,
+                collection_json=collection_json,
+                include_inactive=include_inactive,
+                new_template=new_template,
+                selected_template=selected_template,
+                selected_template_payload=selected_template_payload,
+                section_schema_json=section_schema_json,
+                style_guidance_json=style_guidance_json,
+                citation_policy_json=citation_policy_json,
+                saved_template=saved_template,
+                error_message=error_message,
+                document_type_options=tuple(sorted(GENERATION_TEMPLATE_DOCUMENT_TYPES)),
+                template_language_options=tuple(sorted(GENERATION_TEMPLATE_LANGUAGES)),
+                output_format_options=(GENERATION_TEMPLATE_OUTPUT_FORMAT_MARKDOWN,),
+            ),
+        )
+
+    @app.post("/admin/generation-templates/upsert")
+    def generation_templates_upsert_action(
+        template_key: str = Form(...),
+        template_name: str = Form(...),
+        template_version: str = Form("v1"),
+        document_type: str = Form("grounded_answer"),
+        language: str = Form("ko"),
+        output_format: str = Form("markdown"),
+        section_schema: str = Form("[]"),
+        system_instruction: str = Form(...),
+        user_instruction_suffix: str = Form(""),
+        style_guidance: str = Form("{}"),
+        citation_policy: str = Form("{}"),
+        is_default: bool = Form(False),
+        is_active: bool = Form(False),
+    ) -> RedirectResponse:
+        query_params: dict[str, object]
+        if not settings.database_url:
+            query_params = {"template_error": "NEX_PCX_DATABASE_URL is not configured."}
+        else:
+            try:
+                template = upsert_generation_template(
+                    settings.database_url,
+                    GenerationTemplateInput(
+                        template_key=template_key,
+                        template_name=template_name,
+                        template_version=template_version,
+                        document_type=document_type,
+                        language=language,
+                        output_format=output_format,
+                        section_schema=_generation_template_json_field(
+                            section_schema,
+                            "section_schema",
+                            default_json="[]",
+                        ),
+                        system_instruction=system_instruction,
+                        user_instruction_suffix=user_instruction_suffix,
+                        style_guidance=_generation_template_json_field(
+                            style_guidance,
+                            "style_guidance",
+                            default_json="{}",
+                        ),
+                        citation_policy=_generation_template_json_field(
+                            citation_policy,
+                            "citation_policy",
+                            default_json="{}",
+                        ),
+                        is_default=is_default,
+                        is_active=is_active,
+                        created_by="generation-template-ui",
+                    ),
+                )
+                query_params = {
+                    "template_key": template.template_key,
+                    "saved_template": template.template_key,
+                    "include_inactive": "true",
+                }
+            except InvalidGenerationTemplateError as exc:
+                query_params = {
+                    "template_key": template_key,
+                    "template_error": str(exc),
+                    "include_inactive": "true",
+                }
+
+        return RedirectResponse(
+            _generation_templates_redirect_url(query_params),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/admin/generation-templates/{template_key}/active")
+    def generation_templates_active_action(
+        template_key: str,
+        is_active: bool = Form(False),
+        include_inactive: bool = Form(True),
+    ) -> RedirectResponse:
+        query_params: dict[str, object]
+        if not settings.database_url:
+            query_params = {"template_error": "NEX_PCX_DATABASE_URL is not configured."}
+        else:
+            try:
+                template = set_generation_template_active(
+                    settings.database_url,
+                    template_key,
+                    is_active=is_active,
+                )
+                if template is None:
+                    query_params = {"template_error": "Generation template not found."}
+                else:
+                    query_params = {
+                        "template_key": template.template_key,
+                        "saved_template": template.template_key,
+                    }
+            except InvalidGenerationTemplateError as exc:
+                query_params = {"template_key": template_key, "template_error": str(exc)}
+        query_params["include_inactive"] = str(include_inactive).lower()
+        return RedirectResponse(
+            _generation_templates_redirect_url(query_params),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/admin/generation-templates/{template_key}/default")
+    def generation_templates_default_action(
+        template_key: str,
+        include_inactive: bool = Form(True),
+    ) -> RedirectResponse:
+        query_params: dict[str, object]
+        if not settings.database_url:
+            query_params = {"template_error": "NEX_PCX_DATABASE_URL is not configured."}
+        else:
+            try:
+                template = set_generation_template_default(settings.database_url, template_key)
+                if template is None:
+                    query_params = {"template_error": "Generation template not found."}
+                else:
+                    query_params = {
+                        "template_key": template.template_key,
+                        "saved_template": template.template_key,
+                    }
+            except InvalidGenerationTemplateError as exc:
+                query_params = {"template_key": template_key, "template_error": str(exc)}
+        query_params["include_inactive"] = str(include_inactive).lower()
+        return RedirectResponse(
+            _generation_templates_redirect_url(query_params),
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @app.get("/admin/generation-provider-metrics", response_class=HTMLResponse)

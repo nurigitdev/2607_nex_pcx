@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("generation_templates.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("generation_templates.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/generation-templates?include_inactive={{ 'true' if include_inactive else 'false' }}">{{ t("generation_templates.refresh") }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/generation-templates?include_inactive={{ 'true' if include_inactive else 'false' }}&new_template=true">{{ t("generation_templates.new_template") }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/generation">{{ t("nav.generation") }}</a>
+    <a class="btn btn-outline-primary btn-sm" href="/api/admin/generation-templates?include_inactive={{ 'true' if include_inactive else 'false' }}">{{ t("common.api") }}</a>
+  </div>
+</div>
+
+{% if saved_template %}
+<div class="alert alert-success" role="alert">
+  {{ t("generation_templates.saved", template=saved_template) }}
+</div>
+{% endif %}
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+{% if collection_payload %}
+{% set summary = collection_payload.summary %}
+<section class="document-detail-grid mb-4" data-generation-template-management-summary>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_templates.template_count") }}</div>
+    <div class="metric-value">{{ summary.template_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_templates.active_count") }}</div>
+    <div class="metric-value">{{ summary.active_template_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_templates.default_template") }}</div>
+    <div class="generation-detail-compact-value">{{ summary.default_template_key or "-" }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_templates.document_types") }}</div>
+    <div class="generation-detail-compact-value">{{ summary.document_types | join(", ") if summary.document_types else "-" }}</div>
+  </div>
+</section>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4" data-generation-template-management-form>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h2 class="h5 mb-1">
+        {% if new_template %}
+        {{ t("generation_templates.create_title") }}
+        {% else %}
+        {{ t("generation_templates.edit_title") }}
+        {% endif %}
+      </h2>
+      <div class="text-secondary">{{ t("generation_templates.form_help") }}</div>
+    </div>
+    {% if selected_template %}
+    <span class="badge text-bg-light border">#{{ selected_template.generation_template_id }}</span>
+    {% endif %}
+  </div>
+  <form class="row g-3" method="post" action="/admin/generation-templates/upsert">
+    <div class="col-12 col-lg-3">
+      <label class="form-label" for="template_key">{{ t("generation_templates.template_key") }}</label>
+      <input class="form-control" id="template_key" name="template_key" value="{{ selected_template.template_key if selected_template else '' }}" placeholder="custom_report_v1" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-lg-4">
+      <label class="form-label" for="template_name">{{ t("generation_templates.template_name") }}</label>
+      <input class="form-control" id="template_name" name="template_name" value="{{ selected_template.template_name if selected_template else '' }}" placeholder="{{ t('generation_templates.template_name_placeholder') }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label" for="template_version">{{ t("generation_templates.template_version") }}</label>
+      <input class="form-control" id="template_version" name="template_version" value="{{ selected_template.template_version if selected_template else 'v1' }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-lg-3">
+      <label class="form-label" for="document_type">{{ t("generation_templates.document_type") }}</label>
+      <select class="form-select" id="document_type" name="document_type" {% if not database_configured %}disabled{% endif %}>
+        {% for option in document_type_options %}
+        <option value="{{ option }}" {% if selected_template and selected_template.document_type == option %}selected{% elif not selected_template and option == 'report' %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label" for="language">{{ t("generation_templates.language") }}</label>
+      <select class="form-select" id="language" name="language" {% if not database_configured %}disabled{% endif %}>
+        {% for option in template_language_options %}
+        <option value="{{ option }}" {% if selected_template and selected_template.language == option %}selected{% elif not selected_template and option == 'ko' %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label" for="output_format">{{ t("generation_templates.output_format") }}</label>
+      <select class="form-select" id="output_format" name="output_format" {% if not database_configured %}disabled{% endif %}>
+        {% for option in output_format_options %}
+        <option value="{{ option }}" {% if selected_template and selected_template.output_format == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-4">
+      <div class="d-flex gap-4 pt-lg-4">
+        <div class="form-check">
+          <input class="form-check-input" id="is_active" name="is_active" type="checkbox" value="true" {% if not selected_template or selected_template.is_active %}checked{% endif %} {% if not database_configured %}disabled{% endif %}>
+          <label class="form-check-label" for="is_active">{{ t("common.active") }}</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" id="is_default" name="is_default" type="checkbox" value="true" {% if selected_template and selected_template.is_default %}checked{% endif %} {% if not database_configured %}disabled{% endif %}>
+          <label class="form-check-label" for="is_default">{{ t("generation_templates.make_default") }}</label>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <label class="form-label" for="system_instruction">{{ t("generation_templates.system_instruction") }}</label>
+      <textarea class="form-control generation-template-textarea" id="system_instruction" name="system_instruction" rows="6" {% if not database_configured %}disabled{% endif %}>{{ selected_template.system_instruction if selected_template else '' }}</textarea>
+    </div>
+    <div class="col-12 col-xl-6">
+      <label class="form-label" for="user_instruction_suffix">{{ t("generation_templates.user_instruction_suffix") }}</label>
+      <textarea class="form-control generation-template-textarea" id="user_instruction_suffix" name="user_instruction_suffix" rows="6" {% if not database_configured %}disabled{% endif %}>{{ selected_template.user_instruction_suffix if selected_template else '' }}</textarea>
+    </div>
+    <div class="col-12 col-xl-4">
+      <label class="form-label" for="section_schema">{{ t("generation_templates.section_schema") }}</label>
+      <textarea class="form-control generation-template-json-textarea" id="section_schema" name="section_schema" rows="10" {% if not database_configured %}disabled{% endif %}>{{ section_schema_json }}</textarea>
+    </div>
+    <div class="col-12 col-xl-4">
+      <label class="form-label" for="style_guidance">{{ t("generation_templates.style_guidance") }}</label>
+      <textarea class="form-control generation-template-json-textarea" id="style_guidance" name="style_guidance" rows="10" {% if not database_configured %}disabled{% endif %}>{{ style_guidance_json }}</textarea>
+    </div>
+    <div class="col-12 col-xl-4">
+      <label class="form-label" for="citation_policy">{{ t("generation_templates.citation_policy") }}</label>
+      <textarea class="form-control generation-template-json-textarea" id="citation_policy" name="citation_policy" rows="10" {% if not database_configured %}disabled{% endif %}>{{ citation_policy_json }}</textarea>
+    </div>
+    <div class="col-12 col-lg-3">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("generation_templates.save_action") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if collection_payload %}
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-generation-template-management-table>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation_templates.templates") }}</h2>
+      <div class="text-secondary">{{ t("generation_templates.templates_help") }}</div>
+    </div>
+    <form method="get">
+      <input type="hidden" name="include_inactive" value="{{ 'false' if include_inactive else 'true' }}">
+      <button class="btn btn-outline-secondary btn-sm" type="submit">
+        {{ t("generation_templates.hide_inactive") if include_inactive else t("generation_templates.show_inactive") }}
+      </button>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("generation_templates.template") }}</th>
+          <th>{{ t("generation_templates.contract") }}</th>
+          <th>{{ t("generation_templates.sections") }}</th>
+          <th>{{ t("generation_templates.status") }}</th>
+          <th>{{ t("generation_templates.updated_at") }}</th>
+          <th class="text-end">{{ t("generation_templates.actions") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for template in templates %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ template.template_name }}</div>
+            <div class="d-flex flex-wrap gap-1 mt-1">
+              <span class="badge text-bg-light border">{{ template.template_key }}</span>
+              {% if template.is_default %}
+              <span class="badge text-bg-primary">{{ t("generation_templates.default") }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            <span class="badge text-bg-light border">{{ template.document_type }}</span>
+            <span class="badge text-bg-light border">{{ template.language }}</span>
+            <span class="badge text-bg-light border">{{ template.output_format }}</span>
+            <div class="text-secondary small mt-1">{{ template.template_version }}</div>
+          </td>
+          <td>
+            <div>{{ template.section_schema | length }}</div>
+            <div class="text-secondary small">
+              {% for section in template.section_schema[:3] %}
+              {{ section.heading }}{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </div>
+          </td>
+          <td>
+            <span class="badge text-bg-{{ 'success' if template.is_active else 'secondary' }}">
+              {{ t("common.active") if template.is_active else t("common.inactive") }}
+            </span>
+          </td>
+          <td class="text-nowrap">{{ template.updated_at.strftime("%Y-%m-%d %H:%M:%S") if template.updated_at else "-" }}</td>
+          <td>
+            <div class="d-flex flex-wrap justify-content-end gap-2">
+              <a class="btn btn-outline-primary btn-sm" href="/admin/generation-templates?include_inactive=true&template_key={{ template.template_key }}">{{ t("generation_templates.edit") }}</a>
+              <form method="post" action="/admin/generation-templates/{{ template.template_key }}/default">
+                <input type="hidden" name="include_inactive" value="{{ 'true' if include_inactive else 'false' }}">
+                <button class="btn btn-outline-secondary btn-sm" type="submit" {% if template.is_default or not template.is_active %}disabled{% endif %}>
+                  {{ t("generation_templates.set_default") }}
+                </button>
+              </form>
+              <form method="post" action="/admin/generation-templates/{{ template.template_key }}/active">
+                <input type="hidden" name="include_inactive" value="{{ 'true' if include_inactive else 'false' }}">
+                <input type="hidden" name="is_active" value="{{ 'false' if template.is_active else 'true' }}">
+                <button class="btn btn-outline-secondary btn-sm" type="submit" {% if template.is_default and template.is_active %}disabled{% endif %}>
+                  {{ t("generation_templates.deactivate") if template.is_active else t("generation_templates.activate") }}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-center text-secondary py-4" colspan="6">
+            {{ t("generation_templates.no_templates") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-3" data-generation-template-management-json>
+  <div class="metric-label mb-2">{{ t("generation_templates.raw_templates") }}</div>
+  <pre class="json-preview operations-json-preview mb-0">{{ collection_json }}</pre>
+</section>
+{% endif %}
+{% endblock %}

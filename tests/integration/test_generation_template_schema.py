@@ -1,11 +1,18 @@
+from uuid import uuid4
+
 import pytest
 from psycopg import errors
 
 from app.core.database import connect, fetch_one
 from app.core.generation_templates import (
+    GenerationTemplateInput,
+    InvalidGenerationTemplateError,
     get_default_generation_template,
     get_generation_template_by_key,
     list_generation_templates,
+    set_generation_template_active,
+    set_generation_template_default,
+    upsert_generation_template,
 )
 
 pytestmark = pytest.mark.integration
@@ -33,6 +40,40 @@ def _create_search_log(database_url: str) -> int:
         conn.commit()
     assert row is not None
     return int(row["search_log_id"])
+
+
+def _template_key(prefix: str) -> str:
+    return f"{prefix}_{uuid4().hex[:12]}"
+
+
+def _cleanup_generation_templates(database_url: str, *template_keys: str) -> None:
+    with connect(database_url) as conn:
+        conn.execute(
+            """
+            UPDATE generation_templates
+            SET is_default = false,
+                updated_at = now()
+            WHERE is_default
+            """,
+        )
+        conn.execute(
+            """
+            UPDATE generation_templates
+            SET is_default = true,
+                is_active = true,
+                updated_at = now()
+            WHERE template_key = 'grounded_answer'
+            """,
+        )
+        if template_keys:
+            conn.execute(
+                """
+                DELETE FROM generation_templates
+                WHERE template_key = ANY(%s)
+                """,
+                (list(template_keys),),
+            )
+        conn.commit()
 
 
 def test_generation_templates_seed_default_set(migrated_database_url: str) -> None:
@@ -92,6 +133,123 @@ def test_generation_template_repository_reads_seeded_templates(
     assert report_template.template_key == "report"
     assert report_template.document_type == "report"
     assert report_template.section_schema[0]["key"] == "title"
+
+
+def test_generation_template_repository_manages_custom_template_lifecycle(
+    migrated_database_url: str,
+) -> None:
+    template_key = _template_key("pytest_template")
+    inactive_key = _template_key("pytest_inactive")
+    try:
+        created = upsert_generation_template(
+            migrated_database_url,
+            GenerationTemplateInput(
+                template_key=f" {template_key.upper()} ",
+                template_name="Pytest 보고서",
+                template_version="v1",
+                document_type="report",
+                language="ko",
+                section_schema=(
+                    {"key": "title", "heading": "제목", "required": True},
+                    {"key": "findings", "heading": "주요 내용", "required": True},
+                ),
+                system_instruction="보고서 형식으로 작성한다.",
+                user_instruction_suffix="citation key를 포함한다.",
+                style_guidance={"tone": "formal"},
+                citation_policy={"required": True, "minimum_citations": 2},
+                is_default=False,
+                is_active=True,
+                created_by="pytest",
+            ),
+        )
+        updated_default = upsert_generation_template(
+            migrated_database_url,
+            GenerationTemplateInput(
+                template_key=template_key,
+                template_name="Pytest 보고서 v2",
+                template_version="v2",
+                document_type="report",
+                language="ko",
+                section_schema=(
+                    {"key": "summary", "heading": "요약", "required": True},
+                    {"key": "evidence", "heading": "근거", "required": True},
+                ),
+                system_instruction="업데이트된 보고서 형식으로 작성한다.",
+                style_guidance={"tone": "review"},
+                citation_policy={"required": True, "minimum_citations": 1},
+                is_default=True,
+                is_active=True,
+                created_by="pytest",
+            ),
+        )
+        inactive = upsert_generation_template(
+            migrated_database_url,
+            GenerationTemplateInput(
+                template_key=inactive_key,
+                template_name="Pytest 비활성 템플릿",
+                document_type="summary",
+                section_schema=({"key": "summary", "heading": "요약", "required": True},),
+                system_instruction="요약한다.",
+                is_active=False,
+            ),
+        )
+
+        current_default = get_default_generation_template(migrated_database_url)
+        hidden_inactive = get_generation_template_by_key(migrated_database_url, inactive_key)
+        visible_inactive = get_generation_template_by_key(
+            migrated_database_url,
+            inactive_key,
+            include_inactive=True,
+        )
+
+        assert created.template_key == template_key
+        assert created.template_name == "Pytest 보고서"
+        assert updated_default.template_name == "Pytest 보고서 v2"
+        assert updated_default.is_default is True
+        assert updated_default.section_schema[0]["key"] == "summary"
+        assert current_default is not None
+        assert current_default.template_key == template_key
+        assert inactive.is_active is False
+        assert hidden_inactive is None
+        assert visible_inactive is not None
+
+        with pytest.raises(InvalidGenerationTemplateError, match="default"):
+            set_generation_template_active(
+                migrated_database_url,
+                template_key,
+                is_active=False,
+            )
+        with pytest.raises(InvalidGenerationTemplateError, match="inactive"):
+            set_generation_template_default(migrated_database_url, inactive_key)
+
+        assert (
+            set_generation_template_active(
+                migrated_database_url,
+                inactive_key,
+                is_active=True,
+            ).is_active
+            is True
+        )
+        assert (
+            set_generation_template_default(migrated_database_url, inactive_key).is_default is True
+        )
+        assert (
+            set_generation_template_active(
+                migrated_database_url,
+                "missing_generation_template",
+                is_active=True,
+            )
+            is None
+        )
+        assert (
+            set_generation_template_default(
+                migrated_database_url,
+                "missing_generation_template",
+            )
+            is None
+        )
+    finally:
+        _cleanup_generation_templates(migrated_database_url, template_key, inactive_key)
 
 
 def test_generation_template_repository_hides_inactive_templates_by_default(

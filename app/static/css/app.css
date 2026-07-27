@@ -1795,6 +1795,18 @@ main.container-fluid {
   word-break: normal;
 }
 
+.generation-template-textarea,
+.generation-template-json-textarea {
+  min-height: 10rem;
+  resize: vertical;
+}
+
+.generation-template-json-textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 0.875rem;
+}
+
 .generation-detail-kv-table th {
   width: 12rem;
 }

@@ -38,6 +38,7 @@
           <a class="nav-link {% if current_path.startswith('/search/citation-readiness') %}active{% endif %}" href="/search/citation-readiness">{{ t("nav.citation_readiness") }}</a>
           <a class="nav-link {% if current_path == '/generation' %}active{% endif %}" href="/generation">{{ t("nav.generation") }}</a>
           <a class="nav-link {% if current_path.startswith('/generation/runs') %}active{% endif %}" href="/generation/runs">{{ t("nav.generation_history") }}</a>
+          <a class="nav-link {% if current_path.startswith('/admin/generation-templates') %}active{% endif %}" href="/admin/generation-templates">{{ t("nav.generation_templates") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/generation-provider-configs') %}active{% endif %}" href="/admin/generation-provider-configs">{{ t("nav.generation_provider_config") }}</a>
           <a class="nav-link {% if current_path.startswith('/admin/generation-provider-metrics') %}active{% endif %}" href="/admin/generation-provider-metrics">{{ t("nav.generation_metrics") }}</a>
           <a class="nav-link {% if current_path.startswith('/search/experiments') %}active{% endif %}" href="/search/experiments">{{ t("nav.search_experiments") }}</a>
@@ -95,6 +96,7 @@
               <a class="nav-link {% if current_path.startswith('/search/citation-readiness') %}active{% endif %}" href="/search/citation-readiness">{{ t("nav.citation_readiness") }}</a>
               <a class="nav-link {% if current_path == '/generation' %}active{% endif %}" href="/generation">{{ t("nav.generation") }}</a>
               <a class="nav-link {% if current_path.startswith('/generation/runs') %}active{% endif %}" href="/generation/runs">{{ t("nav.generation_history") }}</a>
+              <a class="nav-link {% if current_path.startswith('/admin/generation-templates') %}active{% endif %}" href="/admin/generation-templates">{{ t("nav.generation_templates") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/generation-provider-configs') %}active{% endif %}" href="/admin/generation-provider-configs">{{ t("nav.generation_provider_config") }}</a>
               <a class="nav-link {% if current_path.startswith('/admin/generation-provider-metrics') %}active{% endif %}" href="/admin/generation-provider-metrics">{{ t("nav.generation_metrics") }}</a>
               <a class="nav-link {% if current_path.startswith('/search/experiments') %}active{% endif %}" href="/search/experiments">{{ t("nav.search_experiments") }}</a>

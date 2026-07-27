@@ -1,9 +1,12 @@
 """Generation template repository and prompt snapshot helpers."""
 
+import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+
+from psycopg.types.json import Json
 
 from app.core.database import connect
 
@@ -20,6 +23,9 @@ GENERATION_TEMPLATE_DOCUMENT_TYPES = {
     "summary",
     "meeting_minutes",
 }
+GENERATION_TEMPLATE_LANGUAGES = {"ko", "en"}
+GENERATION_TEMPLATE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
+GENERATION_TEMPLATE_SECTION_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -44,6 +50,25 @@ class GenerationTemplateRecord:
     updated_at: datetime | None
 
 
+@dataclass(frozen=True)
+class GenerationTemplateInput:
+    template_key: str
+    template_name: str
+    template_version: str = DEFAULT_GENERATION_TEMPLATE_VERSION
+    document_type: str = DEFAULT_GENERATION_TEMPLATE_DOCUMENT_TYPE
+    language: str = DEFAULT_GENERATION_TEMPLATE_LANGUAGE
+    output_format: str = GENERATION_TEMPLATE_OUTPUT_FORMAT_MARKDOWN
+    section_schema: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
+    system_instruction: str = ""
+    user_instruction_suffix: str = ""
+    style_guidance: Mapping[str, Any] = field(default_factory=dict)
+    citation_policy: Mapping[str, Any] = field(default_factory=dict)
+    is_default: bool = False
+    is_active: bool = True
+    created_by: str | None = None
+    created_by_user_id: int | None = None
+
+
 class InvalidGenerationTemplateError(ValueError):
     """Raised when a generation template input is invalid."""
 
@@ -62,6 +87,118 @@ def _normalize_template_key(template_key: str) -> str:
 def _normalize_language(language: str | None) -> str:
     normalized = (language or DEFAULT_GENERATION_TEMPLATE_LANGUAGE).strip().lower()
     return normalized or DEFAULT_GENERATION_TEMPLATE_LANGUAGE
+
+
+def _validate_created_by(created_by: str | None) -> str | None:
+    if created_by is None:
+        return None
+    normalized = created_by.strip()
+    return normalized or None
+
+
+def _validate_created_by_user_id(created_by_user_id: int | None) -> int | None:
+    if created_by_user_id is None:
+        return None
+    if created_by_user_id < 1:
+        raise InvalidGenerationTemplateError("created_by_user_id must be positive")
+    return created_by_user_id
+
+
+def _validate_mapping(value: object, field_name: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise InvalidGenerationTemplateError(f"{field_name} must be a JSON object")
+    return dict(value)
+
+
+def _validate_bool(value: object, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise InvalidGenerationTemplateError(f"{field_name} must be a boolean")
+
+
+def _validate_section_schema(value: object) -> tuple[dict[str, Any], ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise InvalidGenerationTemplateError("section_schema must be a JSON array")
+
+    sections: list[dict[str, Any]] = []
+    section_keys: set[str] = set()
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, Mapping):
+            raise InvalidGenerationTemplateError("section_schema entries must be JSON objects")
+        raw_section_key = str(item.get("key") or "")
+        section_key = _validate_non_empty(raw_section_key, f"section_schema[{index}].key").lower()
+        if GENERATION_TEMPLATE_SECTION_KEY_PATTERN.fullmatch(section_key) is None:
+            raise InvalidGenerationTemplateError(
+                "section_schema key must use lowercase letters, numbers, and underscores"
+            )
+        if section_key in section_keys:
+            raise InvalidGenerationTemplateError("section_schema keys must be unique")
+        section_keys.add(section_key)
+        sections.append(
+            {
+                "key": section_key,
+                "heading": _validate_non_empty(
+                    str(item.get("heading") or ""),
+                    f"section_schema[{index}].heading",
+                ),
+                "required": _validate_bool(item.get("required", False), "section_schema.required"),
+            }
+        )
+
+    if not sections:
+        raise InvalidGenerationTemplateError("section_schema must contain at least one section")
+    return tuple(sections)
+
+
+def validate_generation_template_input(
+    template_input: GenerationTemplateInput,
+) -> GenerationTemplateInput:
+    template_key = _normalize_template_key(template_input.template_key)
+    if GENERATION_TEMPLATE_KEY_PATTERN.fullmatch(template_key) is None:
+        raise InvalidGenerationTemplateError(
+            "template_key must use 2-64 lowercase letters, numbers, hyphens, or underscores"
+        )
+
+    document_type = _validate_non_empty(template_input.document_type, "document_type")
+    if document_type not in GENERATION_TEMPLATE_DOCUMENT_TYPES:
+        raise InvalidGenerationTemplateError("document_type is not supported")
+
+    language = _normalize_language(template_input.language)
+    if language not in GENERATION_TEMPLATE_LANGUAGES:
+        raise InvalidGenerationTemplateError("language must be ko or en")
+
+    output_format = _validate_non_empty(template_input.output_format, "output_format").lower()
+    if output_format != GENERATION_TEMPLATE_OUTPUT_FORMAT_MARKDOWN:
+        raise InvalidGenerationTemplateError("output_format must be markdown")
+
+    is_default = bool(template_input.is_default)
+    is_active = bool(template_input.is_active)
+    if is_default and not is_active:
+        raise InvalidGenerationTemplateError("default generation template must be active")
+
+    return GenerationTemplateInput(
+        template_key=template_key,
+        template_name=_validate_non_empty(template_input.template_name, "template_name"),
+        template_version=_validate_non_empty(
+            template_input.template_version,
+            "template_version",
+        ),
+        document_type=document_type,
+        language=language,
+        output_format=output_format,
+        section_schema=_validate_section_schema(template_input.section_schema),
+        system_instruction=_validate_non_empty(
+            template_input.system_instruction,
+            "system_instruction",
+        ),
+        user_instruction_suffix=(template_input.user_instruction_suffix or "").strip(),
+        style_guidance=_validate_mapping(template_input.style_guidance, "style_guidance"),
+        citation_policy=_validate_mapping(template_input.citation_policy, "citation_policy"),
+        is_default=is_default,
+        is_active=is_active,
+        created_by=_validate_created_by(template_input.created_by),
+        created_by_user_id=_validate_created_by_user_id(template_input.created_by_user_id),
+    )
 
 
 def _mapping(value: object) -> dict[str, Any]:
@@ -211,4 +348,174 @@ def get_generation_template_by_key(
             """,
             (normalized_template_key, include_inactive),
         ).fetchone()
+    return _template_from_row(dict(row)) if row else None
+
+
+def upsert_generation_template(
+    database_url: str,
+    template_input: GenerationTemplateInput,
+) -> GenerationTemplateRecord:
+    validated = validate_generation_template_input(template_input)
+
+    with connect(database_url) as conn:
+        if validated.is_default:
+            conn.execute(
+                """
+                UPDATE generation_templates
+                SET is_default = false,
+                    updated_at = now()
+                WHERE language = %s
+                  AND is_default
+                """,
+                (validated.language,),
+            )
+        row = conn.execute(
+            """
+            INSERT INTO generation_templates (
+                template_key,
+                template_name,
+                template_version,
+                document_type,
+                language,
+                output_format,
+                section_schema,
+                system_instruction,
+                user_instruction_suffix,
+                style_guidance,
+                citation_policy,
+                is_default,
+                is_active,
+                created_by,
+                created_by_user_id
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT (template_key) DO UPDATE
+            SET
+                template_name = EXCLUDED.template_name,
+                template_version = EXCLUDED.template_version,
+                document_type = EXCLUDED.document_type,
+                language = EXCLUDED.language,
+                output_format = EXCLUDED.output_format,
+                section_schema = EXCLUDED.section_schema,
+                system_instruction = EXCLUDED.system_instruction,
+                user_instruction_suffix = EXCLUDED.user_instruction_suffix,
+                style_guidance = EXCLUDED.style_guidance,
+                citation_policy = EXCLUDED.citation_policy,
+                is_default = EXCLUDED.is_default,
+                is_active = EXCLUDED.is_active,
+                created_by = COALESCE(EXCLUDED.created_by, generation_templates.created_by),
+                created_by_user_id = COALESCE(
+                    EXCLUDED.created_by_user_id,
+                    generation_templates.created_by_user_id
+                ),
+                updated_at = now()
+            RETURNING *
+            """,
+            (
+                validated.template_key,
+                validated.template_name,
+                validated.template_version,
+                validated.document_type,
+                validated.language,
+                validated.output_format,
+                Json([dict(section) for section in validated.section_schema]),
+                validated.system_instruction,
+                validated.user_instruction_suffix,
+                Json(dict(validated.style_guidance)),
+                Json(dict(validated.citation_policy)),
+                validated.is_default,
+                validated.is_active,
+                validated.created_by,
+                validated.created_by_user_id,
+            ),
+        ).fetchone()
+        conn.commit()
+
+    if row is None:
+        raise InvalidGenerationTemplateError("generation template was not saved")
+    return _template_from_row(dict(row))
+
+
+def set_generation_template_active(
+    database_url: str,
+    template_key: str,
+    *,
+    is_active: bool,
+) -> GenerationTemplateRecord | None:
+    normalized_template_key = _normalize_template_key(template_key)
+    with connect(database_url) as conn:
+        current = conn.execute(
+            """
+            SELECT *
+            FROM generation_templates
+            WHERE template_key = %s
+            FOR UPDATE
+            """,
+            (normalized_template_key,),
+        ).fetchone()
+        if current is None:
+            conn.rollback()
+            return None
+        if bool(current["is_default"]) and not is_active:
+            conn.rollback()
+            raise InvalidGenerationTemplateError("default generation template must remain active")
+        row = conn.execute(
+            """
+            UPDATE generation_templates
+            SET is_active = %s,
+                updated_at = now()
+            WHERE template_key = %s
+            RETURNING *
+            """,
+            (is_active, normalized_template_key),
+        ).fetchone()
+        conn.commit()
+    return _template_from_row(dict(row)) if row else None
+
+
+def set_generation_template_default(
+    database_url: str,
+    template_key: str,
+) -> GenerationTemplateRecord | None:
+    normalized_template_key = _normalize_template_key(template_key)
+    with connect(database_url) as conn:
+        current = conn.execute(
+            """
+            SELECT *
+            FROM generation_templates
+            WHERE template_key = %s
+            FOR UPDATE
+            """,
+            (normalized_template_key,),
+        ).fetchone()
+        if current is None:
+            conn.rollback()
+            return None
+        if not bool(current["is_active"]):
+            conn.rollback()
+            raise InvalidGenerationTemplateError("inactive generation template cannot be default")
+        conn.execute(
+            """
+            UPDATE generation_templates
+            SET is_default = false,
+                updated_at = now()
+            WHERE language = %s
+              AND is_default
+            """,
+            (str(current["language"]),),
+        )
+        row = conn.execute(
+            """
+            UPDATE generation_templates
+            SET is_default = true,
+                is_active = true,
+                updated_at = now()
+            WHERE template_key = %s
+            RETURNING *
+            """,
+            (normalized_template_key,),
+        ).fetchone()
+        conn.commit()
     return _template_from_row(dict(row)) if row else None
