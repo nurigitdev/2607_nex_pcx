@@ -31,6 +31,7 @@ GENERATION_PROVIDER_RUNTIME_CONFIG_UI_DOC_PATH = (
 GENERATION_REMOTE_EXECUTOR_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_executor.md"
 GENERATION_REMOTE_RUN_API_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_run_api.md"
 GENERATION_REMOTE_RUN_UI_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_run_ui.md"
+DGX_VLLM_GENERATION_RUN_E2E_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_vllm_generation_run_live_e2e.md"
 
 
 def _read(path: Path) -> str:
@@ -40,7 +41,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.49" in srs_text
+    assert "Software Requirements Specification v1.50" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -64,6 +65,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-068" in srs_text
     assert "FR-069" in srs_text
     assert "FR-070" in srs_text
+    assert "FR-071" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -74,6 +76,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "Remote generation run API" in srs_text
     assert "Remote generation run UI controls" in srs_text
     assert "Generation provider metrics mode breakdown" in srs_text
+    assert "DGX vLLM generation run live E2E verification" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -264,3 +267,17 @@ def test_generation_remote_run_ui_doc_defines_readiness_controls() -> None:
     assert "`remote_openai_compatible`" in ui_text
     assert "`runtime_options.api_key_env`" in ui_text
     assert "Korean remains the default UI language" in ui_text
+
+
+def test_dgx_vllm_generation_run_live_e2e_doc_defines_persistence_evidence() -> None:
+    e2e_text = _read(DGX_VLLM_GENERATION_RUN_E2E_DOC_PATH)
+
+    assert "DGX vLLM Generation Run Live E2E Verification" in e2e_text
+    assert "scripts/run_dgx_vllm_generation_run_e2e.py" in e2e_text
+    assert "`192.168.20.243`" in e2e_text
+    assert "`12000`" in e2e_text
+    assert "`generation_runs`" in e2e_text
+    assert "`generation_run_citations`" in e2e_text
+    assert "`execute_remote_generation_run(...)`" in e2e_text
+    assert "`remote_openai_compatible`" in e2e_text
+    assert "environment variable name" in e2e_text

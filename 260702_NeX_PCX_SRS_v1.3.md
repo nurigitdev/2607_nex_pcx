@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.49**
+**Software Requirements Specification v1.50**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.49
+문서 상태: Draft v1.50
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.49 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.50 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.49 |
+| 문서 버전 | v1.50 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -74,6 +74,7 @@
 | 1.47 | 2026-07-27 | Remote generation run API, retrieval context에서 DB-backed remote vLLM executor 실행과 env-only API key resolution 요구사항 보강 |
 | 1.48 | 2026-07-27 | Remote generation run UI controls, 생성 화면의 default provider readiness 표시와 remote vLLM 실행 feedback 요구사항 보강 |
 | 1.49 | 2026-07-27 | Generation provider metrics mode breakdown, mock/remote generation 실행의 성공률, token, latency 분리 관측 요구사항 보강 |
+| 1.50 | 2026-07-27 | DGX vLLM generation run live E2E verification, retrieval context package에서 remote generation run/citation/metrics persistence까지 검증하는 운영 증적 요구사항 보강 |
 
 # 목차
 
@@ -438,6 +439,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-068 | Remote generation run API | API 사용자는 검색 이력의 retrieval context를 remote vLLM generation run으로 승격할 수 있어야 하며, API key는 DB에 저장하지 않고 provider 설정의 env reference를 해석해 runtime에만 전달해야 한다. | MUST |
 | FR-069 | Remote generation run UI controls | 생성 화면은 default generation provider runtime readiness, API key env 준비 상태, remote 실행 가능 여부를 표시하고, 준비된 경우 remote vLLM generation run을 시작해 결과 feedback으로 연결할 수 있어야 한다. | SHOULD |
 | FR-070 | Generation provider metrics mode breakdown | 운영자는 generation provider metrics snapshot에서 mock과 remote_openai_compatible 실행을 provider mode별로 분리해 실행 수, 성공/실패, no-answer, token, elapsed/provider elapsed 평균을 비교할 수 있어야 한다. | SHOULD |
+| FR-071 | DGX vLLM generation run live E2E verification | 운영자는 DGX-Spark vLLM runtime을 대상으로 임시 검색 로그 fixture에서 retrieval context package를 생성하고, remote generation executor 실행 결과가 `generation_runs`, `generation_run_citations`, provider metrics에 secret 없이 저장되는지 검증하는 CLI 증적을 남길 수 있어야 한다. | MUST |
 
 ## 4.3 대시보드 요구사항
 
