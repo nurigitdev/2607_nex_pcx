@@ -17,6 +17,7 @@ def _template_key(prefix: str = "pytest_generation_template") -> str:
 def _template_payload(template_key: str, *, is_default: bool = False) -> dict[str, object]:
     return {
         "template_key": template_key,
+        "template_family": template_key,
         "template_name": "Pytest 생성 템플릿",
         "template_version": "v1",
         "document_type": "report",
@@ -32,6 +33,7 @@ def _template_payload(template_key: str, *, is_default: bool = False) -> dict[st
         "citation_policy": {"required": True, "minimum_citations": 1},
         "is_default": is_default,
         "is_active": True,
+        "change_note": "pytest 관리 API smoke",
         "created_by": "pytest-api",
     }
 
@@ -71,6 +73,7 @@ def test_generation_template_management_api_crud_and_guardrails(
 ) -> None:
     template_key = _template_key()
     inactive_key = _template_key("pytest_inactive_generation_template")
+    clone_key = _template_key("pytest_clone_generation_template")
     app = create_app(Settings(database_url=migrated_database_url))
 
     try:
@@ -82,6 +85,7 @@ def test_generation_template_management_api_crud_and_guardrails(
             read_response = client.get(f"/api/admin/generation-templates/{template_key}")
             update_payload = _template_payload(template_key, is_default=True)
             update_payload["template_name"] = "Pytest 생성 템플릿 v2"
+            update_payload["template_version"] = "v2"
             update_response = client.put(
                 f"/api/admin/generation-templates/{template_key}",
                 json=update_payload,
@@ -90,8 +94,26 @@ def test_generation_template_management_api_crud_and_guardrails(
                 "/api/admin/generation-templates",
                 params={"include_inactive": "true"},
             )
+            clone_response = client.post(
+                f"/api/admin/generation-templates/{template_key}/clone",
+                json={
+                    "target_template_key": clone_key,
+                    "target_template_version": "v3",
+                    "target_template_name": "Pytest 생성 템플릿 clone",
+                    "change_note": "rollback 후보",
+                    "created_by": "pytest-api",
+                },
+            )
+            duplicate_clone_response = client.post(
+                f"/api/admin/generation-templates/{template_key}/clone",
+                json={
+                    "target_template_key": clone_key,
+                    "target_template_version": "v4",
+                },
+            )
+            rollback_response = client.post(f"/api/admin/generation-templates/{clone_key}/rollback")
             deactivate_default_response = client.patch(
-                f"/api/admin/generation-templates/{template_key}/active",
+                f"/api/admin/generation-templates/{clone_key}/active",
                 json={"is_active": False},
             )
             inactive_create_response = client.post(
@@ -121,6 +143,16 @@ def test_generation_template_management_api_crud_and_guardrails(
             missing_default_response = client.post(
                 "/api/admin/generation-templates/missing_template/default"
             )
+            missing_clone_response = client.post(
+                "/api/admin/generation-templates/missing_template/clone",
+                json={
+                    "target_template_key": _template_key("pytest_missing_clone"),
+                    "target_template_version": "v1",
+                },
+            )
+            missing_rollback_response = client.post(
+                "/api/admin/generation-templates/missing_template/rollback"
+            )
 
         assert create_response.status_code == 201
         assert create_response.json()["template"]["template_key"] == template_key
@@ -131,9 +163,24 @@ def test_generation_template_management_api_crud_and_guardrails(
         assert update_response.json()["template"]["is_default"] is True
         assert list_response.status_code == 200
         assert list_response.json()["summary"]["default_template_key"] == template_key
+        assert list_response.json()["summary"]["default_template_version"] == "v2"
+        assert list_response.json()["summary"]["applied_template_label"].startswith(
+            "Pytest 생성 템플릿 v2"
+        )
         assert template_key in [
             template["template_key"] for template in list_response.json()["templates"]
         ]
+        assert clone_response.status_code == 201
+        assert clone_response.json()["template"]["template_key"] == clone_key
+        assert clone_response.json()["template"]["template_family"] == template_key
+        assert clone_response.json()["template"]["template_version"] == "v3"
+        assert clone_response.json()["template"]["change_note"] == "rollback 후보"
+        assert clone_response.json()["template"]["clone_source_template_id"] is not None
+        assert duplicate_clone_response.status_code == 400
+        assert "already exists" in duplicate_clone_response.json()["detail"]
+        assert rollback_response.status_code == 200
+        assert rollback_response.json()["template"]["template_key"] == clone_key
+        assert rollback_response.json()["template"]["is_default"] is True
         assert deactivate_default_response.status_code == 400
         assert "default" in deactivate_default_response.json()["detail"]
         assert inactive_create_response.status_code == 201
@@ -146,8 +193,10 @@ def test_generation_template_management_api_crud_and_guardrails(
         assert missing_read_response.status_code == 404
         assert missing_active_response.status_code == 404
         assert missing_default_response.status_code == 404
+        assert missing_clone_response.status_code == 404
+        assert missing_rollback_response.status_code == 404
     finally:
-        _cleanup_generation_templates(migrated_database_url, template_key, inactive_key)
+        _cleanup_generation_templates(migrated_database_url, template_key, inactive_key, clone_key)
 
 
 def test_generation_template_management_api_returns_503_without_database() -> None:
@@ -169,6 +218,11 @@ def test_generation_template_management_api_returns_503_without_database() -> No
             json={"is_active": True},
         )
         default_response = client.post("/api/admin/generation-templates/report/default")
+        clone_response = client.post(
+            "/api/admin/generation-templates/report/clone",
+            json={"target_template_key": "report_v2", "target_template_version": "v2"},
+        )
+        rollback_response = client.post("/api/admin/generation-templates/report/rollback")
 
     assert list_response.status_code == 503
     assert read_response.status_code == 503
@@ -176,12 +230,15 @@ def test_generation_template_management_api_returns_503_without_database() -> No
     assert update_response.status_code == 503
     assert active_response.status_code == 503
     assert default_response.status_code == 503
+    assert clone_response.status_code == 503
+    assert rollback_response.status_code == 503
 
 
 def test_generation_template_management_ui_saves_and_toggles_template(
     migrated_database_url: str,
 ) -> None:
     template_key = _template_key("pytest_ui_generation_template")
+    clone_key = _template_key("pytest_ui_generation_template_clone")
     app = create_app(Settings(database_url=migrated_database_url))
 
     try:
@@ -192,6 +249,7 @@ def test_generation_template_management_ui_saves_and_toggles_template(
                 "/admin/generation-templates/upsert",
                 data={
                     "template_key": template_key,
+                    "template_family": "pytest_ui_family",
                     "template_name": "Pytest UI 보고서",
                     "template_version": "v1",
                     "document_type": "report",
@@ -207,11 +265,31 @@ def test_generation_template_management_ui_saves_and_toggles_template(
                     "user_instruction_suffix": "근거를 명확히 작성한다.",
                     "style_guidance": '{"tone": "formal"}',
                     "citation_policy": '{"required": true}',
+                    "change_note": "UI 생성",
                     "is_active": "true",
                 },
                 follow_redirects=False,
             )
             saved_response = client.get(save_response.headers["location"])
+            clone_response = client.post(
+                f"/admin/generation-templates/{template_key}/clone",
+                data={
+                    "target_template_key": clone_key,
+                    "target_template_version": "v2",
+                    "target_template_name": "Pytest UI 보고서 v2",
+                    "change_note": "UI clone",
+                    "is_active": "true",
+                    "include_inactive": "true",
+                },
+                follow_redirects=False,
+            )
+            cloned_response = client.get(clone_response.headers["location"])
+            rollback_response = client.post(
+                f"/admin/generation-templates/{clone_key}/rollback",
+                data={"include_inactive": "true"},
+                follow_redirects=False,
+            )
+            rolled_back_response = client.get(rollback_response.headers["location"])
             deactivate_response = client.post(
                 f"/admin/generation-templates/{template_key}/active",
                 data={"is_active": "false", "include_inactive": "true"},
@@ -239,6 +317,7 @@ def test_generation_template_management_ui_saves_and_toggles_template(
         assert "data-generation-template-management-summary" in initial_response.text
         assert "data-generation-template-management-form" in initial_response.text
         assert "data-generation-template-management-table" in initial_response.text
+        assert "현재 적용 Template" in initial_response.text
         assert new_response.status_code == 200
         assert "새 Template 작성" in new_response.text
         assert save_response.status_code == 303
@@ -246,6 +325,17 @@ def test_generation_template_management_ui_saves_and_toggles_template(
         assert saved_response.status_code == 200
         assert template_key in saved_response.text
         assert "Pytest UI 보고서" in saved_response.text
+        assert "data-generation-template-clone" in saved_response.text
+        assert "pytest_ui_family" in saved_response.text
+        assert clone_response.status_code == 303
+        assert f"cloned_template={clone_key}" in clone_response.headers["location"]
+        assert cloned_response.status_code == 200
+        assert "템플릿 버전을 복제했습니다" in cloned_response.text
+        assert clone_key in cloned_response.text
+        assert rollback_response.status_code == 303
+        assert f"rolled_back_template={clone_key}" in rollback_response.headers["location"]
+        assert rolled_back_response.status_code == 200
+        assert "현재 적용" in rolled_back_response.text
         assert deactivate_response.status_code == 303
         assert inactive_response.status_code == 200
         assert "비활성" in inactive_response.text
@@ -253,7 +343,7 @@ def test_generation_template_management_ui_saves_and_toggles_template(
         assert invalid_page_response.status_code == 200
         assert "section_schema must be valid JSON" in invalid_page_response.text
     finally:
-        _cleanup_generation_templates(migrated_database_url, template_key)
+        _cleanup_generation_templates(migrated_database_url, template_key, clone_key)
 
 
 def test_generation_template_management_ui_reports_missing_database() -> None:
@@ -280,6 +370,18 @@ def test_generation_template_management_ui_reports_missing_database() -> None:
             "/admin/generation-templates/report/default",
             follow_redirects=False,
         )
+        clone_response = client.post(
+            "/admin/generation-templates/report/clone",
+            data={
+                "target_template_key": "report_v2",
+                "target_template_version": "v2",
+            },
+            follow_redirects=False,
+        )
+        rollback_response = client.post(
+            "/admin/generation-templates/report/rollback",
+            follow_redirects=False,
+        )
 
     assert page_response.status_code == 200
     assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
@@ -289,3 +391,7 @@ def test_generation_template_management_ui_reports_missing_database() -> None:
     assert "template_error=NEX_PCX_DATABASE_URL" in active_response.headers["location"]
     assert default_response.status_code == 303
     assert "template_error=NEX_PCX_DATABASE_URL" in default_response.headers["location"]
+    assert clone_response.status_code == 303
+    assert "template_error=NEX_PCX_DATABASE_URL" in clone_response.headers["location"]
+    assert rollback_response.status_code == 303
+    assert "template_error=NEX_PCX_DATABASE_URL" in rollback_response.headers["location"]

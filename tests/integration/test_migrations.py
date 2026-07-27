@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260727_0034"
+HEAD_REVISION = "20260728_0035"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -108,10 +108,14 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     default_generation_template = fetch_one(
         test_database_url,
         """
-        SELECT template_key, document_type, output_format
+        SELECT template_key, template_family, document_type, output_format, change_note
         FROM generation_templates
         WHERE is_default
         """,
+    )
+    generation_template_family_index = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.idx_generation_templates_family_version') AS index_name",
     )
     default_generation_provider = fetch_one(
         test_database_url,
@@ -154,8 +158,13 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert generation_citation_table["table_name"] == "generation_run_citations"
     assert generation_template_table["table_name"] == "generation_templates"
     assert default_generation_template["template_key"] == "grounded_answer"
+    assert default_generation_template["template_family"] == "grounded_answer"
     assert default_generation_template["document_type"] == "grounded_answer"
     assert default_generation_template["output_format"] == "markdown"
+    assert default_generation_template["change_note"] == ""
+    assert (
+        generation_template_family_index["index_name"] == "idx_generation_templates_family_version"
+    )
     assert default_generation_provider["provider_mode"] == "mock"
     assert default_generation_provider["model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
     assert keyword_index_table["table_name"] == "chunk_keyword_terms"

@@ -20,6 +20,18 @@
 </div>
 {% endif %}
 
+{% if cloned_template %}
+<div class="alert alert-success" role="alert">
+  {{ t("generation_templates.cloned", template=cloned_template) }}
+</div>
+{% endif %}
+
+{% if rolled_back_template %}
+<div class="alert alert-success" role="alert">
+  {{ t("generation_templates.rolled_back", template=rolled_back_template) }}
+</div>
+{% endif %}
+
 {% if error_message %}
 <div class="alert alert-warning" role="alert">{{ error_message }}</div>
 {% endif %}
@@ -36,8 +48,12 @@
     <div class="metric-value">{{ summary.active_template_count }}</div>
   </div>
   <div class="metric-card bg-white p-3">
-    <div class="metric-label">{{ t("generation_templates.default_template") }}</div>
-    <div class="generation-detail-compact-value">{{ summary.default_template_key or "-" }}</div>
+    <div class="metric-label">{{ t("generation_templates.applied_template") }}</div>
+    <div class="generation-detail-compact-value">{{ summary.applied_template_label or "-" }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_templates.family_count") }}</div>
+    <div class="metric-value">{{ summary.family_count }}</div>
   </div>
   <div class="metric-card bg-white p-3">
     <div class="metric-label">{{ t("generation_templates.document_types") }}</div>
@@ -59,13 +75,25 @@
       <div class="text-secondary">{{ t("generation_templates.form_help") }}</div>
     </div>
     {% if selected_template %}
-    <span class="badge text-bg-light border">#{{ selected_template.generation_template_id }}</span>
+    <div class="d-flex flex-wrap gap-2">
+      {% if selected_template.is_default %}
+      <span class="badge text-bg-primary">{{ t("generation_templates.applied_badge") }}</span>
+      {% endif %}
+      {% if selected_template.clone_source_template_id %}
+      <span class="badge text-bg-light border">{{ t("generation_templates.source_template") }} #{{ selected_template.clone_source_template_id }}</span>
+      {% endif %}
+      <span class="badge text-bg-light border">#{{ selected_template.generation_template_id }}</span>
+    </div>
     {% endif %}
   </div>
   <form class="row g-3" method="post" action="/admin/generation-templates/upsert">
     <div class="col-12 col-lg-3">
       <label class="form-label" for="template_key">{{ t("generation_templates.template_key") }}</label>
       <input class="form-control" id="template_key" name="template_key" value="{{ selected_template.template_key if selected_template else '' }}" placeholder="custom_report_v1" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-lg-3">
+      <label class="form-label" for="template_family">{{ t("generation_templates.template_family") }}</label>
+      <input class="form-control" id="template_family" name="template_family" value="{{ selected_template.template_family if selected_template else '' }}" placeholder="report" {% if not database_configured %}disabled{% endif %}>
     </div>
     <div class="col-12 col-lg-4">
       <label class="form-label" for="template_name">{{ t("generation_templates.template_name") }}</label>
@@ -111,6 +139,10 @@
         </div>
       </div>
     </div>
+    <div class="col-12 col-lg-8">
+      <label class="form-label" for="change_note">{{ t("generation_templates.change_note") }}</label>
+      <input class="form-control" id="change_note" name="change_note" value="{{ selected_template.change_note if selected_template else '' }}" placeholder="{{ t('generation_templates.change_note_placeholder') }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
     <div class="col-12 col-xl-6">
       <label class="form-label" for="system_instruction">{{ t("generation_templates.system_instruction") }}</label>
       <textarea class="form-control generation-template-textarea" id="system_instruction" name="system_instruction" rows="6" {% if not database_configured %}disabled{% endif %}>{{ selected_template.system_instruction if selected_template else '' }}</textarea>
@@ -138,6 +170,54 @@
     </div>
   </form>
 </section>
+
+{% if selected_template and not new_template %}
+<section class="bg-white border rounded-2 p-3 mb-4" data-generation-template-clone>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation_templates.clone_title") }}</h2>
+      <div class="text-secondary">{{ t("generation_templates.clone_help") }}</div>
+    </div>
+    <span class="badge text-bg-light border">{{ selected_template.template_family }} / {{ selected_template.template_version }}</span>
+  </div>
+  <form class="row g-3" method="post" action="/admin/generation-templates/{{ selected_template.template_key }}/clone">
+    <input type="hidden" name="include_inactive" value="{{ 'true' if include_inactive else 'false' }}">
+    <div class="col-12 col-lg-3">
+      <label class="form-label" for="target_template_key">{{ t("generation_templates.target_template_key") }}</label>
+      <input class="form-control" id="target_template_key" name="target_template_key" value="{{ clone_target_template_key }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label" for="target_template_version">{{ t("generation_templates.target_template_version") }}</label>
+      <input class="form-control" id="target_template_version" name="target_template_version" value="{{ clone_target_template_version }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-lg-4">
+      <label class="form-label" for="target_template_name">{{ t("generation_templates.target_template_name") }}</label>
+      <input class="form-control" id="target_template_name" name="target_template_name" value="{{ clone_target_template_name }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-lg-3">
+      <div class="d-flex gap-4 pt-lg-4">
+        <div class="form-check">
+          <input class="form-check-input" id="clone_is_active" name="is_active" type="checkbox" value="true" checked {% if not database_configured %}disabled{% endif %}>
+          <label class="form-check-label" for="clone_is_active">{{ t("common.active") }}</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" id="make_default" name="make_default" type="checkbox" value="true" {% if not database_configured %}disabled{% endif %}>
+          <label class="form-check-label" for="make_default">{{ t("generation_templates.make_clone_default") }}</label>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-9">
+      <label class="form-label" for="clone_change_note">{{ t("generation_templates.change_note") }}</label>
+      <input class="form-control" id="clone_change_note" name="change_note" value="" placeholder="{{ t('generation_templates.clone_change_note_placeholder') }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-lg-3">
+      <button class="btn btn-outline-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("generation_templates.clone_action") }}
+      </button>
+    </div>
+  </form>
+</section>
+{% endif %}
 
 {% if collection_payload %}
 <section class="metric-card bg-white p-0 overflow-hidden mb-4" data-generation-template-management-table>
@@ -173,9 +253,10 @@
             <div class="d-flex flex-wrap gap-1 mt-1">
               <span class="badge text-bg-light border">{{ template.template_key }}</span>
               {% if template.is_default %}
-              <span class="badge text-bg-primary">{{ t("generation_templates.default") }}</span>
+              <span class="badge text-bg-primary">{{ t("generation_templates.applied_badge") }}</span>
               {% endif %}
             </div>
+            <div class="text-secondary small mt-1">{{ template.template_family }}</div>
           </td>
           <td>
             <span class="badge text-bg-light border">{{ template.document_type }}</span>
@@ -200,10 +281,10 @@
           <td>
             <div class="d-flex flex-wrap justify-content-end gap-2">
               <a class="btn btn-outline-primary btn-sm" href="/admin/generation-templates?include_inactive=true&template_key={{ template.template_key }}">{{ t("generation_templates.edit") }}</a>
-              <form method="post" action="/admin/generation-templates/{{ template.template_key }}/default">
+              <form method="post" action="/admin/generation-templates/{{ template.template_key }}/rollback">
                 <input type="hidden" name="include_inactive" value="{{ 'true' if include_inactive else 'false' }}">
                 <button class="btn btn-outline-secondary btn-sm" type="submit" {% if template.is_default or not template.is_active %}disabled{% endif %}>
-                  {{ t("generation_templates.set_default") }}
+                  {{ t("generation_templates.rollback_apply") }}
                 </button>
               </form>
               <form method="post" action="/admin/generation-templates/{{ template.template_key }}/active">

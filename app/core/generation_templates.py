@@ -26,12 +26,15 @@ GENERATION_TEMPLATE_DOCUMENT_TYPES = {
 GENERATION_TEMPLATE_LANGUAGES = {"ko", "en"}
 GENERATION_TEMPLATE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
 GENERATION_TEMPLATE_SECTION_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
+GENERATION_TEMPLATE_VERSION_NUMBER_PATTERN = re.compile(r"^v(\d+)$")
+GENERATION_TEMPLATE_KEY_TOKEN_PATTERN = re.compile(r"[^a-z0-9_-]+")
 
 
 @dataclass(frozen=True)
 class GenerationTemplateRecord:
     generation_template_id: int | None
     template_key: str
+    template_family: str
     template_name: str
     template_version: str
     document_type: str
@@ -44,6 +47,8 @@ class GenerationTemplateRecord:
     citation_policy: dict[str, Any]
     is_default: bool
     is_active: bool
+    clone_source_template_id: int | None
+    change_note: str
     created_by: str | None
     created_by_user_id: int | None
     created_at: datetime | None
@@ -55,6 +60,7 @@ class GenerationTemplateInput:
     template_key: str
     template_name: str
     template_version: str = DEFAULT_GENERATION_TEMPLATE_VERSION
+    template_family: str | None = None
     document_type: str = DEFAULT_GENERATION_TEMPLATE_DOCUMENT_TYPE
     language: str = DEFAULT_GENERATION_TEMPLATE_LANGUAGE
     output_format: str = GENERATION_TEMPLATE_OUTPUT_FORMAT_MARKDOWN
@@ -65,6 +71,21 @@ class GenerationTemplateInput:
     citation_policy: Mapping[str, Any] = field(default_factory=dict)
     is_default: bool = False
     is_active: bool = True
+    clone_source_template_id: int | None = None
+    change_note: str = ""
+    created_by: str | None = None
+    created_by_user_id: int | None = None
+
+
+@dataclass(frozen=True)
+class GenerationTemplateCloneInput:
+    source_template_key: str
+    target_template_key: str
+    target_template_version: str
+    target_template_name: str | None = None
+    make_default: bool = False
+    is_active: bool = True
+    change_note: str = ""
     created_by: str | None = None
     created_by_user_id: int | None = None
 
@@ -82,6 +103,17 @@ def _validate_non_empty(value: str, field_name: str) -> str:
 
 def _normalize_template_key(template_key: str) -> str:
     return _validate_non_empty(template_key, "template_key").lower()
+
+
+def _normalize_template_family(template_family: str | None, fallback_key: str) -> str:
+    normalized = (template_family or fallback_key).strip().lower()
+    if not normalized:
+        raise InvalidGenerationTemplateError("template_family must not be empty")
+    if GENERATION_TEMPLATE_KEY_PATTERN.fullmatch(normalized) is None:
+        raise InvalidGenerationTemplateError(
+            "template_family must use 2-64 lowercase letters, numbers, hyphens, or underscores"
+        )
+    return normalized
 
 
 def _normalize_language(language: str | None) -> str:
@@ -102,6 +134,16 @@ def _validate_created_by_user_id(created_by_user_id: int | None) -> int | None:
     if created_by_user_id < 1:
         raise InvalidGenerationTemplateError("created_by_user_id must be positive")
     return created_by_user_id
+
+
+def _validate_clone_source_template_id(
+    clone_source_template_id: int | None,
+) -> int | None:
+    if clone_source_template_id is None:
+        return None
+    if clone_source_template_id < 1:
+        raise InvalidGenerationTemplateError("clone_source_template_id must be positive")
+    return clone_source_template_id
 
 
 def _validate_mapping(value: object, field_name: str) -> dict[str, Any]:
@@ -183,6 +225,10 @@ def validate_generation_template_input(
             template_input.template_version,
             "template_version",
         ),
+        template_family=_normalize_template_family(
+            template_input.template_family,
+            template_key,
+        ),
         document_type=document_type,
         language=language,
         output_format=output_format,
@@ -196,6 +242,10 @@ def validate_generation_template_input(
         citation_policy=_validate_mapping(template_input.citation_policy, "citation_policy"),
         is_default=is_default,
         is_active=is_active,
+        clone_source_template_id=_validate_clone_source_template_id(
+            template_input.clone_source_template_id
+        ),
+        change_note=(template_input.change_note or "").strip(),
         created_by=_validate_created_by(template_input.created_by),
         created_by_user_id=_validate_created_by_user_id(template_input.created_by_user_id),
     )
@@ -213,9 +263,11 @@ def _section_schema(value: object) -> tuple[dict[str, Any], ...]:
 
 def _template_from_row(row: Mapping[str, Any]) -> GenerationTemplateRecord:
     template_id = row.get("generation_template_id")
+    clone_source_template_id = row.get("clone_source_template_id")
     return GenerationTemplateRecord(
         generation_template_id=int(template_id) if template_id is not None else None,
         template_key=str(row["template_key"]),
+        template_family=str(row.get("template_family") or row["template_key"]),
         template_name=str(row["template_name"]),
         template_version=str(row["template_version"]),
         document_type=str(row["document_type"]),
@@ -228,6 +280,10 @@ def _template_from_row(row: Mapping[str, Any]) -> GenerationTemplateRecord:
         citation_policy=_mapping(row.get("citation_policy")),
         is_default=bool(row["is_default"]),
         is_active=bool(row["is_active"]),
+        clone_source_template_id=(
+            int(clone_source_template_id) if clone_source_template_id is not None else None
+        ),
+        change_note=str(row.get("change_note") or ""),
         created_by=row.get("created_by"),
         created_by_user_id=row.get("created_by_user_id"),
         created_at=row.get("created_at"),
@@ -243,6 +299,7 @@ def default_generation_template_record(
     return GenerationTemplateRecord(
         generation_template_id=None,
         template_key=DEFAULT_GENERATION_TEMPLATE_KEY,
+        template_family=DEFAULT_GENERATION_TEMPLATE_KEY,
         template_name=DEFAULT_GENERATION_TEMPLATE_NAME,
         template_version=DEFAULT_GENERATION_TEMPLATE_VERSION,
         document_type=DEFAULT_GENERATION_TEMPLATE_DOCUMENT_TYPE,
@@ -265,6 +322,8 @@ def default_generation_template_record(
         },
         is_default=True,
         is_active=True,
+        clone_source_template_id=None,
+        change_note="",
         created_by=None,
         created_by_user_id=None,
         created_at=None,
@@ -276,6 +335,7 @@ def generation_template_snapshot(template: GenerationTemplateRecord) -> dict[str
     return {
         "generation_template_id": template.generation_template_id,
         "template_key": template.template_key,
+        "template_family": template.template_family,
         "template_name": template.template_name,
         "template_version": template.template_version,
         "document_type": template.document_type,
@@ -288,7 +348,33 @@ def generation_template_snapshot(template: GenerationTemplateRecord) -> dict[str
         "citation_policy": dict(template.citation_policy),
         "is_default": template.is_default,
         "is_active": template.is_active,
+        "clone_source_template_id": template.clone_source_template_id,
+        "change_note": template.change_note,
     }
+
+
+def suggest_generation_template_next_version(template: GenerationTemplateRecord) -> str:
+    match = GENERATION_TEMPLATE_VERSION_NUMBER_PATTERN.fullmatch(template.template_version.lower())
+    if match is None:
+        return f"{template.template_version}_next"
+    return f"v{int(match.group(1)) + 1}"
+
+
+def _generation_template_key_token(value: str) -> str:
+    token = GENERATION_TEMPLATE_KEY_TOKEN_PATTERN.sub("_", value.strip().lower())
+    token = re.sub(r"_+", "_", token).strip("_-")
+    if len(token) < 2:
+        token = f"{token or 'template'}_version"
+    return token[:64]
+
+
+def suggest_generation_template_clone_key(template: GenerationTemplateRecord) -> str:
+    family_token = _generation_template_key_token(template.template_family or template.template_key)
+    version_token = _generation_template_key_token(
+        suggest_generation_template_next_version(template)
+    )
+    clone_key = f"{family_token}_{version_token}"
+    return clone_key[:64].rstrip("_-")
 
 
 def list_generation_templates(
@@ -302,7 +388,7 @@ def list_generation_templates(
             SELECT *
             FROM generation_templates
             WHERE (%s OR is_active)
-            ORDER BY is_default DESC, template_key
+            ORDER BY is_default DESC, template_family, template_version, template_key
             """,
             (include_inactive,),
         ).fetchall()
@@ -373,6 +459,7 @@ def upsert_generation_template(
             """
             INSERT INTO generation_templates (
                 template_key,
+                template_family,
                 template_name,
                 template_version,
                 document_type,
@@ -385,14 +472,17 @@ def upsert_generation_template(
                 citation_policy,
                 is_default,
                 is_active,
+                clone_source_template_id,
+                change_note,
                 created_by,
                 created_by_user_id
             )
             VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (template_key) DO UPDATE
             SET
+                template_family = EXCLUDED.template_family,
                 template_name = EXCLUDED.template_name,
                 template_version = EXCLUDED.template_version,
                 document_type = EXCLUDED.document_type,
@@ -405,6 +495,8 @@ def upsert_generation_template(
                 citation_policy = EXCLUDED.citation_policy,
                 is_default = EXCLUDED.is_default,
                 is_active = EXCLUDED.is_active,
+                clone_source_template_id = EXCLUDED.clone_source_template_id,
+                change_note = EXCLUDED.change_note,
                 created_by = COALESCE(EXCLUDED.created_by, generation_templates.created_by),
                 created_by_user_id = COALESCE(
                     EXCLUDED.created_by_user_id,
@@ -415,6 +507,7 @@ def upsert_generation_template(
             """,
             (
                 validated.template_key,
+                validated.template_family,
                 validated.template_name,
                 validated.template_version,
                 validated.document_type,
@@ -427,6 +520,8 @@ def upsert_generation_template(
                 Json(dict(validated.citation_policy)),
                 validated.is_default,
                 validated.is_active,
+                validated.clone_source_template_id,
+                validated.change_note,
                 validated.created_by,
                 validated.created_by_user_id,
             ),
@@ -436,6 +531,47 @@ def upsert_generation_template(
     if row is None:
         raise InvalidGenerationTemplateError("generation template was not saved")
     return _template_from_row(dict(row))
+
+
+def clone_generation_template_version(
+    database_url: str,
+    clone_input: GenerationTemplateCloneInput,
+) -> GenerationTemplateRecord | None:
+    source_key = _normalize_template_key(clone_input.source_template_key)
+    target_key = _normalize_template_key(clone_input.target_template_key)
+    if source_key == target_key:
+        raise InvalidGenerationTemplateError("target_template_key must differ from source")
+    if get_generation_template_by_key(database_url, target_key, include_inactive=True) is not None:
+        raise InvalidGenerationTemplateError("target_template_key already exists")
+
+    source = get_generation_template_by_key(database_url, source_key, include_inactive=True)
+    if source is None:
+        return None
+
+    target_name = (clone_input.target_template_name or "").strip() or source.template_name
+    return upsert_generation_template(
+        database_url,
+        GenerationTemplateInput(
+            template_key=target_key,
+            template_family=source.template_family,
+            template_name=target_name,
+            template_version=clone_input.target_template_version,
+            document_type=source.document_type,
+            language=source.language,
+            output_format=source.output_format,
+            section_schema=source.section_schema,
+            system_instruction=source.system_instruction,
+            user_instruction_suffix=source.user_instruction_suffix,
+            style_guidance=source.style_guidance,
+            citation_policy=source.citation_policy,
+            is_default=clone_input.make_default,
+            is_active=clone_input.is_active,
+            clone_source_template_id=source.generation_template_id,
+            change_note=clone_input.change_note,
+            created_by=clone_input.created_by,
+            created_by_user_id=clone_input.created_by_user_id,
+        ),
+    )
 
 
 def set_generation_template_active(
@@ -519,3 +655,10 @@ def set_generation_template_default(
         ).fetchone()
         conn.commit()
     return _template_from_row(dict(row)) if row else None
+
+
+def rollback_generation_template_version(
+    database_url: str,
+    template_key: str,
+) -> GenerationTemplateRecord | None:
+    return set_generation_template_default(database_url, template_key)

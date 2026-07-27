@@ -400,14 +400,19 @@ from app.core.generation_templates import (
     GENERATION_TEMPLATE_DOCUMENT_TYPES,
     GENERATION_TEMPLATE_LANGUAGES,
     GENERATION_TEMPLATE_OUTPUT_FORMAT_MARKDOWN,
+    GenerationTemplateCloneInput,
     GenerationTemplateInput,
     GenerationTemplateRecord,
     InvalidGenerationTemplateError,
+    clone_generation_template_version,
     get_default_generation_template,
     get_generation_template_by_key,
     list_generation_templates,
+    rollback_generation_template_version,
     set_generation_template_active,
     set_generation_template_default,
+    suggest_generation_template_clone_key,
+    suggest_generation_template_next_version,
     upsert_generation_template,
 )
 from app.core.go_live_readiness import (
@@ -714,6 +719,7 @@ class GenerationTemplateManagementRequest(BaseModel):
     template_key: str = Field(min_length=1, max_length=64)
     template_name: str = Field(min_length=1, max_length=200)
     template_version: str = Field(default="v1", min_length=1, max_length=80)
+    template_family: str | None = Field(default=None, max_length=64)
     document_type: str = Field(default="grounded_answer", min_length=1, max_length=80)
     language: str = Field(default="ko", min_length=2, max_length=16)
     output_format: str = Field(default="markdown", min_length=1, max_length=40)
@@ -724,6 +730,19 @@ class GenerationTemplateManagementRequest(BaseModel):
     citation_policy: dict[str, object] = Field(default_factory=dict)
     is_default: bool = False
     is_active: bool = True
+    clone_source_template_id: int | None = Field(default=None, ge=1)
+    change_note: str = Field(default="", max_length=1000)
+    created_by: str | None = Field(default="generation-template-api", max_length=120)
+    created_by_user_id: int | None = Field(default=None, ge=1)
+
+
+class GenerationTemplateCloneRequest(BaseModel):
+    target_template_key: str = Field(min_length=1, max_length=64)
+    target_template_version: str = Field(min_length=1, max_length=80)
+    target_template_name: str | None = Field(default=None, max_length=200)
+    make_default: bool = False
+    is_active: bool = True
+    change_note: str = Field(default="", max_length=1000)
     created_by: str | None = Field(default="generation-template-api", max_length=120)
     created_by_user_id: int | None = Field(default=None, ge=1)
 
@@ -4578,6 +4597,7 @@ def generation_template_payload(template: GenerationTemplateRecord) -> dict[str,
     return {
         "generation_template_id": template.generation_template_id,
         "template_key": template.template_key,
+        "template_family": template.template_family,
         "template_name": template.template_name,
         "template_version": template.template_version,
         "document_type": template.document_type,
@@ -4590,6 +4610,8 @@ def generation_template_payload(template: GenerationTemplateRecord) -> dict[str,
         "citation_policy": template.citation_policy,
         "is_default": template.is_default,
         "is_active": template.is_active,
+        "clone_source_template_id": template.clone_source_template_id,
+        "change_note": template.change_note,
         "created_by": template.created_by,
         "created_by_user_id": template.created_by_user_id,
         "created_at": _datetime_response(template.created_at),
@@ -4613,6 +4635,24 @@ def generation_template_collection_payload(
             "default_template_key": (
                 default_template.template_key if default_template is not None else None
             ),
+            "default_template_version": (
+                default_template.template_version if default_template is not None else None
+            ),
+            "default_template_name": (
+                default_template.template_name if default_template is not None else None
+            ),
+            "default_template_family": (
+                default_template.template_family if default_template is not None else None
+            ),
+            "applied_template_label": (
+                (
+                    f"{default_template.template_name} "
+                    f"({default_template.template_key} / {default_template.template_version})"
+                )
+                if default_template is not None
+                else None
+            ),
+            "family_count": len({template.template_family for template in templates}),
             "document_types": sorted(
                 {template.document_type for template in templates if template.is_active}
             ),
@@ -4633,6 +4673,7 @@ def generation_template_input_from_request(
 ) -> GenerationTemplateInput:
     return GenerationTemplateInput(
         template_key=payload.template_key,
+        template_family=payload.template_family,
         template_name=payload.template_name,
         template_version=payload.template_version,
         document_type=payload.document_type,
@@ -4645,6 +4686,8 @@ def generation_template_input_from_request(
         citation_policy=payload.citation_policy,
         is_default=payload.is_default,
         is_active=payload.is_active,
+        clone_source_template_id=payload.clone_source_template_id,
+        change_note=payload.change_note,
         created_by=payload.created_by,
         created_by_user_id=payload.created_by_user_id,
     )
@@ -12068,6 +12111,63 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return JSONResponse(content={"template": generation_template_payload(template)})
 
+    @app.post("/api/admin/generation-templates/{template_key}/clone")
+    def api_admin_clone_generation_template_version(
+        template_key: str,
+        payload: GenerationTemplateCloneRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            template = clone_generation_template_version(
+                settings.database_url,
+                GenerationTemplateCloneInput(
+                    source_template_key=template_key,
+                    target_template_key=payload.target_template_key,
+                    target_template_version=payload.target_template_version,
+                    target_template_name=payload.target_template_name,
+                    make_default=payload.make_default,
+                    is_active=payload.is_active,
+                    change_note=payload.change_note,
+                    created_by=payload.created_by,
+                    created_by_user_id=payload.created_by_user_id,
+                ),
+            )
+        except InvalidGenerationTemplateError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if template is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Source generation template not found.",
+            )
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"template": generation_template_payload(template)},
+        )
+
+    @app.post("/api/admin/generation-templates/{template_key}/rollback")
+    def api_admin_rollback_generation_template_version(template_key: str) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            template = rollback_generation_template_version(settings.database_url, template_key)
+        except InvalidGenerationTemplateError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if template is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generation template rollback target not found.",
+            )
+        return JSONResponse(content={"template": generation_template_payload(template)})
+
     @app.post("/api/generation/direct-runs")
     def api_create_direct_generation_run(payload: DirectGenerationRequest) -> JSONResponse:
         if not settings.database_url:
@@ -15525,6 +15625,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         template_key: str | None = None,
         new_template: bool = False,
         saved_template: str | None = None,
+        cloned_template: str | None = None,
+        rolled_back_template: str | None = None,
         template_error: str | None = None,
     ) -> HTMLResponse:
         templates: tuple[GenerationTemplateRecord, ...] = ()
@@ -15532,6 +15634,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         collection_json = ""
         selected_template: GenerationTemplateRecord | None = None
         selected_template_payload: dict[str, object] | None = None
+        clone_target_template_key = ""
+        clone_target_template_version = "v2"
+        clone_target_template_name = ""
         section_schema_json = "[]"
         style_guidance_json = "{}"
         citation_policy_json = "{}"
@@ -15580,6 +15685,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         ensure_ascii=False,
                         indent=2,
                     )
+                    clone_target_template_key = suggest_generation_template_clone_key(
+                        selected_template
+                    )
+                    clone_target_template_version = suggest_generation_template_next_version(
+                        selected_template
+                    )
+                    clone_target_template_name = (
+                        f"{selected_template.template_name} {clone_target_template_version}"
+                    )
             except InvalidGenerationTemplateError as exc:
                 error_message = str(exc)
 
@@ -15599,7 +15713,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 section_schema_json=section_schema_json,
                 style_guidance_json=style_guidance_json,
                 citation_policy_json=citation_policy_json,
+                clone_target_template_key=clone_target_template_key,
+                clone_target_template_version=clone_target_template_version,
+                clone_target_template_name=clone_target_template_name,
                 saved_template=saved_template,
+                cloned_template=cloned_template,
+                rolled_back_template=rolled_back_template,
                 error_message=error_message,
                 document_type_options=tuple(sorted(GENERATION_TEMPLATE_DOCUMENT_TYPES)),
                 template_language_options=tuple(sorted(GENERATION_TEMPLATE_LANGUAGES)),
@@ -15612,6 +15731,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         template_key: str = Form(...),
         template_name: str = Form(...),
         template_version: str = Form("v1"),
+        template_family: str = Form(""),
         document_type: str = Form("grounded_answer"),
         language: str = Form("ko"),
         output_format: str = Form("markdown"),
@@ -15620,6 +15740,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user_instruction_suffix: str = Form(""),
         style_guidance: str = Form("{}"),
         citation_policy: str = Form("{}"),
+        change_note: str = Form(""),
         is_default: bool = Form(False),
         is_active: bool = Form(False),
     ) -> RedirectResponse:
@@ -15632,6 +15753,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.database_url,
                     GenerationTemplateInput(
                         template_key=template_key,
+                        template_family=template_family or None,
                         template_name=template_name,
                         template_version=template_version,
                         document_type=document_type,
@@ -15654,6 +15776,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "citation_policy",
                             default_json="{}",
                         ),
+                        change_note=change_note,
                         is_default=is_default,
                         is_active=is_active,
                         created_by="generation-template-ui",
@@ -15671,6 +15794,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "include_inactive": "true",
                 }
 
+        return RedirectResponse(
+            _generation_templates_redirect_url(query_params),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/admin/generation-templates/{template_key}/clone")
+    def generation_templates_clone_action(
+        template_key: str,
+        target_template_key: str = Form(...),
+        target_template_version: str = Form(...),
+        target_template_name: str = Form(""),
+        change_note: str = Form(""),
+        make_default: bool = Form(False),
+        is_active: bool = Form(False),
+        include_inactive: bool = Form(True),
+    ) -> RedirectResponse:
+        query_params: dict[str, object]
+        if not settings.database_url:
+            query_params = {"template_error": "NEX_PCX_DATABASE_URL is not configured."}
+        else:
+            try:
+                template = clone_generation_template_version(
+                    settings.database_url,
+                    GenerationTemplateCloneInput(
+                        source_template_key=template_key,
+                        target_template_key=target_template_key,
+                        target_template_version=target_template_version,
+                        target_template_name=target_template_name or None,
+                        make_default=make_default,
+                        is_active=is_active,
+                        change_note=change_note,
+                        created_by="generation-template-ui",
+                    ),
+                )
+                if template is None:
+                    query_params = {
+                        "template_key": template_key,
+                        "template_error": "Generation template not found.",
+                    }
+                else:
+                    query_params = {
+                        "template_key": template.template_key,
+                        "cloned_template": template.template_key,
+                    }
+            except InvalidGenerationTemplateError as exc:
+                query_params = {
+                    "template_key": template_key,
+                    "template_error": str(exc),
+                }
+        query_params["include_inactive"] = str(include_inactive).lower()
         return RedirectResponse(
             _generation_templates_redirect_url(query_params),
             status_code=status.HTTP_303_SEE_OTHER,
@@ -15724,6 +15897,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     query_params = {
                         "template_key": template.template_key,
                         "saved_template": template.template_key,
+                    }
+            except InvalidGenerationTemplateError as exc:
+                query_params = {"template_key": template_key, "template_error": str(exc)}
+        query_params["include_inactive"] = str(include_inactive).lower()
+        return RedirectResponse(
+            _generation_templates_redirect_url(query_params),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/admin/generation-templates/{template_key}/rollback")
+    def generation_templates_rollback_action(
+        template_key: str,
+        include_inactive: bool = Form(True),
+    ) -> RedirectResponse:
+        query_params: dict[str, object]
+        if not settings.database_url:
+            query_params = {"template_error": "NEX_PCX_DATABASE_URL is not configured."}
+        else:
+            try:
+                template = rollback_generation_template_version(settings.database_url, template_key)
+                if template is None:
+                    query_params = {"template_error": "Generation template not found."}
+                else:
+                    query_params = {
+                        "template_key": template.template_key,
+                        "rolled_back_template": template.template_key,
                     }
             except InvalidGenerationTemplateError as exc:
                 query_params = {"template_key": template_key, "template_error": str(exc)}

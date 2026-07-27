@@ -5,11 +5,14 @@ from psycopg import errors
 
 from app.core.database import connect, fetch_one
 from app.core.generation_templates import (
+    GenerationTemplateCloneInput,
     GenerationTemplateInput,
     InvalidGenerationTemplateError,
+    clone_generation_template_version,
     get_default_generation_template,
     get_generation_template_by_key,
     list_generation_templates,
+    rollback_generation_template_version,
     set_generation_template_active,
     set_generation_template_default,
     upsert_generation_template,
@@ -92,6 +95,7 @@ def test_generation_templates_seed_default_set(migrated_database_url: str) -> No
         """
         SELECT
             template_key,
+            template_family,
             template_name,
             template_version,
             document_type,
@@ -109,6 +113,7 @@ def test_generation_templates_seed_default_set(migrated_database_url: str) -> No
     assert summary["active_count"] >= 5
     assert summary["default_count"] == 1
     assert default_template["template_key"] == "grounded_answer"
+    assert default_template["template_family"] == "grounded_answer"
     assert default_template["template_version"] == "v1"
     assert default_template["document_type"] == "grounded_answer"
     assert default_template["language"] == "ko"
@@ -203,6 +208,7 @@ def test_generation_template_repository_manages_custom_template_lifecycle(
         )
 
         assert created.template_key == template_key
+        assert created.template_family == template_key
         assert created.template_name == "Pytest 보고서"
         assert updated_default.template_name == "Pytest 보고서 v2"
         assert updated_default.is_default is True
@@ -250,6 +256,82 @@ def test_generation_template_repository_manages_custom_template_lifecycle(
         )
     finally:
         _cleanup_generation_templates(migrated_database_url, template_key, inactive_key)
+
+
+def test_generation_template_repository_clones_and_rolls_back_versions(
+    migrated_database_url: str,
+) -> None:
+    template_key = _template_key("pytest_template_family")
+    clone_key = _template_key("pytest_template_family_v2")
+    try:
+        created = upsert_generation_template(
+            migrated_database_url,
+            GenerationTemplateInput(
+                template_key=template_key,
+                template_family="pytest_family",
+                template_name="Pytest 계보 템플릿",
+                template_version="v1",
+                document_type="report",
+                language="ko",
+                section_schema=(
+                    {"key": "title", "heading": "제목", "required": True},
+                    {"key": "evidence", "heading": "근거", "required": True},
+                ),
+                system_instruction="계보 테스트 템플릿이다.",
+                style_guidance={"tone": "formal"},
+                citation_policy={"required": True},
+                is_default=True,
+                created_by="pytest",
+            ),
+        )
+        cloned = clone_generation_template_version(
+            migrated_database_url,
+            GenerationTemplateCloneInput(
+                source_template_key=template_key,
+                target_template_key=clone_key,
+                target_template_version="v2",
+                target_template_name="Pytest 계보 템플릿 v2",
+                change_note="rollback 후보",
+                created_by="pytest",
+            ),
+        )
+        rolled_back = rollback_generation_template_version(migrated_database_url, clone_key)
+        default_template = get_default_generation_template(migrated_database_url)
+
+        assert created.is_default is True
+        assert cloned is not None
+        assert cloned.template_family == "pytest_family"
+        assert cloned.clone_source_template_id == created.generation_template_id
+        assert cloned.change_note == "rollback 후보"
+        assert cloned.is_default is False
+        assert rolled_back is not None
+        assert rolled_back.template_key == clone_key
+        assert rolled_back.is_default is True
+        assert default_template is not None
+        assert default_template.template_key == clone_key
+
+        with pytest.raises(InvalidGenerationTemplateError, match="already exists"):
+            clone_generation_template_version(
+                migrated_database_url,
+                GenerationTemplateCloneInput(
+                    source_template_key=template_key,
+                    target_template_key=clone_key,
+                    target_template_version="v3",
+                ),
+            )
+        assert (
+            clone_generation_template_version(
+                migrated_database_url,
+                GenerationTemplateCloneInput(
+                    source_template_key="missing_generation_template",
+                    target_template_key=_template_key("pytest_missing_clone"),
+                    target_template_version="v1",
+                ),
+            )
+            is None
+        )
+    finally:
+        _cleanup_generation_templates(migrated_database_url, template_key, clone_key)
 
 
 def test_generation_template_repository_hides_inactive_templates_by_default(

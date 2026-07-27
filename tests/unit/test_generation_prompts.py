@@ -38,6 +38,7 @@ def _report_template() -> GenerationTemplateRecord:
     return GenerationTemplateRecord(
         generation_template_id=22,
         template_key="report",
+        template_family="report",
         template_name="보고서 초안",
         template_version="v1",
         document_type="report",
@@ -54,6 +55,8 @@ def _report_template() -> GenerationTemplateRecord:
         citation_policy={"required": True, "placement": "per_section"},
         is_default=False,
         is_active=True,
+        clone_source_template_id=None,
+        change_note="",
         created_by=None,
         created_by_user_id=None,
         created_at=None,

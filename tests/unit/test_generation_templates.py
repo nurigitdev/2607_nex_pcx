@@ -10,6 +10,8 @@ from app.core.generation_templates import (
     default_generation_template_record,
     generation_template_snapshot,
     get_generation_template_by_key,
+    suggest_generation_template_clone_key,
+    suggest_generation_template_next_version,
     validate_generation_template_input,
 )
 
@@ -32,6 +34,7 @@ def test_generation_template_snapshot_is_reproducible_copy() -> None:
     template = GenerationTemplateRecord(
         generation_template_id=12,
         template_key="summary",
+        template_family="summary",
         template_name="요약문",
         template_version="v2",
         document_type="summary",
@@ -44,6 +47,8 @@ def test_generation_template_snapshot_is_reproducible_copy() -> None:
         citation_policy={"required": True},
         is_default=False,
         is_active=True,
+        clone_source_template_id=3,
+        change_note="요약 섹션 보강",
         created_by="pytest",
         created_by_user_id=1,
         created_at=now,
@@ -55,8 +60,43 @@ def test_generation_template_snapshot_is_reproducible_copy() -> None:
 
     assert snapshot["generation_template_id"] == 12
     assert snapshot["template_key"] == "summary"
+    assert snapshot["template_family"] == "summary"
+    assert snapshot["clone_source_template_id"] == 3
+    assert snapshot["change_note"] == "요약 섹션 보강"
     assert template.section_schema[0]["key"] == "key_points"
     assert "created_at" not in snapshot
+
+
+def test_generation_template_clone_suggestions_use_family_and_version() -> None:
+    template = default_generation_template_record()
+    custom_template = GenerationTemplateRecord(
+        generation_template_id=9,
+        template_key="report_current",
+        template_family="executive-report",
+        template_name="Executive Report",
+        template_version="draftA",
+        document_type="report",
+        language="en",
+        output_format="markdown",
+        section_schema=({"key": "summary", "heading": "Summary", "required": True},),
+        system_instruction="Write a report.",
+        user_instruction_suffix="",
+        style_guidance={},
+        citation_policy={"required": True},
+        is_default=False,
+        is_active=True,
+        clone_source_template_id=None,
+        change_note="",
+        created_by=None,
+        created_by_user_id=None,
+        created_at=None,
+        updated_at=None,
+    )
+
+    assert suggest_generation_template_next_version(template) == "v2"
+    assert suggest_generation_template_clone_key(template) == "grounded_answer_v2"
+    assert suggest_generation_template_next_version(custom_template) == "draftA_next"
+    assert suggest_generation_template_clone_key(custom_template) == "executive-report_drafta_next"
 
 
 @pytest.mark.parametrize("template_key", ["", "  "])
@@ -86,6 +126,7 @@ def test_validate_generation_template_input_normalizes_supported_contract() -> N
         is_active=True,
         created_by=" pytest ",
         created_by_user_id=7,
+        change_note=" 변경 내역 ",
     )
 
     validated = validate_generation_template_input(template_input)
@@ -100,6 +141,8 @@ def test_validate_generation_template_input_normalizes_supported_contract() -> N
     )
     assert validated.system_instruction == "보고서로 작성한다."
     assert validated.user_instruction_suffix == "근거를 표시한다."
+    assert validated.template_family == "report_draft-v2"
+    assert validated.change_note == "변경 내역"
     assert validated.created_by == "pytest"
     assert validated.created_by_user_id == 7
 
@@ -215,6 +258,28 @@ def test_validate_generation_template_input_normalizes_supported_contract() -> N
                 created_by_user_id=0,
             ),
             "created_by_user_id",
+        ),
+        (
+            GenerationTemplateInput(
+                template_key="bad_family",
+                template_family="bad family",
+                template_name="Bad",
+                document_type="report",
+                section_schema=({"key": "title", "heading": "Title", "required": True},),
+                system_instruction="Do it",
+            ),
+            "template_family",
+        ),
+        (
+            GenerationTemplateInput(
+                template_key="bad_clone_source",
+                template_name="Bad",
+                document_type="report",
+                section_schema=({"key": "title", "heading": "Title", "required": True},),
+                system_instruction="Do it",
+                clone_source_template_id=0,
+            ),
+            "clone_source_template_id",
         ),
     ],
 )
