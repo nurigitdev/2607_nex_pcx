@@ -32,6 +32,9 @@ GENERATION_REMOTE_EXECUTOR_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote
 GENERATION_REMOTE_RUN_API_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_run_api.md"
 GENERATION_REMOTE_RUN_UI_DOC_PATH = PROJECT_ROOT / "docs" / "generation_remote_run_ui.md"
 DGX_VLLM_GENERATION_RUN_E2E_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_vllm_generation_run_live_e2e.md"
+GENERATION_ANSWER_CITATION_GUARDRAIL_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "generation_answer_citation_guardrail.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -41,7 +44,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.50" in srs_text
+    assert "Software Requirements Specification v1.51" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -66,6 +69,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-069" in srs_text
     assert "FR-070" in srs_text
     assert "FR-071" in srs_text
+    assert "FR-072" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -77,6 +81,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "Remote generation run UI controls" in srs_text
     assert "Generation provider metrics mode breakdown" in srs_text
     assert "DGX vLLM generation run live E2E verification" in srs_text
+    assert "Generation answer citation guardrail" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -281,3 +286,17 @@ def test_dgx_vllm_generation_run_live_e2e_doc_defines_persistence_evidence() -> 
     assert "`execute_remote_generation_run(...)`" in e2e_text
     assert "`remote_openai_compatible`" in e2e_text
     assert "environment variable name" in e2e_text
+
+
+def test_generation_answer_citation_guardrail_doc_defines_quality_metadata() -> None:
+    quality_text = _read(GENERATION_ANSWER_CITATION_GUARDRAIL_DOC_PATH)
+
+    assert "Generation Answer Citation Guardrail + Quality Metadata" in quality_text
+    assert "`response_metadata.answer_quality`" in quality_text
+    assert "`guardrail_metadata`" in quality_text
+    assert "`generation_answer_quality_v1`" in quality_text
+    assert "`not_evaluated`" in quality_text
+    assert "missing all required citations" in quality_text
+    assert "provider execution health" in quality_text
+    assert "grounded answer" in quality_text
+    assert "quality independently measurable" in quality_text

@@ -8,6 +8,10 @@ from app.core.citation_readiness import (
     CITATION_READINESS_FAILED,
     assess_citation_readiness_package,
 )
+from app.core.generation_answer_quality import (
+    assess_generation_answer_quality,
+    generation_answer_quality_payload,
+)
 from app.core.generation_prompts import (
     GenerationPromptPackage,
     build_generation_prompt_package,
@@ -109,13 +113,35 @@ def _guardrail_metadata(
     prompt_package: GenerationPromptPackage,
     retrieval_confidence_status: str,
     citation_readiness_status: str,
+    answer_quality: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
+    metadata: dict[str, object] = {
         "prompt_blocked": prompt_package.blocked,
         "prompt_block_reason": prompt_package.block_reason,
         "retrieval_confidence_status": retrieval_confidence_status,
         "citation_readiness_status": citation_readiness_status,
     }
+    if answer_quality is not None:
+        metadata["answer_quality_status"] = answer_quality["status"]
+        metadata["answer_quality_reason_codes"] = answer_quality["reason_codes"]
+    return metadata
+
+
+def _answer_quality_metadata(
+    *,
+    answer_text: str | None,
+    prompt_package: GenerationPromptPackage,
+    guardrail_status: str,
+    provider_error: bool = False,
+) -> dict[str, object]:
+    return generation_answer_quality_payload(
+        assess_generation_answer_quality(
+            answer_text=answer_text,
+            expected_citation_keys=prompt_package.citation_keys,
+            guardrail_status=guardrail_status,
+            provider_error=provider_error,
+        )
+    )
 
 
 def _runtime_extra_body(provider: GenerationProviderConfigRecord) -> dict[str, object]:
@@ -282,6 +308,11 @@ def execute_mock_generation_run(
         elapsed_ms=elapsed_ms,
         provider_elapsed_ms=elapsed_ms,
     )
+    answer_quality = _answer_quality_metadata(
+        answer_text=answer_text,
+        prompt_package=prompt_package,
+        guardrail_status=guardrail_status,
+    )
 
     run = create_generation_run(
         database_url,
@@ -312,11 +343,13 @@ def execute_mock_generation_run(
                 "model_id": provider.model_id,
                 "deterministic": True,
                 "provider_metrics": generation_provider_metrics_payload(provider_metrics),
+                "answer_quality": answer_quality,
             },
             guardrail_metadata=_guardrail_metadata(
                 prompt_package=prompt_package,
                 retrieval_confidence_status=retrieval_status,
                 citation_readiness_status=citation_status,
+                answer_quality=answer_quality,
             ),
             created_by=created_by,
             created_by_user_id=created_by_user_id,
@@ -375,6 +408,11 @@ def execute_remote_generation_run(
     if guardrail_blocks:
         finished_at = datetime.now(UTC)
         elapsed_ms = int((perf_counter() - started_monotonic) * 1000)
+        answer_quality = _answer_quality_metadata(
+            answer_text=MOCK_NO_ANSWER_TEXT,
+            prompt_package=prompt_package,
+            guardrail_status=guardrail_status,
+        )
         run = create_generation_run(
             database_url,
             GenerationRunInput(
@@ -399,12 +437,16 @@ def execute_remote_generation_run(
                 response_metadata=_remote_response_metadata(
                     provider=provider,
                     provider_metrics=None,
-                    response_metadata={"skipped_provider_call": True},
+                    response_metadata={
+                        "skipped_provider_call": True,
+                        "answer_quality": answer_quality,
+                    },
                 ),
                 guardrail_metadata=_guardrail_metadata(
                     prompt_package=prompt_package,
                     retrieval_confidence_status=retrieval_status,
                     citation_readiness_status=citation_status,
+                    answer_quality=answer_quality,
                 ),
                 created_by=created_by,
                 created_by_user_id=created_by_user_id,
@@ -449,6 +491,12 @@ def execute_remote_generation_run(
             if exc.metrics is not None and exc.metrics.elapsed_ms is not None
             else int((perf_counter() - started_monotonic) * 1000)
         )
+        answer_quality = _answer_quality_metadata(
+            answer_text=None,
+            prompt_package=prompt_package,
+            guardrail_status=guardrail_status,
+            provider_error=True,
+        )
         run = create_generation_run(
             database_url,
             GenerationRunInput(
@@ -481,12 +529,17 @@ def execute_remote_generation_run(
                 response_metadata=_remote_response_metadata(
                     provider=provider,
                     provider_metrics=exc.metrics,
-                    response_metadata={"provider_error": True, "error_payload": exc.payload},
+                    response_metadata={
+                        "provider_error": True,
+                        "error_payload": exc.payload,
+                        "answer_quality": answer_quality,
+                    },
                 ),
                 guardrail_metadata=_guardrail_metadata(
                     prompt_package=prompt_package,
                     retrieval_confidence_status=retrieval_status,
                     citation_readiness_status=citation_status,
+                    answer_quality=answer_quality,
                 ),
                 error_message=str(exc),
                 created_by=created_by,
@@ -506,6 +559,11 @@ def execute_remote_generation_run(
             generation_provider.close()  # type: ignore[attr-defined]
 
     finished_at = datetime.now(UTC)
+    answer_quality = _answer_quality_metadata(
+        answer_text=response.answer_text,
+        prompt_package=prompt_package,
+        guardrail_status=guardrail_status,
+    )
     run = create_generation_run(
         database_url,
         GenerationRunInput(
@@ -533,7 +591,10 @@ def execute_remote_generation_run(
             response_metadata=_remote_response_metadata(
                 provider=provider,
                 provider_metrics=response.provider_metrics,
-                response_metadata=dict(response.response_metadata),
+                response_metadata={
+                    **dict(response.response_metadata),
+                    "answer_quality": answer_quality,
+                },
                 provider_model_id=response.provider_model_id,
                 response_id=response.response_id,
             ),
@@ -541,6 +602,7 @@ def execute_remote_generation_run(
                 prompt_package=prompt_package,
                 retrieval_confidence_status=retrieval_status,
                 citation_readiness_status=citation_status,
+                answer_quality=answer_quality,
             ),
             created_by=created_by,
             created_by_user_id=created_by_user_id,

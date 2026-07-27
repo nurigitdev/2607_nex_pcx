@@ -21,6 +21,8 @@ The response contains:
 - `prompt_package`: OpenAI-compatible messages and prompt/context hashes
 - `run`: persisted `generation_runs` row
 - `citations`: persisted citation rows for answerable generation runs
+- `run.response_metadata.answer_quality`: answer quality status, citation key
+  coverage, and reason codes
 
 If retrieval context cannot be built for the search log, the endpoint returns
 `404`. Invalid context controls return `400`. Missing database configuration
@@ -34,6 +36,8 @@ The response contains:
 
 - `run`: persisted generation run detail
 - `citations`: citation rows ordered by citation index
+- `run.guardrail_metadata.answer_quality_status`: compact quality status for
+  detail screens and downstream operations
 
 This endpoint is intentionally provider-neutral. Mock and future remote vLLM runs
 share the same detail response shape.

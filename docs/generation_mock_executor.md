@@ -24,6 +24,8 @@ For answerable context:
 - `finish_reason`: `mock_completed`
 - `answer_text`: deterministic Korean answer with inline citation key
 - `generation_run_citations`: one row per included context candidate
+- `response_metadata.answer_quality`: post-generation citation and no-answer
+  quality assessment
 
 For blocked context:
 
@@ -32,6 +34,8 @@ For blocked context:
 - `finish_reason`: `guardrail_no_answer`
 - `answer_text`: deterministic no-answer text
 - `generation_run_citations`: no citation rows
+- `response_metadata.answer_quality.status`: `passed` when the no-answer text
+  reflects the guardrail decision
 
 ## Remote vLLM Handoff
 

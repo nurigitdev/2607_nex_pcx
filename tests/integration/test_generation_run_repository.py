@@ -249,8 +249,12 @@ def _confidence(status: str = RETRIEVAL_CONFIDENCE_ANSWERABLE) -> RetrievalConfi
     )
 
 
-def _remote_response(provider_name: str, model_id: str) -> GenerationChatCompletionResponse:
-    answer_text = "사내 보안 규정은 계정 공유를 금지합니다. [RCP-001]"
+def _remote_response(
+    provider_name: str,
+    model_id: str,
+    *,
+    answer_text: str = "사내 보안 규정은 계정 공유를 금지합니다. [RCP-001]",
+) -> GenerationChatCompletionResponse:
     metrics = parse_openai_chat_completion_metrics(
         {
             "id": "chatcmpl-pytest-remote",
@@ -541,6 +545,10 @@ def test_mock_generation_executor_persists_answer_and_citations(
         assert provider_metrics["finish_reason"] == MOCK_FINISH_REASON_COMPLETED
         assert provider_metrics["total_token_count"] == report.run.total_token_count
         assert provider_metrics["succeeded"] is True
+        answer_quality = report.run.response_metadata["answer_quality"]
+        assert answer_quality["status"] == "passed"
+        assert answer_quality["recognized_citation_keys"] == ["RCP-001"]
+        assert report.run.guardrail_metadata["answer_quality_status"] == "passed"
         assert len(report.citations) == 1
         assert report.citations[0].was_cited is True
         assert report.citations[0].citation_payload["original_file_name"] == "security_policy.md"
@@ -565,6 +573,8 @@ def test_mock_generation_executor_records_no_answer_for_low_confidence(
         assert report.run.guardrail_status == "no_answer"
         assert report.run.retrieval_confidence_status == RETRIEVAL_CONFIDENCE_LOW
         assert report.run.guardrail_metadata["prompt_blocked"] is True
+        assert report.run.response_metadata["answer_quality"]["status"] == "passed"
+        assert report.run.guardrail_metadata["answer_quality_status"] == "passed"
         assert report.citations == ()
     finally:
         _delete_search_log(migrated_database_url, search_log.search_log_id)
@@ -685,6 +695,11 @@ def test_remote_generation_executor_persists_success_and_citation_trace(
         assert report.run.response_metadata["provider_model_id"] == provider.model_id
         assert report.run.response_metadata["response_id"] == "chatcmpl-pytest-remote"
         assert report.run.response_metadata["provider_metrics"]["succeeded"] is True
+        assert report.run.response_metadata["answer_quality"]["status"] == "passed"
+        assert report.run.response_metadata["answer_quality"]["recognized_citation_keys"] == [
+            "RCP-001"
+        ]
+        assert report.run.guardrail_metadata["answer_quality_status"] == "passed"
         assert report.run.request_metadata["extra_body"] == {
             "chat_template_kwargs": {"enable_thinking": False}
         }
@@ -727,6 +742,9 @@ def test_remote_generation_executor_persists_provider_failure(
         assert report.run.response_metadata["provider_error"] is True
         assert report.run.response_metadata["provider_metrics"]["error_code"] == "overloaded"
         assert report.run.response_metadata["provider_metrics"]["succeeded"] is False
+        assert report.run.response_metadata["answer_quality"]["status"] == "not_evaluated"
+        assert report.run.response_metadata["answer_quality"]["reason_codes"] == ["provider_error"]
+        assert report.run.guardrail_metadata["answer_quality_status"] == "not_evaluated"
         assert report.citations == ()
     finally:
         _restore_generation_provider_defaults(migrated_database_url, provider_name)
@@ -758,7 +776,46 @@ def test_remote_generation_executor_skips_provider_call_for_low_confidence(
         assert report.run.status == GENERATION_STATUS_NO_ANSWER
         assert report.run.answer_text == MOCK_NO_ANSWER_TEXT
         assert report.run.response_metadata["skipped_provider_call"] is True
+        assert report.run.response_metadata["answer_quality"]["status"] == "passed"
+        assert report.run.guardrail_metadata["answer_quality_status"] == "passed"
         assert report.citations == ()
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+        _delete_search_log(migrated_database_url, search_log.search_log_id)
+
+
+def test_remote_generation_executor_records_failed_answer_quality_for_missing_citation(
+    migrated_database_url: str,
+) -> None:
+    search_log = _search_log(migrated_database_url)
+    provider_name = f"pytest_remote_generation_quality_{search_log.search_log_id}"
+    provider = seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        is_default=True,
+    )
+    fake_provider = _FakeRemoteGenerationProvider(
+        response=_remote_response(
+            provider.provider_name,
+            provider.model_id,
+            answer_text="사내 보안 규정은 계정 공유를 금지합니다.",
+        )
+    )
+
+    try:
+        report = execute_remote_generation_run(
+            migrated_database_url,
+            _package(search_log),
+            provider_client=fake_provider,
+        )
+
+        answer_quality = report.run.response_metadata["answer_quality"]
+        assert report.run.status == GENERATION_STATUS_SUCCEEDED
+        assert answer_quality["status"] == "failed"
+        assert answer_quality["reason_codes"] == ["missing_required_citation"]
+        assert answer_quality["missing_citation_keys"] == ["RCP-001"]
+        assert report.run.guardrail_metadata["answer_quality_status"] == "failed"
+        assert report.citations[0].was_cited is False
     finally:
         _restore_generation_provider_defaults(migrated_database_url, provider_name)
         _delete_search_log(migrated_database_url, search_log.search_log_id)

@@ -18,6 +18,9 @@ For answerable context, the executor:
 - persists the answer, finish reason, token counts, latency, provider metrics,
   response id, and provider model id into `generation_runs`
 - stores one `generation_run_citations` row per included context candidate
+- stores `response_metadata.answer_quality` so citation usage, empty answers,
+  unexpected no-answer text, and invented citation keys are measurable after a
+  successful provider call
 
 ## Guardrail Path
 
@@ -29,6 +32,8 @@ does not call the remote provider. It persists:
 - `finish_reason=guardrail_no_answer`
 - deterministic no-answer text
 - `response_metadata.skipped_provider_call=true`
+- `response_metadata.answer_quality.status=passed` when the persisted no-answer
+  text reflects the guardrail decision
 
 ## Failure Path
 
@@ -42,6 +47,12 @@ The failed run stores:
 - parsed provider metrics when available
 - provider error payload
 - prompt/context hash and runtime request metadata
+- `response_metadata.answer_quality.status=not_evaluated`
+
+Provider execution success and answer quality are intentionally separated. A
+remote call can persist `status=succeeded` while
+`response_metadata.answer_quality.status=failed` records that the answer omitted
+all expected citation keys.
 
 ## Test Strategy
 
