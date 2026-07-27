@@ -7,6 +7,17 @@ from psycopg.types.json import Json
 
 from app.core.config import Settings
 from app.core.database import connect
+from app.core.generation_executor import execute_remote_generation_run
+from app.core.generation_provider_metrics import parse_openai_chat_completion_metrics
+from app.core.generation_providers import (
+    GenerationChatCompletionRequest,
+    GenerationChatCompletionResponse,
+)
+from app.core.generation_runs import (
+    DGX_VLLM_GENERATION_MODEL_ID,
+    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+    seed_dgx_vllm_generation_provider_config,
+)
 from app.core.search_logs import (
     SearchLogInput,
     SearchLogResultInput,
@@ -16,6 +27,21 @@ from app.core.search_logs import (
 from app.main import create_app
 
 pytestmark = pytest.mark.integration
+
+MOCK_PROVIDER_NAME = "mock_qwen36_27b_nvfp4"
+
+
+class _FakeRemoteGenerationProvider:
+    def __init__(self, response: GenerationChatCompletionResponse) -> None:
+        self.response = response
+        self.requests: list[GenerationChatCompletionRequest] = []
+
+    def complete(
+        self,
+        request: GenerationChatCompletionRequest,
+    ) -> GenerationChatCompletionResponse:
+        self.requests.append(request)
+        return self.response
 
 
 def _seed_owner_ids(database_url: str) -> dict[str, int]:
@@ -166,6 +192,35 @@ def _cleanup_file(database_url: str, file_id: int) -> None:
             cursor.execute("DELETE FROM files WHERE file_id = %s", (file_id,))
 
 
+def _restore_generation_provider_defaults(database_url: str, provider_name: str) -> None:
+    with connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM generation_provider_configs WHERE provider_name = %s",
+                (provider_name,),
+            )
+            cursor.execute(
+                """
+                UPDATE generation_provider_configs
+                SET is_default = false
+                WHERE is_default
+                  AND provider_name <> %s
+                """,
+                (MOCK_PROVIDER_NAME,),
+            )
+            cursor.execute(
+                """
+                UPDATE generation_provider_configs
+                SET provider_mode = 'mock',
+                    provider_base_url = NULL,
+                    is_default = true,
+                    is_active = true
+                WHERE provider_name = %s
+                """,
+                (MOCK_PROVIDER_NAME,),
+            )
+
+
 def _generation_run_count(database_url: str, search_log_id: int) -> int:
     with connect(database_url) as connection:
         with connection.cursor() as cursor:
@@ -178,6 +233,49 @@ def _generation_run_count(database_url: str, search_log_id: int) -> int:
                 (search_log_id,),
             )
             return int(cursor.fetchone()["run_count"])
+
+
+def _remote_response(provider_name: str) -> GenerationChatCompletionResponse:
+    answer_text = "remote vLLM 생성 API 응답입니다. [RCP-001]"
+    metrics = parse_openai_chat_completion_metrics(
+        {
+            "id": "chatcmpl-api-remote",
+            "object": "chat.completion",
+            "created": 1785000000,
+            "model": DGX_VLLM_GENERATION_MODEL_ID,
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": answer_text},
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 9,
+                "total_tokens": 109,
+            },
+        },
+        provider_name=provider_name,
+        provider_mode=GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+        requested_model_id=DGX_VLLM_GENERATION_MODEL_ID,
+        http_status_code=200,
+        elapsed_ms=71,
+        provider_elapsed_ms=68,
+    )
+    return GenerationChatCompletionResponse(
+        answer_text=answer_text,
+        finish_reason="stop",
+        provider_model_id=DGX_VLLM_GENERATION_MODEL_ID,
+        response_id="chatcmpl-api-remote",
+        input_token_count=100,
+        output_token_count=9,
+        total_token_count=109,
+        elapsed_ms=71,
+        provider_metrics=metrics,
+        response_metadata={"provider_name": provider_name},
+        raw_response={},
+    )
 
 
 def test_mock_generation_run_api_creates_and_reads_generation_run(
@@ -220,6 +318,126 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert read_body["citations"][0]["source_label"].endswith("/ p.2")
         assert invalid_response.status_code == 400
         assert missing_response.status_code == 404
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_remote_generation_run_api_creates_remote_generation_run(
+    monkeypatch: pytest.MonkeyPatch,
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    provider_name = f"pytest_remote_generation_api_{search_log_id}"
+    seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        is_default=True,
+    )
+    fake_provider = _FakeRemoteGenerationProvider(_remote_response(provider_name))
+
+    def fake_execute_remote_generation_run(
+        database_url: str,
+        package: object,
+        *,
+        api_key: str | None = None,
+        created_by: str | None = None,
+        created_by_user_id: int | None = None,
+    ):
+        assert api_key == "pytest-remote-secret"
+        assert created_by == "api_remote_generation"
+        return execute_remote_generation_run(
+            database_url,
+            package,  # type: ignore[arg-type]
+            provider_client=fake_provider,
+            api_key=api_key,
+            created_by=created_by,
+            created_by_user_id=created_by_user_id,
+        )
+
+    monkeypatch.setattr(
+        "app.main.execute_remote_generation_run",
+        fake_execute_remote_generation_run,
+    )
+    app = create_app(
+        Settings(
+            database_url=migrated_database_url,
+            remote_generation_provider_api_key="pytest-remote-secret",
+        )
+    )
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/remote",
+                params={
+                    "max_context_chars": 4000,
+                    "include_neighbors": "false",
+                    "max_items": 5,
+                },
+            )
+            create_body = create_response.json()
+
+        assert create_response.status_code == 201
+        assert len(fake_provider.requests) == 1
+        assert create_body["provider"]["provider_name"] == provider_name
+        assert create_body["provider"]["provider_mode"] == "remote_openai_compatible"
+        assert create_body["run"]["status"] == "succeeded"
+        assert create_body["run"]["created_by"] == "api_remote_generation"
+        assert create_body["run"]["provider_name"] == provider_name
+        assert create_body["run"]["total_token_count"] == 109
+        assert create_body["run"]["response_metadata"]["provider_model_id"] == (
+            DGX_VLLM_GENERATION_MODEL_ID
+        )
+        assert create_body["citations"][0]["citation_key"] == "RCP-001"
+        assert "pytest-remote-secret" not in create_response.text
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_remote_generation_run_api_rejects_missing_api_key_env(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    provider_name = f"pytest_remote_generation_missing_key_{search_log_id}"
+    seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        api_key_env="NEX_PCX_PYTEST_MISSING_GENERATION_API_KEY",
+        is_default=True,
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/remote",
+                params={"include_neighbors": "false"},
+            )
+
+        assert response.status_code == 400
+        assert "environment variable is not set" in response.json()["detail"]
+        assert "NEX_PCX_PYTEST_MISSING_GENERATION_API_KEY" in response.json()["detail"]
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_remote_generation_run_api_rejects_mock_default_provider(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/search/logs/{search_log_id}/generation-runs/remote",
+                params={"include_neighbors": "false"},
+            )
+
+        assert response.status_code == 400
+        assert "remote_openai_compatible" in response.json()["detail"]
     finally:
         _cleanup_file(migrated_database_url, file_id)
 
@@ -268,11 +486,13 @@ def test_generation_run_api_returns_503_without_database() -> None:
 
     with TestClient(app) as client:
         create_response = client.post("/api/search/logs/1/generation-runs/mock")
+        remote_create_response = client.post("/api/search/logs/1/generation-runs/remote")
         read_response = client.get("/api/generation/runs/1")
         preview_response = client.get("/api/search/logs/1/generation-prompt/preview")
         metrics_response = client.get("/api/admin/generation-provider-metrics/snapshot")
 
     assert create_response.status_code == 503
+    assert remote_create_response.status_code == 503
     assert read_response.status_code == 503
     assert preview_response.status_code == 503
     assert metrics_response.status_code == 503

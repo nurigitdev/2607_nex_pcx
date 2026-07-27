@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import traceback as traceback_module
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -336,6 +337,7 @@ from app.core.foreground_worker_runtime import (
 from app.core.generation_executor import (
     GenerationExecutionReport,
     execute_mock_generation_run,
+    execute_remote_generation_run,
 )
 from app.core.generation_prompts import (
     GenerationPromptPackage,
@@ -4223,10 +4225,10 @@ def generation_provider_runtime_config_payload(
             "model_id": provider.model_id,
         }
 
-    api_key_env = provider.runtime_options.get("api_key_env")
+    api_key_env = generation_provider_api_key_env(provider)
     api_key_configured = (
-        bool(settings.remote_generation_provider_api_key)
-        if api_key_env == DGX_VLLM_GENERATION_API_KEY_ENV
+        bool(lookup_generation_provider_api_key(provider, settings))
+        if api_key_env is not None
         else None
     )
     extra_body = provider.runtime_options.get("extra_body", {})
@@ -4255,6 +4257,41 @@ def generation_provider_runtime_config_payload(
         "thinking_disabled": thinking_disabled,
         "secret_policy": "secret values are provided through environment variables only",
     }
+
+
+def generation_provider_api_key_env(provider: GenerationProviderConfigRecord) -> str | None:
+    api_key_env = provider.runtime_options.get("api_key_env")
+    if not isinstance(api_key_env, str):
+        return None
+    normalized = api_key_env.strip()
+    return normalized or None
+
+
+def lookup_generation_provider_api_key(
+    provider: GenerationProviderConfigRecord,
+    settings: Settings,
+) -> str | None:
+    api_key_env = generation_provider_api_key_env(provider)
+    if api_key_env is None:
+        return None
+    if api_key_env == DGX_VLLM_GENERATION_API_KEY_ENV:
+        return settings.remote_generation_provider_api_key
+    return os.getenv(api_key_env)
+
+
+def resolve_generation_provider_api_key(
+    provider: GenerationProviderConfigRecord,
+    settings: Settings,
+) -> str | None:
+    api_key_env = generation_provider_api_key_env(provider)
+    if api_key_env is None:
+        return None
+    api_key = lookup_generation_provider_api_key(provider, settings)
+    if not api_key:
+        raise InvalidGenerationRunError(
+            f"Generation provider API key environment variable is not set: {api_key_env}"
+        )
+    return api_key
 
 
 def generation_provider_config_collection_payload(
@@ -11532,6 +11569,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 created_by="api_mock_generation",
             )
         except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content=generation_execution_report_payload(report),
+        )
+
+    @app.post("/api/search/logs/{search_log_id}/generation-runs/remote")
+    def api_create_remote_generation_run(
+        search_log_id: int,
+        max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
+        include_neighbors: bool = True,
+        max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            package = build_retrieval_context_package(
+                settings.database_url,
+                RetrievalContextInput(
+                    search_log_id=search_log_id,
+                    max_context_chars=max_context_chars,
+                    include_neighbors=include_neighbors,
+                    max_items=max_items,
+                ),
+            )
+        except InvalidRetrievalContextError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if package is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Search log retrieval context not found.",
+            )
+
+        try:
+            provider = get_default_generation_provider_config(settings.database_url)
+            if provider is None:
+                raise InvalidGenerationRunError("default generation provider config was not found")
+            api_key = resolve_generation_provider_api_key(provider, settings)
+            report = execute_remote_generation_run(
+                settings.database_url,
+                package,
+                api_key=api_key,
+                created_by="api_remote_generation",
+            )
+        except (InvalidGenerationRunError, InvalidGenerationProviderError) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         return JSONResponse(
