@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.55**
+**Software Requirements Specification v1.56**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.55
+문서 상태: Draft v1.56
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.55 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.56 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.55 |
+| 문서 버전 | v1.56 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -80,6 +80,7 @@
 | 1.53 | 2026-07-27 | Generation run history와 quality filter API/UI, 생성 실행 이력을 답변 품질, provider mode, 실행 상태 기준으로 조회하는 요구사항 보강 |
 | 1.54 | 2026-07-27 | Direct generation query orchestrator API, 사용자가 prompt query를 직접 입력하면 내부 검색, retrieval context packaging, generation run 저장까지 연결하는 요구사항 보강 |
 | 1.55 | 2026-07-27 | Direct Generation UI MVP, 사용자가 생성 화면에서 질문, 검색 profile, provider mode, context 옵션을 지정해 검색-패키징-생성을 실행하는 요구사항 보강 |
+| 1.56 | 2026-07-27 | Generation template strategy, 보고서/제안서/요약문 등 문서 유형별 출력 구조, template metadata, prompt injection, Markdown export 실험 요구사항 보강 |
 
 # 목차
 
@@ -163,6 +164,7 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | NeX-CX | Context Intelligence Transformation을 위한 사내 문서 ingestion, embedding, 검색 기반 제품/플랫폼 |
 | RAG | Retrieval-Augmented Generation. 검색 결과를 LLM 답변 생성의 근거로 사용하는 방식 |
 | Generation Provider | Retrieval context package와 user query를 입력으로 받아 grounded answer를 생성하는 LLM runtime. NeX_PCX는 mock과 vLLM OpenAI-compatible remote runtime을 우선 지원한다. |
+| Generation Template | 보고서, 제안서, 요약문, 회의록, 근거 기반 답변 등 생성 결과의 문서 유형, 섹션 구조, 출력 규칙, 품질 metadata를 정의하는 재사용 가능한 prompt/output contract |
 | vLLM Runtime | DGX-Spark 등 GPU 서버에서 LLM을 OpenAI-compatible HTTP API로 제공하는 serving runtime |
 | OpenAI-compatible Chat API | `/v1/chat/completions` 형식의 messages 기반 HTTP 생성 API. NeX_PCX의 remote LLM provider 기본 호출 계약으로 사용한다. |
 | Embedding Profile | 특정 모델명, dimension, normalization, pooling 설정을 포함한 embedding 실행 단위 |
@@ -337,6 +339,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Remote Embedding Provider | GPU 서버에서 model preload, batch embedding, provider health, latency metadata를 제공 |
 | Search Service | query embedding 생성, BM25 keyword search, pgvector 검색, hybrid fusion, profile/strategy별 결과 병렬 반환 |
 | Retrieval Context Service | 검색 로그 결과를 생성 입력으로 정규화하고 citation, source anchor, permission scope, confidence metadata를 포함한 context package를 제공 |
+| Generation Template Service | 문서 유형별 template, section schema, style guidance, output format을 관리하고 prompt package와 generation run metadata에 template snapshot을 주입 |
 | Generation Provider Client | mock 또는 remote OpenAI-compatible vLLM runtime을 호출하고 model/provider/prompt/runtime metadata를 generation run에 기록 |
 | Remote vLLM Runtime | DGX-Spark 등 GPU 서버에서 Qwen3.6-27B-NVFP4 등 LLM을 OpenAI-compatible `/v1/chat/completions` 계약으로 제공 |
 | Statistics Service | 문서/chunk/vector/job/검색 통계 산출 |
@@ -450,6 +453,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-074 | Generation run history quality filter | API와 Web UI는 저장된 generation run 이력을 최근순으로 조회하고, answer quality status, provider mode, run status, limit 기준으로 필터링해 품질별 run count, citation coverage, token/latency, 상세 화면 링크를 제공해야 한다. | SHOULD |
 | FR-075 | Direct generation query orchestrator API | API는 사용자가 입력한 prompt query를 기반으로 내부 검색을 실행하고, 검색 로그를 retrieval context package로 변환한 뒤, 선택한 generation provider mode에 따라 mock 또는 remote LLM 생성 실행을 저장하며 search log, context package, generation run, citation trace, quality metadata를 하나의 응답으로 반환해야 한다. | SHOULD |
 | FR-076 | Direct Generation UI MVP | Web UI는 생성 화면에서 사용자가 prompt query, 검색 사용자/범위/profile, provider mode, chunk policy/tokenizer/context 옵션을 지정해 직접 generation run을 실행하고, 생성 결과, citation trace, 품질 badge, 상세 링크를 같은 화면에서 확인할 수 있어야 한다. | SHOULD |
+| FR-077 | Generation template strategy | 생성 실행은 기본 `grounded_answer` 외에 `report`, `proposal`, `summary`, `meeting_minutes` 같은 문서 유형별 template을 선택할 수 있어야 하며, template key/version/language/output_format/section schema/style guidance를 prompt package와 generation run metadata에 저장해 같은 retrieval context가 어떤 문서 양식으로 생성되었는지 재현 가능해야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 
@@ -574,6 +578,14 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Prompt package는 system instruction, user query, retrieval context blocks, citation rules, no-answer rule, response language preference를 분리해 구성하고, prompt version과 rendered prompt hash를 generation run에 기록해야 한다.
 
 - `low_confidence`, `no_relevant_context`, citation readiness `failed` 상태의 retrieval package에 대해서는 LLM에 임의 context를 전달하지 않아야 한다. UI/API는 no-answer 또는 blocked status와 reason code를 사용자에게 표시해야 한다.
+
+- Generation template은 retrieval context와 provider를 바꾸지 않고 출력 구조만 바꾸는 실험 단위로 관리한다. 기본 template은 `grounded_answer`이며, 보고서형 `report`, 제안서형 `proposal`, 요약문 `summary`, 회의록 `meeting_minutes`는 후속 seed default로 제공한다.
+
+- Template은 template_key, template_version, document_type, language, output_format(markdown 우선), section_schema, system_instruction, user_instruction_suffix, style_guidance, citation_policy, active/default 여부를 포함한다.
+
+- Prompt package는 template snapshot을 request metadata에 포함하고, LLM에게 섹션 구조와 citation 사용 규칙을 명시해야 한다. 동일 retrieval_package_key라도 template_key가 다르면 prompt_hash가 달라져야 한다.
+
+- 생성 결과는 Markdown을 기본 출력 형식으로 저장/표시하고, 후속 DOCX/PDF export는 Markdown artifact를 기준으로 확장한다.
 
 ## 4.6 Chunk policy 요구사항
 
@@ -764,6 +776,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | search_logs | 검색 query, 조건, profile별 latency 로그 |
 | search_log_results | 검색 로그별 profile/rank/chunk 결과 |
 | search_result_feedback | 검색 결과별 정답/부분정답/오답 피드백 |
+| generation_templates | 생성 문서 유형별 template key/version/language/output format/section schema/style guidance/active/default 설정 |
 | generation_provider_configs | mock/vLLM 등 생성 provider 설정, model id, endpoint, timeout, decoding option |
 | generation_runs | search_log/retrieval package/prompt/provider 조합별 생성 실행 이력, status, answer, token usage, latency, guardrail metadata |
 | generation_run_citations | 생성 답변에서 참조한 retrieval context citation key와 chunk/source anchor lineage |
@@ -1626,6 +1639,7 @@ pytest tests/e2e
 | Phase 6 | 평가 자동화 | golden question set, Recall@k/MRR/nDCG 리포트 | 질문셋 기반 profile별 평가 리포트 생성 |
 | Phase 6.5 | Retrieval-to-Generation Handoff | retrieval context package, citation readiness, low-confidence/no-answer guardrail | 검색 결과가 생성 입력으로 전달 가능한지 package/citation/confidence gate 검증 |
 | Phase 7 | Grounded Generation MVP | generation run schema, prompt package builder, mock generation provider, vLLM OpenAI-compatible runtime config/client/smoke evidence | mock provider로 생성 실행 로그와 citation trace가 저장되고, DGX vLLM smoke 전환 조건, HTTP client 계약, live connection evidence가 정의됨 |
+| Phase 7.5 | Template-based Generation | generation_templates, template-aware prompt package, selector UI, report-style smoke, Markdown export | 동일 retrieval context에서 grounded answer/report/proposal 등 template별 생성 결과와 metadata 재현성 검증 |
 
 ## 10.1 MVP 완료 기준
 

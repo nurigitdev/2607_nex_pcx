@@ -45,6 +45,9 @@ DIRECT_GENERATION_QUERY_ORCHESTRATOR_DOC_PATH = (
     PROJECT_ROOT / "docs" / "direct_generation_query_orchestrator_api.md"
 )
 DIRECT_GENERATION_UI_DOC_PATH = PROJECT_ROOT / "docs" / "direct_generation_ui_mvp.md"
+GENERATION_TEMPLATE_STRATEGY_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "generation_template_strategy.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -54,7 +57,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.55" in srs_text
+    assert "Software Requirements Specification v1.56" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -84,6 +87,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-074" in srs_text
     assert "FR-075" in srs_text
     assert "FR-076" in srs_text
+    assert "FR-077" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -100,6 +104,25 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "Generation run history" in srs_text
     assert "Direct generation query orchestrator API" in srs_text
     assert "Direct Generation UI MVP" in srs_text
+    assert "Generation template strategy" in srs_text
+    assert "generation_templates" in srs_text
+    assert "Template-based Generation" in srs_text
+
+
+def test_generation_template_strategy_doc_defines_reproducible_contract() -> None:
+    strategy_text = _read(GENERATION_TEMPLATE_STRATEGY_DOC_PATH)
+
+    assert "Generation Template Strategy" in strategy_text
+    assert "FR-077" in strategy_text
+    assert "`generation_templates`" in strategy_text
+    assert "`grounded_answer`" in strategy_text
+    assert "`report`" in strategy_text
+    assert "`proposal`" in strategy_text
+    assert "`summary`" in strategy_text
+    assert "`meeting_minutes`" in strategy_text
+    assert "Markdown" in strategy_text
+    assert "template snapshot" in strategy_text
+    assert "`prompt_hash`" in strategy_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
