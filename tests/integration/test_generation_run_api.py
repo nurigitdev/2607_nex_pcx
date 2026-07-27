@@ -518,9 +518,14 @@ def test_generation_prompt_preview_api_returns_messages_without_creating_run(
                     "include_neighbors": "false",
                     "max_items": "5",
                     "response_language": "ko",
+                    "generation_template_key": "report",
                 },
             )
             missing_response = client.get("/api/search/logs/999999999/generation-prompt/preview")
+            invalid_template_response = client.get(
+                f"/api/search/logs/{search_log_id}/generation-prompt/preview",
+                params={"generation_template_key": "missing_template"},
+            )
 
         after_count = _generation_run_count(migrated_database_url, search_log_id)
         body = preview_response.json()
@@ -530,9 +535,9 @@ def test_generation_prompt_preview_api_returns_messages_without_creating_run(
         assert prompt_package["messages"][0]["role"] == "system"
         assert prompt_package["messages"][1]["role"] == "user"
         assert prompt_package["response_language"] == "ko"
-        assert prompt_package["template_key"] == "grounded_answer"
+        assert prompt_package["template_key"] == "report"
         assert prompt_package["output_format"] == "markdown"
-        assert prompt_package["generation_template"]["template_key"] == "grounded_answer"
+        assert prompt_package["generation_template"]["template_key"] == "report"
         assert prompt_package["blocked"] is False
         assert prompt_package["block_reason"] is None
         assert prompt_package["citation_keys"] == ["RCP-001"]
@@ -540,8 +545,36 @@ def test_generation_prompt_preview_api_returns_messages_without_creating_run(
         assert prompt_package["context_hash"]
         assert after_count == before_count
         assert missing_response.status_code == 404
+        assert invalid_template_response.status_code == 400
+        assert "active generation template" in invalid_template_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)
+
+
+def test_generation_template_list_api_returns_active_templates(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    with TestClient(app) as client:
+        response = client.get("/api/generation/templates")
+        no_database_response = TestClient(create_app(Settings(database_url=None))).get(
+            "/api/generation/templates"
+        )
+
+    body = response.json()
+    template_keys = {template["template_key"] for template in body["templates"]}
+    report_template = next(
+        template for template in body["templates"] if template["template_key"] == "report"
+    )
+
+    assert response.status_code == 200
+    assert body["default_template_key"] == "grounded_answer"
+    assert {"grounded_answer", "report", "proposal", "summary", "meeting_minutes"} <= template_keys
+    assert report_template["document_type"] == "report"
+    assert report_template["output_format"] == "markdown"
+    assert report_template["section_schema"]
+    assert no_database_response.status_code == 503
 
 
 def test_generation_run_api_returns_503_without_database() -> None:

@@ -38,6 +38,7 @@ class DirectGenerationInput:
     actor_user_id: int
     requested_search_scope: str = "company"
     provider_mode: str = GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+    generation_template_key: str | None = None
     top_k: int = 5
     profiles: tuple[str, ...] | None = None
     chunk_policy_name: str | None = None
@@ -99,6 +100,11 @@ def _validate_direct_generation_input(
         actor_user_id=direct_input.actor_user_id,
         requested_search_scope=direct_input.requested_search_scope.strip(),
         provider_mode=_validate_provider_mode(direct_input.provider_mode),
+        generation_template_key=(
+            direct_input.generation_template_key.strip() or None
+            if direct_input.generation_template_key
+            else None
+        ),
         top_k=direct_input.top_k,
         profiles=profiles,
         chunk_policy_name=(
@@ -136,12 +142,14 @@ def _generation_report_for_provider_mode(
         return execute_mock_generation_run(
             database_url,
             retrieval_package,
+            generation_template_key=direct_input.generation_template_key,
             created_by="api_direct_generation",
             created_by_user_id=direct_input.actor_user_id,
         )
     return execute_remote_generation_run(
         database_url,
         retrieval_package,
+        generation_template_key=direct_input.generation_template_key,
         provider_client=generation_provider_client,
         api_key=api_key,
         created_by="api_direct_generation",

@@ -391,7 +391,12 @@ from app.core.generation_runs import (
     list_generation_run_history,
     seed_dgx_vllm_generation_provider_config,
 )
-from app.core.generation_templates import get_default_generation_template
+from app.core.generation_templates import (
+    GenerationTemplateRecord,
+    get_default_generation_template,
+    get_generation_template_by_key,
+    list_generation_templates,
+)
 from app.core.go_live_readiness import (
     build_go_live_readiness_report,
     go_live_readiness_report_payload,
@@ -677,6 +682,7 @@ class DirectGenerationRequest(BaseModel):
     actor_user_id: int = Field(ge=1)
     requested_search_scope: str = "company"
     provider_mode: str = GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+    generation_template_key: str | None = None
     top_k: int = Field(default=5, ge=1)
     profiles: list[str] | None = None
     chunk_policy_name: str | None = None
@@ -4519,6 +4525,25 @@ def generation_prompt_package_payload(
         "context_hash": prompt_package.context_hash,
         "blocked": prompt_package.blocked,
         "block_reason": prompt_package.block_reason,
+    }
+
+
+def generation_template_payload(template: GenerationTemplateRecord) -> dict[str, object]:
+    return {
+        "generation_template_id": template.generation_template_id,
+        "template_key": template.template_key,
+        "template_name": template.template_name,
+        "template_version": template.template_version,
+        "document_type": template.document_type,
+        "language": template.language,
+        "output_format": template.output_format,
+        "section_schema": [dict(section) for section in template.section_schema],
+        "style_guidance": template.style_guidance,
+        "citation_policy": template.citation_policy,
+        "is_default": template.is_default,
+        "is_active": template.is_active,
+        "created_at": _datetime_response(template.created_at),
+        "updated_at": _datetime_response(template.updated_at),
     }
 
 
@@ -11645,6 +11670,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(content=citation_readiness_report_payload(report))
 
+    @app.get("/api/generation/templates")
+    def api_list_generation_templates(include_inactive: bool = False) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        templates = list_generation_templates(
+            settings.database_url,
+            include_inactive=include_inactive,
+        )
+        return JSONResponse(
+            content={
+                "templates": [generation_template_payload(template) for template in templates],
+                "default_template_key": next(
+                    (
+                        template.template_key
+                        for template in templates
+                        if template.is_default and template.is_active
+                    ),
+                    None,
+                ),
+            }
+        )
+
     @app.post("/api/generation/direct-runs")
     def api_create_direct_generation_run(payload: DirectGenerationRequest) -> JSONResponse:
         if not settings.database_url:
@@ -11681,6 +11732,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     actor_user_id=payload.actor_user_id,
                     requested_search_scope=payload.requested_search_scope,
                     provider_mode=payload.provider_mode,
+                    generation_template_key=payload.generation_template_key,
                     top_k=payload.top_k,
                     profiles=tuple(payload.profiles) if payload.profiles is not None else None,
                     chunk_policy_name=payload.chunk_policy_name,
@@ -11725,6 +11777,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
         include_neighbors: bool = True,
         max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+        generation_template_key: str | None = Query(default=None),
     ) -> JSONResponse:
         if not settings.database_url:
             raise HTTPException(
@@ -11754,6 +11807,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             report = execute_mock_generation_run(
                 settings.database_url,
                 package,
+                generation_template_key=generation_template_key,
                 created_by="api_mock_generation",
             )
         except InvalidGenerationRunError as exc:
@@ -11770,6 +11824,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
         include_neighbors: bool = True,
         max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+        generation_template_key: str | None = Query(default=None),
     ) -> JSONResponse:
         if not settings.database_url:
             raise HTTPException(
@@ -11808,6 +11863,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             report = execute_remote_generation_run(
                 settings.database_url,
                 package,
+                generation_template_key=generation_template_key,
                 api_key=api_key,
                 created_by="api_remote_generation",
             )
@@ -11826,6 +11882,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         include_neighbors: bool = True,
         max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
         response_language: str = Query(default="ko", min_length=1, max_length=16),
+        generation_template_key: str | None = Query(default=None),
     ) -> JSONResponse:
         if not settings.database_url:
             raise HTTPException(
@@ -11848,11 +11905,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Search log retrieval context not found.",
                 )
+            generation_template = (
+                get_generation_template_by_key(settings.database_url, generation_template_key)
+                if generation_template_key
+                else get_default_generation_template(settings.database_url)
+            )
+            if generation_template_key and generation_template is None:
+                raise InvalidGenerationRunError("active generation template was not found")
             prompt_package = build_generation_prompt_package(
                 package,
                 response_language=response_language,
-                generation_template=get_default_generation_template(settings.database_url),
+                generation_template=generation_template,
             )
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except InvalidRetrievalContextError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except InvalidGenerationPromptError as exc:
@@ -14524,6 +14590,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_context_chars: int = Query(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000),
         include_neighbors: bool = True,
         max_items: int = Query(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100),
+        generation_template_key: str | None = Query(default=None),
         generation_status: str | None = None,
         generation_error: str | None = None,
     ) -> HTMLResponse:
@@ -14539,6 +14606,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         profile_options: list[str] = []
         chunk_policy_options: list[ChunkPolicySummaryRecord] = []
         bm25_tokenizer_options = [asdict(tokenizer) for tokenizer in list_bm25_tokenizers()]
+        generation_template_options: tuple[GenerationTemplateRecord, ...] = ()
+        selected_generation_template_key = ""
         error_message = generation_error
 
         if not settings.database_url:
@@ -14558,6 +14627,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if RERANKED_SEARCH_PROFILE_NAME not in profile_options:
                     profile_options.append(RERANKED_SEARCH_PROFILE_NAME)
                 chunk_policy_options = list_chunk_policy_summaries(settings.database_url)
+                generation_template_options = list_generation_templates(settings.database_url)
+                default_generation_template = next(
+                    (template for template in generation_template_options if template.is_default),
+                    None,
+                )
+                requested_generation_template_key = (
+                    generation_template_key.strip() if generation_template_key else ""
+                )
+                selected_generation_template = (
+                    get_generation_template_by_key(
+                        settings.database_url,
+                        requested_generation_template_key,
+                    )
+                    if requested_generation_template_key
+                    else default_generation_template
+                )
+                if requested_generation_template_key and selected_generation_template is None:
+                    error_message = "active generation template was not found"
+                    selected_generation_template = default_generation_template
+                selected_generation_template_key = (
+                    selected_generation_template.template_key
+                    if selected_generation_template is not None
+                    else ""
+                )
                 provider = get_generation_provider_config_for_mode(
                     settings.database_url,
                     GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
@@ -14597,7 +14690,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if package is None and error_message is None:
                         error_message = "Search log retrieval context not found."
                     elif package is not None:
-                        prompt_preview = build_generation_prompt_package(package)
+                        prompt_preview = build_generation_prompt_package(
+                            package,
+                            generation_template=selected_generation_template,
+                        )
             except (
                 InvalidChunkPolicyManagementError,
                 InvalidEmbeddingJobError,
@@ -14653,6 +14749,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 chunk_policy_options=chunk_policy_options,
                 bm25_tokenizer_options=bm25_tokenizer_options,
                 default_bm25_tokenizer_name=DEFAULT_BM25_TOKENIZER_NAME,
+                generation_template_options=generation_template_options,
+                selected_generation_template_key=selected_generation_template_key,
                 generation_status=generation_status or "",
                 error_message=error_message,
             ),
@@ -14664,6 +14762,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         direct_actor_user_id: int = Form(...),
         direct_requested_search_scope: str = Form("company"),
         direct_provider_mode: str = Form(GENERATION_PROVIDER_MODE_MOCK),
+        direct_generation_template_key: str = Form(""),
         direct_top_k: int = Form(5),
         direct_profile_name: str = Form(BM25_SEARCH_PROFILE_NAME),
         direct_chunk_policy_name: str = Form(""),
@@ -14679,6 +14778,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "include_neighbors": str(direct_include_neighbors).lower(),
             "max_items": direct_max_items,
         }
+        if direct_generation_template_key.strip():
+            redirect_params["generation_template_key"] = direct_generation_template_key.strip()
         if not settings.database_url:
             redirect_params["generation_error"] = "NEX_PCX_DATABASE_URL is not configured."
             return RedirectResponse(
@@ -14707,6 +14808,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     actor_user_id=direct_actor_user_id,
                     requested_search_scope=direct_requested_search_scope,
                     provider_mode=provider_mode,
+                    generation_template_key=direct_generation_template_key.strip() or None,
                     top_k=direct_top_k,
                     profiles=(profile_name,) if profile_name else None,
                     chunk_policy_name=direct_chunk_policy_name.strip() or None,
@@ -14751,6 +14853,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_context_chars: int = Form(DEFAULT_CONTEXT_CHAR_BUDGET),
         include_neighbors: bool = Form(False),
         max_items: int = Form(DEFAULT_CONTEXT_MAX_ITEMS),
+        generation_template_key: str = Form(""),
     ) -> RedirectResponse:
         redirect_params: dict[str, object] = {
             "search_log_id": search_log_id,
@@ -14758,6 +14861,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "include_neighbors": str(include_neighbors).lower(),
             "max_items": max_items,
         }
+        if generation_template_key.strip():
+            redirect_params["generation_template_key"] = generation_template_key.strip()
         if not settings.database_url:
             redirect_params["generation_error"] = "NEX_PCX_DATABASE_URL is not configured."
             return RedirectResponse(
@@ -14781,6 +14886,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 report = execute_mock_generation_run(
                     settings.database_url,
                     package,
+                    generation_template_key=generation_template_key.strip() or None,
                     created_by="generation_ui_mock",
                 )
                 redirect_params["generation_run_id"] = report.run.generation_run_id
@@ -14803,6 +14909,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_context_chars: int = Form(DEFAULT_CONTEXT_CHAR_BUDGET),
         include_neighbors: bool = Form(False),
         max_items: int = Form(DEFAULT_CONTEXT_MAX_ITEMS),
+        generation_template_key: str = Form(""),
     ) -> RedirectResponse:
         redirect_params: dict[str, object] = {
             "search_log_id": search_log_id,
@@ -14810,6 +14917,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "include_neighbors": str(include_neighbors).lower(),
             "max_items": max_items,
         }
+        if generation_template_key.strip():
+            redirect_params["generation_template_key"] = generation_template_key.strip()
         if not settings.database_url:
             redirect_params["generation_error"] = "NEX_PCX_DATABASE_URL is not configured."
             return RedirectResponse(
@@ -14842,6 +14951,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 report = execute_remote_generation_run(
                     settings.database_url,
                     package,
+                    generation_template_key=generation_template_key.strip() or None,
                     api_key=api_key,
                     created_by="generation_ui_remote",
                 )

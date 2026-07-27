@@ -216,6 +216,7 @@ def test_direct_generation_query_api_searches_packages_and_creates_mock_run(
                     "actor_user_id": ids["alice.member"],
                     "requested_search_scope": "company",
                     "provider_mode": GENERATION_PROVIDER_MODE_MOCK,
+                    "generation_template_key": "report",
                     "top_k": 3,
                     "profiles": ["bm25_keyword"],
                     "chunk_policy_name": chunk_policy_name,
@@ -266,7 +267,7 @@ def test_direct_generation_query_api_searches_packages_and_creates_mock_run(
         )
         assert body["generation"]["run"]["provider_mode"] == "mock"
         assert body["generation"]["run"]["status"] == "succeeded"
-        assert body["generation"]["prompt_package"]["template_key"] == "grounded_answer"
+        assert body["generation"]["prompt_package"]["template_key"] == "report"
         assert body["generation"]["run"]["created_by"] == "api_direct_generation"
         assert body["generation"]["run"]["created_by_user_id"] == ids["alice.member"]
         assert body["links"]["generation_run"] == f"/generation/runs/{body['generation_run_id']}"
@@ -276,7 +277,7 @@ def test_direct_generation_query_api_searches_packages_and_creates_mock_run(
             run_row["generation_template_id"]
             == body["generation"]["prompt_package"]["generation_template_id"]
         )
-        assert run_row["request_metadata"]["template_key"] == "grounded_answer"
+        assert run_row["request_metadata"]["template_key"] == "report"
         assert run_row["created_by"] == "api_direct_generation"
         assert run_row["created_by_user_id"] == ids["alice.member"]
         assert invalid_response.status_code == 400
@@ -332,6 +333,7 @@ def test_direct_generation_ui_runs_query_and_displays_result(
                     "direct_actor_user_id": str(ids["alice.member"]),
                     "direct_requested_search_scope": "company",
                     "direct_provider_mode": GENERATION_PROVIDER_MODE_MOCK,
+                    "direct_generation_template_key": "report",
                     "direct_top_k": "3",
                     "direct_profile_name": "bm25_keyword",
                     "direct_chunk_policy_name": chunk_policy_name,
@@ -349,6 +351,7 @@ def test_direct_generation_ui_runs_query_and_displays_result(
         assert page_response.status_code == 200
         assert "data-direct-generation-form" in page_response.text
         assert "직접 질문 생성" in page_response.text
+        assert "보고서 초안 (report)" in page_response.text
         assert response.status_code == 303
         assert "generation_status=direct_created" in location
         assert "search_log_id=" in location
@@ -358,6 +361,7 @@ def test_direct_generation_ui_runs_query_and_displays_result(
         assert "data-generation-run-result" in result_response.text
         assert "RCP-001" in result_response.text
         assert "답변 품질" in result_response.text
+        assert "report" in result_response.text
     finally:
         _cleanup_fixture(migrated_database_url, file_id, chunk_policy_name)
 

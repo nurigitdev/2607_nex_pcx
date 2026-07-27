@@ -55,6 +55,7 @@ def test_run_direct_generation_query_orchestrates_mock_generation(
             actor_user_id=7,
             requested_search_scope="company",
             provider_mode=GENERATION_PROVIDER_MODE_MOCK,
+            generation_template_key=" report ",
             profiles=("bm25_keyword",),
             max_context_chars=2000,
             include_neighbors=False,
@@ -76,6 +77,7 @@ def test_run_direct_generation_query_orchestrates_mock_generation(
     assert context_input.max_items == 3
     assert calls["mock_package"] is retrieval_package
     assert calls["mock_kwargs"] == {
+        "generation_template_key": "report",
         "created_by": "api_direct_generation",
         "created_by_user_id": 7,
     }
@@ -122,6 +124,7 @@ def test_run_direct_generation_query_passes_remote_runtime_inputs(
     assert result.generation_report == "remote-report"
     assert calls["package"] is retrieval_package
     assert calls["kwargs"] == {
+        "generation_template_key": None,
         "provider_client": fake_provider_client,
         "api_key": "secret",
         "created_by": "api_direct_generation",

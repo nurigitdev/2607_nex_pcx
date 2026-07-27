@@ -95,6 +95,24 @@
           {% endfor %}
         </select>
       </div>
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="direct_generation_template_key">{{ t("generation.direct_template") }}</label>
+        <select
+          class="form-select"
+          id="direct_generation_template_key"
+          name="direct_generation_template_key"
+          {% if not database_configured or not generation_template_options %}disabled{% endif %}
+        >
+          {% for template in generation_template_options %}
+          <option
+            value="{{ template.template_key }}"
+            {% if template.template_key == selected_generation_template_key %}selected{% endif %}
+          >
+            {{ template.template_name }} ({{ template.template_key }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="col-6 col-lg-3">
         <label class="form-label" for="direct_profile_name">{{ t("generation.direct_profile") }}</label>
         <select
@@ -325,6 +343,9 @@
         <input type="hidden" name="search_log_id" value="{{ package.search_log.search_log.search_log_id }}">
         <input type="hidden" name="max_context_chars" value="{{ max_context_chars }}">
         <input type="hidden" name="max_items" value="{{ max_items }}">
+        {% if selected_generation_template_key %}
+        <input type="hidden" name="generation_template_key" value="{{ selected_generation_template_key }}">
+        {% endif %}
         {% if include_neighbors %}
         <input type="hidden" name="include_neighbors" value="true">
         {% endif %}
@@ -336,6 +357,9 @@
         <input type="hidden" name="search_log_id" value="{{ package.search_log.search_log.search_log_id }}">
         <input type="hidden" name="max_context_chars" value="{{ max_context_chars }}">
         <input type="hidden" name="max_items" value="{{ max_items }}">
+        {% if selected_generation_template_key %}
+        <input type="hidden" name="generation_template_key" value="{{ selected_generation_template_key }}">
+        {% endif %}
         {% if include_neighbors %}
         <input type="hidden" name="include_neighbors" value="true">
         {% endif %}
@@ -449,19 +473,23 @@
     </div>
     <a
       class="btn btn-outline-secondary btn-sm"
-      href="/api/search/logs/{{ prompt_preview.search_log_id }}/generation-prompt/preview?max_context_chars={{ max_context_chars }}&include_neighbors={{ 'true' if include_neighbors else 'false' }}&max_items={{ max_items }}"
+      href="/api/search/logs/{{ prompt_preview.search_log_id }}/generation-prompt/preview?max_context_chars={{ max_context_chars }}&include_neighbors={{ 'true' if include_neighbors else 'false' }}&max_items={{ max_items }}{% if selected_generation_template_key %}&generation_template_key={{ selected_generation_template_key }}{% endif %}"
     >
       {{ t("common.api") }}
     </a>
   </div>
   <div class="row g-3 p-3 border-top">
-    <div class="col-6 col-lg-3">
+    <div class="col-6 col-lg-2">
       <div class="metric-label">{{ t("generation.prompt_version") }}</div>
       <div class="generation-detail-compact-value">{{ prompt_preview.prompt_version }}</div>
     </div>
     <div class="col-6 col-lg-2">
       <div class="metric-label">{{ t("generation.response_language") }}</div>
       <div class="generation-detail-compact-value">{{ prompt_preview.response_language }}</div>
+    </div>
+    <div class="col-6 col-lg-2">
+      <div class="metric-label">{{ t("generation.template") }}</div>
+      <div class="generation-detail-compact-value">{{ prompt_preview.template_key }}</div>
     </div>
     <div class="col-6 col-lg-2">
       <div class="metric-label">{{ t("generation.prompt_blocked") }}</div>
@@ -473,7 +501,7 @@
       <div class="metric-label">{{ t("generation.citation_count") }}</div>
       <div class="generation-detail-compact-value">{{ prompt_preview.citation_keys | length }}</div>
     </div>
-    <div class="col-12 col-lg-3">
+    <div class="col-12 col-lg-2">
       <div class="metric-label">{{ t("generation.prompt_hash") }}</div>
       <div class="model-path">{{ prompt_preview.prompt_hash }}</div>
     </div>

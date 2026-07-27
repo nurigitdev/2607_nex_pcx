@@ -45,7 +45,11 @@ from app.core.generation_runs import (
     create_generation_run_citation,
     get_generation_provider_config_for_mode,
 )
-from app.core.generation_templates import get_default_generation_template
+from app.core.generation_templates import (
+    GenerationTemplateRecord,
+    get_default_generation_template,
+    get_generation_template_by_key,
+)
 from app.core.retrieval_confidence import (
     RETRIEVAL_CONFIDENCE_ANSWERABLE,
 )
@@ -156,6 +160,20 @@ def _runtime_extra_body(provider: GenerationProviderConfigRecord) -> dict[str, o
     return dict(extra_body) if isinstance(extra_body, dict) else {}
 
 
+def _resolve_generation_template(
+    database_url: str,
+    *,
+    generation_template_key: str | None,
+) -> GenerationTemplateRecord | None:
+    normalized_key = generation_template_key.strip() if generation_template_key else ""
+    if normalized_key:
+        template = get_generation_template_by_key(database_url, normalized_key)
+        if template is None:
+            raise InvalidGenerationRunError("active generation template was not found")
+        return template
+    return get_default_generation_template(database_url)
+
+
 def _create_citations_for_answer(
     database_url: str,
     *,
@@ -257,6 +275,7 @@ def execute_mock_generation_run(
     database_url: str,
     package: RetrievalContextPackage,
     *,
+    generation_template_key: str | None = None,
     created_by: str | None = None,
     created_by_user_id: int | None = None,
 ) -> GenerationExecutionReport:
@@ -268,7 +287,10 @@ def execute_mock_generation_run(
 
     started_at = datetime.now(UTC)
     started_monotonic = perf_counter()
-    generation_template = get_default_generation_template(database_url)
+    generation_template = _resolve_generation_template(
+        database_url,
+        generation_template_key=generation_template_key,
+    )
     prompt_package = build_generation_prompt_package(
         package,
         generation_template=generation_template,
@@ -393,6 +415,7 @@ def execute_remote_generation_run(
     database_url: str,
     package: RetrievalContextPackage,
     *,
+    generation_template_key: str | None = None,
     provider_client: GenerationProvider | None = None,
     api_key: str | None = None,
     created_by: str | None = None,
@@ -411,7 +434,10 @@ def execute_remote_generation_run(
 
     started_at = datetime.now(UTC)
     started_monotonic = perf_counter()
-    generation_template = get_default_generation_template(database_url)
+    generation_template = _resolve_generation_template(
+        database_url,
+        generation_template_key=generation_template_key,
+    )
     prompt_package = build_generation_prompt_package(
         package,
         generation_template=generation_template,
