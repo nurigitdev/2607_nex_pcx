@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.44**
+**Software Requirements Specification v1.45**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.44
+문서 상태: Draft v1.45
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.44 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.45 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.44 |
+| 문서 버전 | v1.45 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -69,6 +69,7 @@
 | 1.42 | 2026-07-27 | OpenAI-compatible vLLM client foundation, remote chat completion request/response/error metrics 계약 보강 |
 | 1.43 | 2026-07-27 | DGX vLLM remote generation smoke runner, Qwen3.6 model serving 연결 증적과 secret redaction 원칙 보강 |
 | 1.44 | 2026-07-27 | Generation provider runtime config API, DGX vLLM seed defaults, DB 기반 LLM runtime 설정 조회와 secret env reference 원칙 보강 |
+| 1.45 | 2026-07-27 | Generation provider runtime config UI, DGX vLLM seed action, default/runtime/secret env 상태 표시 요구사항 보강 |
 
 # 목차
 
@@ -428,6 +429,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-063 | OpenAI-compatible vLLM client foundation | remote generation provider client는 `/v1/chat/completions` request payload를 구성하고 answer text, finish reason, token usage, latency, HTTP error payload를 표준 metrics와 함께 반환하거나 실패 객체로 보존할 수 있어야 한다. | MUST |
 | FR-064 | DGX vLLM generation smoke evidence | DGX-Spark vLLM runtime에 대해 `/v1/chat/completions` smoke runner를 제공하고 endpoint, model id, HTTP status, latency, finish reason, token usage, answer preview를 secret 없이 증적으로 저장할 수 있어야 한다. | MUST |
 | FR-065 | Generation provider runtime config API | 운영자는 DB에 저장된 generation provider 설정 목록과 default provider runtime contract를 조회하고, DGX vLLM Qwen3.6 기본값을 secret 값 없이 environment variable reference만으로 seed/upsert할 수 있어야 한다. | MUST |
+| FR-066 | Generation provider runtime config UI | Web UI는 generation provider 설정 목록, default provider, runtime validation 상태, API key env reference 구성 여부를 표시하고 DGX vLLM 기본값을 secret 입력 없이 seed할 수 있어야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 

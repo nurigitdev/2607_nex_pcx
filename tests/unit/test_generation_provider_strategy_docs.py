@@ -25,6 +25,9 @@ DGX_VLLM_GENERATION_SMOKE_RUNNER_DOC_PATH = (
 GENERATION_PROVIDER_RUNTIME_CONFIG_API_DOC_PATH = (
     PROJECT_ROOT / "docs" / "generation_provider_runtime_config_api.md"
 )
+GENERATION_PROVIDER_RUNTIME_CONFIG_UI_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "generation_provider_runtime_config_ui.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -34,7 +37,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.44" in srs_text
+    assert "Software Requirements Specification v1.45" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -53,11 +56,13 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-063" in srs_text
     assert "FR-064" in srs_text
     assert "FR-065" in srs_text
+    assert "FR-066" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
     assert "DGX vLLM generation smoke evidence" in srs_text
     assert "Generation provider runtime config API" in srs_text
+    assert "Generation provider runtime config UI" in srs_text
 
 
 def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> None:
@@ -198,3 +203,14 @@ def test_generation_provider_runtime_config_api_doc_defines_dgx_seed_contract() 
     assert "`http://192.168.20.243:12000`" in config_text
     assert "`NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY`" in config_text
     assert "environment-only" in config_text
+
+
+def test_generation_provider_runtime_config_ui_doc_defines_operator_page() -> None:
+    ui_text = _read(GENERATION_PROVIDER_RUNTIME_CONFIG_UI_DOC_PATH)
+
+    assert "Generation Provider Runtime Config UI" in ui_text
+    assert "`GET /admin/generation-provider-configs`" in ui_text
+    assert "`POST /admin/generation-provider-configs/seed-dgx-vllm`" in ui_text
+    assert "runtime validation status" in ui_text
+    assert "`NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY`" in ui_text
+    assert "Korean is the default UI language" in ui_text

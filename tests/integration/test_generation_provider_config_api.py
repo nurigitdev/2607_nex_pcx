@@ -177,3 +177,69 @@ def test_generation_provider_runtime_config_api_returns_503_without_database() -
     assert list_response.status_code == 503
     assert default_response.status_code == 503
     assert seed_response.status_code == 503
+
+
+def test_generation_provider_runtime_config_ui_lists_and_seeds_dgx_provider(
+    migrated_database_url: str,
+) -> None:
+    provider_name = _provider_name()
+    app = create_app(
+        Settings(
+            database_url=migrated_database_url,
+            remote_generation_provider_api_key="ui-secret-value-must-not-leak",
+        )
+    )
+
+    try:
+        with TestClient(app) as client:
+            initial_response = client.get("/admin/generation-provider-configs")
+            seed_response = client.post(
+                "/admin/generation-provider-configs/seed-dgx-vllm",
+                data={
+                    "provider_name": provider_name,
+                    "provider_base_url": DGX_VLLM_GENERATION_BASE_URL,
+                    "model_id": DGX_VLLM_GENERATION_MODEL_ID,
+                    "api_key_env": DGX_VLLM_GENERATION_API_KEY_ENV,
+                    "request_timeout_seconds": "300",
+                    "max_tokens": "1024",
+                    "temperature": "0.2",
+                    "top_p": "0.9",
+                    "is_default": "true",
+                    "is_active": "true",
+                    "thinking_disabled": "true",
+                },
+                follow_redirects=False,
+            )
+            seeded_response = client.get(seed_response.headers["location"])
+
+        assert initial_response.status_code == 200
+        assert "생성 Provider 설정" in initial_response.text
+        assert "data-generation-provider-config-seed" in initial_response.text
+        assert "data-generation-provider-config-summary" in initial_response.text
+        assert MOCK_PROVIDER_NAME in initial_response.text
+        assert seed_response.status_code == 303
+        assert f"seeded_provider={provider_name}" in seed_response.headers["location"]
+        assert seeded_response.status_code == 200
+        assert provider_name in seeded_response.text
+        assert DGX_VLLM_GENERATION_API_KEY_ENV in seeded_response.text
+        assert "설정됨" in seeded_response.text
+        assert "ui-secret-value-must-not-leak" not in seeded_response.text
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+
+
+def test_generation_provider_runtime_config_ui_reports_missing_database() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        page_response = client.get("/admin/generation-provider-configs")
+        post_response = client.post(
+            "/admin/generation-provider-configs/seed-dgx-vllm",
+            follow_redirects=False,
+        )
+
+    assert page_response.status_code == 200
+    assert "생성 Provider 설정" in page_response.text
+    assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
+    assert post_response.status_code == 303
+    assert "seed_error=NEX_PCX_DATABASE_URL" in post_response.headers["location"]

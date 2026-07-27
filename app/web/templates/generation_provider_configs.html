@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("generation_provider_config.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("generation_provider_config.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/generation-provider-configs?include_inactive={{ 'true' if include_inactive else 'false' }}">{{ t("generation_provider_config.refresh") }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/generation-provider-metrics">{{ t("nav.generation_metrics") }}</a>
+    <a class="btn btn-outline-primary btn-sm" href="/api/admin/generation-provider-configs?include_inactive={{ 'true' if include_inactive else 'false' }}">{{ t("common.api") }}</a>
+  </div>
+</div>
+
+{% if seeded_provider %}
+<div class="alert alert-success" role="alert">
+  {{ t("generation_provider_config.seeded", provider=seeded_provider) }}
+</div>
+{% endif %}
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4" data-generation-provider-config-seed>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation_provider_config.seed_title") }}</h2>
+      <div class="text-secondary">{{ t("generation_provider_config.seed_help") }}</div>
+    </div>
+    <span class="badge text-bg-light border">{{ t("generation_provider_config.secret_env_only") }}</span>
+  </div>
+  <form class="row g-3 align-items-end" method="post" action="/admin/generation-provider-configs/seed-dgx-vllm">
+    <input type="hidden" name="api_key_env" value="{{ dgx_defaults.api_key_env }}">
+    <input type="hidden" name="is_active" value="true">
+    <input type="hidden" name="thinking_disabled" value="true">
+    <div class="col-12 col-lg-3">
+      <label class="form-label" for="provider_name">{{ t("generation_provider_config.provider_name") }}</label>
+      <input class="form-control" id="provider_name" name="provider_name" value="{{ dgx_defaults.provider_name }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-lg-4">
+      <label class="form-label" for="provider_base_url">{{ t("generation_provider_config.base_url") }}</label>
+      <input class="form-control" id="provider_base_url" name="provider_base_url" value="{{ dgx_defaults.provider_base_url }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-lg-5">
+      <label class="form-label" for="model_id">{{ t("generation_provider_config.model_id") }}</label>
+      <input class="form-control model-path" id="model_id" name="model_id" value="{{ dgx_defaults.model_id }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-md-3 col-xl-2">
+      <label class="form-label" for="request_timeout_seconds">{{ t("generation_provider_config.timeout") }}</label>
+      <input class="form-control" id="request_timeout_seconds" name="request_timeout_seconds" type="number" min="1" value="{{ dgx_defaults.request_timeout_seconds }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-md-3 col-xl-2">
+      <label class="form-label" for="max_tokens">{{ t("generation_provider_config.max_tokens") }}</label>
+      <input class="form-control" id="max_tokens" name="max_tokens" type="number" min="1" value="{{ dgx_defaults.max_tokens }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-md-3 col-xl-2">
+      <label class="form-label" for="temperature">{{ t("generation_provider_config.temperature") }}</label>
+      <input class="form-control" id="temperature" name="temperature" type="number" min="0" max="2" step="0.1" value="{{ dgx_defaults.temperature }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-6 col-md-3 col-xl-2">
+      <label class="form-label" for="top_p">{{ t("generation_provider_config.top_p") }}</label>
+      <input class="form-control" id="top_p" name="top_p" type="number" min="0.01" max="1" step="0.01" value="{{ dgx_defaults.top_p }}" {% if not database_configured %}disabled{% endif %}>
+    </div>
+    <div class="col-12 col-md-6 col-xl-2">
+      <div class="form-check pt-md-4">
+        <input class="form-check-input" id="is_default" name="is_default" type="checkbox" value="true" {% if not database_configured %}disabled{% endif %}>
+        <label class="form-check-label" for="is_default">{{ t("generation_provider_config.make_default") }}</label>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-2">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("generation_provider_config.seed_action") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if collection_payload %}
+{% set summary = collection_payload.summary %}
+{% set default_provider = collection_payload.default_provider %}
+<section class="document-detail-grid mb-4" data-generation-provider-config-summary>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_provider_config.provider_count") }}</div>
+    <div class="metric-value">{{ summary.provider_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_provider_config.active_count") }}</div>
+    <div class="metric-value">{{ summary.active_provider_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_provider_config.default_provider") }}</div>
+    <div class="generation-detail-compact-value">{{ summary.default_provider_name or "-" }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_provider_config.api_key_env") }}</div>
+    <div class="generation-detail-compact-value">
+      {{ default_provider.runtime_config.api_key_env if default_provider else "-" }}
+    </div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-generation-provider-config-table>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("generation_provider_config.providers") }}</h2>
+      <div class="text-secondary">{{ t("generation_provider_config.providers_help") }}</div>
+    </div>
+    <form method="get">
+      <input type="hidden" name="include_inactive" value="{{ 'false' if include_inactive else 'true' }}">
+      <button class="btn btn-outline-secondary btn-sm" type="submit">
+        {{ t("generation_provider_config.hide_inactive") if include_inactive else t("generation_provider_config.show_inactive") }}
+      </button>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("generation_provider_config.provider") }}</th>
+          <th>{{ t("generation_provider_config.runtime") }}</th>
+          <th>{{ t("generation_provider_config.model") }}</th>
+          <th class="text-end">{{ t("generation_provider_config.limits") }}</th>
+          <th>{{ t("generation_provider_config.secret") }}</th>
+          <th>{{ t("generation_provider_config.updated_at") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for provider in collection_payload.providers %}
+        {% set runtime = provider.runtime_config %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ provider.provider_name }}</div>
+            <div class="d-flex flex-wrap gap-1 mt-1">
+              {% if provider.is_default %}
+              <span class="badge text-bg-primary">{{ t("generation_provider_config.default") }}</span>
+              {% endif %}
+              <span class="badge text-bg-{{ 'success' if provider.is_active else 'secondary' }}">
+                {{ t("common.active") if provider.is_active else t("common.inactive") }}
+              </span>
+              <span class="badge text-bg-light border">#{{ provider.provider_config_id }}</span>
+            </div>
+          </td>
+          <td>
+            <span class="badge text-bg-light border">{{ provider.provider_mode }}</span>
+            <div class="model-path small mt-1">{{ runtime.remote_base_url or "-" }}</div>
+            {% if runtime.valid %}
+            <div class="text-success small">{{ t("generation_provider_config.runtime_valid") }}</div>
+            {% else %}
+            <div class="text-danger small">{{ runtime.error_message }}</div>
+            {% endif %}
+          </td>
+          <td>
+            <div class="model-path">{{ provider.model_id }}</div>
+            <div class="text-secondary small">
+              {{ t("generation_provider_config.thinking_disabled") }}:
+              {% if runtime.thinking_disabled is sameas true %}
+              {{ t("common.yes") }}
+              {% elif runtime.thinking_disabled is sameas false %}
+              {{ t("common.no") }}
+              {% else %}
+              -
+              {% endif %}
+            </div>
+          </td>
+          <td class="text-end">
+            <div>{{ provider.max_tokens }} tokens</div>
+            <div class="text-secondary small">{{ provider.request_timeout_seconds }} sec</div>
+            <div class="text-secondary small">T {{ provider.temperature }} / top_p {{ provider.top_p }}</div>
+          </td>
+          <td>
+            <div class="generation-detail-compact-value">{{ runtime.api_key_env or "-" }}</div>
+            {% if runtime.api_key_configured is sameas true %}
+            <span class="badge text-bg-success">{{ t("generation_provider_config.configured") }}</span>
+            {% elif runtime.api_key_configured is sameas false %}
+            <span class="badge text-bg-warning">{{ t("generation_provider_config.not_configured") }}</span>
+            {% else %}
+            <span class="badge text-bg-light border">{{ t("generation_provider_config.not_applicable") }}</span>
+            {% endif %}
+          </td>
+          <td class="text-nowrap">{{ provider.updated_at }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-center text-secondary py-4" colspan="6">
+            {{ t("generation_provider_config.no_providers") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-3" data-generation-provider-config-json>
+  <div class="metric-label mb-2">{{ t("generation_provider_config.raw_config") }}</div>
+  <pre class="json-preview operations-json-preview mb-0">{{ collection_json }}</pre>
+</section>
+{% endif %}
+{% endblock %}

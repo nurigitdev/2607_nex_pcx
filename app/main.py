@@ -4230,6 +4230,14 @@ def generation_provider_runtime_config_payload(
         else None
     )
     extra_body = provider.runtime_options.get("extra_body", {})
+    thinking_disabled = None
+    if isinstance(extra_body, dict):
+        chat_template_kwargs = extra_body.get("chat_template_kwargs", {})
+        if isinstance(chat_template_kwargs, dict) and isinstance(
+            chat_template_kwargs.get("enable_thinking"),
+            bool,
+        ):
+            thinking_disabled = not chat_template_kwargs["enable_thinking"]
     return {
         "valid": True,
         "error_message": None,
@@ -4244,7 +4252,44 @@ def generation_provider_runtime_config_payload(
         "api_key_configured": api_key_configured,
         "remote_header_names": sorted(runtime_config.remote_headers),
         "extra_body": redacted_generation_runtime_options(extra_body),
+        "thinking_disabled": thinking_disabled,
         "secret_policy": "secret values are provided through environment variables only",
+    }
+
+
+def generation_provider_config_collection_payload(
+    providers: tuple[GenerationProviderConfigRecord, ...],
+    settings: Settings,
+    *,
+    include_inactive: bool,
+) -> dict[str, object]:
+    provider_payloads = [
+        {
+            **generation_provider_config_payload(provider),
+            "runtime_config": generation_provider_runtime_config_payload(provider, settings),
+        }
+        for provider in providers
+    ]
+    default_provider = next((provider for provider in providers if provider.is_default), None)
+    return {
+        "summary": {
+            "provider_count": len(providers),
+            "active_provider_count": sum(1 for provider in providers if provider.is_active),
+            "default_provider_name": default_provider.provider_name if default_provider else None,
+            "include_inactive": include_inactive,
+        },
+        "default_provider": (
+            {
+                **generation_provider_config_payload(default_provider),
+                "runtime_config": generation_provider_runtime_config_payload(
+                    default_provider,
+                    settings,
+                ),
+            }
+            if default_provider
+            else None
+        ),
+        "providers": provider_payloads,
     }
 
 
@@ -11599,37 +11644,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.database_url,
             include_inactive=include_inactive,
         )
-        provider_payloads = [
-            {
-                **generation_provider_config_payload(provider),
-                "runtime_config": generation_provider_runtime_config_payload(provider, settings),
-            }
-            for provider in providers
-        ]
-        default_provider = next((provider for provider in providers if provider.is_default), None)
         return JSONResponse(
-            content={
-                "summary": {
-                    "provider_count": len(providers),
-                    "active_provider_count": sum(1 for provider in providers if provider.is_active),
-                    "default_provider_name": (
-                        default_provider.provider_name if default_provider else None
-                    ),
-                    "include_inactive": include_inactive,
-                },
-                "default_provider": (
-                    {
-                        **generation_provider_config_payload(default_provider),
-                        "runtime_config": generation_provider_runtime_config_payload(
-                            default_provider,
-                            settings,
-                        ),
-                    }
-                    if default_provider
-                    else None
-                ),
-                "providers": provider_payloads,
-            }
+            content=generation_provider_config_collection_payload(
+                providers,
+                settings,
+                include_inactive=include_inactive,
+            )
         )
 
     @app.get("/api/admin/generation-provider-configs/default")
@@ -14390,6 +14410,103 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 max_limit=MAX_GENERATION_PROVIDER_METRIC_SNAPSHOT_LIMIT,
                 error_message=error_message,
             ),
+        )
+
+    @app.get("/admin/generation-provider-configs", response_class=HTMLResponse)
+    def generation_provider_configs_page(
+        request: Request,
+        include_inactive: bool = True,
+        seeded_provider: str | None = None,
+        seed_error: str | None = None,
+    ) -> HTMLResponse:
+        providers: tuple[GenerationProviderConfigRecord, ...] = ()
+        collection_payload: dict[str, object] | None = None
+        collection_json = ""
+        error_message = seed_error
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                providers = list_generation_provider_configs(
+                    settings.database_url,
+                    include_inactive=include_inactive,
+                )
+                collection_payload = generation_provider_config_collection_payload(
+                    providers,
+                    settings,
+                    include_inactive=include_inactive,
+                )
+                collection_json = json.dumps(collection_payload, ensure_ascii=False, indent=2)
+            except InvalidGenerationRunError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "generation_provider_configs.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                providers=providers,
+                collection_payload=collection_payload,
+                collection_json=collection_json,
+                include_inactive=include_inactive,
+                seeded_provider=seeded_provider,
+                error_message=error_message,
+                dgx_defaults={
+                    "provider_name": DGX_VLLM_GENERATION_PROVIDER_NAME,
+                    "provider_base_url": DGX_VLLM_GENERATION_BASE_URL,
+                    "model_id": DGX_VLLM_GENERATION_MODEL_ID,
+                    "api_key_env": DGX_VLLM_GENERATION_API_KEY_ENV,
+                    "request_timeout_seconds": DGX_VLLM_GENERATION_TIMEOUT_SECONDS,
+                    "max_tokens": DGX_VLLM_GENERATION_MAX_TOKENS,
+                    "temperature": DGX_VLLM_GENERATION_TEMPERATURE,
+                    "top_p": DGX_VLLM_GENERATION_TOP_P,
+                },
+            ),
+        )
+
+    @app.post("/admin/generation-provider-configs/seed-dgx-vllm")
+    def generation_provider_configs_seed_dgx_vllm_action(
+        provider_name: str = Form(DGX_VLLM_GENERATION_PROVIDER_NAME),
+        provider_base_url: str = Form(DGX_VLLM_GENERATION_BASE_URL),
+        model_id: str = Form(DGX_VLLM_GENERATION_MODEL_ID),
+        api_key_env: str = Form(DGX_VLLM_GENERATION_API_KEY_ENV),
+        request_timeout_seconds: int = Form(DGX_VLLM_GENERATION_TIMEOUT_SECONDS),
+        max_tokens: int = Form(DGX_VLLM_GENERATION_MAX_TOKENS),
+        temperature: float = Form(DGX_VLLM_GENERATION_TEMPERATURE),
+        top_p: float = Form(DGX_VLLM_GENERATION_TOP_P),
+        is_default: bool = Form(False),
+        is_active: bool = Form(True),
+        thinking_disabled: bool = Form(True),
+    ) -> RedirectResponse:
+        query_params: dict[str, object]
+        if not settings.database_url:
+            query_params = {"seed_error": "NEX_PCX_DATABASE_URL is not configured."}
+        else:
+            try:
+                provider = seed_dgx_vllm_generation_provider_config(
+                    settings.database_url,
+                    provider_name=provider_name,
+                    provider_base_url=provider_base_url,
+                    model_id=model_id,
+                    api_key_env=api_key_env,
+                    request_timeout_seconds=request_timeout_seconds,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    is_default=is_default,
+                    is_active=is_active,
+                    thinking_disabled=thinking_disabled,
+                    created_by="generation-provider-config-ui",
+                )
+                query_params = {"seeded_provider": provider.provider_name}
+            except InvalidGenerationRunError as exc:
+                query_params = {"seed_error": str(exc)}
+
+        return RedirectResponse(
+            url=f"/admin/generation-provider-configs?{urlencode(query_params)}",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
 
     @app.get("/search/experiments", response_class=HTMLResponse)
