@@ -49,6 +49,7 @@ from app.core.bm25_keyword_index import (
 )
 from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
 from app.core.chat import (
+    CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
     CHAT_INTENT_GENERAL_ANSWER,
     CHAT_MESSAGE_STATUS_COMPLETED,
     CHAT_ROLE_ASSISTANT,
@@ -68,6 +69,7 @@ from app.core.chat import (
     create_chat_session,
     get_chat_session,
     get_chat_thread,
+    link_chat_message_to_search_log,
     list_chat_sessions,
     route_chat_intent_mock,
 )
@@ -76,6 +78,12 @@ from app.core.chat_generation import (
     ChatGeneralAnswerResult,
     InvalidChatGenerationError,
     execute_chat_general_answer,
+)
+from app.core.chat_search import (
+    ChatSearchSummaryInput,
+    ChatSearchSummaryResult,
+    InvalidChatSearchError,
+    execute_chat_search_summary,
 )
 from app.core.chunk_policies import (
     ChunkPolicySummaryRecord,
@@ -1477,6 +1485,21 @@ def chat_general_answer_payload(result: ChatGeneralAnswerResult) -> dict[str, ob
         "elapsed_ms": result.elapsed_ms,
         "request_metadata": result.request_metadata,
         "response_metadata": result.response_metadata,
+    }
+
+
+def chat_search_summary_payload(result: ChatSearchSummaryResult) -> dict[str, object]:
+    return {
+        "answer_text": result.answer_text,
+        "search_log_id": result.search_result.search_log_id,
+        "prompt_version": result.prompt_version,
+        "execution_mode": result.execution_mode,
+        "result_count": result.result_count,
+        "profile_status_counts": result.profile_status_counts,
+        "retrieval_confidence_status": result.retrieval_confidence_status,
+        "request_metadata": result.request_metadata,
+        "response_metadata": result.response_metadata,
+        "search_result": search_compare_payload(result.search_result),
     }
 
 
@@ -12606,6 +12629,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             assistant_message: ChatMessageRecord | None = None
             if payload.run_mock_router:
+                search_summary: ChatSearchSummaryResult | None = None
                 assistant_content = chat_mock_assistant_content(route)
                 assistant_runtime_metadata: dict[str, object] = {
                     "router": "mock_intent_router_v1",
@@ -12653,6 +12677,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         ),
                         "chat_general_answer": chat_general_answer_payload(general_answer),
                     }
+                elif route.intent == CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY:
+                    if session.actor_user_id is None:
+                        raise InvalidChatSearchError(
+                            "actor_user_id is required for chat search summary"
+                        )
+                    search_profiles = (
+                        (session.default_search_profile_name,)
+                        if session.default_search_profile_name
+                        else None
+                    )
+                    search_summary = execute_chat_search_summary(
+                        settings.database_url,
+                        ChatSearchSummaryInput(
+                            content=payload.content,
+                            actor_user_id=session.actor_user_id,
+                            requested_search_scope=session.default_search_scope or "company",
+                            profiles=search_profiles,
+                            runtime_metadata={
+                                "chat_session_id": chat_session_id,
+                                "user_message_id": user_message.chat_message_id,
+                                "router": "mock_intent_router_v1",
+                                "route_intent": route.intent,
+                                "routing_metadata": dict(payload.routing_metadata),
+                            },
+                        ),
+                        fallback_runtime_config=embedding_provider_runtime_config_from_settings(
+                            settings
+                        ),
+                        fallback_reranker_runtime_config=reranker_runtime_config_from_settings(
+                            settings
+                        ),
+                    )
+                    assistant_content = search_summary.answer_text
+                    assistant_runtime_metadata = {
+                        "router": "mock_intent_router_v1",
+                        "suggested_action": route.suggested_action,
+                        "execution_mode": search_summary.execution_mode,
+                        "chat_search_summary": chat_search_summary_payload(search_summary),
+                    }
                 assistant_message = append_chat_message(
                     settings.database_url,
                     ChatMessageInput(
@@ -12666,10 +12729,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         runtime_metadata=assistant_runtime_metadata,
                     ),
                 )
+                if search_summary is not None:
+                    link_chat_message_to_search_log(
+                        settings.database_url,
+                        chat_message_id=assistant_message.chat_message_id,
+                        search_log_id=search_summary.search_result.search_log_id,
+                        label=f"Search Log #{search_summary.search_result.search_log_id}",
+                        metadata={"source": "chat_search_summary"},
+                    )
             thread = get_chat_thread(settings.database_url, chat_session_id)
         except (
             InvalidChatGenerationError,
             InvalidChatRepositoryError,
+            InvalidChatSearchError,
+            InvalidPermissionError,
+            InvalidSearchCompareError,
             InvalidGenerationProviderError,
             InvalidGenerationRunError,
         ) as exc:

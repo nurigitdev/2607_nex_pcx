@@ -2,9 +2,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.chat import (
+    CHAT_INTENT_DOCUMENT_GENERATION,
     CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
     CHAT_INTENT_GENERAL_ANSWER,
     CHAT_INTENT_GROUNDED_ANSWER,
+    CHAT_LINK_TYPE_SEARCH_LOG,
     CHAT_ROLE_ASSISTANT,
     CHAT_ROLE_USER,
     ChatMessageInput,
@@ -25,6 +27,20 @@ def _delete_chat_session(database_url: str, chat_session_id: int) -> None:
         conn.commit()
 
 
+def _delete_search_log(database_url: str, search_log_id: int) -> None:
+    with connect(database_url) as conn:
+        conn.execute("DELETE FROM search_logs WHERE search_log_id = %s", (search_log_id,))
+        conn.commit()
+
+
+def _seed_actor_user_id(database_url: str) -> int:
+    row = fetch_one(
+        database_url,
+        "SELECT user_id FROM app_users WHERE login_id = 'alice.member'",
+    )
+    return int(row["user_id"])
+
+
 def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
     migrated_database_url: str,
 ) -> None:
@@ -36,7 +52,7 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
             create_response = client.post(
                 "/api/chat/sessions",
                 json={
-                    "session_title": "대화형 검색 요약",
+                    "session_title": "대화형 문서 생성",
                     "default_provider_mode": "mock",
                     "default_search_scope": "company",
                     "metadata": {"slice": 388},
@@ -46,7 +62,7 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
             message_response = client.post(
                 f"/api/chat/sessions/{chat_session_id}/messages",
                 json={
-                    "content": "관련 문서를 검색해서 요약해줘",
+                    "content": "보고서를 작성해줘",
                     "routing_metadata": {"ui_surface": "chat"},
                 },
             )
@@ -67,14 +83,14 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
         )
 
         assert create_response.status_code == 201
-        assert create_body["session"]["session_title"] == "대화형 검색 요약"
+        assert create_body["session"]["session_title"] == "대화형 문서 생성"
         assert create_body["session"]["metadata"] == {"slice": 388}
         assert message_response.status_code == 201
-        assert message_body["router"]["intent"] == CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY
+        assert message_body["router"]["intent"] == CHAT_INTENT_DOCUMENT_GENERATION
         assert message_body["user_message"]["role"] == CHAT_ROLE_USER
         assert message_body["user_message"]["routing_metadata"]["ui_surface"] == "chat"
         assert message_body["assistant_message"]["role"] == CHAT_ROLE_ASSISTANT
-        assert "검색 결과 요약 의도" in message_body["assistant_message"]["content"]
+        assert "문서 생성 의도" in message_body["assistant_message"]["content"]
         assert len(message_body["thread"]["messages"]) == 2
         assert thread_response.status_code == 200
         assert [item["message"]["role"] for item in thread_body["messages"]] == [
@@ -85,7 +101,7 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
         assert any(
             item["chat_session_id"] == chat_session_id for item in list_response.json()["sessions"]
         )
-        assert session_row["session_title"] == "대화형 검색 요약"
+        assert session_row["session_title"] == "대화형 문서 생성"
         assert session_row["default_search_scope"] == "company"
         assert session_row["metadata"] == {"slice": 388}
     finally:
@@ -172,26 +188,100 @@ def test_chat_api_executes_general_answer_with_mock_llm_path(
             _delete_chat_session(migrated_database_url, chat_session_id)
 
 
+def test_chat_api_executes_search_summary_and_links_search_log(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+    actor_user_id = _seed_actor_user_id(migrated_database_url)
+    chat_session_id: int | None = None
+    search_log_id: int | None = None
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/chat/sessions",
+                json={
+                    "session_title": "검색 요약 실행",
+                    "actor_user_id": actor_user_id,
+                    "default_provider_mode": "mock",
+                    "default_search_scope": "company",
+                },
+            )
+            chat_session_id = int(create_response.json()["session"]["chat_session_id"])
+            message_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={
+                    "content": "관련 문서를 검색해서 요약해줘",
+                    "routing_metadata": {"ui_surface": "chat"},
+                },
+            )
+
+        body = message_response.json()
+        assistant = body["assistant_message"]
+        chat_search_summary = assistant["runtime_metadata"]["chat_search_summary"]
+        search_log_id = int(chat_search_summary["search_log_id"])
+        assistant_thread_item = body["thread"]["messages"][1]
+        search_log_row = fetch_one(
+            migrated_database_url,
+            "SELECT query_text, actor_user_id FROM search_logs WHERE search_log_id = %s",
+            (search_log_id,),
+        )
+
+        assert message_response.status_code == 201
+        assert body["router"]["intent"] == CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY
+        assert "검색 결과 요약입니다." in assistant["content"]
+        assert assistant["runtime_metadata"]["execution_mode"] == "search_compare_summary"
+        assert chat_search_summary["search_result"]["profiles"][0]["profile_name"] == (
+            "bm25_keyword"
+        )
+        assert chat_search_summary["request_metadata"]["runtime_metadata"]["chat_session_id"] == (
+            chat_session_id
+        )
+        assert assistant_thread_item["links"][0]["link_type"] == CHAT_LINK_TYPE_SEARCH_LOG
+        assert assistant_thread_item["links"][0]["target_id"] == search_log_id
+        assert search_log_row["query_text"] == "관련 문서를 검색해서 요약해줘"
+        assert int(search_log_row["actor_user_id"]) == actor_user_id
+    finally:
+        if chat_session_id is not None:
+            _delete_chat_session(migrated_database_url, chat_session_id)
+        if search_log_id is not None:
+            _delete_search_log(migrated_database_url, search_log_id)
+
+
 def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
     app = create_app(Settings(database_url=migrated_database_url))
     app_without_database = create_app(Settings(database_url=None))
+    chat_session_id: int | None = None
 
-    with TestClient(app) as client:
-        missing_response = client.post(
-            "/api/chat/sessions/999999999/messages",
-            json={"content": "없는 세션입니다."},
-        )
-        invalid_filter_response = client.get(
-            "/api/chat/sessions",
-            params={"status": "legacy"},
-        )
-        invalid_session_response = client.post(
-            "/api/chat/sessions",
-            json={
-                "session_title": "잘못된 provider",
-                "default_provider_mode": "local",
-            },
-        )
+    try:
+        with TestClient(app) as client:
+            missing_response = client.post(
+                "/api/chat/sessions/999999999/messages",
+                json={"content": "없는 세션입니다."},
+            )
+            invalid_filter_response = client.get(
+                "/api/chat/sessions",
+                params={"status": "legacy"},
+            )
+            invalid_session_response = client.post(
+                "/api/chat/sessions",
+                json={
+                    "session_title": "잘못된 provider",
+                    "default_provider_mode": "local",
+                },
+            )
+            no_actor_session_response = client.post(
+                "/api/chat/sessions",
+                json={"session_title": "검색 actor 없음"},
+            )
+            chat_session_id = int(no_actor_session_response.json()["session"]["chat_session_id"])
+            missing_actor_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={"content": "관련 문서를 검색해서 요약해줘"},
+            )
+    finally:
+        if chat_session_id is not None:
+            _delete_chat_session(migrated_database_url, chat_session_id)
 
     with TestClient(app_without_database) as client:
         no_database_response = client.get("/api/chat/sessions")
@@ -199,6 +289,8 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
     assert missing_response.status_code == 404
     assert invalid_filter_response.status_code == 400
     assert invalid_session_response.status_code == 400
+    assert missing_actor_response.status_code == 400
+    assert "actor_user_id" in missing_actor_response.json()["detail"]
     assert no_database_response.status_code == 503
 
 
