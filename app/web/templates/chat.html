@@ -35,6 +35,24 @@
             {% if not database_configured %}disabled{% endif %}
           >
         </div>
+        <div class="mb-3">
+          <label class="form-label" for="chat-actor-user-id">{{ t("chat.actor") }}</label>
+          <select
+            class="form-select"
+            id="chat-actor-user-id"
+            name="actor_user_id"
+            {% if not database_configured or not actor_options %}disabled{% endif %}
+          >
+            {% for actor in actor_options %}
+            <option value="{{ actor.user_id }}" {% if actor.user_id == default_actor_id %}selected{% endif %}>
+              {{ actor.display_name }} / {{ actor.login_id }}
+            </option>
+            {% else %}
+            <option value="">{{ t("chat.no_actors") }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <h3 class="h6 text-secondary mb-3">{{ t("chat.runtime_defaults") }}</h3>
         <div class="row g-3">
           <div class="col-12 col-lg-6">
             <label class="form-label" for="chat-provider-mode">{{ t("chat.provider_mode") }}</label>
@@ -60,8 +78,44 @@
               <option value="">{{ t("common.all") }}</option>
               {% for search_scope in search_scope_options %}
               <option value="{{ search_scope }}" {% if search_scope == "company" %}selected{% endif %}>
-                {{ search_scope }}
+                {{ t("search_scope." ~ search_scope) }}
               </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="chat-search-profile">{{ t("chat.search_profile") }}</label>
+            <select
+              class="form-select"
+              id="chat-search-profile"
+              name="default_search_profile_name"
+              {% if not database_configured %}disabled{% endif %}
+            >
+              <option value="">{{ t("chat.automatic") }}</option>
+              {% for profile_name in profile_options %}
+              <option value="{{ profile_name }}" {% if profile_name == default_profile_name %}selected{% endif %}>
+                {{ profile_name }}
+              </option>
+              {% else %}
+              <option value="">{{ t("chat.no_profiles") }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="chat-generation-template-key">{{ t("chat.generation_template") }}</label>
+            <select
+              class="form-select"
+              id="chat-generation-template-key"
+              name="default_generation_template_key"
+              {% if not database_configured %}disabled{% endif %}
+            >
+              <option value="">{{ t("chat.automatic") }}</option>
+              {% for template in generation_template_options %}
+              <option value="{{ template.template_key }}" {% if template.template_key == default_generation_template_key %}selected{% endif %}>
+                {{ template.template_name }} / {{ template.template_key }}{% if template.is_default %} · {{ t("generation_templates.applied_badge") }}{% endif %}
+              </option>
+              {% else %}
+              <option value="">{{ t("chat.no_templates") }}</option>
               {% endfor %}
             </select>
           </div>
@@ -81,6 +135,7 @@
       </div>
       <div class="chat-session-list">
         {% for session in sessions %}
+        {% set session_template_key = session.metadata.default_generation_template_key %}
         <a
           class="chat-session-link {% if selected_chat_session_id == session.chat_session_id %}active{% endif %}"
           href="/chat?chat_session_id={{ session.chat_session_id }}"
@@ -88,6 +143,9 @@
           <span class="fw-semibold text-break">{{ session.session_title }}</span>
           <span class="small text-secondary">
             #{{ session.chat_session_id }} · {{ session.default_provider_mode }}
+            {% if session.actor_user_id %} · {{ t("chat.actor") }} #{{ session.actor_user_id }}{% endif %}
+            {% if session.default_search_profile_name %} · {{ session.default_search_profile_name }}{% endif %}
+            {% if session_template_key %} · {{ t("chat.template") }} {{ session_template_key }}{% endif %}
           </span>
         </a>
         {% else %}
@@ -110,10 +168,20 @@
           </h2>
           {% if selected_thread %}
           <div class="text-secondary small">
+            {% set selected_template_key = selected_thread.session.metadata.default_generation_template_key %}
             #{{ selected_thread.session.chat_session_id }}
             · {{ selected_thread.session.default_provider_mode }}
+            {% if selected_thread.session.actor_user_id %}
+            · {{ t("chat.actor") }} #{{ selected_thread.session.actor_user_id }}
+            {% endif %}
+            {% if selected_thread.session.default_search_profile_name %}
+            · {{ selected_thread.session.default_search_profile_name }}
+            {% endif %}
             {% if selected_thread.session.default_search_scope %}
             · {{ selected_thread.session.default_search_scope }}
+            {% endif %}
+            {% if selected_template_key %}
+            · {{ t("chat.template") }} {{ selected_template_key }}
             {% endif %}
           </div>
           {% endif %}
@@ -362,13 +430,18 @@
   sessionForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(sessionForm);
+    const actorUserId = formData.get("actor_user_id");
+    const defaultGenerationTemplateKey = formData.get("default_generation_template_key");
     const response = await fetch("/api/chat/sessions", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         session_title: formData.get("session_title"),
+        actor_user_id: actorUserId ? Number(actorUserId) : null,
         default_provider_mode: formData.get("default_provider_mode"),
+        default_search_profile_name: formData.get("default_search_profile_name") || null,
         default_search_scope: formData.get("default_search_scope") || null,
+        default_generation_template_key: defaultGenerationTemplateKey || null,
         metadata: {source: "chat_ui_shell"},
       }),
     });

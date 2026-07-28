@@ -77,6 +77,7 @@ from app.core.chat import (
     route_chat_intent_mock,
 )
 from app.core.chat_document_generation import (
+    CHAT_DOCUMENT_GENERATION_TEMPLATE_KEYS,
     ChatDocumentGenerationInput,
     ChatDocumentGenerationResult,
     InvalidChatDocumentGenerationError,
@@ -810,6 +811,7 @@ class ChatSessionCreateRequest(BaseModel):
     default_provider_mode: str = GENERATION_PROVIDER_MODE_MOCK
     default_search_profile_name: str | None = Field(default=None, max_length=120)
     default_search_scope: str | None = Field(default=None, max_length=40)
+    default_generation_template_key: str | None = Field(default=None, max_length=64)
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
@@ -1416,6 +1418,79 @@ def _datetime_response(value: object | None) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else None
 
 
+CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY = "default_generation_template_key"
+
+
+def chat_session_default_generation_template_key(
+    session: ChatSessionRecord,
+) -> str | None:
+    value = session.metadata.get(CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def normalize_chat_session_default_generation_template_key(
+    database_url: str,
+    template_key: str | None,
+) -> str | None:
+    if template_key is None:
+        return None
+    normalized = template_key.strip().lower()
+    if not normalized:
+        return None
+    if normalized not in CHAT_DOCUMENT_GENERATION_TEMPLATE_KEYS:
+        raise InvalidChatDocumentGenerationError("default_generation_template_key is not supported")
+    if get_generation_template_by_key(database_url, normalized) is None:
+        raise InvalidChatDocumentGenerationError(
+            "default_generation_template_key active template was not found"
+        )
+    return normalized
+
+
+def chat_session_metadata_with_runtime_defaults(
+    database_url: str,
+    *,
+    metadata: dict[str, object],
+    default_generation_template_key: str | None,
+) -> dict[str, object]:
+    normalized_metadata = dict(metadata)
+    normalized_template_key = normalize_chat_session_default_generation_template_key(
+        database_url,
+        default_generation_template_key,
+    )
+    if normalized_template_key is not None:
+        normalized_metadata[CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY] = normalized_template_key
+    else:
+        normalized_metadata.pop(CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY, None)
+    return normalized_metadata
+
+
+def chat_generation_template_default_options(
+    templates: tuple[GenerationTemplateRecord, ...],
+) -> tuple[GenerationTemplateRecord, ...]:
+    return tuple(
+        template
+        for template in templates
+        if template.template_key in CHAT_DOCUMENT_GENERATION_TEMPLATE_KEYS
+    )
+
+
+def select_default_chat_generation_template_key(
+    templates: tuple[GenerationTemplateRecord, ...],
+) -> str:
+    default_template = next((template for template in templates if template.is_default), None)
+    if default_template is not None:
+        return default_template.template_key
+    report_template = next(
+        (template for template in templates if template.template_key == "report"),
+        None,
+    )
+    if report_template is not None:
+        return report_template.template_key
+    return templates[0].template_key if templates else ""
+
+
 def chat_session_payload(session: ChatSessionRecord) -> dict[str, object]:
     return {
         "chat_session_id": session.chat_session_id,
@@ -1426,6 +1501,7 @@ def chat_session_payload(session: ChatSessionRecord) -> dict[str, object]:
         "default_provider_mode": session.default_provider_mode,
         "default_search_profile_name": session.default_search_profile_name,
         "default_search_scope": session.default_search_scope,
+        "default_generation_template_key": chat_session_default_generation_template_key(session),
         "metadata": session.metadata,
         "created_at": _datetime_response(session.created_at),
         "updated_at": _datetime_response(session.updated_at),
@@ -12570,6 +12646,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         try:
+            session_metadata = chat_session_metadata_with_runtime_defaults(
+                settings.database_url,
+                metadata=payload.metadata,
+                default_generation_template_key=payload.default_generation_template_key,
+            )
             session = create_chat_session(
                 settings.database_url,
                 ChatSessionInput(
@@ -12579,10 +12660,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     default_provider_mode=payload.default_provider_mode,
                     default_search_profile_name=payload.default_search_profile_name,
                     default_search_scope=payload.default_search_scope,
-                    metadata=payload.metadata,
+                    metadata=session_metadata,
                 ),
             )
-        except InvalidChatRepositoryError as exc:
+        except (InvalidChatDocumentGenerationError, InvalidChatRepositoryError) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
@@ -12831,6 +12912,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             )
                         api_key = resolve_generation_provider_api_key(provider, settings)
                     requested_template_key = payload.routing_metadata.get("generation_template_key")
+                    if not isinstance(requested_template_key, str):
+                        requested_template_key = chat_session_default_generation_template_key(
+                            session
+                        )
                     document_profiles = (
                         (session.default_search_profile_name,)
                         if session.default_search_profile_name
@@ -16012,12 +16097,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sessions: tuple[ChatSessionRecord, ...] = ()
         selected_thread: ChatThreadRecord | None = None
         selected_chat_session_id = chat_session_id
+        actor_options: list[dict[str, object]] = []
+        profile_options: list[str] = []
+        generation_template_options: tuple[GenerationTemplateRecord, ...] = ()
+        default_actor_id: int | str = ""
+        default_profile_name = ""
+        default_generation_template_key = ""
         error_message = None
 
         if not settings.database_url:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
+                actor_options = list_search_actor_options(settings.database_url)
+                profile_options = [
+                    profile.profile_name
+                    for profile in list_active_embedding_profiles(settings.database_url)
+                ]
+                if BM25_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(BM25_SEARCH_PROFILE_NAME)
+                if HYBRID_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(HYBRID_SEARCH_PROFILE_NAME)
+                if RERANKED_SEARCH_PROFILE_NAME not in profile_options:
+                    profile_options.append(RERANKED_SEARCH_PROFILE_NAME)
+                generation_template_options = chat_generation_template_default_options(
+                    list_generation_templates(settings.database_url)
+                )
+                default_actor_id = actor_options[0]["user_id"] if actor_options else ""
+                default_profile_name = (
+                    RERANKED_SEARCH_PROFILE_NAME
+                    if RERANKED_SEARCH_PROFILE_NAME in profile_options
+                    else (profile_options[0] if profile_options else "")
+                )
+                default_generation_template_key = select_default_chat_generation_template_key(
+                    generation_template_options
+                )
                 sessions = list_chat_sessions(
                     settings.database_url,
                     limit=DEFAULT_CHAT_SESSION_LIMIT,
@@ -16032,7 +16146,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     if selected_thread is None:
                         error_message = "Chat session not found."
-            except InvalidChatRepositoryError as exc:
+            except (
+                InvalidChatRepositoryError,
+                InvalidEmbeddingJobError,
+                InvalidGenerationTemplateError,
+            ) as exc:
                 error_message = str(exc)
 
         return TEMPLATES.TemplateResponse(
@@ -16044,11 +16162,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 sessions=sessions,
                 selected_thread=selected_thread,
                 selected_chat_session_id=selected_chat_session_id,
+                actor_options=actor_options,
+                default_actor_id=default_actor_id,
                 provider_mode_options=(
                     GENERATION_PROVIDER_MODE_MOCK,
                     GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
                 ),
+                profile_options=profile_options,
+                default_profile_name=default_profile_name,
                 search_scope_options=SEARCH_COMPARE_SCOPE_OPTIONS,
+                generation_template_options=generation_template_options,
+                default_generation_template_key=default_generation_template_key,
                 error_message=error_message,
             ),
         )

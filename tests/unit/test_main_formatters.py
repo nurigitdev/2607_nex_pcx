@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +17,7 @@ from app.core.ingestion_artifacts import (
     InvalidIngestionArtifactError,
 )
 from app.main import (
+    CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY,
     ExtractionRerunRequest,
     _chunks_for_source_trace,
     _extraction_artifact_export_filename,
@@ -23,6 +25,8 @@ from app.main import (
     _percent_value,
     _resolve_extraction_rerun_profile_name,
     build_extraction_rerun_request,
+    chat_generation_template_default_options,
+    chat_session_default_generation_template_key,
     chunk_source_trace_preview_payload,
     document_artifacts_redirect_url,
     document_block_summary_payload,
@@ -36,9 +40,65 @@ from app.main import (
     search_log_bm25_tokenizer_name,
     search_log_reranked_vector_profile_name,
     search_reranker_runtime_control_payload,
+    select_default_chat_generation_template_key,
 )
 
 NOW = datetime(2026, 7, 15, tzinfo=UTC)
+
+
+def _chat_template(template_key: str, *, is_default: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(template_key=template_key, is_default=is_default)
+
+
+def test_chat_session_default_generation_template_key_reads_metadata() -> None:
+    session = SimpleNamespace(metadata={CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY: " report "})
+
+    assert chat_session_default_generation_template_key(session) == "report"
+    assert (
+        chat_session_default_generation_template_key(
+            SimpleNamespace(metadata={CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY: " "})
+        )
+        is None
+    )
+    assert (
+        chat_session_default_generation_template_key(
+            SimpleNamespace(metadata={CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY: 42})
+        )
+        is None
+    )
+
+
+def test_chat_generation_template_default_options_filters_supported_templates() -> None:
+    templates = (
+        _chat_template("report"),
+        _chat_template("grounded_answer"),
+        _chat_template("proposal"),
+    )
+
+    options = chat_generation_template_default_options(templates)
+
+    assert [template.template_key for template in options] == ["report", "proposal"]
+
+
+def test_select_default_chat_generation_template_key_prefers_default_then_report() -> None:
+    assert (
+        select_default_chat_generation_template_key(
+            (
+                _chat_template("proposal"),
+                _chat_template("summary", is_default=True),
+                _chat_template("report"),
+            )
+        )
+        == "summary"
+    )
+    assert (
+        select_default_chat_generation_template_key(
+            (_chat_template("proposal"), _chat_template("report"))
+        )
+        == "report"
+    )
+    assert select_default_chat_generation_template_key((_chat_template("proposal"),)) == "proposal"
+    assert select_default_chat_generation_template_key(()) == ""
 
 
 def test_search_log_bm25_tokenizer_name_reads_direct_and_profile_metadata() -> None:

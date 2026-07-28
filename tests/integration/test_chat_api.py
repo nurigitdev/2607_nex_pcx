@@ -61,6 +61,7 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
     migrated_database_url: str,
 ) -> None:
     app = create_app(Settings(database_url=migrated_database_url))
+    actor_user_id = _seed_actor_user_id(migrated_database_url)
     chat_session_id: int | None = None
 
     try:
@@ -69,8 +70,11 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
                 "/api/chat/sessions",
                 json={
                     "session_title": "대화형 문서 요약",
+                    "actor_user_id": actor_user_id,
                     "default_provider_mode": "mock",
+                    "default_search_profile_name": "bm25_keyword",
                     "default_search_scope": "company",
+                    "default_generation_template_key": " Report ",
                     "metadata": {"slice": 388},
                 },
             )
@@ -91,7 +95,8 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
         session_row = fetch_one(
             migrated_database_url,
             """
-            SELECT session_title, default_search_scope, metadata
+            SELECT actor_user_id, session_title, default_search_profile_name,
+                   default_search_scope, metadata
             FROM chat_sessions
             WHERE chat_session_id = %s
             """,
@@ -100,7 +105,13 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
 
         assert create_response.status_code == 201
         assert create_body["session"]["session_title"] == "대화형 문서 요약"
-        assert create_body["session"]["metadata"] == {"slice": 388}
+        assert create_body["session"]["actor_user_id"] == actor_user_id
+        assert create_body["session"]["default_search_profile_name"] == "bm25_keyword"
+        assert create_body["session"]["default_generation_template_key"] == "report"
+        assert create_body["session"]["metadata"] == {
+            "slice": 388,
+            "default_generation_template_key": "report",
+        }
         assert message_response.status_code == 201
         assert message_body["router"]["intent"] == CHAT_INTENT_DOCUMENT_SUMMARY
         assert message_body["user_message"]["role"] == CHAT_ROLE_USER
@@ -117,9 +128,14 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
         assert any(
             item["chat_session_id"] == chat_session_id for item in list_response.json()["sessions"]
         )
+        assert int(session_row["actor_user_id"]) == actor_user_id
         assert session_row["session_title"] == "대화형 문서 요약"
+        assert session_row["default_search_profile_name"] == "bm25_keyword"
         assert session_row["default_search_scope"] == "company"
-        assert session_row["metadata"] == {"slice": 388}
+        assert session_row["metadata"] == {
+            "slice": 388,
+            "default_generation_template_key": "report",
+        }
     finally:
         if chat_session_id is not None:
             _delete_chat_session(migrated_database_url, chat_session_id)
@@ -347,17 +363,15 @@ def test_chat_api_executes_document_generation_with_template_metadata(
                     "actor_user_id": actor_user_id,
                     "default_provider_mode": "mock",
                     "default_search_scope": "company",
+                    "default_generation_template_key": "proposal",
                 },
             )
             chat_session_id = int(create_response.json()["session"]["chat_session_id"])
             message_response = client.post(
                 f"/api/chat/sessions/{chat_session_id}/messages",
                 json={
-                    "content": "신규 서비스 제안서를 작성해줘",
-                    "routing_metadata": {
-                        "ui_surface": "chat",
-                        "generation_template_key": "proposal",
-                    },
+                    "content": "신규 서비스 문서를 작성해줘",
+                    "routing_metadata": {"ui_surface": "chat"},
                 },
             )
 
@@ -418,6 +432,13 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
                     "default_provider_mode": "local",
                 },
             )
+            invalid_template_response = client.post(
+                "/api/chat/sessions",
+                json={
+                    "session_title": "잘못된 template",
+                    "default_generation_template_key": "grounded_answer",
+                },
+            )
             no_actor_session_response = client.post(
                 "/api/chat/sessions",
                 json={"session_title": "검색 actor 없음"},
@@ -437,6 +458,8 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
     assert missing_response.status_code == 404
     assert invalid_filter_response.status_code == 400
     assert invalid_session_response.status_code == 400
+    assert invalid_template_response.status_code == 400
+    assert "default_generation_template_key" in invalid_template_response.json()["detail"]
     assert missing_actor_response.status_code == 400
     assert "actor_user_id" in missing_actor_response.json()["detail"]
     assert no_database_response.status_code == 503
@@ -507,6 +530,11 @@ def test_chat_page_renders_shell_and_existing_thread(
         assert 'href="/search/context?search_log_id=24"' in response.text
         assert 'href="/chat"' in response.text
         assert 'id="chat-session-form"' in response.text
+        assert 'id="chat-actor-user-id"' in response.text
+        assert 'name="default_search_profile_name"' in response.text
+        assert 'id="chat-generation-template-key"' in response.text
+        assert "검색 Profile" in response.text
+        assert "생성 Template" in response.text
         assert 'id="chat-message-form"' in response.text
         assert "/api/chat/sessions" in response.text
         assert 'name="run_mock_router"' in response.text
