@@ -275,8 +275,17 @@ def test_generation_ui_document_summary_form_redirects_to_created_run(
         assert page_response.status_code == 200
         assert "data-document-summary-generation-form" in page_response.text
         assert "문서 요약 생성" in page_response.text
+        assert "임원 보고 요약" in page_response.text
+        assert "리스크/후속 조치 요약" in page_response.text
+        assert "보고서 초안 (report)" in page_response.text
         assert "Document Summary API document" in page_response.text
         assert "document-summary-progress" in page_response.text
+        summary_select_start = page_response.text.index('id="summary_generation_template_key"')
+        summary_select_end = page_response.text.index("</select>", summary_select_start)
+        summary_select_html = page_response.text[summary_select_start:summary_select_end]
+        assert "임원 보고 요약" in summary_select_html
+        assert "리스크/후속 조치 요약" in summary_select_html
+        assert "보고서 초안 (report)" not in summary_select_html
         assert response.status_code == 303
         assert query["generation_status"] == ["document_summary_created"]
         assert int(query["search_log_id"][0]) > 0

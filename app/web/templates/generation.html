@@ -391,9 +391,9 @@
           class="form-select"
           id="summary_generation_template_key"
           name="summary_generation_template_key"
-          {% if not database_configured or not generation_template_options %}disabled{% endif %}
+          {% if not database_configured or not summary_generation_template_options %}disabled{% endif %}
         >
-          {% for template in generation_template_options %}
+          {% for template in summary_generation_template_options %}
           <option
             value="{{ template.template_key }}"
             {% if template.template_key == default_summary_template_key %}selected{% endif %}

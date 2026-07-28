@@ -129,6 +129,10 @@ def test_generation_template_repository_reads_seeded_templates(
     templates = list_generation_templates(migrated_database_url)
     default_template = get_default_generation_template(migrated_database_url)
     report_template = get_generation_template_by_key(migrated_database_url, " REPORT ")
+    summary_preset = get_generation_template_by_key(
+        migrated_database_url,
+        " summary_risk_action ",
+    )
 
     assert len(templates) >= 5
     assert default_template is not None
@@ -138,6 +142,15 @@ def test_generation_template_repository_reads_seeded_templates(
     assert report_template.template_key == "report"
     assert report_template.document_type == "report"
     assert report_template.section_schema[0]["key"] == "title"
+    assert summary_preset is not None
+    assert summary_preset.template_key == "summary_risk_action"
+    assert summary_preset.template_family == "summary"
+    assert summary_preset.document_type == "summary"
+    assert {section["key"] for section in summary_preset.section_schema} >= {
+        "risks",
+        "actions",
+        "evidence",
+    }
 
 
 def test_generation_template_repository_manages_custom_template_lifecycle(
@@ -419,6 +432,53 @@ def test_non_default_generation_templates_seed_section_contracts(
     assert template["citation_policy"]["required"] is True
     if template_key in {"report", "proposal"}:
         assert all(section["required"] is True for section in template["section_schema"])
+
+
+@pytest.mark.parametrize(
+    ("template_key", "expected_section_key"),
+    [
+        ("summary_executive", "executive_summary"),
+        ("summary_risk_action", "actions"),
+        ("summary_working", "implications"),
+    ],
+)
+def test_summary_generation_template_presets_are_seeded(
+    migrated_database_url: str,
+    template_key: str,
+    expected_section_key: str,
+) -> None:
+    template = fetch_one(
+        migrated_database_url,
+        """
+        SELECT
+            template_key,
+            template_family,
+            document_type,
+            section_schema,
+            style_guidance,
+            citation_policy,
+            is_default,
+            is_active,
+            change_note
+        FROM generation_templates
+        WHERE template_key = %s
+        """,
+        (template_key,),
+    )
+
+    section_keys = {section["key"] for section in template["section_schema"]}
+
+    assert template["template_key"] == template_key
+    assert template["template_family"] == "summary"
+    assert template["document_type"] == "summary"
+    assert template["is_default"] is False
+    assert template["is_active"] is True
+    assert expected_section_key in section_keys
+    assert "evidence" in section_keys
+    assert all(section["required"] is True for section in template["section_schema"])
+    assert template["style_guidance"]["audience"]
+    assert template["citation_policy"]["minimum_citations"] == 2
+    assert template["change_note"] == "Slice 380 summary preset seed"
 
 
 def test_generation_run_can_link_generation_template(

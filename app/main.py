@@ -15321,6 +15321,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         document_summary_options: list[DocumentInventoryItem] = []
         bm25_tokenizer_options = [asdict(tokenizer) for tokenizer in list_bm25_tokenizers()]
         generation_template_options: tuple[GenerationTemplateRecord, ...] = ()
+        summary_generation_template_options: tuple[GenerationTemplateRecord, ...] = ()
         selected_generation_template_key = ""
         default_summary_template_key = DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY
         error_message = generation_error
@@ -15348,6 +15349,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     profile_options.append(RERANKED_SEARCH_PROFILE_NAME)
                 chunk_policy_options = list_chunk_policy_summaries(settings.database_url)
                 generation_template_options = list_generation_templates(settings.database_url)
+                summary_generation_template_options = tuple(
+                    template
+                    for template in generation_template_options
+                    if template.document_type == "summary"
+                )
+                if not summary_generation_template_options:
+                    summary_generation_template_options = generation_template_options
                 default_generation_template = next(
                     (template for template in generation_template_options if template.is_default),
                     None,
@@ -15375,9 +15383,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY
                     if any(
                         template.template_key == DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY
-                        for template in generation_template_options
+                        for template in summary_generation_template_options
                     )
-                    else selected_generation_template_key
+                    else (
+                        summary_generation_template_options[0].template_key
+                        if summary_generation_template_options
+                        else selected_generation_template_key
+                    )
                 )
                 provider = get_generation_provider_config_for_mode(
                     settings.database_url,
@@ -15490,6 +15502,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 bm25_tokenizer_options=bm25_tokenizer_options,
                 default_bm25_tokenizer_name=DEFAULT_BM25_TOKENIZER_NAME,
                 generation_template_options=generation_template_options,
+                summary_generation_template_options=summary_generation_template_options,
                 selected_generation_template_key=selected_generation_template_key,
                 default_summary_template_key=default_summary_template_key,
                 default_document_summary_max_chunks=DEFAULT_DOCUMENT_SUMMARY_MAX_CHUNKS,
