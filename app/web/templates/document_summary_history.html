@@ -80,6 +80,31 @@
   </form>
 </section>
 
+{% if readiness %}
+<section class="document-detail-grid mb-4" data-document-summary-readiness>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("document_summary_history.ready_documents") }}</div>
+    <div class="metric-value">{{ readiness.ready_document_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("document_summary_history.summarized_documents") }}</div>
+    <div class="metric-value">{{ readiness.summarized_document_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("document_summary_history.unsummarized_documents") }}</div>
+    <div class="metric-value">{{ readiness.unsummarized_document_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("document_summary_history.summary_runs") }}</div>
+    <div class="metric-value">{{ readiness.summary_run_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("document_summary_history.latest_run") }}</div>
+    <div class="metric-value fs-6">{{ readiness.latest_summary_run_at.strftime("%Y-%m-%d %H:%M:%S") if readiness.latest_summary_run_at else "-" }}</div>
+  </div>
+</section>
+{% endif %}
+
 {% if history %}
 {% set summary = history.summary %}
 <section class="document-detail-grid mb-4" data-document-summary-history-summary>
@@ -112,7 +137,7 @@
       <div class="text-secondary">{{ t("document_summary_history.recent_runs_help") }}</div>
     </div>
   </div>
-  <div class="table-responsive">
+  <div class="table-responsive document-summary-history-runs">
     <table class="table table-sm align-middle mb-0">
       <thead>
         <tr>
@@ -140,7 +165,7 @@
             <a href="/generation/runs/{{ run.generation_run_id }}">#{{ run.generation_run_id }}</a>
             <div class="text-secondary small">Search #{{ run.search_log_id }}</div>
           </td>
-          <td class="text-break">
+          <td class="text-break document-summary-history-document">
             <div>{{ item.document_label }}</div>
             <div class="text-secondary small">
               {% if item.document_id %}
@@ -151,12 +176,12 @@
               {% if item.document_group %} · {{ item.document_group }}{% endif %}
             </div>
           </td>
-          <td>
+          <td class="document-summary-history-template">
             <div>{{ item.template_name }}</div>
             <span class="badge text-bg-light border">{{ item.template_key }}</span>
           </td>
-          <td class="text-break">{{ item.summary_instruction or "-" }}</td>
-          <td>
+          <td class="text-break document-summary-history-instruction">{{ item.summary_instruction or "-" }}</td>
+          <td class="document-summary-history-status">
             <span class="badge text-bg-{{ run_status_class }}">{{ run.status }}</span>
             <div class="text-secondary small">{{ run.guardrail_status }}</div>
           </td>
@@ -182,7 +207,7 @@
           <td class="text-end">{{ run.total_token_count if run.total_token_count is not none else "-" }}</td>
           <td class="text-end">{{ run.elapsed_ms if run.elapsed_ms is not none else "-" }} ms</td>
           <td class="text-nowrap">{{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-          <td>
+          <td class="document-summary-history-actions">
             <div class="d-flex flex-wrap gap-1">
               <a class="btn btn-outline-secondary btn-sm" href="/generation/runs/{{ run.generation_run_id }}">
                 {{ t("generation.open_detail") }}

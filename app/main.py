@@ -144,8 +144,10 @@ from app.core.document_summary import (
     DocumentSummaryHistoryFilter,
     DocumentSummaryHistoryItem,
     DocumentSummaryInput,
+    DocumentSummaryReadiness,
     DocumentSummaryResult,
     InvalidDocumentSummaryError,
+    get_document_summary_readiness,
     list_document_summary_history,
     run_document_summary_generation,
 )
@@ -5007,6 +5009,19 @@ def document_summary_history_payload(history: DocumentSummaryHistory) -> dict[st
             "latest_created_at_label": _datetime_label(history.summary.latest_created_at),
         },
         "runs": [document_summary_history_item_payload(item) for item in history.runs],
+    }
+
+
+def document_summary_readiness_payload(
+    readiness: DocumentSummaryReadiness,
+) -> dict[str, object]:
+    return {
+        "ready_document_count": readiness.ready_document_count,
+        "summarized_document_count": readiness.summarized_document_count,
+        "unsummarized_document_count": readiness.unsummarized_document_count,
+        "summary_run_count": readiness.summary_run_count,
+        "latest_summary_run_at": _datetime_response(readiness.latest_summary_run_at),
+        "latest_summary_run_at_label": _datetime_label(readiness.latest_summary_run_at),
     }
 
 
@@ -12479,6 +12494,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return JSONResponse(content=document_summary_history_payload(history))
 
+    @app.get("/api/generation/document-summaries/readiness")
+    def api_get_document_summary_readiness() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        readiness = get_document_summary_readiness(settings.database_url)
+        return JSONResponse(content={"readiness": document_summary_readiness_payload(readiness)})
+
     @app.get("/api/generation/document-summaries/{generation_run_id}/export/markdown")
     def api_export_document_summary_markdown(generation_run_id: int) -> Response:
         if not settings.database_url:
@@ -16068,6 +16094,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         generation_template_key: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
     ) -> HTMLResponse:
         history: DocumentSummaryHistory | None = None
+        readiness: DocumentSummaryReadiness | None = None
         history_json = ""
         summary_template_options: tuple[GenerationTemplateRecord, ...] = ()
         error_message: str | None = None
@@ -16090,6 +16117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.database_url,
                     history_filter=history_filter,
                 )
+                readiness = get_document_summary_readiness(settings.database_url)
                 history_json = json.dumps(
                     document_summary_history_payload(history),
                     ensure_ascii=False,
@@ -16106,6 +16134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 database_configured=bool(settings.database_url),
                 history=history,
+                readiness=readiness,
                 history_json=history_json,
                 selected_limit=history_filter.limit,
                 selected_run_status=history_filter.run_status,

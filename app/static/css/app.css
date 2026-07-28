@@ -1159,6 +1159,36 @@ main.container-fluid {
   background: #eefaf8;
 }
 
+.document-summary-history-runs .table {
+  min-width: 88rem;
+}
+
+.document-summary-history-runs th {
+  white-space: nowrap;
+}
+
+.document-summary-history-document {
+  min-width: 14rem;
+  max-width: 18rem;
+}
+
+.document-summary-history-template {
+  min-width: 12rem;
+}
+
+.document-summary-history-instruction {
+  min-width: 12rem;
+  max-width: 16rem;
+}
+
+.document-summary-history-status {
+  min-width: 9rem;
+}
+
+.document-summary-history-actions {
+  min-width: 10rem;
+}
+
 .metric-card {
   border: 1px solid var(--pcx-border);
   border-radius: 8px;

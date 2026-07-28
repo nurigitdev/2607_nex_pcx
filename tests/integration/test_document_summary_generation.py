@@ -338,6 +338,7 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
                 "/api/generation/document-summaries",
                 params={"run_status": "unsupported"},
             )
+            readiness_response = client.get("/api/generation/document-summaries/readiness")
             markdown_export_response = client.get(
                 "/api/generation/document-summaries/"
                 f"{first_body['generation_run_id']}/export/markdown"
@@ -356,6 +357,7 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
 
         second_body = second_response.json()
         history_body = api_response.json()
+        readiness_body = readiness_response.json()["readiness"]
         runs = history_body["runs"]
         assert first_response.status_code == 201
         assert second_response.status_code == 201
@@ -380,6 +382,14 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
         )
         assert invalid_response.status_code == 400
         assert "run_status" in invalid_response.json()["detail"]
+        assert readiness_response.status_code == 200
+        assert readiness_body["ready_document_count"] >= 1
+        assert readiness_body["summarized_document_count"] >= 1
+        assert readiness_body["summary_run_count"] >= 2
+        assert readiness_body["unsummarized_document_count"] == (
+            readiness_body["ready_document_count"] - readiness_body["summarized_document_count"]
+        )
+        assert readiness_body["latest_summary_run_at"]
         assert markdown_export_response.status_code == 200
         assert markdown_export_response.headers["content-disposition"] == (
             f'attachment; filename="document-summary-run-{first_body["generation_run_id"]}.md"'
@@ -399,6 +409,7 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
         assert missing_export_response.status_code == 404
         assert page_response.status_code == 200
         assert "문서 요약 이력" in page_response.text
+        assert "요약 가능 문서" in page_response.text
         assert "Document Summary API document" in page_response.text
         assert "리스크/후속 조치 요약" in page_response.text
         assert "주의" in page_response.text
@@ -412,6 +423,8 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
             "/api/generation/document-summaries/" f"{first_body['generation_run_id']}/export/docx"
         ) in page_response.text
         assert "data-document-summary-history-table" in page_response.text
+        assert "data-document-summary-readiness" in page_response.text
+        assert "document-summary-history-runs" in page_response.text
     finally:
         _cleanup_fixture(migrated_database_url, file_id)
 
@@ -421,10 +434,12 @@ def test_document_summary_history_api_returns_503_without_database() -> None:
 
     with TestClient(app) as client:
         response = client.get("/api/generation/document-summaries")
+        readiness_response = client.get("/api/generation/document-summaries/readiness")
         export_response = client.get("/api/generation/document-summaries/1/export/markdown")
         page_response = client.get("/generation/document-summaries")
 
     assert response.status_code == 503
+    assert readiness_response.status_code == 503
     assert export_response.status_code == 503
     assert page_response.status_code == 200
     assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text

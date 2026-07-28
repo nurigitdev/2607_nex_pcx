@@ -126,6 +126,15 @@ class DocumentSummaryHistory:
     runs: tuple[DocumentSummaryHistoryItem, ...]
 
 
+@dataclass(frozen=True)
+class DocumentSummaryReadiness:
+    ready_document_count: int
+    summarized_document_count: int
+    unsummarized_document_count: int
+    summary_run_count: int
+    latest_summary_run_at: datetime | None
+
+
 class InvalidDocumentSummaryError(ValueError):
     """Raised when a document summary run cannot be created."""
 
@@ -402,6 +411,70 @@ def list_document_summary_history(
         filters=validated,
         summary=_document_summary_history_summary(runs),
         runs=runs,
+    )
+
+
+def get_document_summary_readiness(database_url: str) -> DocumentSummaryReadiness:
+    with connect(database_url) as connection:
+        row = connection.execute(
+            """
+            WITH ready_documents AS (
+                SELECT d.document_id
+                FROM documents d
+                JOIN chunks c
+                  ON c.document_id = d.document_id
+                WHERE btrim(COALESCE(c.chunk_text, '')) <> ''
+                GROUP BY d.document_id
+            ),
+            summarized_documents AS (
+                SELECT DISTINCT
+                    CASE
+                        WHEN (sl.query_runtime_metadata ->> 'document_id') ~ '^[0-9]+$'
+                            THEN (sl.query_runtime_metadata ->> 'document_id')::bigint
+                        ELSE NULL
+                    END AS document_id
+                FROM generation_runs gr
+                JOIN search_logs sl
+                  ON sl.search_log_id = gr.search_log_id
+                WHERE (
+                    sl.strategy_name = %s
+                    OR sl.query_runtime_metadata ->> 'operation' = 'document_summary'
+                    OR gr.created_by = 'api_document_summary'
+                )
+            ),
+            summary_runs AS (
+                SELECT gr.generation_run_id, gr.created_at
+                FROM generation_runs gr
+                JOIN search_logs sl
+                  ON sl.search_log_id = gr.search_log_id
+                WHERE (
+                    sl.strategy_name = %s
+                    OR sl.query_runtime_metadata ->> 'operation' = 'document_summary'
+                    OR gr.created_by = 'api_document_summary'
+                )
+            )
+            SELECT
+                count(rd.document_id) AS ready_document_count,
+                count(rd.document_id) FILTER (
+                    WHERE sd.document_id IS NOT NULL
+                ) AS summarized_document_count,
+                count(rd.document_id) FILTER (
+                    WHERE sd.document_id IS NULL
+                ) AS unsummarized_document_count,
+                (SELECT count(*) FROM summary_runs) AS summary_run_count,
+                (SELECT max(created_at) FROM summary_runs) AS latest_summary_run_at
+            FROM ready_documents rd
+            LEFT JOIN summarized_documents sd
+              ON sd.document_id = rd.document_id
+            """,
+            (DOCUMENT_SUMMARY_STRATEGY_NAME, DOCUMENT_SUMMARY_STRATEGY_NAME),
+        ).fetchone()
+    return DocumentSummaryReadiness(
+        ready_document_count=int(row["ready_document_count"] or 0),
+        summarized_document_count=int(row["summarized_document_count"] or 0),
+        unsummarized_document_count=int(row["unsummarized_document_count"] or 0),
+        summary_run_count=int(row["summary_run_count"] or 0),
+        latest_summary_run_at=row["latest_summary_run_at"],
     )
 
 
