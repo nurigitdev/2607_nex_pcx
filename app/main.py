@@ -51,6 +51,7 @@ from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
 from app.core.chat import (
     CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
     CHAT_INTENT_GENERAL_ANSWER,
+    CHAT_INTENT_GROUNDED_ANSWER,
     CHAT_MESSAGE_STATUS_COMPLETED,
     CHAT_ROLE_ASSISTANT,
     CHAT_ROLE_USER,
@@ -69,6 +70,7 @@ from app.core.chat import (
     create_chat_session,
     get_chat_session,
     get_chat_thread,
+    link_chat_message_to_generation_run,
     link_chat_message_to_search_log,
     list_chat_sessions,
     route_chat_intent_mock,
@@ -78,6 +80,12 @@ from app.core.chat_generation import (
     ChatGeneralAnswerResult,
     InvalidChatGenerationError,
     execute_chat_general_answer,
+)
+from app.core.chat_grounded_generation import (
+    ChatGroundedAnswerInput,
+    ChatGroundedAnswerResult,
+    InvalidChatGroundedGenerationError,
+    execute_chat_grounded_answer,
 )
 from app.core.chat_search import (
     ChatSearchSummaryInput,
@@ -1500,6 +1508,22 @@ def chat_search_summary_payload(result: ChatSearchSummaryResult) -> dict[str, ob
         "request_metadata": result.request_metadata,
         "response_metadata": result.response_metadata,
         "search_result": search_compare_payload(result.search_result),
+    }
+
+
+def chat_grounded_answer_payload(result: ChatGroundedAnswerResult) -> dict[str, object]:
+    return {
+        "answer_text": result.answer_text,
+        "search_log_id": result.search_log_id,
+        "generation_run_id": result.generation_run_id,
+        "prompt_version": result.prompt_version,
+        "execution_mode": result.execution_mode,
+        "retrieval_context_included_count": result.retrieval_context_included_count,
+        "generation_status": result.generation_status,
+        "guardrail_status": result.guardrail_status,
+        "request_metadata": result.request_metadata,
+        "response_metadata": result.response_metadata,
+        "direct_generation": direct_generation_result_payload(result.direct_generation_result),
     }
 
 
@@ -12629,6 +12653,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             assistant_message: ChatMessageRecord | None = None
             if payload.run_mock_router:
+                grounded_answer: ChatGroundedAnswerResult | None = None
                 search_summary: ChatSearchSummaryResult | None = None
                 assistant_content = chat_mock_assistant_content(route)
                 assistant_runtime_metadata: dict[str, object] = {
@@ -12716,6 +12741,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "execution_mode": search_summary.execution_mode,
                         "chat_search_summary": chat_search_summary_payload(search_summary),
                     }
+                elif route.intent == CHAT_INTENT_GROUNDED_ANSWER:
+                    if session.actor_user_id is None:
+                        raise InvalidChatGroundedGenerationError(
+                            "actor_user_id is required for chat grounded answer"
+                        )
+                    provider_mode = session.default_provider_mode.strip().lower()
+                    provider: GenerationProviderConfigRecord | None = None
+                    api_key: str | None = None
+                    if provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
+                        provider = get_generation_provider_config_for_mode(
+                            settings.database_url,
+                            GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                        )
+                        if provider is None:
+                            raise InvalidGenerationRunError(
+                                "active remote_openai_compatible generation provider config "
+                                "was not found"
+                            )
+                        api_key = resolve_generation_provider_api_key(provider, settings)
+                    grounded_profiles = (
+                        (session.default_search_profile_name,)
+                        if session.default_search_profile_name
+                        else None
+                    )
+                    grounded_answer = execute_chat_grounded_answer(
+                        settings.database_url,
+                        ChatGroundedAnswerInput(
+                            content=payload.content,
+                            actor_user_id=session.actor_user_id,
+                            requested_search_scope=session.default_search_scope or "company",
+                            provider_mode=provider_mode,
+                            profiles=grounded_profiles,
+                        ),
+                        fallback_runtime_config=embedding_provider_runtime_config_from_settings(
+                            settings
+                        ),
+                        fallback_reranker_runtime_config=reranker_runtime_config_from_settings(
+                            settings
+                        ),
+                        api_key=api_key,
+                    )
+                    assistant_content = grounded_answer.answer_text
+                    assistant_runtime_metadata = {
+                        "router": "mock_intent_router_v1",
+                        "suggested_action": route.suggested_action,
+                        "execution_mode": grounded_answer.execution_mode,
+                        "chat_grounded_answer": chat_grounded_answer_payload(grounded_answer),
+                    }
                 assistant_message = append_chat_message(
                     settings.database_url,
                     ChatMessageInput(
@@ -12737,9 +12810,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         label=f"Search Log #{search_summary.search_result.search_log_id}",
                         metadata={"source": "chat_search_summary"},
                     )
+                if grounded_answer is not None:
+                    link_chat_message_to_search_log(
+                        settings.database_url,
+                        chat_message_id=assistant_message.chat_message_id,
+                        search_log_id=grounded_answer.search_log_id,
+                        label=f"Search Log #{grounded_answer.search_log_id}",
+                        metadata={"source": "chat_grounded_answer"},
+                    )
+                    link_chat_message_to_generation_run(
+                        settings.database_url,
+                        chat_message_id=assistant_message.chat_message_id,
+                        generation_run_id=grounded_answer.generation_run_id,
+                        label=f"Generation Run #{grounded_answer.generation_run_id}",
+                        metadata={"source": "chat_grounded_answer"},
+                    )
             thread = get_chat_thread(settings.database_url, chat_session_id)
         except (
             InvalidChatGenerationError,
+            InvalidChatGroundedGenerationError,
             InvalidChatRepositoryError,
             InvalidChatSearchError,
             InvalidPermissionError,

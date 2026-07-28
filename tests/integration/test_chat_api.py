@@ -6,6 +6,7 @@ from app.core.chat import (
     CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
     CHAT_INTENT_GENERAL_ANSWER,
     CHAT_INTENT_GROUNDED_ANSWER,
+    CHAT_LINK_TYPE_GENERATION_RUN,
     CHAT_LINK_TYPE_SEARCH_LOG,
     CHAT_ROLE_ASSISTANT,
     CHAT_ROLE_USER,
@@ -30,6 +31,19 @@ def _delete_chat_session(database_url: str, chat_session_id: int) -> None:
 def _delete_search_log(database_url: str, search_log_id: int) -> None:
     with connect(database_url) as conn:
         conn.execute("DELETE FROM search_logs WHERE search_log_id = %s", (search_log_id,))
+        conn.commit()
+
+
+def _delete_generation_run(database_url: str, generation_run_id: int) -> None:
+    with connect(database_url) as conn:
+        conn.execute(
+            "DELETE FROM generation_run_citations WHERE generation_run_id = %s",
+            (generation_run_id,),
+        )
+        conn.execute(
+            "DELETE FROM generation_runs WHERE generation_run_id = %s",
+            (generation_run_id,),
+        )
         conn.commit()
 
 
@@ -244,6 +258,71 @@ def test_chat_api_executes_search_summary_and_links_search_log(
     finally:
         if chat_session_id is not None:
             _delete_chat_session(migrated_database_url, chat_session_id)
+        if search_log_id is not None:
+            _delete_search_log(migrated_database_url, search_log_id)
+
+
+def test_chat_api_executes_grounded_answer_and_links_generation_run(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+    actor_user_id = _seed_actor_user_id(migrated_database_url)
+    chat_session_id: int | None = None
+    generation_run_id: int | None = None
+    search_log_id: int | None = None
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/chat/sessions",
+                json={
+                    "session_title": "근거 답변 실행",
+                    "actor_user_id": actor_user_id,
+                    "default_provider_mode": "mock",
+                    "default_search_scope": "company",
+                },
+            )
+            chat_session_id = int(create_response.json()["session"]["chat_session_id"])
+            message_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={
+                    "content": "사규 근거를 찾아서 답변해줘",
+                    "routing_metadata": {"ui_surface": "chat"},
+                },
+            )
+
+        body = message_response.json()
+        assistant = body["assistant_message"]
+        grounded = assistant["runtime_metadata"]["chat_grounded_answer"]
+        search_log_id = int(grounded["search_log_id"])
+        generation_run_id = int(grounded["generation_run_id"])
+        link_types = {link["link_type"] for link in body["thread"]["messages"][1]["links"]}
+        generation_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT search_log_id, provider_mode, created_by_user_id
+            FROM generation_runs
+            WHERE generation_run_id = %s
+            """,
+            (generation_run_id,),
+        )
+
+        assert message_response.status_code == 201
+        assert body["router"]["intent"] == CHAT_INTENT_GROUNDED_ANSWER
+        assert assistant["runtime_metadata"]["execution_mode"] == "direct_grounded_generation"
+        assert grounded["direct_generation"]["generation_run_id"] == generation_run_id
+        assert grounded["direct_generation"]["search_log_id"] == search_log_id
+        assert grounded["retrieval_context_included_count"] >= 0
+        assert CHAT_LINK_TYPE_SEARCH_LOG in link_types
+        assert CHAT_LINK_TYPE_GENERATION_RUN in link_types
+        assert int(generation_row["search_log_id"]) == search_log_id
+        assert generation_row["provider_mode"] == "mock"
+        assert int(generation_row["created_by_user_id"]) == actor_user_id
+    finally:
+        if chat_session_id is not None:
+            _delete_chat_session(migrated_database_url, chat_session_id)
+        if generation_run_id is not None:
+            _delete_generation_run(migrated_database_url, generation_run_id)
         if search_log_id is not None:
             _delete_search_log(migrated_database_url, search_log_id)
 
