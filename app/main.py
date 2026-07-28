@@ -340,6 +340,7 @@ from app.core.foreground_worker_runtime import (
     build_foreground_worker_runtime_report,
     foreground_worker_runtime_report_payload,
 )
+from app.core.generation_docx_export import GENERATION_DOCX_MEDIA_TYPE, markdown_to_docx_bytes
 from app.core.generation_executor import (
     GenerationExecutionReport,
     execute_mock_generation_run,
@@ -12511,6 +12512,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(
             content=markdown,
             media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get("/api/generation/runs/{generation_run_id}/export/docx")
+    def api_export_generation_run_docx(generation_run_id: int) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            run = get_generation_run(settings.database_url, generation_run_id)
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if run is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generation run not found.",
+            )
+        citations = list_generation_run_citations(
+            settings.database_url,
+            generation_run_id,
+        )
+        markdown = _generation_run_markdown_export(run, citations)
+        docx_bytes = markdown_to_docx_bytes(
+            markdown,
+            title=f"Generation Run #{generation_run_id}",
+        )
+        filename = f"generation-run-{generation_run_id}.docx"
+        return Response(
+            content=docx_bytes,
+            media_type=GENERATION_DOCX_MEDIA_TYPE,
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 

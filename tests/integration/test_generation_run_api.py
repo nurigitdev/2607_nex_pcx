@@ -1,8 +1,10 @@
 import re
+from io import BytesIO
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import pytest
+from docx import Document
 from fastapi.testclient import TestClient
 from psycopg.types.json import Json
 
@@ -349,6 +351,9 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
             export_response = client.get(
                 f"/api/generation/runs/{run_id}/export/markdown",
             )
+            docx_export_response = client.get(
+                f"/api/generation/runs/{run_id}/export/docx",
+            )
             invalid_response = client.get("/api/generation/runs/0")
             invalid_completeness_response = client.get(
                 "/api/generation/runs/0/template-completeness"
@@ -360,9 +365,16 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
             missing_export_response = client.get(
                 "/api/generation/runs/999999999/export/markdown",
             )
+            missing_docx_export_response = client.get(
+                "/api/generation/runs/999999999/export/docx",
+            )
 
         read_body = read_response.json()
         completeness_body = completeness_response.json()
+        docx_document = Document(BytesIO(docx_export_response.content))
+        docx_text = "\n".join(
+            paragraph.text for paragraph in docx_document.paragraphs if paragraph.text
+        )
         assert create_response.status_code == 201
         assert create_body["provider"]["provider_mode"] == "mock"
         assert create_body["run"]["search_log_id"] == search_log_id
@@ -420,11 +432,24 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert "- [RCP-001]" in export_response.text
         assert "## Raw Runtime Metadata" in export_response.text
         assert "grounded_answer" in export_response.text
+        assert docx_export_response.status_code == 200
+        assert docx_export_response.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        assert docx_export_response.headers["content-disposition"] == (
+            f'attachment; filename="generation-run-{run_id}.docx"'
+        )
+        assert f"Generation Run #{run_id}" in docx_text
+        assert "Metadata" in docx_text
+        assert "Answer" in docx_text
+        assert "Citations" in docx_text
+        assert "RCP-001" in docx_text
         assert invalid_response.status_code == 400
         assert invalid_completeness_response.status_code == 400
         assert missing_response.status_code == 404
         assert missing_completeness_response.status_code == 404
         assert missing_export_response.status_code == 404
+        assert missing_docx_export_response.status_code == 404
     finally:
         _cleanup_file(migrated_database_url, file_id)
 
@@ -636,8 +661,10 @@ def test_generation_run_markdown_export_returns_503_without_database() -> None:
 
     with TestClient(app) as client:
         response = client.get("/api/generation/runs/1/export/markdown")
+        docx_response = client.get("/api/generation/runs/1/export/docx")
 
     assert response.status_code == 503
+    assert docx_response.status_code == 503
 
 
 def test_generation_run_api_returns_503_without_database() -> None:
@@ -1169,7 +1196,9 @@ def test_generation_run_detail_ui_shows_prompt_metadata_and_citations(
         assert "Response Metadata" in detail_response.text
         assert "Guardrail Metadata" in detail_response.text
         assert "Markdown 내보내기" in detail_response.text
+        assert "DOCX 내보내기" in detail_response.text
         assert f"/api/generation/runs/{run_id}/export/markdown" in detail_response.text
+        assert f"/api/generation/runs/{run_id}/export/docx" in detail_response.text
         assert "grounded_answer_v1_prompt_v1" in detail_response.text
         assert "template_aware_prompt_v1" in detail_response.text
         assert "generation_ui_mock" in detail_response.text

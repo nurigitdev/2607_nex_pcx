@@ -133,6 +133,7 @@
     "open_detail": "Detail",
     "open_run_context": "Open Context",
     "export_markdown": "Export Markdown",
+    "export_docx": "Export DOCX",
     "created": "Mock generation run completed.",
     "remote_created": "Remote vLLM generation run completed.",
     "direct_created": "Direct generation run completed.",
