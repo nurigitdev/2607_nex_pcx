@@ -12,9 +12,19 @@ from docx.enum.section import WD_SECTION_START
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from app.core.generation_runs import GenerationRunRecord
+from app.core.generation_template_completeness import GenerationTemplateCompletenessAssessment
+
 GENERATION_DOCX_MEDIA_TYPE = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 )
+GENERATION_DOCX_EXPORT_READY = "ready"
+GENERATION_DOCX_EXPORT_WARNING = "warning"
+GENERATION_DOCX_EXPORT_REASON_GENERATION_TRUNCATED = "generation_truncated"
+GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_WARNING = "answer_quality_warning"
+GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_FAILED = "answer_quality_failed"
+GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_WARNING = "template_completeness_warning"
+GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_FAILED = "template_completeness_failed"
 
 _MARKDOWN_HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _MARKDOWN_ORDERED_LIST_PATTERN = re.compile(r"^\s*\d+[.)]\s+(.+?)\s*$")
@@ -31,6 +41,15 @@ class GenerationDocxStyleProfile:
     heading_color: RGBColor
     table_style: str
     category: str
+
+
+@dataclass(frozen=True)
+class GenerationDocxExportReadiness:
+    status: str
+    reason_codes: tuple[str, ...]
+    generation_truncated: bool
+    answer_quality_status: str
+    template_completeness_status: str
 
 
 _DEFAULT_STYLE_PROFILE = GenerationDocxStyleProfile(
@@ -97,6 +116,66 @@ def markdown_to_docx_bytes(
 def generation_docx_style_profile(document_type: str | None) -> GenerationDocxStyleProfile:
     normalized_document_type = (document_type or "").strip().lower()
     return _STYLE_PROFILES.get(normalized_document_type, _DEFAULT_STYLE_PROFILE)
+
+
+def assess_generation_docx_export_readiness(
+    run: GenerationRunRecord,
+    template_completeness: GenerationTemplateCompletenessAssessment,
+) -> GenerationDocxExportReadiness:
+    reason_codes: list[str] = []
+    generation_truncated = _generation_run_truncated(run)
+    answer_quality_status = _generation_run_answer_quality_status(run)
+    template_completeness_status = template_completeness.status
+
+    if generation_truncated:
+        reason_codes.append(GENERATION_DOCX_EXPORT_REASON_GENERATION_TRUNCATED)
+    if answer_quality_status == "failed":
+        reason_codes.append(GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_FAILED)
+    elif answer_quality_status == "warning":
+        reason_codes.append(GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_WARNING)
+    if template_completeness_status == "failed":
+        reason_codes.append(GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_FAILED)
+    elif template_completeness_status == "warning":
+        reason_codes.append(GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_WARNING)
+
+    return GenerationDocxExportReadiness(
+        status=(GENERATION_DOCX_EXPORT_WARNING if reason_codes else GENERATION_DOCX_EXPORT_READY),
+        reason_codes=tuple(reason_codes),
+        generation_truncated=generation_truncated,
+        answer_quality_status=answer_quality_status,
+        template_completeness_status=template_completeness_status,
+    )
+
+
+def generation_docx_export_readiness_payload(
+    readiness: GenerationDocxExportReadiness,
+) -> dict[str, object]:
+    return {
+        "status": readiness.status,
+        "reason_codes": list(readiness.reason_codes),
+        "generation_truncated": readiness.generation_truncated,
+        "answer_quality_status": readiness.answer_quality_status,
+        "template_completeness_status": readiness.template_completeness_status,
+    }
+
+
+def _generation_run_truncated(run: GenerationRunRecord) -> bool:
+    truncation = run.response_metadata.get("truncation")
+    if isinstance(truncation, dict) and truncation.get("truncated") is True:
+        return True
+    return run.finish_reason == "length"
+
+
+def _generation_run_answer_quality_status(run: GenerationRunRecord) -> str:
+    answer_quality = run.response_metadata.get("answer_quality")
+    if isinstance(answer_quality, dict):
+        status = answer_quality.get("status")
+        if isinstance(status, str) and status.strip():
+            return status.strip()
+    guardrail_status = run.guardrail_metadata.get("answer_quality_status")
+    if isinstance(guardrail_status, str) and guardrail_status.strip():
+        return guardrail_status.strip()
+    return "not_available"
 
 
 def _configure_document(

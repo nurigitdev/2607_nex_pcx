@@ -1,12 +1,26 @@
+from datetime import UTC, datetime
 from io import BytesIO
 
 from docx import Document
 
 from app.core.generation_docx_export import (
+    GENERATION_DOCX_EXPORT_READY,
+    GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_FAILED,
+    GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_WARNING,
+    GENERATION_DOCX_EXPORT_REASON_GENERATION_TRUNCATED,
+    GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_FAILED,
+    GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_WARNING,
+    GENERATION_DOCX_EXPORT_WARNING,
     GENERATION_DOCX_STYLE_DEFAULT,
+    assess_generation_docx_export_readiness,
+    generation_docx_export_readiness_payload,
     generation_docx_style_profile,
     markdown_to_docx_bytes,
 )
+from app.core.generation_runs import GenerationRunRecord
+from app.core.generation_template_completeness import GenerationTemplateCompletenessAssessment
+
+NOW = datetime(2026, 7, 27, 12, 30, tzinfo=UTC)
 
 
 def test_markdown_to_docx_bytes_converts_headings_lists_tables_and_code() -> None:
@@ -75,3 +89,128 @@ def test_generation_docx_style_profile_falls_back_for_unknown_document_type() ->
 
     assert profile.document_type == GENERATION_DOCX_STYLE_DEFAULT
     assert profile.category == "NeX-PCX Generation"
+
+
+def test_generation_docx_export_readiness_passes_for_clean_run() -> None:
+    readiness = assess_generation_docx_export_readiness(_run(), _template_completeness())
+    payload = generation_docx_export_readiness_payload(readiness)
+
+    assert readiness.status == GENERATION_DOCX_EXPORT_READY
+    assert readiness.reason_codes == ()
+    assert payload == {
+        "status": "ready",
+        "reason_codes": [],
+        "generation_truncated": False,
+        "answer_quality_status": "passed",
+        "template_completeness_status": "passed",
+    }
+
+
+def test_generation_docx_export_readiness_warns_for_truncation_and_quality_failure() -> None:
+    readiness = assess_generation_docx_export_readiness(
+        _run(
+            finish_reason="length",
+            response_metadata={"answer_quality": {"status": "failed"}},
+        ),
+        _template_completeness(status="failed"),
+    )
+
+    assert readiness.status == GENERATION_DOCX_EXPORT_WARNING
+    assert readiness.generation_truncated is True
+    assert readiness.reason_codes == (
+        GENERATION_DOCX_EXPORT_REASON_GENERATION_TRUNCATED,
+        GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_FAILED,
+        GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_FAILED,
+    )
+
+
+def test_generation_docx_export_readiness_warns_from_metadata_fallbacks() -> None:
+    readiness = assess_generation_docx_export_readiness(
+        _run(
+            response_metadata={"truncation": {"truncated": True}},
+            guardrail_metadata={"answer_quality_status": "warning"},
+        ),
+        _template_completeness(status="warning"),
+    )
+
+    assert readiness.status == GENERATION_DOCX_EXPORT_WARNING
+    assert readiness.answer_quality_status == "warning"
+    assert readiness.reason_codes == (
+        GENERATION_DOCX_EXPORT_REASON_GENERATION_TRUNCATED,
+        GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_WARNING,
+        GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_WARNING,
+    )
+
+
+def test_generation_docx_export_readiness_marks_missing_quality_as_not_available() -> None:
+    readiness = assess_generation_docx_export_readiness(
+        _run(response_metadata={}), _template_completeness()
+    )
+
+    assert readiness.status == GENERATION_DOCX_EXPORT_READY
+    assert readiness.answer_quality_status == "not_available"
+
+
+def _run(
+    *,
+    finish_reason: str = "stop",
+    response_metadata: dict[str, object] | None = None,
+    guardrail_metadata: dict[str, object] | None = None,
+) -> GenerationRunRecord:
+    return GenerationRunRecord(
+        generation_run_id=42,
+        search_log_id=24,
+        retrieval_package_key="pkg-generation-42",
+        generation_template_id=None,
+        provider_config_id=7,
+        provider_name="mock_qwen36_27b_nvfp4",
+        provider_mode="mock",
+        model_id="nvidia/Qwen3.6-27B-NVFP4",
+        prompt_version="grounded_answer_v1",
+        prompt_hash="prompt-hash",
+        context_hash="context-hash",
+        status="succeeded",
+        guardrail_status="allowed",
+        retrieval_confidence_status="answerable",
+        citation_readiness_status="ready",
+        query_text="내부 규정 요약",
+        answer_text="요약 답변입니다. [RCP-001]",
+        finish_reason=finish_reason,
+        input_token_count=100,
+        output_token_count=20,
+        total_token_count=120,
+        elapsed_ms=12,
+        request_metadata={},
+        response_metadata=(
+            response_metadata
+            if response_metadata is not None
+            else {"answer_quality": {"status": "passed"}}
+        ),
+        guardrail_metadata=guardrail_metadata or {},
+        error_message=None,
+        created_by="pytest",
+        created_by_user_id=1,
+        started_at=NOW,
+        finished_at=NOW,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+
+
+def _template_completeness(status: str = "passed") -> GenerationTemplateCompletenessAssessment:
+    return GenerationTemplateCompletenessAssessment(
+        status=status,
+        template_key="grounded_answer",
+        template_name="근거 기반 답변",
+        template_version="v1",
+        document_type="answer",
+        output_format="markdown",
+        required_section_count=1,
+        present_required_section_count=1 if status != "failed" else 0,
+        citation_required_section_count=1,
+        cited_required_section_count=1 if status != "failed" else 0,
+        required_section_coverage_percent=100.0 if status != "failed" else 0.0,
+        required_section_citation_coverage_percent=100.0 if status != "failed" else 0.0,
+        section_checks=(),
+        reason_codes=(),
+    )

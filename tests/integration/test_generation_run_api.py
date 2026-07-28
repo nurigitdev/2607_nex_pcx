@@ -412,6 +412,13 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         assert read_response.status_code == 200
         assert read_body["run"]["generation_run_id"] == run_id
         assert read_body["run"]["template_completeness"]["template_key"] == "grounded_answer"
+        assert read_body["run"]["docx_export_readiness"] == {
+            "status": "warning",
+            "reason_codes": ["template_completeness_failed"],
+            "generation_truncated": False,
+            "answer_quality_status": "passed",
+            "template_completeness_status": "failed",
+        }
         assert read_body["citations"][0]["source_label"].endswith("/ p.2")
         assert completeness_response.status_code == 200
         assert completeness_body["generation_run_id"] == run_id
@@ -438,6 +445,11 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         )
         assert docx_export_response.headers["content-disposition"] == (
             f'attachment; filename="generation-run-{run_id}.docx"'
+        )
+        assert docx_export_response.headers["x-nex-pcx-export-readiness"] == "warning"
+        assert (
+            docx_export_response.headers["x-nex-pcx-export-readiness-reasons"]
+            == "template_completeness_failed"
         )
         assert f"Generation Run #{run_id}" in docx_text
         assert "Metadata" in docx_text
@@ -749,6 +761,45 @@ def test_generation_run_history_api_filters_answer_quality(
         assert failed_run["citation_coverage_percent"] == 0.0
         assert invalid_response.status_code == 400
         assert "answer_quality_status is not supported" in invalid_response.text
+    finally:
+        _cleanup_file(migrated_database_url, file_id)
+
+
+def test_generation_docx_export_readiness_warns_in_headers_and_ui(
+    migrated_database_url: str,
+) -> None:
+    file_id, search_log_id = _create_generation_api_fixture(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        run_id = _create_failed_answer_quality_run(migrated_database_url, search_log_id)
+        with TestClient(app) as client:
+            read_response = client.get(f"/api/generation/runs/{run_id}")
+            docx_response = client.get(f"/api/generation/runs/{run_id}/export/docx")
+            generation_response = client.get(
+                f"/generation?generation_run_id={run_id}",
+            )
+            detail_response = client.get(f"/generation/runs/{run_id}")
+
+        read_body = read_response.json()
+
+        assert read_response.status_code == 200
+        assert read_body["run"]["docx_export_readiness"]["status"] == "warning"
+        assert read_body["run"]["docx_export_readiness"]["reason_codes"] == [
+            "answer_quality_failed"
+        ]
+        assert docx_response.status_code == 200
+        assert docx_response.headers["x-nex-pcx-export-readiness"] == "warning"
+        assert (
+            docx_response.headers["x-nex-pcx-export-readiness-reasons"] == "answer_quality_failed"
+        )
+        assert generation_response.status_code == 200
+        assert "data-generation-docx-export-readiness" in generation_response.text
+        assert "DOCX 내보내기 전 검토" in generation_response.text
+        assert "답변 품질 점검에 실패 항목" in generation_response.text
+        assert detail_response.status_code == 200
+        assert "data-generation-docx-export-readiness-detail" in detail_response.text
+        assert "DOCX 내보내기 전 검토" in detail_response.text
     finally:
         _cleanup_file(migrated_database_url, file_id)
 

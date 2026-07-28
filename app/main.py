@@ -340,7 +340,12 @@ from app.core.foreground_worker_runtime import (
     build_foreground_worker_runtime_report,
     foreground_worker_runtime_report_payload,
 )
-from app.core.generation_docx_export import GENERATION_DOCX_MEDIA_TYPE, markdown_to_docx_bytes
+from app.core.generation_docx_export import (
+    GENERATION_DOCX_MEDIA_TYPE,
+    assess_generation_docx_export_readiness,
+    generation_docx_export_readiness_payload,
+    markdown_to_docx_bytes,
+)
 from app.core.generation_executor import (
     GenerationExecutionReport,
     execute_mock_generation_run,
@@ -4462,6 +4467,10 @@ def generation_provider_config_payload(
 
 def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
     template_completeness = assess_generation_template_completeness(run)
+    docx_export_readiness = assess_generation_docx_export_readiness(
+        run,
+        template_completeness,
+    )
     return {
         "generation_run_id": run.generation_run_id,
         "search_log_id": run.search_log_id,
@@ -4489,6 +4498,9 @@ def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
         "response_metadata": run.response_metadata,
         "guardrail_metadata": run.guardrail_metadata,
         "template_completeness": generation_template_completeness_payload(template_completeness),
+        "docx_export_readiness": generation_docx_export_readiness_payload(
+            docx_export_readiness,
+        ),
         "error_message": run.error_message,
         "created_by": run.created_by,
         "created_by_user_id": run.created_by_user_id,
@@ -12538,6 +12550,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         markdown = _generation_run_markdown_export(run, citations)
         template = _generation_run_export_template(run)
+        template_completeness = assess_generation_template_completeness(run)
+        docx_export_readiness = assess_generation_docx_export_readiness(
+            run,
+            template_completeness,
+        )
         docx_bytes = markdown_to_docx_bytes(
             markdown,
             title=f"Generation Run #{generation_run_id}",
@@ -12547,7 +12564,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return Response(
             content=docx_bytes,
             media_type=GENERATION_DOCX_MEDIA_TYPE,
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-NeX-PCX-Export-Readiness": docx_export_readiness.status,
+                "X-NeX-PCX-Export-Readiness-Reasons": (
+                    ",".join(docx_export_readiness.reason_codes) or "-"
+                ),
+            },
         )
 
     @app.get("/api/admin/generation-provider-metrics/snapshot")
@@ -15164,6 +15187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected_run: GenerationRunRecord | None = None
         selected_citations: tuple[GenerationRunCitationRecord, ...] = ()
         selected_template_completeness: GenerationTemplateCompletenessAssessment | None = None
+        selected_docx_export_readiness: dict[str, object] | None = None
         default_generation_provider: dict[str, object] | None = None
         default_generation_runtime: dict[str, object] | None = None
         remote_generation_available = False
@@ -15239,6 +15263,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         selected_template_completeness = assess_generation_template_completeness(
                             selected_run
                         )
+                        selected_docx_export_readiness = generation_docx_export_readiness_payload(
+                            assess_generation_docx_export_readiness(
+                                selected_run,
+                                selected_template_completeness,
+                            )
+                        )
                         selected_citations = list_generation_run_citations(
                             settings.database_url,
                             selected_run.generation_run_id,
@@ -15301,6 +15331,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_run=selected_run,
                 selected_citations=selected_citations,
                 selected_template_completeness=selected_template_completeness,
+                selected_docx_export_readiness=selected_docx_export_readiness,
                 default_generation_provider=default_generation_provider,
                 default_generation_runtime=default_generation_runtime,
                 remote_generation_available=remote_generation_available,
@@ -15622,6 +15653,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         selected_run: GenerationRunRecord | None = None
         selected_citations: tuple[GenerationRunCitationRecord, ...] = ()
         selected_template_completeness: GenerationTemplateCompletenessAssessment | None = None
+        selected_docx_export_readiness: dict[str, object] | None = None
         error_message: str | None = None
 
         if not settings.database_url:
@@ -15634,6 +15666,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else:
                     selected_template_completeness = assess_generation_template_completeness(
                         selected_run
+                    )
+                    selected_docx_export_readiness = generation_docx_export_readiness_payload(
+                        assess_generation_docx_export_readiness(
+                            selected_run,
+                            selected_template_completeness,
+                        )
                     )
                     selected_citations = list_generation_run_citations(
                         settings.database_url,
@@ -15651,6 +15689,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_run=selected_run,
                 selected_citations=selected_citations,
                 selected_template_completeness=selected_template_completeness,
+                selected_docx_export_readiness=selected_docx_export_readiness,
                 error_message=error_message,
             ),
         )

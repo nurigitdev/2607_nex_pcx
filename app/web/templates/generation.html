@@ -582,6 +582,16 @@
     <strong>{{ truncation.get("requested_max_tokens") or selected_run.request_metadata.get("max_tokens") or "-" }}</strong>
   </div>
   {% endif %}
+  {% if selected_docx_export_readiness and selected_docx_export_readiness.status != "ready" %}
+  <div class="alert alert-warning" role="alert" data-generation-docx-export-readiness>
+    <div class="fw-semibold">{{ t("generation.export_readiness_warning") }}</div>
+    <ul class="mb-0 mt-2">
+      {% for reason_code in selected_docx_export_readiness.reason_codes %}
+      <li>{{ t("generation.export_readiness_reason_" ~ reason_code) }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
   <div class="row g-3 mb-3">
     <div class="col-6 col-lg-2">
       <div class="metric-card">
