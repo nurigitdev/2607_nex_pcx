@@ -1,8 +1,11 @@
 from datetime import UTC, datetime
 from io import BytesIO
 
+import pytest
 from docx import Document
+from docx.shared import RGBColor
 
+import app.core.generation_docx_export as generation_docx_export
 from app.core.generation_docx_export import (
     GENERATION_DOCX_EXPORT_READY,
     GENERATION_DOCX_EXPORT_REASON_ANSWER_QUALITY_FAILED,
@@ -12,6 +15,7 @@ from app.core.generation_docx_export import (
     GENERATION_DOCX_EXPORT_REASON_TEMPLATE_COMPLETENESS_WARNING,
     GENERATION_DOCX_EXPORT_WARNING,
     GENERATION_DOCX_STYLE_DEFAULT,
+    GenerationDocxStyleProfile,
     assess_generation_docx_export_readiness,
     generation_docx_export_evidence_from_run,
     generation_docx_export_evidence_payload,
@@ -86,6 +90,31 @@ def test_markdown_to_docx_bytes_ignores_empty_tables_and_unclosed_code_blocks() 
     assert document.tables == []
 
 
+def test_markdown_to_docx_bytes_handles_regression_markdown_boundaries() -> None:
+    docx_bytes = markdown_to_docx_bytes(
+        "\n".join(
+            (
+                "# 회귀 fixture",
+                "첫 번째 줄입니다.",
+                "이어지는 줄입니다.",
+                "",
+                "```",
+                "```",
+                "",
+                "### 다음 섹션",
+                "문단입니다.",
+            )
+        )
+    )
+
+    document = Document(BytesIO(docx_bytes))
+    paragraph_text = [paragraph.text for paragraph in document.paragraphs if paragraph.text]
+
+    assert "첫 번째 줄입니다. 이어지는 줄입니다." in paragraph_text
+    assert "" not in paragraph_text
+    assert paragraph_text[-2:] == ["다음 섹션", "문단입니다."]
+
+
 def test_generation_docx_style_profile_falls_back_for_unknown_document_type() -> None:
     profile = generation_docx_style_profile(" unknown ")
 
@@ -153,6 +182,19 @@ def test_generation_docx_export_readiness_marks_missing_quality_as_not_available
     assert readiness.answer_quality_status == "not_available"
 
 
+def test_generation_docx_export_readiness_falls_back_when_answer_quality_status_is_blank() -> None:
+    readiness = assess_generation_docx_export_readiness(
+        _run(
+            response_metadata={"answer_quality": {"status": "  "}},
+            guardrail_metadata={"answer_quality_status": "passed"},
+        ),
+        _template_completeness(),
+    )
+
+    assert readiness.status == GENERATION_DOCX_EXPORT_READY
+    assert readiness.answer_quality_status == "passed"
+
+
 def test_markdown_to_docx_bytes_embeds_export_evidence_metadata() -> None:
     run = _run()
     readiness = assess_generation_docx_export_readiness(run, _template_completeness())
@@ -188,6 +230,41 @@ def test_markdown_to_docx_bytes_embeds_export_evidence_metadata() -> None:
     assert evidence_table["Readiness Reasons"] == "-"
     assert payload["generation_run_id"] == 42
     assert payload["export_readiness_reasons"] == []
+
+
+def test_markdown_to_docx_bytes_falls_back_when_profile_table_style_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broken_profile = GenerationDocxStyleProfile(
+        document_type="broken",
+        font_name="Malgun Gothic",
+        heading_color=RGBColor(31, 41, 55),
+        table_style="Definitely Missing Table Style",
+        category="Broken",
+    )
+    monkeypatch.setitem(generation_docx_export._STYLE_PROFILES, "broken", broken_profile)
+
+    docx_bytes = markdown_to_docx_bytes(
+        "\n".join(
+            (
+                "| 구분 | 값 |",
+                "| --- | --- |",
+                "| 상태 | 정상 |",
+            )
+        ),
+        document_type="broken",
+        export_evidence=generation_docx_export_evidence_from_run(
+            _run(),
+            template={"template_key": "broken", "template_version": "", "document_type": ""},
+            readiness=assess_generation_docx_export_readiness(_run(), _template_completeness()),
+        ),
+    )
+
+    document = Document(BytesIO(docx_bytes))
+
+    assert len(document.tables) == 2
+    assert document.tables[0].rows[1].cells[1].text == "정상"
+    assert document.tables[1].rows[-1].cells[1].text == "-"
 
 
 def _run(
