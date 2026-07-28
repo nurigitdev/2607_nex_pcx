@@ -138,6 +138,7 @@ from app.core.document_summary import (
     DEFAULT_DOCUMENT_SUMMARY_HISTORY_LIMIT,
     DEFAULT_DOCUMENT_SUMMARY_MAX_CHUNKS,
     DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY,
+    DOCUMENT_SUMMARY_STRATEGY_NAME,
     MAX_DOCUMENT_SUMMARY_HISTORY_LIMIT,
     DocumentSummaryHistory,
     DocumentSummaryHistoryFilter,
@@ -4876,6 +4877,19 @@ def _generation_run_markdown_export(
     )
     lines.append("```")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _is_document_summary_generation_run(
+    database_url: str,
+    run: GenerationRunRecord,
+) -> bool:
+    search_log = get_search_log(database_url, run.search_log_id)
+    runtime_metadata = search_log.query_runtime_metadata if search_log is not None else {}
+    return (
+        run.created_by == "api_document_summary"
+        or (search_log is not None and search_log.strategy_name == DOCUMENT_SUMMARY_STRATEGY_NAME)
+        or runtime_metadata.get("operation") == "document_summary"
+    )
 
 
 def generation_execution_report_payload(
@@ -12464,6 +12478,86 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except InvalidDocumentSummaryError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return JSONResponse(content=document_summary_history_payload(history))
+
+    @app.get("/api/generation/document-summaries/{generation_run_id}/export/markdown")
+    def api_export_document_summary_markdown(generation_run_id: int) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            run = get_generation_run(settings.database_url, generation_run_id)
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if run is None or not _is_document_summary_generation_run(settings.database_url, run):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document summary generation run not found.",
+            )
+        citations = list_generation_run_citations(settings.database_url, generation_run_id)
+        markdown = _generation_run_markdown_export(run, citations)
+        filename = f"document-summary-run-{generation_run_id}.md"
+        return Response(
+            content=markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get("/api/generation/document-summaries/{generation_run_id}/export/docx")
+    def api_export_document_summary_docx(generation_run_id: int) -> Response:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            run = get_generation_run(settings.database_url, generation_run_id)
+        except InvalidGenerationRunError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if run is None or not _is_document_summary_generation_run(settings.database_url, run):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document summary generation run not found.",
+            )
+        citations = list_generation_run_citations(settings.database_url, generation_run_id)
+        markdown = _generation_run_markdown_export(run, citations)
+        template = _generation_run_export_template(run)
+        template_completeness = assess_generation_template_completeness(run)
+        docx_export_readiness = assess_generation_docx_export_readiness(
+            run,
+            template_completeness,
+        )
+        docx_export_evidence = generation_docx_export_evidence_from_run(
+            run,
+            template=template,
+            readiness=docx_export_readiness,
+        )
+        docx_bytes = markdown_to_docx_bytes(
+            markdown,
+            title=f"Document Summary Run #{generation_run_id}",
+            document_type=str(template.get("document_type") or "summary"),
+            export_evidence=docx_export_evidence,
+        )
+        filename = f"document-summary-run-{generation_run_id}.docx"
+        return Response(
+            content=docx_bytes,
+            media_type=GENERATION_DOCX_MEDIA_TYPE,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-NeX-PCX-Export-Readiness": docx_export_readiness.status,
+                "X-NeX-PCX-Export-Readiness-Reasons": (
+                    ",".join(docx_export_readiness.reason_codes) or "-"
+                ),
+                "X-NeX-PCX-Export-Evidence": (
+                    f"generation_run_id={docx_export_evidence.generation_run_id};"
+                    f"search_log_id={docx_export_evidence.search_log_id};"
+                    f"readiness={docx_export_evidence.export_readiness_status}"
+                ),
+            },
+        )
 
     @app.post("/api/search/logs/{search_log_id}/generation-runs/mock")
     def api_create_mock_generation_run(

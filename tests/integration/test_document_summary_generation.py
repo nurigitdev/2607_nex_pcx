@@ -315,6 +315,7 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
                     "max_chunks": 2,
                 },
             )
+            first_body = first_response.json()
             second_response = client.post(
                 f"/api/documents/{document_id}/summary-runs",
                 json={
@@ -337,12 +338,22 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
                 "/api/generation/document-summaries",
                 params={"run_status": "unsupported"},
             )
+            markdown_export_response = client.get(
+                "/api/generation/document-summaries/"
+                f"{first_body['generation_run_id']}/export/markdown"
+            )
+            docx_export_response = client.get(
+                "/api/generation/document-summaries/"
+                f"{first_body['generation_run_id']}/export/docx"
+            )
+            missing_export_response = client.get(
+                "/api/generation/document-summaries/999999999/export/markdown"
+            )
             page_response = client.get(
                 "/generation/document-summaries",
                 params={"generation_template_key": "summary_risk_action"},
             )
 
-        first_body = first_response.json()
         second_body = second_response.json()
         history_body = api_response.json()
         runs = history_body["runs"]
@@ -369,6 +380,23 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
         )
         assert invalid_response.status_code == 400
         assert "run_status" in invalid_response.json()["detail"]
+        assert markdown_export_response.status_code == 200
+        assert markdown_export_response.headers["content-disposition"] == (
+            f'attachment; filename="document-summary-run-{first_body["generation_run_id"]}.md"'
+        )
+        assert markdown_export_response.headers["content-type"].startswith("text/markdown")
+        assert "# Generation Run" in markdown_export_response.text
+        assert "Document Summary API document" in markdown_export_response.text
+        assert docx_export_response.status_code == 200
+        assert docx_export_response.headers["content-disposition"] == (
+            f'attachment; filename="document-summary-run-{first_body["generation_run_id"]}.docx"'
+        )
+        assert docx_export_response.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        assert docx_export_response.headers["x-nex-pcx-export-readiness"]
+        assert docx_export_response.content.startswith(b"PK")
+        assert missing_export_response.status_code == 404
         assert page_response.status_code == 200
         assert "문서 요약 이력" in page_response.text
         assert "Document Summary API document" in page_response.text
@@ -376,6 +404,13 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
         assert "주의" in page_response.text
         assert "50.00%" in page_response.text
         assert "summary_risk_action" in page_response.text
+        assert (
+            "/api/generation/document-summaries/"
+            f"{first_body['generation_run_id']}/export/markdown"
+        ) in page_response.text
+        assert (
+            "/api/generation/document-summaries/" f"{first_body['generation_run_id']}/export/docx"
+        ) in page_response.text
         assert "data-document-summary-history-table" in page_response.text
     finally:
         _cleanup_fixture(migrated_database_url, file_id)
@@ -386,8 +421,10 @@ def test_document_summary_history_api_returns_503_without_database() -> None:
 
     with TestClient(app) as client:
         response = client.get("/api/generation/document-summaries")
+        export_response = client.get("/api/generation/document-summaries/1/export/markdown")
         page_response = client.get("/generation/document-summaries")
 
     assert response.status_code == 503
+    assert export_response.status_code == 503
     assert page_response.status_code == 200
     assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
