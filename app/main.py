@@ -343,6 +343,8 @@ from app.core.foreground_worker_runtime import (
 from app.core.generation_docx_export import (
     GENERATION_DOCX_MEDIA_TYPE,
     assess_generation_docx_export_readiness,
+    generation_docx_export_evidence_from_run,
+    generation_docx_export_evidence_payload,
     generation_docx_export_readiness_payload,
     markdown_to_docx_bytes,
 )
@@ -4471,6 +4473,12 @@ def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
         run,
         template_completeness,
     )
+    template = _generation_run_export_template(run)
+    docx_export_evidence = generation_docx_export_evidence_from_run(
+        run,
+        template=template,
+        readiness=docx_export_readiness,
+    )
     return {
         "generation_run_id": run.generation_run_id,
         "search_log_id": run.search_log_id,
@@ -4500,6 +4508,9 @@ def generation_run_payload(run: GenerationRunRecord) -> dict[str, object]:
         "template_completeness": generation_template_completeness_payload(template_completeness),
         "docx_export_readiness": generation_docx_export_readiness_payload(
             docx_export_readiness,
+        ),
+        "docx_export_evidence": generation_docx_export_evidence_payload(
+            docx_export_evidence,
         ),
         "error_message": run.error_message,
         "created_by": run.created_by,
@@ -12555,10 +12566,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             run,
             template_completeness,
         )
+        docx_export_evidence = generation_docx_export_evidence_from_run(
+            run,
+            template=template,
+            readiness=docx_export_readiness,
+        )
         docx_bytes = markdown_to_docx_bytes(
             markdown,
             title=f"Generation Run #{generation_run_id}",
             document_type=str(template.get("document_type") or ""),
+            export_evidence=docx_export_evidence,
         )
         filename = f"generation-run-{generation_run_id}.docx"
         return Response(
@@ -12569,6 +12586,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "X-NeX-PCX-Export-Readiness": docx_export_readiness.status,
                 "X-NeX-PCX-Export-Readiness-Reasons": (
                     ",".join(docx_export_readiness.reason_codes) or "-"
+                ),
+                "X-NeX-PCX-Export-Evidence": (
+                    f"generation_run_id={docx_export_evidence.generation_run_id};"
+                    f"search_log_id={docx_export_evidence.search_log_id};"
+                    f"readiness={docx_export_evidence.export_readiness_status}"
                 ),
             },
         )

@@ -52,6 +52,25 @@ class GenerationDocxExportReadiness:
     template_completeness_status: str
 
 
+@dataclass(frozen=True)
+class GenerationDocxExportEvidence:
+    generation_run_id: int
+    search_log_id: int
+    retrieval_package_key: str
+    provider_name: str
+    provider_mode: str
+    model_id: str
+    prompt_version: str
+    prompt_hash: str | None
+    context_hash: str | None
+    template_key: str
+    template_version: str
+    document_type: str
+    finish_reason: str | None
+    export_readiness_status: str
+    export_readiness_reasons: tuple[str, ...]
+
+
 _DEFAULT_STYLE_PROFILE = GenerationDocxStyleProfile(
     document_type=GENERATION_DOCX_STYLE_DEFAULT,
     font_name="Malgun Gothic",
@@ -96,6 +115,7 @@ def markdown_to_docx_bytes(
     *,
     title: str | None = None,
     document_type: str | None = None,
+    export_evidence: GenerationDocxExportEvidence | None = None,
 ) -> bytes:
     """Convert a practical subset of Markdown to a DOCX byte payload."""
 
@@ -107,6 +127,9 @@ def markdown_to_docx_bytes(
     document.core_properties.subject = style_profile.document_type
     document.core_properties.category = style_profile.category
     _add_markdown(document, markdown, style_profile)
+    if export_evidence is not None:
+        _apply_export_evidence(document, export_evidence)
+        _add_export_evidence_section(document, export_evidence, style_profile)
 
     output = io.BytesIO()
     document.save(output)
@@ -159,6 +182,53 @@ def generation_docx_export_readiness_payload(
     }
 
 
+def generation_docx_export_evidence_from_run(
+    run: GenerationRunRecord,
+    *,
+    template: dict[str, object],
+    readiness: GenerationDocxExportReadiness,
+) -> GenerationDocxExportEvidence:
+    return GenerationDocxExportEvidence(
+        generation_run_id=run.generation_run_id,
+        search_log_id=run.search_log_id,
+        retrieval_package_key=run.retrieval_package_key,
+        provider_name=run.provider_name,
+        provider_mode=run.provider_mode,
+        model_id=run.model_id,
+        prompt_version=run.prompt_version,
+        prompt_hash=run.prompt_hash,
+        context_hash=run.context_hash,
+        template_key=_evidence_text(template.get("template_key")),
+        template_version=_evidence_text(template.get("template_version")),
+        document_type=_evidence_text(template.get("document_type")),
+        finish_reason=run.finish_reason,
+        export_readiness_status=readiness.status,
+        export_readiness_reasons=readiness.reason_codes,
+    )
+
+
+def generation_docx_export_evidence_payload(
+    evidence: GenerationDocxExportEvidence,
+) -> dict[str, object]:
+    return {
+        "generation_run_id": evidence.generation_run_id,
+        "search_log_id": evidence.search_log_id,
+        "retrieval_package_key": evidence.retrieval_package_key,
+        "provider_name": evidence.provider_name,
+        "provider_mode": evidence.provider_mode,
+        "model_id": evidence.model_id,
+        "prompt_version": evidence.prompt_version,
+        "prompt_hash": evidence.prompt_hash,
+        "context_hash": evidence.context_hash,
+        "template_key": evidence.template_key,
+        "template_version": evidence.template_version,
+        "document_type": evidence.document_type,
+        "finish_reason": evidence.finish_reason,
+        "export_readiness_status": evidence.export_readiness_status,
+        "export_readiness_reasons": list(evidence.export_readiness_reasons),
+    }
+
+
 def _generation_run_truncated(run: GenerationRunRecord) -> bool:
     truncation = run.response_metadata.get("truncation")
     if isinstance(truncation, dict) and truncation.get("truncated") is True:
@@ -176,6 +246,70 @@ def _generation_run_answer_quality_status(run: GenerationRunRecord) -> str:
     if isinstance(guardrail_status, str) and guardrail_status.strip():
         return guardrail_status.strip()
     return "not_available"
+
+
+def _apply_export_evidence(
+    document: DocxDocument,
+    evidence: GenerationDocxExportEvidence,
+) -> None:
+    document.core_properties.author = "NeX-PCX"
+    document.core_properties.keywords = ", ".join(
+        (
+            "nex-pcx",
+            "generation-docx-export",
+            f"generation_run_id={evidence.generation_run_id}",
+            f"search_log_id={evidence.search_log_id}",
+            f"readiness={evidence.export_readiness_status}",
+        )
+    )
+    document.core_properties.comments = (
+        f"NeX-PCX DOCX export evidence: generation_run_id={evidence.generation_run_id}; "
+        f"search_log_id={evidence.search_log_id}; "
+        f"readiness={evidence.export_readiness_status}; "
+        f"reasons={','.join(evidence.export_readiness_reasons) or '-'}"
+    )
+
+
+def _add_export_evidence_section(
+    document: DocxDocument,
+    evidence: GenerationDocxExportEvidence,
+    style_profile: GenerationDocxStyleProfile,
+) -> None:
+    document.add_heading("Export Evidence", level=2)
+    table = document.add_table(rows=0, cols=2)
+    try:
+        table.style = style_profile.table_style
+    except KeyError:
+        table.style = _DEFAULT_STYLE_PROFILE.table_style
+    for label, value in _export_evidence_rows(evidence):
+        row = table.add_row()
+        row.cells[0].text = label
+        row.cells[1].text = value
+
+
+def _export_evidence_rows(
+    evidence: GenerationDocxExportEvidence,
+) -> tuple[tuple[str, str], ...]:
+    return (
+        ("Generation Run ID", str(evidence.generation_run_id)),
+        ("Search Log ID", str(evidence.search_log_id)),
+        ("Retrieval Package", evidence.retrieval_package_key),
+        ("Provider", f"{evidence.provider_name} ({evidence.provider_mode})"),
+        ("Model", evidence.model_id),
+        ("Prompt Version", evidence.prompt_version),
+        ("Prompt Hash", _evidence_text(evidence.prompt_hash)),
+        ("Context Hash", _evidence_text(evidence.context_hash)),
+        ("Template", f"{evidence.template_key} / {evidence.template_version}"),
+        ("Document Type", evidence.document_type),
+        ("Finish Reason", _evidence_text(evidence.finish_reason)),
+        ("Export Readiness", evidence.export_readiness_status),
+        ("Readiness Reasons", ", ".join(evidence.export_readiness_reasons) or "-"),
+    )
+
+
+def _evidence_text(value: object | None) -> str:
+    normalized = str(value).strip() if value is not None else ""
+    return normalized or "-"
 
 
 def _configure_document(

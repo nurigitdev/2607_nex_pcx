@@ -375,6 +375,9 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
         docx_text = "\n".join(
             paragraph.text for paragraph in docx_document.paragraphs if paragraph.text
         )
+        docx_evidence_table = {
+            row.cells[0].text: row.cells[1].text for row in docx_document.tables[-1].rows
+        }
         assert create_response.status_code == 201
         assert create_body["provider"]["provider_mode"] == "mock"
         assert create_body["run"]["search_log_id"] == search_log_id
@@ -419,6 +422,12 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
             "answer_quality_status": "passed",
             "template_completeness_status": "failed",
         }
+        assert read_body["run"]["docx_export_evidence"]["generation_run_id"] == run_id
+        assert read_body["run"]["docx_export_evidence"]["search_log_id"] == search_log_id
+        assert read_body["run"]["docx_export_evidence"]["export_readiness_status"] == "warning"
+        assert read_body["run"]["docx_export_evidence"]["export_readiness_reasons"] == [
+            "template_completeness_failed"
+        ]
         assert read_body["citations"][0]["source_label"].endswith("/ p.2")
         assert completeness_response.status_code == 200
         assert completeness_body["generation_run_id"] == run_id
@@ -451,10 +460,21 @@ def test_mock_generation_run_api_creates_and_reads_generation_run(
             docx_export_response.headers["x-nex-pcx-export-readiness-reasons"]
             == "template_completeness_failed"
         )
+        assert docx_export_response.headers["x-nex-pcx-export-evidence"] == (
+            f"generation_run_id={run_id};search_log_id={search_log_id};readiness=warning"
+        )
+        assert docx_document.core_properties.author == "NeX-PCX"
+        assert f"generation_run_id={run_id}" in docx_document.core_properties.keywords
+        assert "readiness=warning" in docx_document.core_properties.comments
         assert f"Generation Run #{run_id}" in docx_text
         assert "Metadata" in docx_text
         assert "Answer" in docx_text
         assert "Citations" in docx_text
+        assert "Export Evidence" in docx_text
+        assert docx_evidence_table["Generation Run ID"] == str(run_id)
+        assert docx_evidence_table["Search Log ID"] == str(search_log_id)
+        assert docx_evidence_table["Export Readiness"] == "warning"
+        assert docx_evidence_table["Readiness Reasons"] == "template_completeness_failed"
         assert "RCP-001" in docx_text
         assert invalid_response.status_code == 400
         assert invalid_completeness_response.status_code == 400

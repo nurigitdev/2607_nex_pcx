@@ -13,6 +13,8 @@ from app.core.generation_docx_export import (
     GENERATION_DOCX_EXPORT_WARNING,
     GENERATION_DOCX_STYLE_DEFAULT,
     assess_generation_docx_export_readiness,
+    generation_docx_export_evidence_from_run,
+    generation_docx_export_evidence_payload,
     generation_docx_export_readiness_payload,
     generation_docx_style_profile,
     markdown_to_docx_bytes,
@@ -149,6 +151,43 @@ def test_generation_docx_export_readiness_marks_missing_quality_as_not_available
 
     assert readiness.status == GENERATION_DOCX_EXPORT_READY
     assert readiness.answer_quality_status == "not_available"
+
+
+def test_markdown_to_docx_bytes_embeds_export_evidence_metadata() -> None:
+    run = _run()
+    readiness = assess_generation_docx_export_readiness(run, _template_completeness())
+    evidence = generation_docx_export_evidence_from_run(
+        run,
+        template={
+            "template_key": "report",
+            "template_version": "v3",
+            "document_type": "report",
+        },
+        readiness=readiness,
+    )
+    docx_bytes = markdown_to_docx_bytes(
+        "# 보고서",
+        document_type="report",
+        export_evidence=evidence,
+    )
+
+    document = Document(BytesIO(docx_bytes))
+    paragraph_text = [paragraph.text for paragraph in document.paragraphs if paragraph.text]
+    evidence_table = {row.cells[0].text: row.cells[1].text for row in document.tables[-1].rows}
+    payload = generation_docx_export_evidence_payload(evidence)
+
+    assert document.core_properties.author == "NeX-PCX"
+    assert "generation_run_id=42" in document.core_properties.keywords
+    assert "readiness=ready" in document.core_properties.comments
+    assert paragraph_text[-1] == "Export Evidence"
+    assert evidence_table["Generation Run ID"] == "42"
+    assert evidence_table["Search Log ID"] == "24"
+    assert evidence_table["Provider"] == "mock_qwen36_27b_nvfp4 (mock)"
+    assert evidence_table["Template"] == "report / v3"
+    assert evidence_table["Export Readiness"] == "ready"
+    assert evidence_table["Readiness Reasons"] == "-"
+    assert payload["generation_run_id"] == 42
+    assert payload["export_readiness_reasons"] == []
 
 
 def _run(
