@@ -12537,9 +12537,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             generation_run_id,
         )
         markdown = _generation_run_markdown_export(run, citations)
+        template = _generation_run_export_template(run)
         docx_bytes = markdown_to_docx_bytes(
             markdown,
             title=f"Generation Run #{generation_run_id}",
+            document_type=str(template.get("document_type") or ""),
         )
         filename = f"generation-run-{generation_run_id}.docx"
         return Response(
