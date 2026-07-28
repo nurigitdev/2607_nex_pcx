@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.56**
+**Software Requirements Specification v1.57**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.56
+문서 상태: Draft v1.57
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.56 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.57 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.56 |
+| 문서 버전 | v1.57 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -81,6 +81,7 @@
 | 1.54 | 2026-07-27 | Direct generation query orchestrator API, 사용자가 prompt query를 직접 입력하면 내부 검색, retrieval context packaging, generation run 저장까지 연결하는 요구사항 보강 |
 | 1.55 | 2026-07-27 | Direct Generation UI MVP, 사용자가 생성 화면에서 질문, 검색 profile, provider mode, context 옵션을 지정해 검색-패키징-생성을 실행하는 요구사항 보강 |
 | 1.56 | 2026-07-27 | Generation template strategy, 보고서/제안서/요약문 등 문서 유형별 출력 구조, template metadata, prompt injection, Markdown export 실험 요구사항 보강 |
+| 1.57 | 2026-07-28 | Conversational UX strategy, chat orchestration intent, chat session/message/artifact/run linkage, 대화형 pre-CX 실험 인터페이스 요구사항 보강 |
 
 # 목차
 
@@ -144,13 +145,14 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | 평가 | 검색 결과 정답/부분정답/오답 피드백 저장, 검색 로그/latency 저장 |
 | 계정/권한 | 테스트용 사용자, 조직 계층, 역할, 문서 접근 범위, query 검색 범위 metadata 저장 |
 | 생성 실험 | Retrieval context package를 기반으로 mock 또는 vLLM OpenAI-compatible LLM runtime에 grounded answer 생성을 요청하고 실행 조건과 runtime metadata를 저장 |
+| 대화형 UX 실험 | 사용자의 자연어 prompt를 chat session에 기록하고 intent에 따라 일반 답변, 문서 검색 요약, 근거 기반 답변, template 문서 생성, 문서 요약 기능으로 routing |
 | 품질관리 | pytest, Playwright, pytest-cov, 독립 test DB, quality gate 절차 적용 |
 
 ## 1.4 범위 제외
 
 | 항목 | 제외 사유 / 향후 계획 |
 | --- | --- |
-| 운영용 챗봇/업무 자동화 | NeX_PCX의 생성 기능은 검색 결과와 prompt/provider 계약 검증용 실험 기능으로 제한한다. 최종 사용자용 대화 UX, 장기 메모리, workflow automation은 NeX-CX 본 개발에서 확정한다. |
+| 완성형 운영 챗봇/업무 자동화 | NeX_PCX는 ChatGPT형 대화 UX의 pre-CX 실험 shell과 orchestration evidence를 제공하지만, 운영용 SSO, 장기 개인화 메모리, multi-step workflow automation, 승인 workflow는 NeX-CX 본 개발에서 확정한다. |
 | 완전한 GraphRAG | 초기에는 heading/section/chunk metadata를 축적하고, 이후 graph-assisted retrieval로 확장한다. |
 | 고도화된 이미지 embedding | 1차에서는 그림 원본/페이지/주변 텍스트/캡션 metadata 저장 수준으로 제한한다. |
 | 운영용 SSO/HR 연동 | NeX_PCX에서는 테스트용 계정/조직 seed와 권한 시뮬레이션으로 제한한다. 운영 SSO/HR 연동은 NeX-CX 본 개발에서 확정한다. |
@@ -165,6 +167,10 @@ NeX_PCX는 NeX-CX 개발 이전에 사내 RAG 기반 AX 구축 역량을 검증�
 | RAG | Retrieval-Augmented Generation. 검색 결과를 LLM 답변 생성의 근거로 사용하는 방식 |
 | Generation Provider | Retrieval context package와 user query를 입력으로 받아 grounded answer를 생성하는 LLM runtime. NeX_PCX는 mock과 vLLM OpenAI-compatible remote runtime을 우선 지원한다. |
 | Generation Template | 보고서, 제안서, 요약문, 회의록, 근거 기반 답변 등 생성 결과의 문서 유형, 섹션 구조, 출력 규칙, 품질 metadata를 정의하는 재사용 가능한 prompt/output contract |
+| Chat Session | 사용자가 대화형 UX에서 이어가는 하나의 업무 대화 단위. actor, title, status, default runtime option, created/updated metadata를 가진다. |
+| Chat Message | chat session 안의 사용자/assistant/system/tool 메시지. intent, status, linked run/artifact, token/runtime metadata를 함께 저장한다. |
+| Chat Intent | 사용자 prompt를 처리할 orchestration 목적. general_answer, document_search_summary, grounded_answer, document_generation, document_summary 등을 포함한다. |
+| Chat Artifact | chat message에서 생성되거나 연결되는 Markdown/DOCX 등 산출물. generation run, document summary run, export endpoint와 연결되어 view/download할 수 있어야 한다. |
 | vLLM Runtime | DGX-Spark 등 GPU 서버에서 LLM을 OpenAI-compatible HTTP API로 제공하는 serving runtime |
 | OpenAI-compatible Chat API | `/v1/chat/completions` 형식의 messages 기반 HTTP 생성 API. NeX_PCX의 remote LLM provider 기본 호출 계약으로 사용한다. |
 | Embedding Profile | 특정 모델명, dimension, normalization, pooling 설정을 포함한 embedding 실행 단위 |
@@ -268,7 +274,9 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 ├─ Dashboard
 ├─ File Upload
 ├─ Permission Simulation
-└─ Search / Model Compare
+├─ Search / Model Compare
+├─ Generation / Summary
+└─ Conversational Workspace
 │
 ▼
 [FastAPI Backend]
@@ -281,6 +289,8 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 ├─ Chunking Service
 ├─ Embedding Job API
 ├─ Search API
+├─ Retrieval Context / Generation API
+├─ Chat Orchestration API
 ├─ Statistics API
 └─ Feedback API
 │
@@ -315,7 +325,8 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 ├─ table_artifacts / image_artifacts
 ├─ pipeline_jobs / pipeline_job_events
 ├─ embedding profile tables
-├─ search_logs / feedback
+├─ search_logs / feedback / generation_runs
+├─ chat_sessions / chat_messages / chat links
 └─ experiment/evaluation tables
 ```
 
@@ -342,6 +353,8 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Generation Template Service | 문서 유형별 template, section schema, style guidance, output format을 관리하고 prompt package와 generation run metadata에 template snapshot을 주입 |
 | Generation Provider Client | mock 또는 remote OpenAI-compatible vLLM runtime을 호출하고 model/provider/prompt/runtime metadata를 generation run에 기록 |
 | Remote vLLM Runtime | DGX-Spark 등 GPU 서버에서 Qwen3.6-27B-NVFP4 등 LLM을 OpenAI-compatible `/v1/chat/completions` 계약으로 제공 |
+| Chat Orchestrator | 대화형 입력을 chat intent로 분류하고 일반 답변, 문서 검색 요약, 근거 기반 답변, template 문서 생성, 문서 요약 기능 중 하나로 routing한다. |
+| Chat Repository | chat session/message, intent decision, linked search/generation/summary run, generated artifact link를 저장하고 대화 재현성을 제공한다. |
 | Statistics Service | 문서/chunk/vector/job/검색 통계 산출 |
 | Model Distribution Tooling | KURE, bge-m3, Qwen3 embedding model을 `models/` bundle로 사전 다운로드하고 설치 환경에서 검증 |
 | Quality/Test Framework | pytest, Playwright, coverage, 독립 test DB 기반 품질 검증 |
@@ -454,6 +467,15 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-075 | Direct generation query orchestrator API | API는 사용자가 입력한 prompt query를 기반으로 내부 검색을 실행하고, 검색 로그를 retrieval context package로 변환한 뒤, 선택한 generation provider mode에 따라 mock 또는 remote LLM 생성 실행을 저장하며 search log, context package, generation run, citation trace, quality metadata를 하나의 응답으로 반환해야 한다. | SHOULD |
 | FR-076 | Direct Generation UI MVP | Web UI는 생성 화면에서 사용자가 prompt query, 검색 사용자/범위/profile, provider mode, chunk policy/tokenizer/context 옵션을 지정해 직접 generation run을 실행하고, 생성 결과, citation trace, 품질 badge, 상세 링크를 같은 화면에서 확인할 수 있어야 한다. | SHOULD |
 | FR-077 | Generation template strategy | 생성 실행은 기본 `grounded_answer` 외에 `report`, `proposal`, `summary`, `meeting_minutes` 같은 문서 유형별 template을 선택할 수 있어야 하며, template key/version/language/output_format/section schema/style guidance를 prompt package와 generation run metadata에 저장해 같은 retrieval context가 어떤 문서 양식으로 생성되었는지 재현 가능해야 한다. | SHOULD |
+| FR-078 | Conversational workspace strategy | Web UI는 기능별 화면과 별도로 사용자가 자연어 prompt를 입력하고 system이 intent를 판단해 검색/생성/요약 기능을 호출하는 대화형 workspace를 제공해야 한다. | SHOULD |
+| FR-079 | Chat session persistence | 대화형 workspace는 chat session과 message 이력을 DB에 저장하고 actor, title, status, language, default provider/search option, created/updated metadata를 보존해야 한다. | SHOULD |
+| FR-080 | Chat intent routing contract | Chat Orchestrator는 prompt를 `general_answer`, `document_search_summary`, `grounded_answer`, `document_generation`, `document_summary` 중 하나로 분류하고, confidence와 routing reason, selected options를 message metadata에 저장해야 한다. | SHOULD |
+| FR-081 | General LLM chat path | 일반 답변 intent는 retrieval context 없이 generation provider를 호출하되, provider mode, model id, prompt version, token/latency, failure/no-answer metadata를 chat message와 generation run에 연결해야 한다. | SHOULD |
+| FR-082 | Document search summary chat path | 문서 검색 요약 intent는 Search Service를 호출해 관련 chunk 후보를 찾고, 결과 목록과 요약을 assistant message에 저장하며 linked search_log_id를 제공해야 한다. | SHOULD |
+| FR-083 | Grounded answer chat path | 근거 기반 답변 intent는 Search Service, Retrieval Context Service, Generation Provider Client를 순차 호출하고 citation readiness와 answer quality metadata를 chat message에 연결해야 한다. | SHOULD |
+| FR-084 | Template document generation chat path | 보고서/제안서/요약서 등 문서 생성 intent는 generation template을 명시/자동 선택하고, 생성 결과를 artifact로 저장한 뒤 chat message에는 view/download link를 표시해야 한다. | SHOULD |
+| FR-085 | Chat artifact linkage | chat message는 생성된 Markdown/DOCX 등 artifact, generation_run_id, search_log_id, document_summary_run metadata를 연결하여 사용자가 대화 중 산출물을 다시 열거나 다운로드할 수 있어야 한다. | SHOULD |
+| FR-086 | Chat UX transparency | 대화형 UI는 자동 intent routing 결과를 숨기지 않고 “일반 답변”, “문서 검색 요약”, “근거 기반 답변”, “문서 생성”, “문서 요약” 중 어떤 경로로 실행되었는지 message별 badge와 detail로 표시해야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 
@@ -709,6 +731,38 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - 사용자는 본인이 업로드했거나 권한 범위에 포함되는 문서의 pipeline 상태만 조회할 수 있고, System Admin은 전체 queue를 조회할 수 있다.
 
+## 4.10 대화형 UX 및 Chat Orchestration 요구사항
+
+- NeX_PCX의 chat 기능은 운영용 완성 챗봇이 아니라 기존 ingestion, search, retrieval context, generation, summary, export 기능을 자연어 인터페이스로 연결하는 pre-CX orchestration 실험 기능이다.
+
+- 사용자는 ChatGPT와 유사한 단일 prompt 입력창에서 일반 질문, 사내 문서 관련 질문, 보고서/제안서/요약서 생성 요청, ingestion 된 문서 요약 요청을 자연어로 입력할 수 있어야 한다.
+
+- Chat Orchestrator는 초기에는 deterministic rule/mock intent router로 시작하고, 후속 실험에서 LLM 기반 intent classification 또는 user confirmation flow로 확장할 수 있어야 한다.
+
+- Auto intent routing은 사용자에게 투명해야 한다. UI는 assistant message마다 intent label, confidence, routing reason, 사용된 provider/search profile/template, linked run id를 표시해야 한다.
+
+- 사용자는 자동 routing 결과가 애매한 경우 명시적으로 작업 모드를 선택할 수 있어야 한다. 지원 모드는 auto, general answer, document search summary, grounded answer, document generation, document summary로 시작한다.
+
+- 일반 답변은 retrieval context 없이 LLM provider를 호출한다. 단, NeX_PCX 실험 재현성을 위해 prompt version, provider snapshot, token/latency, failure metadata를 generation run 또는 chat message metadata로 보존한다.
+
+- 문서 검색 요약은 Search Service를 호출하여 top-k chunk 후보를 찾고, 검색 결과 자체와 짧은 요약을 assistant message에 저장한다. 관련 search_log_id와 source chunk link를 제공해야 한다.
+
+- 근거 기반 답변은 Search Service, Retrieval Context Service, Citation Readiness, Generation Provider Client를 연결한다. retrieval confidence가 낮거나 citation readiness가 failed이면 no-answer 또는 clarification request로 응답해야 한다.
+
+- 문서 생성은 generation template을 사용한다. 보고서, 제안서, 요약서 등 산출물은 Markdown artifact를 기본 저장 형식으로 보존하고 DOCX export link를 제공할 수 있어야 한다.
+
+- 문서 요약은 ingestion 완료 및 chunk가 준비된 document를 대상으로 실행한다. 요약 실행은 document_summary strategy와 generation template metadata를 보존하고 chat message와 연결해야 한다.
+
+- chat session은 actor_user_id, title, status(active/archived), default language, default provider mode, default search profile, default search scope, created_at, updated_at을 저장해야 한다.
+
+- chat message는 role(user/assistant/system/tool), content, intent, status, parent_message_id, sequence_no, token count, runtime metadata, error metadata, created_at을 저장해야 한다.
+
+- chat-message-to-run 연결은 search_log_id, generation_run_id, document_id, artifact_id, link_type, label, metadata를 저장하여 대화 thread에서 근거와 산출물을 추적할 수 있어야 한다.
+
+- 대화 이력은 사용자가 session별로 다시 열람할 수 있어야 하며, 생성된 문서 artifact는 chat message 안에서 view/download link로 접근 가능해야 한다.
+
+- Chat Orchestration API/UI는 개발/test 환경에서 remote DGX/vLLM 연결 없이 mock provider로 regression test가 가능해야 한다.
+
 # 5. 데이터 및 저장소 요구사항
 
 ## 5.1 저장소 원칙
@@ -780,6 +834,9 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | generation_provider_configs | mock/vLLM 등 생성 provider 설정, model id, endpoint, timeout, decoding option |
 | generation_runs | search_log/retrieval package/prompt/provider 조합별 생성 실행 이력, status, answer, token usage, latency, guardrail metadata |
 | generation_run_citations | 생성 답변에서 참조한 retrieval context citation key와 chunk/source anchor lineage |
+| chat_sessions | 대화형 workspace의 session title, actor, status, default runtime/search option |
+| chat_messages | session별 user/assistant/system/tool message, intent, status, content, runtime/error metadata |
+| chat_message_links | chat message와 search log, generation run, document summary, artifact/download link 사이의 trace relation |
 
 ## 5.3 계정/조직/역할 테이블 요구사항
 
@@ -1298,7 +1355,59 @@ PRIMARY KEY (chunk_policy_name, term)
 
 초기 BM25 indexer는 chunks.chunk_text에서 토큰을 추출해 chunk_keyword_terms를 재생성할 수 있어야 하며, statistics table은 backfill runner 또는 materialized refresh 절차로 갱신한다.
 
-## 5.11 저장용량 산정
+## 5.11 chat session 및 orchestration linkage 테이블 요구사항
+
+```sql
+CREATE TABLE chat_sessions (
+chat_session_id BIGSERIAL PRIMARY KEY,
+actor_user_id BIGINT REFERENCES app_users(user_id),
+session_title TEXT NOT NULL,
+status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'archived')),
+default_language TEXT DEFAULT 'ko',
+default_provider_mode TEXT DEFAULT 'mock',
+default_search_profile_name TEXT,
+default_search_scope TEXT,
+metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now(),
+updated_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE chat_messages (
+chat_message_id BIGSERIAL PRIMARY KEY,
+chat_session_id BIGINT NOT NULL REFERENCES chat_sessions(chat_session_id) ON DELETE CASCADE,
+parent_message_id BIGINT REFERENCES chat_messages(chat_message_id) ON DELETE SET NULL,
+sequence_no INT NOT NULL,
+role TEXT NOT NULL
+    CHECK (role IN ('user', 'assistant', 'system', 'tool')),
+content TEXT NOT NULL,
+intent TEXT
+    CHECK (intent IN ('general_answer', 'document_search_summary', 'grounded_answer', 'document_generation', 'document_summary')),
+status TEXT NOT NULL DEFAULT 'completed'
+    CHECK (status IN ('pending', 'running', 'completed', 'failed', 'blocked')),
+intent_confidence NUMERIC(5, 4),
+routing_metadata JSONB DEFAULT '{}'::jsonb,
+runtime_metadata JSONB DEFAULT '{}'::jsonb,
+error_metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE chat_message_links (
+chat_message_link_id BIGSERIAL PRIMARY KEY,
+chat_message_id BIGINT NOT NULL REFERENCES chat_messages(chat_message_id) ON DELETE CASCADE,
+link_type TEXT NOT NULL
+    CHECK (link_type IN ('search_log', 'generation_run', 'document_summary', 'document', 'artifact', 'download')),
+target_id BIGINT,
+target_url TEXT,
+label TEXT,
+metadata JSONB DEFAULT '{}'::jsonb,
+created_at TIMESTAMP DEFAULT now()
+);
+```
+
+chat linkage는 FK를 강제할 수 있는 내부 table에는 target_id를 사용하고, export/download처럼 URL 기반 산출물에는 target_url을 사용한다. link_type과 metadata는 후속 artifact table 정규화 전까지 Markdown/DOCX export, generation run detail, document detail link를 동일 UI card로 표시하기 위한 호환 계층이다.
+
+## 5.12 저장용량 산정
 
 저장 타입 기준 embedding 원시 저장용량은 vector profile은 chunk 수 × dimension × 4 bytes, halfvec profile은 chunk 수 × dimension × 2 bytes로 산정한다. 실제 운영 용량은 PostgreSQL row overhead, pgvector index, chunk text, metadata, 원본 파일, 추출 산출물 용량을 추가로 고려해야 한다.
 
@@ -1308,7 +1417,7 @@ PRIMARY KEY (chunk_policy_name, term)
 | 1,000,000 | 3.9 GB | 3.9 GB | 3.8 GB | 4.9 GB | 약 16.5 GB |
 | 10,000,000 | 39 GB | 39 GB | 38 GB | 49 GB | 약 165 GB |
 
-## 5.12 index 요구사항
+## 5.13 index 요구사항
 
 - MVP 초기에는 exact search를 기준 결과로 남긴다.
 
@@ -1339,6 +1448,7 @@ PRIMARY KEY (chunk_policy_name, term)
 | Document Detail | 원본 metadata, owner, access scope, pipeline timeline, parsing 결과, chunk 목록, embedding 상태 |
 | Job Monitor | pipeline job queue, stage/status/progress, 완료/실패/재처리 상태, worker lease 상태 |
 | Ingestion Artifact Preview | normalized markdown, extraction warning/error, document block, chunk source anchor, table/image artifact metadata |
+| Chat Workspace | session 목록, message thread, prompt input, intent badge, linked search/generation/summary run, artifact view/download link |
 
 ## 6.3 검색 비교 화면 레이아웃
 
@@ -1372,6 +1482,22 @@ PRIMARY KEY (chunk_policy_name, term)
 - 진행 상태 갱신은 MVP에서 server-rendered page refresh 또는 lightweight polling으로 구현하며, 고급 SPA/WebSocket은 후속 phase에서 검토한다.
 
 - 권한 없는 사용자는 본인이 볼 수 없는 문서의 job 상세, 오류 메시지, 파일명, document title을 볼 수 없다.
+
+## 6.5 Chat Workspace 화면 요구사항
+
+- Chat Workspace는 좌측 session 목록, 중앙 message thread, 하단 prompt composer를 기본 layout으로 한다.
+
+- prompt composer는 Auto mode를 기본값으로 하되, 사용자가 일반 답변, 문서 검색 요약, 근거 기반 답변, 문서 생성, 문서 요약 중 하나를 명시 선택할 수 있는 control을 제공한다.
+
+- assistant message는 intent badge, status badge, provider/search/template metadata, linked run id, citation/quality summary를 함께 표시한다.
+
+- 검색 또는 근거 기반 답변 message는 source chunk, document, search log, retrieval context detail로 이동할 수 있는 link를 제공한다.
+
+- 문서 생성 또는 요약 message는 Markdown preview와 DOCX download link를 artifact card로 표시한다.
+
+- 오류 또는 blocked message는 내부 stack trace 대신 사용자용 reason과 운영자가 확인할 수 있는 log/run link를 제공한다.
+
+- 대화형 UI는 한글을 기본 언어로 제공하고 기존 i18n foundation을 따라 영어 label도 지원한다.
 
 # 7. Embedding 및 검색 평가 요구사항
 
@@ -1640,6 +1766,7 @@ pytest tests/e2e
 | Phase 6.5 | Retrieval-to-Generation Handoff | retrieval context package, citation readiness, low-confidence/no-answer guardrail | 검색 결과가 생성 입력으로 전달 가능한지 package/citation/confidence gate 검증 |
 | Phase 7 | Grounded Generation MVP | generation run schema, prompt package builder, mock generation provider, vLLM OpenAI-compatible runtime config/client/smoke evidence | mock provider로 생성 실행 로그와 citation trace가 저장되고, DGX vLLM smoke 전환 조건, HTTP client 계약, live connection evidence가 정의됨 |
 | Phase 7.5 | Template-based Generation | generation_templates, template-aware prompt package, selector UI, report-style smoke, Markdown export | 동일 retrieval context에서 grounded answer/report/proposal 등 template별 생성 결과와 metadata 재현성 검증 |
+| Phase 8 | Conversational Workspace | chat_sessions/messages/links, intent router, chat API/UI, 기존 검색/생성/요약 기능 orchestration | 자연어 prompt가 일반 답변, 검색 요약, 근거 답변, 문서 생성, 문서 요약 중 하나로 routing되고 linked run/artifact가 대화 이력에 남음 |
 
 ## 10.1 MVP 완료 기준
 
@@ -1677,6 +1804,8 @@ pytest tests/e2e
 
 - 생성 단계의 초기 실행은 deterministic mock provider로 가능해야 하며, remote DGX-Spark 접속 가능 시 vLLM OpenAI-compatible runtime smoke를 통해 Qwen3.6-27B-NVFP4 전환 가능성을 검증한다.
 
+- 대화형 workspace는 prompt 입력, intent routing, chat message 저장, linked search/generation/summary run 표시, generated artifact link 표시를 mock provider 기반으로 검증할 수 있어야 한다.
+
 - pytest 기반 unit/regression/smoke test와 Playwright UI test가 통과한다.
 
 - coverage 목표를 측정할 수 있고, 미달 시 품질 리포트를 생성한다.
@@ -1704,6 +1833,9 @@ pytest tests/e2e
 | Retrieval confidence gate 미적용 | 관련 없는 검색 결과를 근거로 LLM이 그럴듯한 오답을 생성 | `answerable` 상태와 citation readiness를 generation run 전제 조건으로 기록하고, low/no-context는 no-answer 또는 blocked status로 처리 |
 | vLLM remote runtime 장애 | 생성 실행 실패, timeout, 운영자 혼선 | mock provider를 기본 fallback으로 유지하고 provider base URL/model/timeout/health smoke evidence를 generation runtime metadata로 기록 |
 | Qwen3.6-27B-NVFP4 GPU 자원 부족 | DGX memory pressure, 긴 latency, context length 제한 | 초기 context budget을 보수적으로 제한하고 max_tokens/temperature/top_p/context budget을 설정화하며, office network에서 별도 smoke 후 활성화 |
+| Chat intent 오분류 | 일반 답변이 필요한 질문에 문서 검색을 수행하거나, 근거 답변이 필요한 질문을 일반 답변으로 처리 | 초기에는 deterministic rule/mock router와 명시적 mode 선택을 함께 제공하고, intent/confidence/routing reason을 message metadata로 기록 |
+| Chat 결과와 산출물 추적 누락 | 사용자가 대화 중 생성한 문서 또는 근거 run을 다시 찾기 어려움 | chat_message_links로 search_log, generation_run, document, artifact/download link를 저장하고 UI에 message별 card로 표시 |
+| 대화형 UX가 기존 실험 화면을 가림 | 모델/검색전략 비교라는 NeX_PCX 핵심 검증 목적이 약해짐 | Chat Workspace는 orchestration 실험 shell로 제한하고 Search Compare, Generation, Summary, Artifact 화면의 detail link를 유지 |
 | 권한 필터 누락 | 접근 권한이 없는 문서/chunk가 검색 결과에 노출 | permission pre-filter를 repository/search SQL 단계에서 적용하고 permission matrix regression test 추가 |
 | 사후 필터링으로 인한 top-k 왜곡 | 권한 없는 결과 제거 후 관련 chunk가 누락되어 검색 품질 오판 | vector search 후보군 생성 전 actor/scope 조건을 pre-filter로 적용 |
 | 권한 metadata 미기록 | 같은 query 결과 차이를 재현하거나 설명하기 어려움 | search_logs에 actor, requested/effective scope, permission filter metadata 저장 |
@@ -1755,4 +1887,4 @@ pytest tests/e2e
 
 > **최종 정의**
 >
-> NeX_PCX는 FastAPI + Bootstrap 기반 Web 환경에서 사내 문서를 업로드하고, PostgreSQL 기반 pipeline queue와 worker로 텍스트 추출, chunking, embedding, vector indexing을 수행한 뒤, 동일 chunk를 4개 embedding profile과 BM25/hybrid retrieval strategy로 병렬 비교하는 NeX-CX 선행 검증 플랫폼이다. 본 프로젝트의 핵심 산출물은 프로그램 자체뿐 아니라, 한국어 사내 문서 검색을 위한 모델/검색전략/정책/운영/품질관리 기준 데이터이다.
+> NeX_PCX는 FastAPI + Bootstrap 기반 Web 환경에서 사내 문서를 업로드하고, PostgreSQL 기반 pipeline queue와 worker로 텍스트 추출, chunking, embedding, vector indexing을 수행한 뒤, 동일 chunk를 4개 embedding profile과 BM25/hybrid/reranked retrieval strategy로 병렬 비교하는 NeX-CX 선행 검증 플랫폼이다. 또한 검색, retrieval context, generation, template, 요약, artifact export 기능을 대화형 workspace에서 orchestration하는 pre-CX 실험 shell을 제공한다. 본 프로젝트의 핵심 산출물은 프로그램 자체뿐 아니라, 한국어 사내 문서 검색/생성/요약을 위한 모델/검색전략/정책/운영/품질관리 기준 데이터이다.

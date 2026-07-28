@@ -55,7 +55,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.56" in srs_text
+    assert "Software Requirements Specification v1.57" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -86,6 +86,15 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-075" in srs_text
     assert "FR-076" in srs_text
     assert "FR-077" in srs_text
+    assert "FR-078" in srs_text
+    assert "FR-079" in srs_text
+    assert "FR-080" in srs_text
+    assert "FR-081" in srs_text
+    assert "FR-082" in srs_text
+    assert "FR-083" in srs_text
+    assert "FR-084" in srs_text
+    assert "FR-085" in srs_text
+    assert "FR-086" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
@@ -105,6 +114,11 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "Generation template strategy" in srs_text
     assert "generation_templates" in srs_text
     assert "Template-based Generation" in srs_text
+    assert "Conversational workspace strategy" in srs_text
+    assert "Chat intent routing contract" in srs_text
+    assert "chat_sessions" in srs_text
+    assert "chat_messages" in srs_text
+    assert "chat_message_links" in srs_text
 
 
 def test_generation_template_strategy_doc_defines_reproducible_contract() -> None:
