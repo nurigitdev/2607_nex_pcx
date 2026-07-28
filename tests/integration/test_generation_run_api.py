@@ -1253,6 +1253,9 @@ def test_generation_run_detail_ui_shows_prompt_metadata_and_citations(
         assert result_response.status_code == 200
         assert "data-generation-answer-quality" in result_response.text
         assert "data-generation-template-completeness" in result_response.text
+        assert "package-generation-progress" in result_response.text
+        assert "data-generation-progress-form" in result_response.text
+        assert "품질 및 Citation 점검" in result_response.text
         assert "답변 품질" in result_response.text
         assert "Template 완성도" in result_response.text
         assert "100.00%" in result_response.text

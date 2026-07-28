@@ -1,6 +1,41 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% macro generation_progress_panel(panel_id) %}
+<div
+  id="{{ panel_id }}"
+  class="generation-progress-panel border rounded-2 p-3 mt-3"
+  data-generation-progress-panel
+  aria-live="polite"
+  hidden
+>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <h3 class="h6 mb-1">{{ t("generation.progress_title") }}</h3>
+      <div class="text-secondary small">{{ t("generation.progress_help") }}</div>
+    </div>
+    <span class="badge text-bg-primary" data-generation-progress-current>
+      {{ t("generation.progress_stage_search") }}
+    </span>
+  </div>
+  <div class="progress generation-progress-meter mb-3" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="16">
+    <div class="progress-bar" data-generation-progress-bar style="width: 16%"></div>
+  </div>
+  <ol class="generation-progress-steps mb-3">
+    <li class="active" data-generation-progress-step>{{ t("generation.progress_stage_search") }}</li>
+    <li data-generation-progress-step>{{ t("generation.progress_stage_context") }}</li>
+    <li data-generation-progress-step>{{ t("generation.progress_stage_prompt") }}</li>
+    <li data-generation-progress-step>{{ t("generation.progress_stage_provider") }}</li>
+    <li data-generation-progress-step>{{ t("generation.progress_stage_quality") }}</li>
+    <li data-generation-progress-step>{{ t("generation.progress_stage_store") }}</li>
+  </ol>
+  <div class="text-secondary small">
+    {{ t("generation.progress_elapsed") }}:
+    <span data-generation-progress-elapsed>0</span>{{ t("generation.progress_seconds_suffix") }}
+  </div>
+</div>
+{% endmacro %}
+
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
   <div>
     <h1 class="h3 mb-1">{{ t("generation.title") }}</h1>
@@ -37,7 +72,12 @@
     <span class="badge text-bg-light border">{{ t("generation.direct_mock_default") }}</span>
     {% endif %}
   </div>
-  <form method="post" action="/generation/direct-runs">
+  <form
+    method="post"
+    action="/generation/direct-runs"
+    data-generation-progress-form
+    data-generation-progress-target="direct-generation-progress"
+  >
     <div class="row g-3">
       <div class="col-12">
         <label class="form-label" for="direct_query_text">{{ t("generation.direct_query") }}</label>
@@ -141,13 +181,19 @@
           {% if not database_configured %}disabled{% endif %}
         >
       </div>
-      <div class="col-12 col-lg-1 d-grid align-items-end">
+      <div class="col-12 col-lg-2 d-grid align-items-end">
         <button
-          class="btn btn-primary"
+          class="btn btn-primary d-inline-flex align-items-center justify-content-center gap-2"
           type="submit"
           {% if not database_configured or not actor_options %}disabled{% endif %}
         >
-          {{ t("generation.direct_run") }}
+          <span data-generation-progress-button-label>{{ t("generation.direct_run") }}</span>
+          <span
+            class="spinner-border spinner-border-sm d-none"
+            role="status"
+            aria-hidden="true"
+            data-generation-progress-spinner
+          ></span>
         </button>
       </div>
       <div class="col-12">
@@ -259,6 +305,7 @@
       </div>
     </div>
   </form>
+  {{ generation_progress_panel("direct-generation-progress") }}
 </section>
 
 <section class="bg-white border rounded-2 p-3 mb-4">
@@ -339,7 +386,12 @@
       >
         {{ t("generation.open_context") }}
       </a>
-      <form method="post" action="/generation/runs/mock">
+      <form
+        method="post"
+        action="/generation/runs/mock"
+        data-generation-progress-form
+        data-generation-progress-target="package-generation-progress"
+      >
         <input type="hidden" name="search_log_id" value="{{ package.search_log.search_log.search_log_id }}">
         <input type="hidden" name="max_context_chars" value="{{ max_context_chars }}">
         <input type="hidden" name="max_items" value="{{ max_items }}">
@@ -350,10 +402,21 @@
         <input type="hidden" name="include_neighbors" value="true">
         {% endif %}
         <button class="btn btn-primary btn-sm" type="submit" {% if not database_configured %}disabled{% endif %}>
-          {{ t("generation.run_mock") }}
+          <span data-generation-progress-button-label>{{ t("generation.run_mock") }}</span>
+          <span
+            class="spinner-border spinner-border-sm ms-2 d-none"
+            role="status"
+            aria-hidden="true"
+            data-generation-progress-spinner
+          ></span>
         </button>
       </form>
-      <form method="post" action="/generation/runs/remote">
+      <form
+        method="post"
+        action="/generation/runs/remote"
+        data-generation-progress-form
+        data-generation-progress-target="package-generation-progress"
+      >
         <input type="hidden" name="search_log_id" value="{{ package.search_log.search_log.search_log_id }}">
         <input type="hidden" name="max_context_chars" value="{{ max_context_chars }}">
         <input type="hidden" name="max_items" value="{{ max_items }}">
@@ -368,11 +431,18 @@
           type="submit"
           {% if not database_configured or not remote_generation_available %}disabled{% endif %}
         >
-          {{ t("generation.run_remote") }}
+          <span data-generation-progress-button-label>{{ t("generation.run_remote") }}</span>
+          <span
+            class="spinner-border spinner-border-sm ms-2 d-none"
+            role="status"
+            aria-hidden="true"
+            data-generation-progress-spinner
+          ></span>
         </button>
       </form>
     </div>
   </div>
+  {{ generation_progress_panel("package-generation-progress") }}
   <div class="border rounded-2 p-3 mt-3" data-generation-remote-runtime>
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
       <div>
@@ -828,4 +898,88 @@
   </div>
 </section>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const forms = Array.from(document.querySelectorAll("[data-generation-progress-form]"));
+  if (!forms.length) {
+    return;
+  }
+
+  const runningText = {{ t("generation.progress_button_running") | tojson }};
+  const stageIntervalMs = 1600;
+  const elapsedIntervalMs = 1000;
+
+  const activateStep = (panel, index) => {
+    const steps = Array.from(panel.querySelectorAll("[data-generation-progress-step]"));
+    const current = panel.querySelector("[data-generation-progress-current]");
+    const bar = panel.querySelector("[data-generation-progress-bar]");
+    steps.forEach((step, stepIndex) => {
+      step.classList.toggle("active", stepIndex === index);
+      step.classList.toggle("complete", stepIndex < index);
+    });
+    if (current && steps[index]) {
+      current.textContent = steps[index].textContent.trim();
+    }
+    if (bar && steps.length) {
+      const percent = Math.round(((index + 1) / steps.length) * 100);
+      bar.style.width = `${percent}%`;
+      bar.parentElement?.setAttribute("aria-valuenow", String(percent));
+    }
+  };
+
+  const showProgress = (form) => {
+    const panelId = form.dataset.generationProgressTarget;
+    const panel = panelId ? document.getElementById(panelId) : null;
+    if (!panel) {
+      return;
+    }
+    panel.hidden = false;
+    panel.dataset.generationProgressState = "running";
+    form.setAttribute("aria-busy", "true");
+    activateStep(panel, 0);
+
+    const elapsed = panel.querySelector("[data-generation-progress-elapsed]");
+    const startedAt = Date.now();
+    window.setInterval(() => {
+      if (elapsed) {
+        elapsed.textContent = String(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+      }
+    }, elapsedIntervalMs);
+
+    const steps = Array.from(panel.querySelectorAll("[data-generation-progress-step]"));
+    let activeIndex = 0;
+    window.setInterval(() => {
+      activeIndex = Math.min(activeIndex + 1, Math.max(steps.length - 1, 0));
+      activateStep(panel, activeIndex);
+    }, stageIntervalMs);
+
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
+  forms.forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      if (form.dataset.generationSubmitted === "true") {
+        event.preventDefault();
+        return;
+      }
+      form.dataset.generationSubmitted = "true";
+      showProgress(form);
+      form.querySelectorAll("button[type='submit']").forEach((button) => {
+        button.disabled = true;
+        const label = button.querySelector("[data-generation-progress-button-label]");
+        const spinner = button.querySelector("[data-generation-progress-spinner]");
+        if (label) {
+          label.textContent = runningText;
+        }
+        if (spinner) {
+          spinner.classList.remove("d-none");
+        }
+      });
+    });
+  });
+})();
+</script>
 {% endblock %}

@@ -360,6 +360,11 @@ def test_direct_generation_ui_runs_query_and_displays_result(
 
         assert page_response.status_code == 200
         assert "data-direct-generation-form" in page_response.text
+        assert "data-generation-progress-form" in page_response.text
+        assert "direct-generation-progress" in page_response.text
+        assert "검색 근거 수집" in page_response.text
+        assert "Remote LLM 응답 대기" in page_response.text
+        assert "\\uc0dd\\uc131 \\uc911" in page_response.text
         assert "직접 질문 생성" in page_response.text
         assert "보고서 초안 (report)" in page_response.text
         assert response.status_code == 303
@@ -397,6 +402,8 @@ def test_direct_generation_ui_redirects_error_without_database() -> None:
 
     assert page_response.status_code == 200
     assert "data-direct-generation-form" in page_response.text
+    assert "data-generation-progress-panel" in page_response.text
+    assert "생성 진행 중" in page_response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
     assert response.status_code == 303
     assert "generation_error=NEX_PCX_DATABASE_URL" in response.headers["location"]

@@ -1834,6 +1834,55 @@ main.container-fluid {
   word-break: break-word;
 }
 
+.generation-progress-panel[hidden] {
+  display: none;
+}
+
+.generation-progress-panel {
+  background: #f8fafc;
+}
+
+.generation-progress-meter {
+  height: 0.5rem;
+}
+
+.generation-progress-steps {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  list-style: none;
+  padding-left: 0;
+}
+
+.generation-progress-steps li {
+  background: #fff;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  color: var(--pcx-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  min-height: 2.5rem;
+  padding: 0.5rem;
+}
+
+.generation-progress-steps li.active {
+  border-color: var(--pcx-accent);
+  color: #115e59;
+  box-shadow: 0 0 0 0.15rem rgb(15 118 110 / 0.1);
+}
+
+.generation-progress-steps li.complete {
+  background: #eefaf8;
+  border-color: #99d5ce;
+  color: #115e59;
+}
+
+@media (width < 768px) {
+  .generation-progress-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .generation-status-text {
   font-size: 1rem;
   line-height: 1.2;
