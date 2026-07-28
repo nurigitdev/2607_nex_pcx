@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.core.chat import (
     CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+    CHAT_INTENT_GENERAL_ANSWER,
     CHAT_INTENT_GROUNDED_ANSWER,
     CHAT_ROLE_ASSISTANT,
     CHAT_ROLE_USER,
@@ -119,6 +120,53 @@ def test_chat_api_can_store_user_message_without_mock_assistant(
         assert body["router"]["intent"] == CHAT_INTENT_GROUNDED_ANSWER
         assert body["assistant_message"] is None
         assert len(body["thread"]["messages"]) == 1
+    finally:
+        if chat_session_id is not None:
+            _delete_chat_session(migrated_database_url, chat_session_id)
+
+
+def test_chat_api_executes_general_answer_with_mock_llm_path(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+    chat_session_id: int | None = None
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/chat/sessions",
+                json={
+                    "session_title": "일반 대화 실행",
+                    "default_provider_mode": "mock",
+                },
+            )
+            chat_session_id = int(create_response.json()["session"]["chat_session_id"])
+            message_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={
+                    "content": "오늘 회의를 준비하는 좋은 방법을 알려줘",
+                    "routing_metadata": {"ui_surface": "chat"},
+                },
+            )
+
+        body = message_response.json()
+        assistant = body["assistant_message"]
+        general_answer = assistant["runtime_metadata"]["chat_general_answer"]
+
+        assert message_response.status_code == 201
+        assert body["router"]["intent"] == CHAT_INTENT_GENERAL_ANSWER
+        assert assistant["role"] == CHAT_ROLE_ASSISTANT
+        assert "일반 답변 초안입니다." in assistant["content"]
+        assert assistant["runtime_metadata"]["execution_mode"] == "general_llm_mock"
+        assert general_answer["provider_mode"] == "mock"
+        assert general_answer["prompt_version"] == "chat_general_answer_v1"
+        assert general_answer["total_token_count"] > 0
+        assert general_answer["request_metadata"]["runtime_metadata"]["chat_session_id"] == (
+            chat_session_id
+        )
+        assert general_answer["request_metadata"]["runtime_metadata"]["routing_metadata"] == {
+            "ui_surface": "chat"
+        }
     finally:
         if chat_session_id is not None:
             _delete_chat_session(migrated_database_url, chat_session_id)

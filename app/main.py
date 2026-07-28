@@ -49,6 +49,7 @@ from app.core.bm25_keyword_index import (
 )
 from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
 from app.core.chat import (
+    CHAT_INTENT_GENERAL_ANSWER,
     CHAT_MESSAGE_STATUS_COMPLETED,
     CHAT_ROLE_ASSISTANT,
     CHAT_ROLE_USER,
@@ -69,6 +70,12 @@ from app.core.chat import (
     get_chat_thread,
     list_chat_sessions,
     route_chat_intent_mock,
+)
+from app.core.chat_generation import (
+    ChatGeneralAnswerInput,
+    ChatGeneralAnswerResult,
+    InvalidChatGenerationError,
+    execute_chat_general_answer,
 )
 from app.core.chunk_policies import (
     ChunkPolicySummaryRecord,
@@ -1453,6 +1460,23 @@ def chat_thread_payload(thread: ChatThreadRecord) -> dict[str, object]:
     return {
         "session": chat_session_payload(thread.session),
         "messages": [chat_message_with_links_payload(item) for item in thread.messages],
+    }
+
+
+def chat_general_answer_payload(result: ChatGeneralAnswerResult) -> dict[str, object]:
+    return {
+        "answer_text": result.answer_text,
+        "provider_name": result.provider_name,
+        "provider_mode": result.provider_mode,
+        "model_id": result.model_id,
+        "prompt_version": result.prompt_version,
+        "finish_reason": result.finish_reason,
+        "input_token_count": result.input_token_count,
+        "output_token_count": result.output_token_count,
+        "total_token_count": result.total_token_count,
+        "elapsed_ms": result.elapsed_ms,
+        "request_metadata": result.request_metadata,
+        "response_metadata": result.response_metadata,
     }
 
 
@@ -12582,25 +12606,73 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             assistant_message: ChatMessageRecord | None = None
             if payload.run_mock_router:
+                assistant_content = chat_mock_assistant_content(route)
+                assistant_runtime_metadata: dict[str, object] = {
+                    "router": "mock_intent_router_v1",
+                    "suggested_action": route.suggested_action,
+                    "execution_mode": "placeholder",
+                }
+                if route.intent == CHAT_INTENT_GENERAL_ANSWER:
+                    provider_mode = session.default_provider_mode.strip().lower()
+                    provider: GenerationProviderConfigRecord | None = None
+                    api_key: str | None = None
+                    if provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
+                        provider = get_generation_provider_config_for_mode(
+                            settings.database_url,
+                            GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                        )
+                        if provider is None:
+                            raise InvalidGenerationRunError(
+                                "active remote_openai_compatible generation provider config "
+                                "was not found"
+                            )
+                        api_key = resolve_generation_provider_api_key(provider, settings)
+                    general_answer = execute_chat_general_answer(
+                        ChatGeneralAnswerInput(
+                            content=payload.content,
+                            provider_mode=provider_mode,
+                            trace_id=f"chat-session-{chat_session_id}",
+                            runtime_metadata={
+                                "chat_session_id": chat_session_id,
+                                "user_message_id": user_message.chat_message_id,
+                                "router": "mock_intent_router_v1",
+                                "route_intent": route.intent,
+                                "routing_metadata": dict(payload.routing_metadata),
+                            },
+                        ),
+                        provider_config=provider,
+                        api_key=api_key,
+                    )
+                    assistant_content = general_answer.answer_text
+                    assistant_runtime_metadata = {
+                        "router": "mock_intent_router_v1",
+                        "suggested_action": route.suggested_action,
+                        "execution_mode": general_answer.response_metadata.get(
+                            "execution_mode",
+                            "general_llm",
+                        ),
+                        "chat_general_answer": chat_general_answer_payload(general_answer),
+                    }
                 assistant_message = append_chat_message(
                     settings.database_url,
                     ChatMessageInput(
                         chat_session_id=chat_session_id,
                         parent_message_id=user_message.chat_message_id,
                         role=CHAT_ROLE_ASSISTANT,
-                        content=chat_mock_assistant_content(route),
+                        content=assistant_content,
                         intent=route.intent,
                         status=CHAT_MESSAGE_STATUS_COMPLETED,
                         intent_confidence=route.intent_confidence,
-                        runtime_metadata={
-                            "router": "mock_intent_router_v1",
-                            "suggested_action": route.suggested_action,
-                            "execution_mode": "placeholder",
-                        },
+                        runtime_metadata=assistant_runtime_metadata,
                     ),
                 )
             thread = get_chat_thread(settings.database_url, chat_session_id)
-        except InvalidChatRepositoryError as exc:
+        except (
+            InvalidChatGenerationError,
+            InvalidChatRepositoryError,
+            InvalidGenerationProviderError,
+            InvalidGenerationRunError,
+        ) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         assert thread is not None
         return JSONResponse(
