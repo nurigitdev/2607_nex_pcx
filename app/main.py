@@ -134,6 +134,14 @@ from app.core.document_inventory import (
     list_document_inventory,
     update_document_permission,
 )
+from app.core.document_summary import (
+    DEFAULT_DOCUMENT_SUMMARY_MAX_CHUNKS,
+    DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY,
+    DocumentSummaryInput,
+    DocumentSummaryResult,
+    InvalidDocumentSummaryError,
+    run_document_summary_generation,
+)
 from app.core.embedding_coverage import (
     EmbeddingCoverageDocument,
     EmbeddingCoverageMatrix,
@@ -721,6 +729,17 @@ class DirectGenerationRequest(BaseModel):
     max_context_chars: int = Field(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000)
     include_neighbors: bool = True
     max_items: int = Field(default=DEFAULT_CONTEXT_MAX_ITEMS, ge=1, le=100)
+
+
+class DocumentSummaryRunRequest(BaseModel):
+    actor_user_id: int = Field(ge=1)
+    summary_instruction: str = ""
+    provider_mode: str = GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+    generation_template_key: str | None = DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY
+    max_chunks: int = Field(default=DEFAULT_DOCUMENT_SUMMARY_MAX_CHUNKS, ge=1, le=100)
+    max_context_chars: int = Field(default=DEFAULT_CONTEXT_CHAR_BUDGET, ge=500, le=50000)
+    include_neighbors: bool = False
+    chunk_policy_name: str | None = None
 
 
 class GenerationTemplateManagementRequest(BaseModel):
@@ -4879,6 +4898,29 @@ def direct_generation_result_payload(
             "generation_run": f"/generation/runs/{generation_run_id}",
         },
         "search": search_compare_payload(result.search_result),
+        "retrieval_context": retrieval_context_package_payload(result.retrieval_package),
+        "generation": generation_execution_report_payload(result.generation_report),
+    }
+
+
+def document_summary_result_payload(
+    result: DocumentSummaryResult,
+) -> dict[str, object]:
+    search_log_id = result.search_log_id
+    generation_run_id = result.generation_report.run.generation_run_id
+    return {
+        "mode": "document_summary",
+        "document": document_inventory_item_payload(result.document),
+        "source_chunk_count": len(result.source_chunk_ids),
+        "source_chunk_ids": list(result.source_chunk_ids),
+        "search_log_id": search_log_id,
+        "generation_run_id": generation_run_id,
+        "links": {
+            "document": f"/documents/{result.document.document_id}",
+            "search_log": f"/search/logs?search_log_id={search_log_id}",
+            "retrieval_context": f"/search/context?search_log_id={search_log_id}",
+            "generation_run": f"/generation/runs/{generation_run_id}",
+        },
         "retrieval_context": retrieval_context_package_payload(result.retrieval_package),
         "generation": generation_execution_report_payload(result.generation_report),
     }
@@ -12268,6 +12310,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=direct_generation_result_payload(result),
         )
 
+    @app.post("/api/documents/{document_id}/summary-runs")
+    def api_create_document_summary_run(
+        document_id: int,
+        payload: DocumentSummaryRunRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        api_key: str | None = None
+        if payload.provider_mode.strip().lower() == (
+            GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE
+        ):
+            try:
+                provider = get_generation_provider_config_for_mode(
+                    settings.database_url,
+                    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                )
+                if provider is None:
+                    raise InvalidGenerationRunError(
+                        "active remote_openai_compatible generation provider config was not found"
+                    )
+                api_key = resolve_generation_provider_api_key(provider, settings)
+            except (InvalidGenerationRunError, InvalidGenerationProviderError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(exc),
+                ) from exc
+
+        try:
+            result = run_document_summary_generation(
+                settings.database_url,
+                DocumentSummaryInput(
+                    document_id=document_id,
+                    actor_user_id=payload.actor_user_id,
+                    summary_instruction=payload.summary_instruction,
+                    provider_mode=payload.provider_mode,
+                    generation_template_key=payload.generation_template_key,
+                    max_chunks=payload.max_chunks,
+                    max_context_chars=payload.max_context_chars,
+                    include_neighbors=payload.include_neighbors,
+                    chunk_policy_name=payload.chunk_policy_name,
+                ),
+                api_key=api_key,
+            )
+        except (
+            InvalidDocumentSummaryError,
+            InvalidGenerationRunError,
+            InvalidRetrievalContextError,
+            InvalidSearchLogError,
+        ) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content=document_summary_result_payload(result),
+        )
+
     @app.post("/api/search/logs/{search_log_id}/generation-runs/mock")
     def api_create_mock_generation_run(
         search_log_id: int,
@@ -15216,9 +15318,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         actor_options: list[dict[str, object]] = []
         profile_options: list[str] = []
         chunk_policy_options: list[ChunkPolicySummaryRecord] = []
+        document_summary_options: list[DocumentInventoryItem] = []
         bm25_tokenizer_options = [asdict(tokenizer) for tokenizer in list_bm25_tokenizers()]
         generation_template_options: tuple[GenerationTemplateRecord, ...] = ()
         selected_generation_template_key = ""
+        default_summary_template_key = DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY
         error_message = generation_error
 
         if not settings.database_url:
@@ -15227,6 +15331,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 latest_logs = list_search_logs(settings.database_url, limit=12)
                 actor_options = list_search_actor_options(settings.database_url)
+                document_summary_options = [
+                    document
+                    for document in list_document_inventory(settings.database_url, limit=50)
+                    if document.chunk_count > 0
+                ]
                 profile_options = [
                     profile.profile_name
                     for profile in list_active_embedding_profiles(settings.database_url)
@@ -15261,6 +15370,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     selected_generation_template.template_key
                     if selected_generation_template is not None
                     else ""
+                )
+                default_summary_template_key = (
+                    DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY
+                    if any(
+                        template.template_key == DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY
+                        for template in generation_template_options
+                    )
+                    else selected_generation_template_key
                 )
                 provider = get_generation_provider_config_for_mode(
                     settings.database_url,
@@ -15369,10 +15486,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 default_profile_name=default_profile_name,
                 search_file_type_options=SEARCH_COMPARE_FILE_TYPES,
                 chunk_policy_options=chunk_policy_options,
+                document_summary_options=document_summary_options,
                 bm25_tokenizer_options=bm25_tokenizer_options,
                 default_bm25_tokenizer_name=DEFAULT_BM25_TOKENIZER_NAME,
                 generation_template_options=generation_template_options,
                 selected_generation_template_key=selected_generation_template_key,
+                default_summary_template_key=default_summary_template_key,
+                default_document_summary_max_chunks=DEFAULT_DOCUMENT_SUMMARY_MAX_CHUNKS,
                 generation_status=generation_status or "",
                 error_message=error_message,
             ),
@@ -15461,6 +15581,77 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             InvalidSearchCompareError,
             InvalidSearchLogError,
             InvalidVectorSearchError,
+        ) as exc:
+            redirect_params["generation_error"] = str(exc)
+
+        return RedirectResponse(
+            _generation_redirect_url(redirect_params),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/generation/document-summaries")
+    def generation_document_summary_page(
+        summary_document_id: int = Form(...),
+        summary_actor_user_id: int = Form(...),
+        summary_instruction: str = Form(""),
+        summary_provider_mode: str = Form(GENERATION_PROVIDER_MODE_MOCK),
+        summary_generation_template_key: str = Form(DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY),
+        summary_max_chunks: int = Form(DEFAULT_DOCUMENT_SUMMARY_MAX_CHUNKS),
+        summary_max_context_chars: int = Form(DEFAULT_CONTEXT_CHAR_BUDGET),
+        summary_include_neighbors: bool = Form(False),
+        summary_chunk_policy_name: str = Form(""),
+    ) -> RedirectResponse:
+        redirect_params: dict[str, object] = {
+            "max_context_chars": summary_max_context_chars,
+            "include_neighbors": str(summary_include_neighbors).lower(),
+            "max_items": summary_max_chunks,
+        }
+        if summary_generation_template_key.strip():
+            redirect_params["generation_template_key"] = summary_generation_template_key.strip()
+        if not settings.database_url:
+            redirect_params["generation_error"] = "NEX_PCX_DATABASE_URL is not configured."
+            return RedirectResponse(
+                _generation_redirect_url(redirect_params),
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+
+        api_key: str | None = None
+        try:
+            provider_mode = summary_provider_mode.strip().lower()
+            if provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
+                provider = get_generation_provider_config_for_mode(
+                    settings.database_url,
+                    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                )
+                if provider is None:
+                    raise InvalidGenerationRunError(
+                        "active remote_openai_compatible generation provider config was not found"
+                    )
+                api_key = resolve_generation_provider_api_key(provider, settings)
+            result = run_document_summary_generation(
+                settings.database_url,
+                DocumentSummaryInput(
+                    document_id=summary_document_id,
+                    actor_user_id=summary_actor_user_id,
+                    summary_instruction=summary_instruction,
+                    provider_mode=provider_mode,
+                    generation_template_key=summary_generation_template_key.strip() or None,
+                    max_chunks=summary_max_chunks,
+                    max_context_chars=summary_max_context_chars,
+                    include_neighbors=summary_include_neighbors,
+                    chunk_policy_name=summary_chunk_policy_name.strip() or None,
+                ),
+                api_key=api_key,
+            )
+            redirect_params["search_log_id"] = result.search_log_id
+            redirect_params["generation_run_id"] = result.generation_report.run.generation_run_id
+            redirect_params["generation_status"] = "document_summary_created"
+        except (
+            InvalidDocumentSummaryError,
+            InvalidGenerationProviderError,
+            InvalidGenerationRunError,
+            InvalidRetrievalContextError,
+            InvalidSearchLogError,
         ) as exc:
             redirect_params["generation_error"] = str(exc)
 
