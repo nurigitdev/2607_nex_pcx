@@ -130,20 +130,171 @@
       >
         {% if selected_thread %}
           {% for item in selected_thread.messages %}
+          {% set runtime = item.message.runtime_metadata or {} %}
+          {% set general_answer = runtime.chat_general_answer %}
+          {% set search_summary = runtime.chat_search_summary %}
+          {% set grounded_answer = runtime.chat_grounded_answer %}
+          {% set document_generation = runtime.chat_document_generation %}
           <article class="chat-message chat-message-{{ item.message.role }}">
             <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
               <span class="fw-semibold">{{ item.message.role }}</span>
               <span class="small text-secondary">#{{ item.message.sequence_no }}</span>
             </div>
             <div class="chat-message-content">{{ item.message.content }}</div>
+
+            {% if runtime.execution_mode or general_answer or search_summary or grounded_answer or document_generation %}
+            <div class="chat-evidence-panel mt-3">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <span class="chat-evidence-title">{{ t("chat.execution_evidence") }}</span>
+                {% if runtime.execution_mode %}
+                <span class="badge text-bg-light border">{{ runtime.execution_mode }}</span>
+                {% endif %}
+              </div>
+              <div class="chat-evidence-grid">
+                {% if general_answer %}
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.provider") }}</span>
+                  <span class="chat-evidence-value">{{ general_answer.provider_name or general_answer.provider_mode or "-" }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.model") }}</span>
+                  <span class="chat-evidence-value">{{ general_answer.model_id or "-" }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.tokens") }}</span>
+                  <span class="chat-evidence-value">{{ general_answer.total_token_count or "-" }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.prompt_version") }}</span>
+                  <span class="chat-evidence-value">{{ general_answer.prompt_version or "-" }}</span>
+                </div>
+                {% endif %}
+
+                {% if search_summary %}
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.search_log") }}</span>
+                  <span class="chat-evidence-value">#{{ search_summary.search_log_id }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.result_count") }}</span>
+                  <span class="chat-evidence-value">{{ search_summary.result_count }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.confidence") }}</span>
+                  <span class="chat-evidence-value">{{ search_summary.retrieval_confidence_status or "-" }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.prompt_version") }}</span>
+                  <span class="chat-evidence-value">{{ search_summary.prompt_version or "-" }}</span>
+                </div>
+                {% endif %}
+
+                {% if grounded_answer %}
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.generation_run") }}</span>
+                  <span class="chat-evidence-value">#{{ grounded_answer.generation_run_id }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.search_log") }}</span>
+                  <span class="chat-evidence-value">#{{ grounded_answer.search_log_id }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.context_count") }}</span>
+                  <span class="chat-evidence-value">{{ grounded_answer.retrieval_context_included_count }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.status") }}</span>
+                  <span class="chat-evidence-value">{{ grounded_answer.generation_status or "-" }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.guardrail") }}</span>
+                  <span class="chat-evidence-value">{{ grounded_answer.guardrail_status or "-" }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.prompt_version") }}</span>
+                  <span class="chat-evidence-value">{{ grounded_answer.prompt_version or "-" }}</span>
+                </div>
+                {% endif %}
+
+                {% if document_generation %}
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.template") }}</span>
+                  <span class="chat-evidence-value">{{ document_generation.template_key or "-" }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.generation_run") }}</span>
+                  <span class="chat-evidence-value">#{{ document_generation.generation_run_id }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.search_log") }}</span>
+                  <span class="chat-evidence-value">#{{ document_generation.search_log_id }}</span>
+                </div>
+                <div class="chat-evidence-item">
+                  <span class="chat-evidence-label">{{ t("chat.prompt_version") }}</span>
+                  <span class="chat-evidence-value">{{ document_generation.prompt_version or "-" }}</span>
+                </div>
+                {% endif %}
+              </div>
+
+              <div class="chat-evidence-actions">
+                {% if search_summary and search_summary.search_log_id %}
+                <a class="chat-link-chip" href="/search/logs?search_log_id={{ search_summary.search_log_id }}">
+                  {{ t("chat.open_search_log") }} #{{ search_summary.search_log_id }}
+                </a>
+                <a class="chat-link-chip" href="/search/context?search_log_id={{ search_summary.search_log_id }}">
+                  {{ t("chat.open_retrieval_context") }}
+                </a>
+                {% endif %}
+                {% if grounded_answer and grounded_answer.generation_run_id %}
+                <a class="chat-link-chip" href="/generation/runs/{{ grounded_answer.generation_run_id }}">
+                  {{ t("chat.open_generation_run") }} #{{ grounded_answer.generation_run_id }}
+                </a>
+                {% endif %}
+                {% if grounded_answer and grounded_answer.search_log_id %}
+                <a class="chat-link-chip" href="/search/logs?search_log_id={{ grounded_answer.search_log_id }}">
+                  {{ t("chat.open_search_log") }} #{{ grounded_answer.search_log_id }}
+                </a>
+                <a class="chat-link-chip" href="/search/context?search_log_id={{ grounded_answer.search_log_id }}">
+                  {{ t("chat.open_retrieval_context") }}
+                </a>
+                {% endif %}
+                {% if document_generation and document_generation.generation_run_id %}
+                <a class="chat-link-chip" href="/generation/runs/{{ document_generation.generation_run_id }}">
+                  {{ t("chat.open_generation_run") }} #{{ document_generation.generation_run_id }}
+                </a>
+                {% endif %}
+                {% if document_generation and document_generation.search_log_id %}
+                <a class="chat-link-chip" href="/search/logs?search_log_id={{ document_generation.search_log_id }}">
+                  {{ t("chat.open_search_log") }} #{{ document_generation.search_log_id }}
+                </a>
+                <a class="chat-link-chip" href="/search/context?search_log_id={{ document_generation.search_log_id }}">
+                  {{ t("chat.open_retrieval_context") }}
+                </a>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+
             {% if item.message.intent or item.links %}
-            <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+            <div class="chat-link-list mt-3">
               {% if item.message.intent %}
               <span class="badge text-bg-light border">{{ item.message.intent }}</span>
               {% endif %}
               {% for link in item.links %}
               {% if link.target_url %}
-              <a class="badge text-bg-light border" href="{{ link.target_url }}">{{ link.label or link.link_type }}</a>
+              <a class="chat-link-chip" href="{{ link.target_url }}">{{ link.label or link.link_type }}</a>
+              {% elif link.link_type == "search_log" and link.target_id %}
+              <a class="chat-link-chip" href="/search/logs?search_log_id={{ link.target_id }}">
+                {% if link.label %}{{ link.label }}{% else %}{{ t("chat.search_log") }} #{{ link.target_id }}{% endif %}
+              </a>
+              {% elif link.link_type == "generation_run" and link.target_id %}
+              <a class="chat-link-chip" href="/generation/runs/{{ link.target_id }}">
+                {% if link.label %}{{ link.label }}{% else %}{{ t("chat.generation_run") }} #{{ link.target_id }}{% endif %}
+              </a>
+              {% elif link.link_type == "document_summary" and link.target_id %}
+              <a class="chat-link-chip" href="/generation/runs/{{ link.target_id }}">
+                {% if link.label %}{{ link.label }}{% else %}{{ t("chat.document_summary") }} #{{ link.target_id }}{% endif %}
+              </a>
               {% else %}
               <span class="badge text-bg-light border">{{ link.label or link.link_type }} #{{ link.target_id }}</span>
               {% endif %}

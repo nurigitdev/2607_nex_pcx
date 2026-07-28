@@ -29,6 +29,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("chat.title") == "Chat Workspace"
     assert korean("chat.send") == "전송"
     assert english("chat.run_mock_router") == "Create mock intent router response"
+    assert korean("chat.execution_evidence") == "실행 정보"
+    assert english("chat.open_retrieval_context") == "Open Retrieval Context"
     assert korean("nav.embedding_provider") == "Provider 상태"
     assert english("embedding_provider.title") == "Embedding Provider Health"
     assert korean("nav.embedding_batches") == "Batch 실행"

@@ -15,6 +15,7 @@ from app.core.chat import (
     ChatSessionInput,
     append_chat_message,
     create_chat_session,
+    link_chat_message_to_search_log,
 )
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
@@ -461,6 +462,30 @@ def test_chat_page_renders_shell_and_existing_thread(
             intent=CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
         ),
     )
+    assistant = append_chat_message(
+        migrated_database_url,
+        ChatMessageInput(
+            chat_session_id=session.chat_session_id,
+            role=CHAT_ROLE_ASSISTANT,
+            content="검색 결과 요약입니다.\n- 운영 규정 관련 근거 3건",
+            intent=CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+            runtime_metadata={
+                "execution_mode": "search_compare_summary",
+                "chat_search_summary": {
+                    "search_log_id": 24,
+                    "prompt_version": "chat_search_summary_v1",
+                    "result_count": 3,
+                    "retrieval_confidence_status": "answerable",
+                },
+            },
+        ),
+    )
+    link_chat_message_to_search_log(
+        migrated_database_url,
+        chat_message_id=assistant.chat_message_id,
+        search_log_id=24,
+        label="Search Log #24",
+    )
     app = create_app(Settings(database_url=migrated_database_url))
 
     try:
@@ -473,6 +498,13 @@ def test_chat_page_renders_shell_and_existing_thread(
         assert "새 대화" in response.text
         assert "UI Shell 대화" in response.text
         assert "관련 문서를 검색해서 요약해줘" in response.text
+        assert "실행 정보" in response.text
+        assert "search_compare_summary" in response.text
+        assert "chat_search_summary_v1" in response.text
+        assert "answerable" in response.text
+        assert "Search Log #24" in response.text
+        assert 'href="/search/logs?search_log_id=24"' in response.text
+        assert 'href="/search/context?search_log_id=24"' in response.text
         assert 'href="/chat"' in response.text
         assert 'id="chat-session-form"' in response.text
         assert 'id="chat-message-form"' in response.text
