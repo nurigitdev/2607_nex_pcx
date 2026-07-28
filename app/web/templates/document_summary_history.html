@@ -121,6 +121,8 @@
           <th>{{ t("generation.direct_template") }}</th>
           <th>{{ t("generation.summary_instruction") }}</th>
           <th>{{ t("generation.status") }}</th>
+          <th>{{ t("generation.answer_quality") }}</th>
+          <th class="text-end">{{ t("generation.answer_quality_coverage") }}</th>
           <th class="text-end">{{ t("generation.summary_max_chunks") }}</th>
           <th class="text-end">{{ t("generation.tokens") }}</th>
           <th class="text-end">{{ t("generation.elapsed_ms") }}</th>
@@ -131,6 +133,7 @@
         {% for item in history.runs %}
         {% set run = item.run %}
         {% set run_status_class = "success" if run.status == "succeeded" else ("warning" if run.status == "no_answer" else ("danger" if run.status == "failed" else "secondary")) %}
+        {% set quality_status_class = "success" if item.answer_quality_status == "passed" else ("warning" if item.answer_quality_status == "warning" else ("danger" if item.answer_quality_status == "failed" else "secondary")) %}
         <tr>
           <td>
             <a href="/generation/runs/{{ run.generation_run_id }}">#{{ run.generation_run_id }}</a>
@@ -156,6 +159,24 @@
             <span class="badge text-bg-{{ run_status_class }}">{{ run.status }}</span>
             <div class="text-secondary small">{{ run.guardrail_status }}</div>
           </td>
+          <td>
+            <span class="badge text-bg-{{ quality_status_class }}">
+              {{ t("generation.answer_quality_status_" ~ item.answer_quality_status) }}
+            </span>
+            <div class="text-secondary small">
+              {{ t("generation_history.reason_count") }}: {{ item.answer_quality_reason_codes | length }}
+            </div>
+          </td>
+          <td class="text-end">
+            {% if item.citation_coverage_percent is not none %}
+            {{ "%.2f"|format(item.citation_coverage_percent) }}%
+            {% else %}
+            -
+            {% endif %}
+            <div class="text-secondary small">
+              {{ item.cited_citation_count }} / {{ item.expected_citation_count }}
+            </div>
+          </td>
           <td class="text-end">{{ item.source_chunk_count }}</td>
           <td class="text-end">{{ run.total_token_count if run.total_token_count is not none else "-" }}</td>
           <td class="text-end">{{ run.elapsed_ms if run.elapsed_ms is not none else "-" }} ms</td>
@@ -163,7 +184,7 @@
         </tr>
         {% else %}
         <tr>
-          <td class="text-center text-secondary py-4" colspan="9">
+          <td class="text-center text-secondary py-4" colspan="11">
             {{ t("document_summary_history.no_runs") }}
           </td>
         </tr>

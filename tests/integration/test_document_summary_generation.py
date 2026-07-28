@@ -359,6 +359,11 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
         assert runs[0]["template_key"] == "summary_risk_action"
         assert runs[0]["summary_instruction"] == "리스크 중심"
         assert runs[0]["source_chunk_count"] == 2
+        assert runs[0]["answer_quality_status"] == "warning"
+        assert runs[0]["citation_coverage_percent"] == 50.0
+        assert runs[0]["expected_citation_count"] == 2
+        assert runs[0]["cited_citation_count"] == 1
+        assert runs[0]["missing_citation_count"] == 1
         assert runs[0]["links"]["generation_run"] == (
             f"/generation/runs/{first_body['generation_run_id']}"
         )
@@ -368,6 +373,8 @@ def test_document_summary_history_api_and_ui_filter_summary_runs(
         assert "문서 요약 이력" in page_response.text
         assert "Document Summary API document" in page_response.text
         assert "리스크/후속 조치 요약" in page_response.text
+        assert "주의" in page_response.text
+        assert "50.00%" in page_response.text
         assert "summary_risk_action" in page_response.text
         assert "data-document-summary-history-table" in page_response.text
     finally:

@@ -21,6 +21,7 @@ from app.core.generation_runs import (
     MAX_GENERATION_RUN_HISTORY_LIMIT,
     GenerationRunRecord,
     _generation_run_from_row,
+    _history_item_from_run,
 )
 from app.core.retrieval_context import (
     DEFAULT_CONTEXT_CHAR_BUDGET,
@@ -95,6 +96,13 @@ class DocumentSummaryHistoryItem:
     template_name: str
     summary_instruction: str
     source_chunk_count: int
+    answer_quality_status: str
+    answer_quality_reason_codes: tuple[str, ...]
+    citation_coverage_percent: float | None
+    expected_citation_count: int
+    cited_citation_count: int
+    missing_citation_count: int
+    unrecognized_citation_count: int
     created_at: datetime
 
     @property
@@ -261,8 +269,10 @@ def _document_summary_history_item_from_row(row: dict[str, Any]) -> DocumentSumm
     if not template_key:
         template_key = str(runtime_metadata.get("generation_template_key") or "").strip()
     template_name = str(row.get("summary_template_name") or template_key or "-")
+    run = _generation_run_from_row(row)
+    quality = _history_item_from_run(run)
     return DocumentSummaryHistoryItem(
-        run=_generation_run_from_row(row),
+        run=run,
         document_id=row["summary_document_id"],
         file_id=row["summary_file_id"],
         document_title=row["document_title"],
@@ -273,6 +283,13 @@ def _document_summary_history_item_from_row(row: dict[str, Any]) -> DocumentSumm
         template_name=template_name,
         summary_instruction=str(runtime_metadata.get("summary_instruction") or ""),
         source_chunk_count=int(row["source_chunk_count"] or 0),
+        answer_quality_status=quality.answer_quality_status,
+        answer_quality_reason_codes=quality.answer_quality_reason_codes,
+        citation_coverage_percent=quality.citation_coverage_percent,
+        expected_citation_count=quality.expected_citation_count,
+        cited_citation_count=quality.cited_citation_count,
+        missing_citation_count=quality.missing_citation_count,
+        unrecognized_citation_count=quality.unrecognized_citation_count,
         created_at=row["created_at"],
     )
 
