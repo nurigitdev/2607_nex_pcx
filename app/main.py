@@ -48,6 +48,28 @@ from app.core.bm25_keyword_index import (
     validate_bm25_tokenizer_name,
 )
 from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
+from app.core.chat import (
+    CHAT_MESSAGE_STATUS_COMPLETED,
+    CHAT_ROLE_ASSISTANT,
+    CHAT_ROLE_USER,
+    CHAT_SESSION_STATUS_ACTIVE,
+    DEFAULT_CHAT_SESSION_LIMIT,
+    ChatIntentRoute,
+    ChatMessageInput,
+    ChatMessageLinkRecord,
+    ChatMessageRecord,
+    ChatMessageWithLinks,
+    ChatSessionInput,
+    ChatSessionRecord,
+    ChatThreadRecord,
+    InvalidChatRepositoryError,
+    append_chat_message,
+    create_chat_session,
+    get_chat_session,
+    get_chat_thread,
+    list_chat_sessions,
+    route_chat_intent_mock,
+)
 from app.core.chunk_policies import (
     ChunkPolicySummaryRecord,
     InvalidChunkPolicyManagementError,
@@ -751,6 +773,23 @@ class DocumentSummaryRunRequest(BaseModel):
     chunk_policy_name: str | None = None
 
 
+class ChatSessionCreateRequest(BaseModel):
+    session_title: str = Field(min_length=1, max_length=200)
+    actor_user_id: int | None = Field(default=None, ge=1)
+    default_language: str = Field(default="ko", min_length=1, max_length=16)
+    default_provider_mode: str = GENERATION_PROVIDER_MODE_MOCK
+    default_search_profile_name: str | None = Field(default=None, max_length=120)
+    default_search_scope: str | None = Field(default=None, max_length=40)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ChatMessagePostRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=20000)
+    parent_message_id: int | None = Field(default=None, ge=1)
+    run_mock_router: bool = True
+    routing_metadata: dict[str, object] = Field(default_factory=dict)
+
+
 class GenerationTemplateManagementRequest(BaseModel):
     template_key: str = Field(min_length=1, max_length=64)
     template_name: str = Field(min_length=1, max_length=200)
@@ -1345,6 +1384,102 @@ def pipeline_job_response_payload(
 
 def _datetime_response(value: object | None) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else None
+
+
+def chat_session_payload(session: ChatSessionRecord) -> dict[str, object]:
+    return {
+        "chat_session_id": session.chat_session_id,
+        "actor_user_id": session.actor_user_id,
+        "session_title": session.session_title,
+        "status": session.status,
+        "default_language": session.default_language,
+        "default_provider_mode": session.default_provider_mode,
+        "default_search_profile_name": session.default_search_profile_name,
+        "default_search_scope": session.default_search_scope,
+        "metadata": session.metadata,
+        "created_at": _datetime_response(session.created_at),
+        "updated_at": _datetime_response(session.updated_at),
+    }
+
+
+def chat_intent_route_payload(route: ChatIntentRoute) -> dict[str, object]:
+    return {
+        "intent": route.intent,
+        "intent_confidence": route.intent_confidence,
+        "rationale": route.rationale,
+        "suggested_action": route.suggested_action,
+    }
+
+
+def chat_message_payload(message: ChatMessageRecord) -> dict[str, object]:
+    return {
+        "chat_message_id": message.chat_message_id,
+        "chat_session_id": message.chat_session_id,
+        "parent_message_id": message.parent_message_id,
+        "sequence_no": message.sequence_no,
+        "role": message.role,
+        "content": message.content,
+        "intent": message.intent,
+        "status": message.status,
+        "intent_confidence": message.intent_confidence,
+        "routing_metadata": message.routing_metadata,
+        "runtime_metadata": message.runtime_metadata,
+        "error_metadata": message.error_metadata,
+        "created_at": _datetime_response(message.created_at),
+    }
+
+
+def chat_message_link_payload(link: ChatMessageLinkRecord) -> dict[str, object]:
+    return {
+        "chat_message_link_id": link.chat_message_link_id,
+        "chat_message_id": link.chat_message_id,
+        "link_type": link.link_type,
+        "target_id": link.target_id,
+        "target_url": link.target_url,
+        "label": link.label,
+        "metadata": link.metadata,
+        "created_at": _datetime_response(link.created_at),
+    }
+
+
+def chat_message_with_links_payload(item: ChatMessageWithLinks) -> dict[str, object]:
+    return {
+        "message": chat_message_payload(item.message),
+        "links": [chat_message_link_payload(link) for link in item.links],
+    }
+
+
+def chat_thread_payload(thread: ChatThreadRecord) -> dict[str, object]:
+    return {
+        "session": chat_session_payload(thread.session),
+        "messages": [chat_message_with_links_payload(item) for item in thread.messages],
+    }
+
+
+def chat_mock_assistant_content(route: ChatIntentRoute) -> str:
+    content_by_action = {
+        "select_template_and_run_grounded_generation": (
+            "문서 생성 의도로 분류했습니다. 다음 단계에서 템플릿 선택, 검색 근거 패키징, "
+            "생성 실행을 연결할 수 있습니다."
+        ),
+        "run_search_then_summarize_retrieved_chunks": (
+            "검색 결과 요약 의도로 분류했습니다. 다음 단계에서 관련 chunk 검색 후 요약을 "
+            "실행할 수 있습니다."
+        ),
+        "select_document_or_corpus_summary_flow": (
+            "문서 요약 의도로 분류했습니다. 다음 단계에서 대상 문서 또는 corpus 선택을 "
+            "연결할 수 있습니다."
+        ),
+        "run_retrieval_context_package_then_generation": (
+            "근거 기반 답변 의도로 분류했습니다. 다음 단계에서 검색 결과를 context package로 "
+            "묶고 생성 실행을 연결할 수 있습니다."
+        ),
+        "call_llm_without_document_context": (
+            "일반 답변 의도로 분류했습니다. 다음 단계에서 문서 검색 없이 LLM 호출을 연결할 수 "
+            "있습니다."
+        ),
+    }
+    return content_by_action[route.suggested_action]
 
 
 def _datetime_label(value: object | None) -> str:
@@ -12333,6 +12468,153 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Generation template rollback target not found.",
             )
         return JSONResponse(content={"template": generation_template_payload(template)})
+
+    @app.post("/api/chat/sessions")
+    def api_create_chat_session(payload: ChatSessionCreateRequest) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            session = create_chat_session(
+                settings.database_url,
+                ChatSessionInput(
+                    session_title=payload.session_title,
+                    actor_user_id=payload.actor_user_id,
+                    default_language=payload.default_language,
+                    default_provider_mode=payload.default_provider_mode,
+                    default_search_profile_name=payload.default_search_profile_name,
+                    default_search_scope=payload.default_search_scope,
+                    metadata=payload.metadata,
+                ),
+            )
+        except InvalidChatRepositoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"session": chat_session_payload(session)},
+        )
+
+    @app.get("/api/chat/sessions")
+    def api_list_chat_sessions(
+        limit: int = Query(default=DEFAULT_CHAT_SESSION_LIMIT),
+        status_filter: str = Query(default=CHAT_SESSION_STATUS_ACTIVE, alias="status"),
+        actor_user_id: int | None = Query(default=None),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        status_value = None if status_filter.strip().lower() == "all" else status_filter
+        try:
+            sessions = list_chat_sessions(
+                settings.database_url,
+                limit=limit,
+                status=status_value,
+                actor_user_id=actor_user_id,
+            )
+        except InvalidChatRepositoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content={"sessions": [chat_session_payload(session) for session in sessions]}
+        )
+
+    @app.get("/api/chat/sessions/{chat_session_id}")
+    def api_get_chat_session(chat_session_id: int) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            thread = get_chat_thread(settings.database_url, chat_session_id)
+        except InvalidChatRepositoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if thread is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Chat session not found.",
+            )
+        return JSONResponse(content=chat_thread_payload(thread))
+
+    @app.post("/api/chat/sessions/{chat_session_id}/messages")
+    def api_post_chat_message(
+        chat_session_id: int,
+        payload: ChatMessagePostRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            session = get_chat_session(settings.database_url, chat_session_id)
+            if session is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Chat session not found.",
+                )
+            route = route_chat_intent_mock(payload.content)
+            router_payload = chat_intent_route_payload(route)
+            user_message = append_chat_message(
+                settings.database_url,
+                ChatMessageInput(
+                    chat_session_id=chat_session_id,
+                    parent_message_id=payload.parent_message_id,
+                    role=CHAT_ROLE_USER,
+                    content=payload.content,
+                    intent=route.intent,
+                    status=CHAT_MESSAGE_STATUS_COMPLETED,
+                    intent_confidence=route.intent_confidence,
+                    routing_metadata={
+                        **payload.routing_metadata,
+                        "router": "mock_intent_router_v1",
+                        "rationale": route.rationale,
+                        "suggested_action": route.suggested_action,
+                    },
+                ),
+            )
+            assistant_message: ChatMessageRecord | None = None
+            if payload.run_mock_router:
+                assistant_message = append_chat_message(
+                    settings.database_url,
+                    ChatMessageInput(
+                        chat_session_id=chat_session_id,
+                        parent_message_id=user_message.chat_message_id,
+                        role=CHAT_ROLE_ASSISTANT,
+                        content=chat_mock_assistant_content(route),
+                        intent=route.intent,
+                        status=CHAT_MESSAGE_STATUS_COMPLETED,
+                        intent_confidence=route.intent_confidence,
+                        runtime_metadata={
+                            "router": "mock_intent_router_v1",
+                            "suggested_action": route.suggested_action,
+                            "execution_mode": "placeholder",
+                        },
+                    ),
+                )
+            thread = get_chat_thread(settings.database_url, chat_session_id)
+        except InvalidChatRepositoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        assert thread is not None
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={
+                "session": chat_session_payload(session),
+                "router": router_payload,
+                "user_message": chat_message_payload(user_message),
+                "assistant_message": (
+                    chat_message_payload(assistant_message) if assistant_message else None
+                ),
+                "thread": chat_thread_payload(thread),
+            },
+        )
 
     @app.post("/api/generation/direct-runs")
     def api_create_direct_generation_run(payload: DirectGenerationRequest) -> JSONResponse:

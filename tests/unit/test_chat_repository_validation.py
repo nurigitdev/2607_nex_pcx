@@ -4,6 +4,10 @@ import pytest
 
 from app.core.chat import (
     CHAT_INTENT_DOCUMENT_GENERATION,
+    CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+    CHAT_INTENT_DOCUMENT_SUMMARY,
+    CHAT_INTENT_GENERAL_ANSWER,
+    CHAT_INTENT_GROUNDED_ANSWER,
     CHAT_LINK_TYPE_DOWNLOAD,
     CHAT_MESSAGE_STATUS_COMPLETED,
     CHAT_ROLE_ASSISTANT,
@@ -12,6 +16,7 @@ from app.core.chat import (
     ChatMessageLinkInput,
     ChatSessionInput,
     InvalidChatRepositoryError,
+    route_chat_intent_mock,
     validate_chat_message_input,
     validate_chat_message_link_input,
     validate_chat_session_input,
@@ -174,3 +179,51 @@ def test_validate_chat_session_limit_bounds() -> None:
         validate_chat_session_limit(0)
     with pytest.raises(InvalidChatRepositoryError):
         validate_chat_session_limit(201)
+
+
+@pytest.mark.parametrize(
+    ("content", "expected_intent", "expected_rationale"),
+    [
+        (
+            "사내 규정을 바탕으로 보고서를 작성해줘",
+            CHAT_INTENT_DOCUMENT_GENERATION,
+            "document_generation_keyword_match",
+        ),
+        (
+            "관련 문서를 검색해서 요약해줘",
+            CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+            "summary_and_search_keyword_match",
+        ),
+        (
+            "이 문서를 핵심만 요약해줘",
+            CHAT_INTENT_DOCUMENT_SUMMARY,
+            "summary_keyword_match",
+        ),
+        (
+            "사규 근거를 찾아서 답변해줘",
+            CHAT_INTENT_GROUNDED_ANSWER,
+            "grounded_or_search_keyword_match",
+        ),
+        (
+            "오늘 회의 준비에 필요한 질문을 만들어줘",
+            CHAT_INTENT_GENERAL_ANSWER,
+            "fallback_general_answer",
+        ),
+    ],
+)
+def test_route_chat_intent_mock_detects_core_intents(
+    content: str,
+    expected_intent: str,
+    expected_rationale: str,
+) -> None:
+    route = route_chat_intent_mock(content)
+
+    assert route.intent == expected_intent
+    assert route.rationale == expected_rationale
+    assert 0 <= route.intent_confidence <= 1
+    assert route.suggested_action
+
+
+def test_route_chat_intent_mock_rejects_blank_content() -> None:
+    with pytest.raises(InvalidChatRepositoryError):
+        route_chat_intent_mock(" ")

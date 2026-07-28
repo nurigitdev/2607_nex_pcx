@@ -167,6 +167,14 @@ class ChatThreadRecord:
     messages: tuple[ChatMessageWithLinks, ...]
 
 
+@dataclass(frozen=True)
+class ChatIntentRoute:
+    intent: str
+    intent_confidence: float
+    rationale: str
+    suggested_action: str
+
+
 class InvalidChatRepositoryError(ValueError):
     """Raised when chat repository input is invalid before reaching the DB."""
 
@@ -297,6 +305,64 @@ def validate_chat_session_limit(limit: int) -> int:
     if limit < 1 or limit > MAX_CHAT_SESSION_LIMIT:
         raise InvalidChatRepositoryError(f"limit must be between 1 and {MAX_CHAT_SESSION_LIMIT}")
     return limit
+
+
+def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in text for keyword in keywords)
+
+
+def route_chat_intent_mock(content: str) -> ChatIntentRoute:
+    normalized = _validate_nonblank(content, "content")
+    assert normalized is not None
+    lowered = normalized.lower()
+    generation_keywords = (
+        "보고서",
+        "제안서",
+        "요약서",
+        "작성",
+        "생성",
+        "draft",
+        "proposal",
+        "report",
+    )
+    summary_keywords = ("요약", "summarize", "summary")
+    search_keywords = ("검색", "찾아", "찾기", "관련 문서", "search", "retrieve")
+    grounded_keywords = ("근거", "규정", "정책", "사규", "문서 기준", "based on", "citation")
+
+    if _contains_any(lowered, generation_keywords):
+        return ChatIntentRoute(
+            intent=CHAT_INTENT_DOCUMENT_GENERATION,
+            intent_confidence=0.88,
+            rationale="document_generation_keyword_match",
+            suggested_action="select_template_and_run_grounded_generation",
+        )
+    if _contains_any(lowered, summary_keywords) and _contains_any(lowered, search_keywords):
+        return ChatIntentRoute(
+            intent=CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+            intent_confidence=0.84,
+            rationale="summary_and_search_keyword_match",
+            suggested_action="run_search_then_summarize_retrieved_chunks",
+        )
+    if _contains_any(lowered, summary_keywords):
+        return ChatIntentRoute(
+            intent=CHAT_INTENT_DOCUMENT_SUMMARY,
+            intent_confidence=0.8,
+            rationale="summary_keyword_match",
+            suggested_action="select_document_or_corpus_summary_flow",
+        )
+    if _contains_any(lowered, grounded_keywords) or _contains_any(lowered, search_keywords):
+        return ChatIntentRoute(
+            intent=CHAT_INTENT_GROUNDED_ANSWER,
+            intent_confidence=0.76,
+            rationale="grounded_or_search_keyword_match",
+            suggested_action="run_retrieval_context_package_then_generation",
+        )
+    return ChatIntentRoute(
+        intent=CHAT_INTENT_GENERAL_ANSWER,
+        intent_confidence=0.55,
+        rationale="fallback_general_answer",
+        suggested_action="call_llm_without_document_context",
+    )
 
 
 def _row_to_chat_session(row: dict[str, Any]) -> ChatSessionRecord:
