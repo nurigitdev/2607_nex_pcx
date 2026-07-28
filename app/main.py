@@ -15672,6 +15672,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
         )
 
+    @app.get("/chat", response_class=HTMLResponse)
+    def chat_page(
+        request: Request,
+        chat_session_id: int | None = Query(default=None, ge=1),
+    ) -> HTMLResponse:
+        sessions: tuple[ChatSessionRecord, ...] = ()
+        selected_thread: ChatThreadRecord | None = None
+        selected_chat_session_id = chat_session_id
+        error_message = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                sessions = list_chat_sessions(
+                    settings.database_url,
+                    limit=DEFAULT_CHAT_SESSION_LIMIT,
+                    status=None,
+                )
+                if selected_chat_session_id is None and sessions:
+                    selected_chat_session_id = sessions[0].chat_session_id
+                if selected_chat_session_id is not None:
+                    selected_thread = get_chat_thread(
+                        settings.database_url,
+                        selected_chat_session_id,
+                    )
+                    if selected_thread is None:
+                        error_message = "Chat session not found."
+            except InvalidChatRepositoryError as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "chat.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                sessions=sessions,
+                selected_thread=selected_thread,
+                selected_chat_session_id=selected_chat_session_id,
+                provider_mode_options=(
+                    GENERATION_PROVIDER_MODE_MOCK,
+                    GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                ),
+                search_scope_options=SEARCH_COMPARE_SCOPE_OPTIONS,
+                error_message=error_message,
+            ),
+        )
+
     @app.get("/search/context", response_class=HTMLResponse)
     def retrieval_context_page(
         request: Request,

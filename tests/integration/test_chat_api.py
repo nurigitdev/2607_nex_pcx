@@ -6,6 +6,10 @@ from app.core.chat import (
     CHAT_INTENT_GROUNDED_ANSWER,
     CHAT_ROLE_ASSISTANT,
     CHAT_ROLE_USER,
+    ChatMessageInput,
+    ChatSessionInput,
+    append_chat_message,
+    create_chat_session,
 )
 from app.core.config import Settings
 from app.core.database import connect, fetch_one
@@ -148,3 +152,46 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
     assert invalid_filter_response.status_code == 400
     assert invalid_session_response.status_code == 400
     assert no_database_response.status_code == 503
+
+
+def test_chat_page_renders_shell_and_existing_thread(
+    migrated_database_url: str,
+) -> None:
+    session = create_chat_session(
+        migrated_database_url,
+        ChatSessionInput(
+            session_title="UI Shell 대화",
+            default_provider_mode="mock",
+            default_search_scope="company",
+        ),
+    )
+    append_chat_message(
+        migrated_database_url,
+        ChatMessageInput(
+            chat_session_id=session.chat_session_id,
+            role=CHAT_ROLE_USER,
+            content="관련 문서를 검색해서 요약해줘",
+            intent=CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+        ),
+    )
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(f"/chat?chat_session_id={session.chat_session_id}")
+            no_database_response = TestClient(create_app(Settings(database_url=None))).get("/chat")
+
+        assert response.status_code == 200
+        assert "Chat Workspace" in response.text
+        assert "새 대화" in response.text
+        assert "UI Shell 대화" in response.text
+        assert "관련 문서를 검색해서 요약해줘" in response.text
+        assert 'href="/chat"' in response.text
+        assert 'id="chat-session-form"' in response.text
+        assert 'id="chat-message-form"' in response.text
+        assert "/api/chat/sessions" in response.text
+        assert 'name="run_mock_router"' in response.text
+        assert no_database_response.status_code == 200
+        assert "NEX_PCX_DATABASE_URL is not configured." in no_database_response.text
+    finally:
+        _delete_chat_session(migrated_database_url, session.chat_session_id)

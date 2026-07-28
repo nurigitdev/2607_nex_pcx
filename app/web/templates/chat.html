@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("chat.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("chat.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/generation">{{ t("nav.generation") }}</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/search">{{ t("nav.search") }}</a>
+  </div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<div class="alert alert-danger d-none" role="alert" id="chat-error-alert"></div>
+
+<div class="row g-4">
+  <div class="col-12 col-xl-4">
+    <section class="bg-white border rounded-2 p-3 mb-4">
+      <h2 class="h5 mb-3">{{ t("chat.new_session") }}</h2>
+      <form id="chat-session-form">
+        <div class="mb-3">
+          <label class="form-label" for="chat-session-title">{{ t("chat.session_title") }}</label>
+          <input
+            class="form-control"
+            id="chat-session-title"
+            name="session_title"
+            type="text"
+            value="{{ t("chat.default_session_title") }}"
+            required
+            {% if not database_configured %}disabled{% endif %}
+          >
+        </div>
+        <div class="row g-3">
+          <div class="col-12 col-lg-6">
+            <label class="form-label" for="chat-provider-mode">{{ t("chat.provider_mode") }}</label>
+            <select
+              class="form-select"
+              id="chat-provider-mode"
+              name="default_provider_mode"
+              {% if not database_configured %}disabled{% endif %}
+            >
+              {% for provider_mode in provider_mode_options %}
+              <option value="{{ provider_mode }}">{{ provider_mode }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-lg-6">
+            <label class="form-label" for="chat-search-scope">{{ t("chat.search_scope") }}</label>
+            <select
+              class="form-select"
+              id="chat-search-scope"
+              name="default_search_scope"
+              {% if not database_configured %}disabled{% endif %}
+            >
+              <option value="">{{ t("common.all") }}</option>
+              {% for search_scope in search_scope_options %}
+              <option value="{{ search_scope }}" {% if search_scope == "company" %}selected{% endif %}>
+                {{ search_scope }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="d-grid mt-3">
+          <button class="btn btn-primary" type="submit" {% if not database_configured %}disabled{% endif %}>
+            {{ t("chat.create_session") }}
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section class="bg-white border rounded-2 p-3">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">{{ t("chat.session_list") }}</h2>
+        <span class="badge text-bg-light border">{{ sessions|length }}</span>
+      </div>
+      <div class="chat-session-list">
+        {% for session in sessions %}
+        <a
+          class="chat-session-link {% if selected_chat_session_id == session.chat_session_id %}active{% endif %}"
+          href="/chat?chat_session_id={{ session.chat_session_id }}"
+        >
+          <span class="fw-semibold text-break">{{ session.session_title }}</span>
+          <span class="small text-secondary">
+            #{{ session.chat_session_id }} · {{ session.default_provider_mode }}
+          </span>
+        </a>
+        {% else %}
+        <div class="text-secondary small">{{ t("chat.no_sessions") }}</div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-8">
+    <section class="bg-white border rounded-2 p-3 chat-workspace">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-1">
+            {% if selected_thread %}
+            {{ selected_thread.session.session_title }}
+            {% else %}
+            {{ t("chat.no_session_selected") }}
+            {% endif %}
+          </h2>
+          {% if selected_thread %}
+          <div class="text-secondary small">
+            #{{ selected_thread.session.chat_session_id }}
+            · {{ selected_thread.session.default_provider_mode }}
+            {% if selected_thread.session.default_search_scope %}
+            · {{ selected_thread.session.default_search_scope }}
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% if selected_thread %}
+        <span class="badge text-bg-light border">{{ selected_thread.session.status }}</span>
+        {% endif %}
+      </div>
+
+      <div
+        class="chat-message-list"
+        id="chat-message-list"
+        data-selected-session-id="{% if selected_thread %}{{ selected_thread.session.chat_session_id }}{% endif %}"
+      >
+        {% if selected_thread %}
+          {% for item in selected_thread.messages %}
+          <article class="chat-message chat-message-{{ item.message.role }}">
+            <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+              <span class="fw-semibold">{{ item.message.role }}</span>
+              <span class="small text-secondary">#{{ item.message.sequence_no }}</span>
+            </div>
+            <div class="chat-message-content">{{ item.message.content }}</div>
+            {% if item.message.intent or item.links %}
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+              {% if item.message.intent %}
+              <span class="badge text-bg-light border">{{ item.message.intent }}</span>
+              {% endif %}
+              {% for link in item.links %}
+              {% if link.target_url %}
+              <a class="badge text-bg-light border" href="{{ link.target_url }}">{{ link.label or link.link_type }}</a>
+              {% else %}
+              <span class="badge text-bg-light border">{{ link.label or link.link_type }} #{{ link.target_id }}</span>
+              {% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+          </article>
+          {% else %}
+          <div class="chat-empty-state text-secondary">{{ t("chat.no_messages") }}</div>
+          {% endfor %}
+        {% else %}
+        <div class="chat-empty-state text-secondary">{{ t("chat.select_session") }}</div>
+        {% endif %}
+      </div>
+
+      <form class="chat-message-form mt-3" id="chat-message-form">
+        <label class="form-label" for="chat-message-content">{{ t("chat.message") }}</label>
+        <textarea
+          class="form-control"
+          id="chat-message-content"
+          name="content"
+          rows="4"
+          placeholder="{{ t("chat.message_placeholder") }}"
+          required
+          {% if not database_configured or not selected_thread %}disabled{% endif %}
+        ></textarea>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="chat-run-mock-router"
+              name="run_mock_router"
+              checked
+              {% if not database_configured or not selected_thread %}disabled{% endif %}
+            >
+            <label class="form-check-label" for="chat-run-mock-router">
+              {{ t("chat.run_mock_router") }}
+            </label>
+          </div>
+          <button
+            class="btn btn-primary"
+            type="submit"
+            {% if not database_configured or not selected_thread %}disabled{% endif %}
+          >
+            {{ t("chat.send") }}
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const languageQuery = new URLSearchParams(window.location.search).get("lang");
+  const errorAlert = document.getElementById("chat-error-alert");
+  const showError = (message) => {
+    errorAlert.textContent = message;
+    errorAlert.classList.remove("d-none");
+  };
+  const sessionForm = document.getElementById("chat-session-form");
+  sessionForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(sessionForm);
+    const response = await fetch("/api/chat/sessions", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        session_title: formData.get("session_title"),
+        default_provider_mode: formData.get("default_provider_mode"),
+        default_search_scope: formData.get("default_search_scope") || null,
+        metadata: {source: "chat_ui_shell"},
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      showError(body.detail || "{{ t("chat.session_create_failed") }}");
+      return;
+    }
+    const chatSessionId = body.session.chat_session_id;
+    const nextUrl = new URL("/chat", window.location.origin);
+    nextUrl.searchParams.set("chat_session_id", chatSessionId);
+    if (languageQuery) {
+      nextUrl.searchParams.set("lang", languageQuery);
+    }
+    window.location.href = nextUrl.toString();
+  });
+
+  const messageList = document.getElementById("chat-message-list");
+  const messageForm = document.getElementById("chat-message-form");
+  messageForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const chatSessionId = messageList?.dataset.selectedSessionId;
+    if (!chatSessionId) {
+      showError("{{ t("chat.no_session_selected") }}");
+      return;
+    }
+    const formData = new FormData(messageForm);
+    const response = await fetch(`/api/chat/sessions/${chatSessionId}/messages`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        content: formData.get("content"),
+        run_mock_router: formData.get("run_mock_router") === "on",
+        routing_metadata: {source: "chat_ui_shell"},
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      showError(body.detail || "{{ t("chat.message_send_failed") }}");
+      return;
+    }
+    window.location.reload();
+  });
+})();
+</script>
+{% endblock %}

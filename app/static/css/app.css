@@ -243,6 +243,74 @@ main.container-fluid {
   white-space: nowrap;
 }
 
+.chat-session-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 30rem;
+  overflow-y: auto;
+}
+
+.chat-session-link {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  color: var(--pcx-ink);
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+}
+
+.chat-session-link.active {
+  background: #eefaf8;
+  border-color: var(--pcx-accent);
+}
+
+.chat-workspace {
+  min-height: 42rem;
+}
+
+.chat-message-list {
+  background: #f8fafc;
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.75rem;
+  max-height: 34rem;
+  min-height: 24rem;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.chat-message {
+  border: 1px solid var(--pcx-border);
+  border-radius: 8px;
+  max-width: min(44rem, 100%);
+  padding: 0.875rem;
+}
+
+.chat-message-user {
+  background: #e8f3ff;
+  justify-self: end;
+}
+
+.chat-message-assistant,
+.chat-message-system,
+.chat-message-tool {
+  background: var(--pcx-surface);
+  justify-self: start;
+}
+
+.chat-message-content {
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.chat-empty-state {
+  align-self: center;
+  justify-self: center;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
 .d-flex {
   display: flex;
 }
