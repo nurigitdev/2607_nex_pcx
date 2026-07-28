@@ -49,6 +49,7 @@ from app.core.bm25_keyword_index import (
 )
 from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
 from app.core.chat import (
+    CHAT_INTENT_DOCUMENT_GENERATION,
     CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
     CHAT_INTENT_GENERAL_ANSWER,
     CHAT_INTENT_GROUNDED_ANSWER,
@@ -74,6 +75,12 @@ from app.core.chat import (
     link_chat_message_to_search_log,
     list_chat_sessions,
     route_chat_intent_mock,
+)
+from app.core.chat_document_generation import (
+    ChatDocumentGenerationInput,
+    ChatDocumentGenerationResult,
+    InvalidChatDocumentGenerationError,
+    execute_chat_document_generation,
 )
 from app.core.chat_generation import (
     ChatGeneralAnswerInput,
@@ -1524,6 +1531,20 @@ def chat_grounded_answer_payload(result: ChatGroundedAnswerResult) -> dict[str, 
         "request_metadata": result.request_metadata,
         "response_metadata": result.response_metadata,
         "direct_generation": direct_generation_result_payload(result.direct_generation_result),
+    }
+
+
+def chat_document_generation_payload(result: ChatDocumentGenerationResult) -> dict[str, object]:
+    return {
+        "answer_text": result.answer_text,
+        "template_key": result.template_key,
+        "search_log_id": result.search_log_id,
+        "generation_run_id": result.generation_run_id,
+        "prompt_version": result.prompt_version,
+        "execution_mode": result.execution_mode,
+        "request_metadata": result.request_metadata,
+        "response_metadata": result.response_metadata,
+        "grounded_answer": chat_grounded_answer_payload(result.grounded_result),
     }
 
 
@@ -12653,6 +12674,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             assistant_message: ChatMessageRecord | None = None
             if payload.run_mock_router:
+                document_generation: ChatDocumentGenerationResult | None = None
                 grounded_answer: ChatGroundedAnswerResult | None = None
                 search_summary: ChatSearchSummaryResult | None = None
                 assistant_content = chat_mock_assistant_content(route)
@@ -12789,6 +12811,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "execution_mode": grounded_answer.execution_mode,
                         "chat_grounded_answer": chat_grounded_answer_payload(grounded_answer),
                     }
+                elif route.intent == CHAT_INTENT_DOCUMENT_GENERATION:
+                    if session.actor_user_id is None:
+                        raise InvalidChatDocumentGenerationError(
+                            "actor_user_id is required for chat document generation"
+                        )
+                    provider_mode = session.default_provider_mode.strip().lower()
+                    provider: GenerationProviderConfigRecord | None = None
+                    api_key: str | None = None
+                    if provider_mode == GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE:
+                        provider = get_generation_provider_config_for_mode(
+                            settings.database_url,
+                            GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+                        )
+                        if provider is None:
+                            raise InvalidGenerationRunError(
+                                "active remote_openai_compatible generation provider config "
+                                "was not found"
+                            )
+                        api_key = resolve_generation_provider_api_key(provider, settings)
+                    requested_template_key = payload.routing_metadata.get("generation_template_key")
+                    document_profiles = (
+                        (session.default_search_profile_name,)
+                        if session.default_search_profile_name
+                        else None
+                    )
+                    document_generation = execute_chat_document_generation(
+                        settings.database_url,
+                        ChatDocumentGenerationInput(
+                            content=payload.content,
+                            actor_user_id=session.actor_user_id,
+                            requested_search_scope=session.default_search_scope or "company",
+                            provider_mode=provider_mode,
+                            requested_template_key=(
+                                requested_template_key
+                                if isinstance(requested_template_key, str)
+                                else None
+                            ),
+                            profiles=document_profiles,
+                        ),
+                        fallback_runtime_config=embedding_provider_runtime_config_from_settings(
+                            settings
+                        ),
+                        fallback_reranker_runtime_config=reranker_runtime_config_from_settings(
+                            settings
+                        ),
+                        api_key=api_key,
+                    )
+                    assistant_content = document_generation.answer_text
+                    assistant_runtime_metadata = {
+                        "router": "mock_intent_router_v1",
+                        "suggested_action": route.suggested_action,
+                        "execution_mode": document_generation.execution_mode,
+                        "chat_document_generation": chat_document_generation_payload(
+                            document_generation
+                        ),
+                    }
                 assistant_message = append_chat_message(
                     settings.database_url,
                     ChatMessageInput(
@@ -12825,8 +12903,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         label=f"Generation Run #{grounded_answer.generation_run_id}",
                         metadata={"source": "chat_grounded_answer"},
                     )
+                if document_generation is not None:
+                    link_chat_message_to_search_log(
+                        settings.database_url,
+                        chat_message_id=assistant_message.chat_message_id,
+                        search_log_id=document_generation.search_log_id,
+                        label=f"Search Log #{document_generation.search_log_id}",
+                        metadata={"source": "chat_document_generation"},
+                    )
+                    link_chat_message_to_generation_run(
+                        settings.database_url,
+                        chat_message_id=assistant_message.chat_message_id,
+                        generation_run_id=document_generation.generation_run_id,
+                        label=f"Generation Run #{document_generation.generation_run_id}",
+                        metadata={
+                            "source": "chat_document_generation",
+                            "template_key": document_generation.template_key,
+                        },
+                    )
             thread = get_chat_thread(settings.database_url, chat_session_id)
         except (
+            InvalidChatDocumentGenerationError,
             InvalidChatGenerationError,
             InvalidChatGroundedGenerationError,
             InvalidChatRepositoryError,

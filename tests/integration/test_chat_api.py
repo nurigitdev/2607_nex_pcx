@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app.core.chat import (
     CHAT_INTENT_DOCUMENT_GENERATION,
     CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+    CHAT_INTENT_DOCUMENT_SUMMARY,
     CHAT_INTENT_GENERAL_ANSWER,
     CHAT_INTENT_GROUNDED_ANSWER,
     CHAT_LINK_TYPE_GENERATION_RUN,
@@ -66,7 +67,7 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
             create_response = client.post(
                 "/api/chat/sessions",
                 json={
-                    "session_title": "대화형 문서 생성",
+                    "session_title": "대화형 문서 요약",
                     "default_provider_mode": "mock",
                     "default_search_scope": "company",
                     "metadata": {"slice": 388},
@@ -76,7 +77,7 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
             message_response = client.post(
                 f"/api/chat/sessions/{chat_session_id}/messages",
                 json={
-                    "content": "보고서를 작성해줘",
+                    "content": "문서를 요약해줘",
                     "routing_metadata": {"ui_surface": "chat"},
                 },
             )
@@ -97,14 +98,14 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
         )
 
         assert create_response.status_code == 201
-        assert create_body["session"]["session_title"] == "대화형 문서 생성"
+        assert create_body["session"]["session_title"] == "대화형 문서 요약"
         assert create_body["session"]["metadata"] == {"slice": 388}
         assert message_response.status_code == 201
-        assert message_body["router"]["intent"] == CHAT_INTENT_DOCUMENT_GENERATION
+        assert message_body["router"]["intent"] == CHAT_INTENT_DOCUMENT_SUMMARY
         assert message_body["user_message"]["role"] == CHAT_ROLE_USER
         assert message_body["user_message"]["routing_metadata"]["ui_surface"] == "chat"
         assert message_body["assistant_message"]["role"] == CHAT_ROLE_ASSISTANT
-        assert "문서 생성 의도" in message_body["assistant_message"]["content"]
+        assert "문서 요약 의도" in message_body["assistant_message"]["content"]
         assert len(message_body["thread"]["messages"]) == 2
         assert thread_response.status_code == 200
         assert [item["message"]["role"] for item in thread_body["messages"]] == [
@@ -115,7 +116,7 @@ def test_chat_api_creates_session_and_routes_message_with_mock_assistant(
         assert any(
             item["chat_session_id"] == chat_session_id for item in list_response.json()["sessions"]
         )
-        assert session_row["session_title"] == "대화형 문서 생성"
+        assert session_row["session_title"] == "대화형 문서 요약"
         assert session_row["default_search_scope"] == "company"
         assert session_row["metadata"] == {"slice": 388}
     finally:
@@ -318,6 +319,73 @@ def test_chat_api_executes_grounded_answer_and_links_generation_run(
         assert int(generation_row["search_log_id"]) == search_log_id
         assert generation_row["provider_mode"] == "mock"
         assert int(generation_row["created_by_user_id"]) == actor_user_id
+    finally:
+        if chat_session_id is not None:
+            _delete_chat_session(migrated_database_url, chat_session_id)
+        if generation_run_id is not None:
+            _delete_generation_run(migrated_database_url, generation_run_id)
+        if search_log_id is not None:
+            _delete_search_log(migrated_database_url, search_log_id)
+
+
+def test_chat_api_executes_document_generation_with_template_metadata(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+    actor_user_id = _seed_actor_user_id(migrated_database_url)
+    chat_session_id: int | None = None
+    generation_run_id: int | None = None
+    search_log_id: int | None = None
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/chat/sessions",
+                json={
+                    "session_title": "제안서 생성 실행",
+                    "actor_user_id": actor_user_id,
+                    "default_provider_mode": "mock",
+                    "default_search_scope": "company",
+                },
+            )
+            chat_session_id = int(create_response.json()["session"]["chat_session_id"])
+            message_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={
+                    "content": "신규 서비스 제안서를 작성해줘",
+                    "routing_metadata": {
+                        "ui_surface": "chat",
+                        "generation_template_key": "proposal",
+                    },
+                },
+            )
+
+        body = message_response.json()
+        assistant = body["assistant_message"]
+        document_generation = assistant["runtime_metadata"]["chat_document_generation"]
+        search_log_id = int(document_generation["search_log_id"])
+        generation_run_id = int(document_generation["generation_run_id"])
+        link_types = {link["link_type"] for link in body["thread"]["messages"][1]["links"]}
+        generation_row = fetch_one(
+            migrated_database_url,
+            """
+            SELECT generation_template_id, request_metadata
+            FROM generation_runs
+            WHERE generation_run_id = %s
+            """,
+            (generation_run_id,),
+        )
+
+        assert message_response.status_code == 201
+        assert body["router"]["intent"] == CHAT_INTENT_DOCUMENT_GENERATION
+        assert assistant["runtime_metadata"]["execution_mode"] == "template_direct_generation"
+        assert document_generation["template_key"] == "proposal"
+        assert document_generation["grounded_answer"]["generation_run_id"] == generation_run_id
+        assert document_generation["grounded_answer"]["search_log_id"] == search_log_id
+        assert CHAT_LINK_TYPE_SEARCH_LOG in link_types
+        assert CHAT_LINK_TYPE_GENERATION_RUN in link_types
+        assert generation_row["generation_template_id"] is not None
+        assert generation_row["request_metadata"]["template_key"] == "proposal"
     finally:
         if chat_session_id is not None:
             _delete_chat_session(migrated_database_url, chat_session_id)
