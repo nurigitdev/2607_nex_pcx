@@ -24,6 +24,7 @@ TEMPLATE_COMPLETENESS_REASON_MISSING_REQUIRED_SECTION = "missing_required_sectio
 TEMPLATE_COMPLETENESS_REASON_MISSING_SECTION_CITATION = "missing_section_citation"
 
 _MARKDOWN_HEADING_PATTERN = re.compile(r"(?m)^(#{1,6})\s+(.+?)\s*#*\s*$")
+_HEADING_NUMBER_PREFIX_PATTERN = re.compile(r"^\s*\d+(?:\.\d+)*[.)]?\s+")
 _TITLE_SECTION_KEYS = {"title"}
 
 
@@ -362,7 +363,8 @@ def _section_text(
 
 
 def _normalize_heading(value: str) -> str:
-    return " ".join(value.strip().split())
+    normalized = " ".join(value.strip().split())
+    return _HEADING_NUMBER_PREFIX_PATTERN.sub("", normalized).strip()
 
 
 def _sequence_of_strings(value: object) -> tuple[str, ...]:

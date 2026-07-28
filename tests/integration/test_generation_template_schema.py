@@ -417,6 +417,8 @@ def test_non_default_generation_templates_seed_section_contracts(
     assert template["document_type"] == template_key
     assert expected_section_key in section_keys
     assert template["citation_policy"]["required"] is True
+    if template_key in {"report", "proposal"}:
+        assert all(section["required"] is True for section in template["section_schema"])
 
 
 def test_generation_run_can_link_generation_template(

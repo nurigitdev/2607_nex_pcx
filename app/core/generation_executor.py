@@ -28,6 +28,8 @@ from app.core.generation_providers import (
     generation_provider_runtime_config_from_record,
 )
 from app.core.generation_runs import (
+    DGX_VLLM_GENERATION_MODEL_ID,
+    DGX_VLLM_GENERATION_PROVIDER_NAME,
     GENERATION_GUARDRAIL_ALLOWED,
     GENERATION_GUARDRAIL_NO_ANSWER,
     GENERATION_PROVIDER_MODE_MOCK,
@@ -59,6 +61,15 @@ MOCK_NO_ANSWER_TEXT = "제공된 문서 근거만으로는 답변할 수 없습�
 MOCK_FINISH_REASON_COMPLETED = "mock_completed"
 MOCK_FINISH_REASON_NO_ANSWER = "guardrail_no_answer"
 REMOTE_FINISH_REASON_GUARDRAIL_NO_ANSWER = "guardrail_no_answer"
+REMOTE_FINISH_REASON_LENGTH = "length"
+GENERATION_MAX_TOKEN_POLICY_CONTRACT_VERSION = "generation_max_token_policy_v1"
+REMOTE_GENERATION_MIN_MAX_TOKENS = 4096
+REMOTE_GENERATION_LONG_FORM_MAX_TOKENS = 8192
+REMOTE_GENERATION_LONG_FORM_DOCUMENT_TYPES = frozenset({"proposal", "report"})
+GENERATION_TRUNCATION_CONTRACT_VERSION = "generation_truncation_v1"
+GENERATION_TRUNCATION_STATUS_NOT_TRUNCATED = "not_truncated"
+GENERATION_TRUNCATION_STATUS_TRUNCATED = "truncated"
+GENERATION_TRUNCATION_REASON_FINISH_LENGTH = "finish_reason_length"
 
 
 @dataclass(frozen=True)
@@ -67,6 +78,80 @@ class GenerationExecutionReport:
     prompt_package: GenerationPromptPackage
     run: GenerationRunRecord
     citations: tuple[GenerationRunCitationRecord, ...]
+
+
+def resolve_remote_generation_max_tokens(
+    provider: GenerationProviderConfigRecord,
+    prompt_package: GenerationPromptPackage,
+) -> int:
+    """Resolve the effective remote output token budget for a generation request."""
+
+    is_dgx_vllm = _is_dgx_vllm_generation_provider(provider)
+    baseline = (
+        max(provider.max_tokens, REMOTE_GENERATION_MIN_MAX_TOKENS)
+        if is_dgx_vllm
+        else provider.max_tokens
+    )
+    if is_dgx_vllm and prompt_package.document_type in REMOTE_GENERATION_LONG_FORM_DOCUMENT_TYPES:
+        return max(baseline, REMOTE_GENERATION_LONG_FORM_MAX_TOKENS)
+    return baseline
+
+
+def _is_dgx_vllm_generation_provider(provider: GenerationProviderConfigRecord) -> bool:
+    return (
+        provider.provider_name == DGX_VLLM_GENERATION_PROVIDER_NAME
+        or provider.model_id == DGX_VLLM_GENERATION_MODEL_ID
+    )
+
+
+def _max_token_policy_metadata(
+    *,
+    provider: GenerationProviderConfigRecord,
+    prompt_package: GenerationPromptPackage,
+    resolved_max_tokens: int,
+) -> dict[str, object]:
+    is_dgx_vllm = _is_dgx_vllm_generation_provider(provider)
+    is_long_form = prompt_package.document_type in REMOTE_GENERATION_LONG_FORM_DOCUMENT_TYPES
+    if is_dgx_vllm and is_long_form:
+        resolution_reason = "dgx_long_form_document_type"
+    elif is_dgx_vllm and provider.max_tokens < REMOTE_GENERATION_MIN_MAX_TOKENS:
+        resolution_reason = "dgx_minimum"
+    else:
+        resolution_reason = "configured"
+
+    return {
+        "contract_version": GENERATION_MAX_TOKEN_POLICY_CONTRACT_VERSION,
+        "configured_max_tokens": provider.max_tokens,
+        "applies_dgx_minimum": is_dgx_vllm,
+        "minimum_max_tokens": REMOTE_GENERATION_MIN_MAX_TOKENS,
+        "long_form_max_tokens": REMOTE_GENERATION_LONG_FORM_MAX_TOKENS,
+        "long_form_document_types": sorted(REMOTE_GENERATION_LONG_FORM_DOCUMENT_TYPES),
+        "document_type": prompt_package.document_type,
+        "resolved_max_tokens": resolved_max_tokens,
+        "resolution_reason": resolution_reason,
+    }
+
+
+def _truncation_metadata(
+    *,
+    finish_reason: str | None,
+    requested_max_tokens: int,
+    output_token_count: int | None,
+) -> dict[str, object]:
+    truncated = finish_reason == REMOTE_FINISH_REASON_LENGTH
+    return {
+        "contract_version": GENERATION_TRUNCATION_CONTRACT_VERSION,
+        "status": (
+            GENERATION_TRUNCATION_STATUS_TRUNCATED
+            if truncated
+            else GENERATION_TRUNCATION_STATUS_NOT_TRUNCATED
+        ),
+        "truncated": truncated,
+        "reason_code": GENERATION_TRUNCATION_REASON_FINISH_LENGTH if truncated else None,
+        "finish_reason": finish_reason,
+        "requested_max_tokens": requested_max_tokens,
+        "output_token_count": output_token_count,
+    }
 
 
 def _estimate_token_count(text: str) -> int:
@@ -112,10 +197,15 @@ def _mock_answer(
         return "\n\n".join(
             (
                 "# 보고서 초안",
+                f"## 제목\n{prompt_package.query_text}",
                 f"## 요약\n{overview}",
+                f"## 배경\n- 검색 근거는 {source_label}에서 확인되었습니다. [{citation_key}]",
                 f"## 주요 내용\n- {excerpt} [{citation_key}]",
                 f"## 근거\n- [{citation_key}] {source_label}",
-                "## 한계\n- 제공된 검색 근거 범위 밖의 세부 사항은 별도 확인 대상으로 남깁니다.",
+                "## 리스크\n- 제공된 검색 근거 범위 밖의 세부 사항은 별도 확인 대상으로 남깁니다. "
+                f"[{citation_key}]",
+                "## 후속 조치\n- 원문 근거를 재확인하고 필요한 담당자 검토를 진행합니다. "
+                f"[{citation_key}]",
             )
         )
     if prompt_package.document_type == "proposal":
@@ -129,6 +219,9 @@ def _mock_answer(
                 purpose,
                 f"## 현황\n- {excerpt} [{citation_key}]",
                 f"## 제안 내용\n- 위 근거를 기준으로 후속 검토 항목을 정리합니다. [{citation_key}]",
+                f"## 추진 방안\n- 관련 부서 검토와 실행 우선순위를 확정합니다. [{citation_key}]",
+                "## 기대 효과\n- 근거 기반 의사결정과 후속 조치 추적성을 높입니다. "
+                f"[{citation_key}]",
                 f"## 근거\n- [{citation_key}] {source_label}",
             )
         )
@@ -312,6 +405,7 @@ def _remote_request_metadata(
     prompt_package: GenerationPromptPackage,
     *,
     provider: GenerationProviderConfigRecord,
+    max_tokens: int,
 ) -> dict[str, object]:
     return {
         **_request_metadata(prompt_package),
@@ -319,7 +413,13 @@ def _remote_request_metadata(
         "provider_name": provider.provider_name,
         "provider_mode": provider.provider_mode,
         "model_id": provider.model_id,
-        "max_tokens": provider.max_tokens,
+        "configured_max_tokens": provider.max_tokens,
+        "max_tokens": max_tokens,
+        "max_token_policy": _max_token_policy_metadata(
+            provider=provider,
+            prompt_package=prompt_package,
+            resolved_max_tokens=max_tokens,
+        ),
         "temperature": provider.temperature,
         "top_p": provider.top_p,
         "extra_body": _runtime_extra_body(provider),
@@ -530,6 +630,7 @@ def execute_remote_generation_run(
     guardrail_status = (
         GENERATION_GUARDRAIL_NO_ANSWER if guardrail_blocks else GENERATION_GUARDRAIL_ALLOWED
     )
+    request_max_tokens = resolve_remote_generation_max_tokens(provider, prompt_package)
 
     if guardrail_blocks:
         finished_at = datetime.now(UTC)
@@ -560,7 +661,11 @@ def execute_remote_generation_run(
                 answer_text=MOCK_NO_ANSWER_TEXT,
                 finish_reason=REMOTE_FINISH_REASON_GUARDRAIL_NO_ANSWER,
                 elapsed_ms=elapsed_ms,
-                request_metadata=_remote_request_metadata(prompt_package, provider=provider),
+                request_metadata=_remote_request_metadata(
+                    prompt_package,
+                    provider=provider,
+                    max_tokens=request_max_tokens,
+                ),
                 response_metadata=_remote_response_metadata(
                     provider=provider,
                     provider_metrics=None,
@@ -568,6 +673,11 @@ def execute_remote_generation_run(
                         "skipped_provider_call": True,
                         "template": _template_response_metadata(prompt_package),
                         "answer_quality": answer_quality,
+                        "truncation": _truncation_metadata(
+                            finish_reason=REMOTE_FINISH_REASON_GUARDRAIL_NO_ANSWER,
+                            requested_max_tokens=request_max_tokens,
+                            output_token_count=None,
+                        ),
                     },
                 ),
                 guardrail_metadata=_guardrail_metadata(
@@ -598,7 +708,7 @@ def execute_remote_generation_run(
     chat_request = generation_chat_request_from_openai_messages(
         prompt_package.openai_messages,
         model_id=provider.model_id,
-        max_tokens=provider.max_tokens,
+        max_tokens=request_max_tokens,
         temperature=provider.temperature,
         top_p=provider.top_p,
         trace_id=f"generation-run-search-log-{prompt_package.search_log_id}",
@@ -656,7 +766,11 @@ def execute_remote_generation_run(
                     exc.metrics.total_token_count if exc.metrics is not None else None
                 ),
                 elapsed_ms=elapsed_ms,
-                request_metadata=_remote_request_metadata(prompt_package, provider=provider),
+                request_metadata=_remote_request_metadata(
+                    prompt_package,
+                    provider=provider,
+                    max_tokens=request_max_tokens,
+                ),
                 response_metadata=_remote_response_metadata(
                     provider=provider,
                     provider_metrics=exc.metrics,
@@ -665,6 +779,15 @@ def execute_remote_generation_run(
                         "error_payload": exc.payload,
                         "template": _template_response_metadata(prompt_package),
                         "answer_quality": answer_quality,
+                        "truncation": _truncation_metadata(
+                            finish_reason=(
+                                exc.metrics.finish_reason if exc.metrics is not None else None
+                            ),
+                            requested_max_tokens=request_max_tokens,
+                            output_token_count=(
+                                exc.metrics.output_token_count if exc.metrics is not None else None
+                            ),
+                        ),
                     },
                 ),
                 guardrail_metadata=_guardrail_metadata(
@@ -720,7 +843,11 @@ def execute_remote_generation_run(
             output_token_count=response.output_token_count,
             total_token_count=response.total_token_count,
             elapsed_ms=response.elapsed_ms,
-            request_metadata=_remote_request_metadata(prompt_package, provider=provider),
+            request_metadata=_remote_request_metadata(
+                prompt_package,
+                provider=provider,
+                max_tokens=request_max_tokens,
+            ),
             response_metadata=_remote_response_metadata(
                 provider=provider,
                 provider_metrics=response.provider_metrics,
@@ -728,6 +855,11 @@ def execute_remote_generation_run(
                     **dict(response.response_metadata),
                     "template": _template_response_metadata(prompt_package),
                     "answer_quality": answer_quality,
+                    "truncation": _truncation_metadata(
+                        finish_reason=response.finish_reason,
+                        requested_max_tokens=request_max_tokens,
+                        output_token_count=response.output_token_count,
+                    ),
                 },
                 provider_model_id=response.provider_model_id,
                 response_id=response.response_id,

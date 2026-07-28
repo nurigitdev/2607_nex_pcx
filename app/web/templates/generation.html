@@ -536,6 +536,9 @@
 {% set template_completeness = selected_template_completeness %}
 {% set template_completeness_status = template_completeness.status if template_completeness else "not_evaluated" %}
 {% set template_completeness_status_class = "success" if template_completeness_status == "passed" else ("warning" if template_completeness_status == "warning" else ("danger" if template_completeness_status == "failed" else "secondary")) %}
+{% set truncation = (selected_run.response_metadata or {}).get("truncation") or {} %}
+{% set is_generation_truncated = truncation.get("truncated") or selected_run.finish_reason == "length" %}
+{% set run_status_class = "warning" if is_generation_truncated else run_status_class %}
 <section class="bg-white border rounded-2 p-3 mb-4" data-generation-run-result>
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
     <div>
@@ -546,6 +549,9 @@
     </div>
     <div class="d-flex flex-wrap gap-2">
       <span class="badge text-bg-{{ run_status_class }}">{{ selected_run.status }}</span>
+      {% if is_generation_truncated %}
+      <span class="badge text-bg-warning">{{ t("generation.truncated_generation") }}</span>
+      {% endif %}
       <span class="badge text-bg-light border">{{ selected_run.guardrail_status }}</span>
       <span class="badge text-bg-{{ answer_quality_status_class }}">
         {{ t("generation.answer_quality") }}: {{ t("generation.answer_quality_status_" ~ answer_quality_status) }}
@@ -566,6 +572,13 @@
       </a>
     </div>
   </div>
+  {% if is_generation_truncated %}
+  <div class="alert alert-warning" role="alert">
+    {{ t("generation.truncated_generation_help") }}
+    {{ t("generation.requested_max_tokens") }}:
+    <strong>{{ truncation.get("requested_max_tokens") or selected_run.request_metadata.get("max_tokens") or "-" }}</strong>
+  </div>
+  {% endif %}
   <div class="row g-3 mb-3">
     <div class="col-6 col-lg-2">
       <div class="metric-card">

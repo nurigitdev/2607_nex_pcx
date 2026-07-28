@@ -395,7 +395,11 @@ def _remote_response(
     model_id: str,
     *,
     answer_text: str = "사내 보안 규정은 계정 공유를 금지합니다. [RCP-001]",
+    finish_reason: str = "stop",
+    input_token_count: int = 120,
+    output_token_count: int = 12,
 ) -> GenerationChatCompletionResponse:
+    total_token_count = input_token_count + output_token_count
     metrics = parse_openai_chat_completion_metrics(
         {
             "id": "chatcmpl-pytest-remote",
@@ -405,14 +409,14 @@ def _remote_response(
             "choices": [
                 {
                     "index": 0,
-                    "finish_reason": "stop",
+                    "finish_reason": finish_reason,
                     "message": {"role": "assistant", "content": answer_text},
                 }
             ],
             "usage": {
-                "prompt_tokens": 120,
-                "completion_tokens": 12,
-                "total_tokens": 132,
+                "prompt_tokens": input_token_count,
+                "completion_tokens": output_token_count,
+                "total_tokens": total_token_count,
             },
         },
         provider_name=provider_name,
@@ -424,12 +428,12 @@ def _remote_response(
     )
     return GenerationChatCompletionResponse(
         answer_text=answer_text,
-        finish_reason="stop",
+        finish_reason=finish_reason,
         provider_model_id=model_id,
         response_id="chatcmpl-pytest-remote",
-        input_token_count=120,
-        output_token_count=12,
-        total_token_count=132,
+        input_token_count=input_token_count,
+        output_token_count=output_token_count,
+        total_token_count=total_token_count,
         elapsed_ms=88,
         provider_metrics=metrics,
         response_metadata={"provider_name": provider_name, "metrics": {"succeeded": True}},
@@ -743,10 +747,13 @@ def test_mock_generation_executor_shapes_report_template_output(
         assert report.run.request_metadata["template_key"] == "report"
         assert report.run.answer_text is not None
         assert report.run.answer_text.startswith("# 보고서 초안")
+        assert "## 제목" in report.run.answer_text
         assert "## 요약" in report.run.answer_text
+        assert "## 배경" in report.run.answer_text
         assert "## 주요 내용" in report.run.answer_text
         assert "## 근거" in report.run.answer_text
-        assert "## 한계" in report.run.answer_text
+        assert "## 리스크" in report.run.answer_text
+        assert "## 후속 조치" in report.run.answer_text
         assert "[RCP-001]" in report.run.answer_text
         assert report.run.response_metadata["template"] == {
             "template_key": "report",
@@ -766,8 +773,11 @@ def test_mock_generation_executor_shapes_report_template_output(
             "required_template_section_keys": [
                 "title",
                 "overview",
+                "background",
                 "findings",
                 "evidence",
+                "risks",
+                "next_steps",
             ],
         }
         assert report.run.response_metadata["answer_quality"]["status"] == "passed"
@@ -932,6 +942,7 @@ def test_remote_generation_executor_persists_success_and_citation_trace(
 
         assert len(fake_provider.requests) == 1
         assert fake_provider.requests[0].model_id == DGX_VLLM_GENERATION_MODEL_ID
+        assert fake_provider.requests[0].max_tokens == 4096
         assert fake_provider.requests[0].extra_body == {
             "chat_template_kwargs": {"enable_thinking": False}
         }
@@ -957,6 +968,10 @@ def test_remote_generation_executor_persists_success_and_citation_trace(
         assert report.run.request_metadata["extra_body"] == {
             "chat_template_kwargs": {"enable_thinking": False}
         }
+        assert report.run.request_metadata["configured_max_tokens"] == 4096
+        assert report.run.request_metadata["max_tokens"] == 4096
+        assert report.run.request_metadata["max_token_policy"]["resolution_reason"] == "configured"
+        assert report.run.response_metadata["truncation"]["truncated"] is False
         assert stored == report.run
         assert len(citations) == 1
         assert citations[0].was_cited is True
@@ -965,6 +980,93 @@ def test_remote_generation_executor_persists_success_and_citation_trace(
         assert citations[0].chunk_id == fixture["chunk_id"]
         assert citations[0].document_id == fixture["document_id"]
         assert citations[0].file_id == fixture["file_id"]
+    finally:
+        _restore_generation_provider_defaults(migrated_database_url, provider_name)
+        _delete_search_log(migrated_database_url, search_log.search_log_id)
+        _delete_file(migrated_database_url, fixture["file_id"])
+
+
+def test_remote_generation_executor_raises_dgx_long_form_budget_and_records_truncation(
+    migrated_database_url: str,
+) -> None:
+    search_log = _search_log(migrated_database_url)
+    fixture = _create_citation_source_fixture(migrated_database_url, search_log)
+    candidate = _candidate(
+        search_log_result_id=fixture["search_log_result_id"],
+        chunk_id=fixture["chunk_id"],
+        document_id=fixture["document_id"],
+        file_id=fixture["file_id"],
+        chunk_policy_name=str(fixture["chunk_policy_name"]),
+    )
+    provider_name = f"pytest_remote_generation_report_budget_{search_log.search_log_id}"
+    provider = seed_dgx_vllm_generation_provider_config(
+        migrated_database_url,
+        provider_name=provider_name,
+        max_tokens=1024,
+        is_default=True,
+    )
+    report_answer = "\n\n".join(
+        (
+            "# 보고서 초안",
+            "## 1. 제목\n사내 보안 규정 보고서",
+            "## 2. 요약\n계정 공유 금지 규정이 확인되었습니다. [RCP-001]",
+            "## 3. 배경\n보안 정책 문서를 기준으로 확인했습니다. [RCP-001]",
+            "## 4. 주요 내용\n- 계정 공유를 금지합니다. [RCP-001]",
+            "## 5. 근거\n- [RCP-001] security_policy.md / p.1",
+            "## 6. 리스크\n- 추가 세부 규정은 별도 확인이 필요합니다. [RCP-001]",
+            "## 7. 후속 조치\n- 담당자 검토를 진행합니다. [RCP-001]",
+        )
+    )
+    fake_provider = _FakeRemoteGenerationProvider(
+        response=_remote_response(
+            provider.provider_name,
+            provider.model_id,
+            answer_text=report_answer,
+            finish_reason="length",
+            input_token_count=6124,
+            output_token_count=8192,
+        )
+    )
+
+    try:
+        report = execute_remote_generation_run(
+            migrated_database_url,
+            _package(search_log, candidate=candidate),
+            generation_template_key="report",
+            provider_client=fake_provider,
+            api_key="pytest-secret",
+            created_by="pytest-remote-report-budget",
+        )
+
+        assert len(fake_provider.requests) == 1
+        assert fake_provider.requests[0].max_tokens == 8192
+        assert report.run.status == GENERATION_STATUS_SUCCEEDED
+        assert report.run.finish_reason == "length"
+        assert report.run.output_token_count == 8192
+        assert report.run.request_metadata["configured_max_tokens"] == 1024
+        assert report.run.request_metadata["max_tokens"] == 8192
+        assert (
+            report.run.request_metadata["max_token_policy"]["resolution_reason"]
+            == "dgx_long_form_document_type"
+        )
+        assert report.run.response_metadata["template"]["required_template_section_keys"] == [
+            "title",
+            "overview",
+            "background",
+            "findings",
+            "evidence",
+            "risks",
+            "next_steps",
+        ]
+        assert report.run.response_metadata["truncation"] == {
+            "contract_version": "generation_truncation_v1",
+            "status": "truncated",
+            "truncated": True,
+            "reason_code": "finish_reason_length",
+            "finish_reason": "length",
+            "requested_max_tokens": 8192,
+            "output_token_count": 8192,
+        }
     finally:
         _restore_generation_provider_defaults(migrated_database_url, provider_name)
         _delete_search_log(migrated_database_url, search_log.search_log_id)

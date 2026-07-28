@@ -69,7 +69,7 @@ DGX_VLLM_GENERATION_BASE_URL = "http://192.168.20.243:12000"
 DGX_VLLM_GENERATION_MODEL_ID = "/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4"
 DGX_VLLM_GENERATION_API_KEY_ENV = "NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY"
 DGX_VLLM_GENERATION_TIMEOUT_SECONDS = 300
-DGX_VLLM_GENERATION_MAX_TOKENS = 1024
+DGX_VLLM_GENERATION_MAX_TOKENS = 4096
 DGX_VLLM_GENERATION_TEMPERATURE = 0.2
 DGX_VLLM_GENERATION_TOP_P = 0.9
 DEFAULT_GENERATION_RUN_HISTORY_LIMIT = 50
@@ -708,6 +708,9 @@ def build_dgx_vllm_generation_provider_config_input(
                     }
                 },
                 "serving_max_model_len": "200k",
+                "min_max_tokens": DGX_VLLM_GENERATION_MAX_TOKENS,
+                "long_form_max_tokens": 8192,
+                "long_form_document_types": ["proposal", "report"],
                 "smoke_evidence": "docs/dgx_vllm_generation_smoke_result.md",
                 "secret_storage": "environment_variable_only",
                 "slice": 349,

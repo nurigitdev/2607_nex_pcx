@@ -108,6 +108,41 @@ def test_template_completeness_passes_report_with_required_sections_and_citation
     assert payload["section_checks"][0]["key"] == "title"
 
 
+def test_template_completeness_matches_numbered_markdown_headings() -> None:
+    template = {
+        **_report_template_snapshot(),
+        "section_schema": [
+            {"key": "title", "heading": "제목", "required": True},
+            {"key": "overview", "heading": "요약", "required": True},
+            {"key": "background", "heading": "배경", "required": True},
+            {"key": "findings", "heading": "주요 내용", "required": True},
+            {"key": "evidence", "heading": "근거", "required": True},
+            {"key": "risks", "heading": "리스크", "required": True},
+            {"key": "next_steps", "heading": "후속 조치", "required": True},
+        ],
+    }
+    assessment = assess_generation_template_completeness(
+        _run(
+            answer_text=(
+                "# 보고서 초안\n\n"
+                "## 1. 제목\n보고서 제목\n\n"
+                "## 2. 요약\n요약입니다. [RCP-001]\n\n"
+                "## 3. 배경\n배경입니다. [RCP-001]\n\n"
+                "## 4. 주요 내용\n주요 내용입니다. [RCP-001]\n\n"
+                "## 5. 근거\n근거입니다. [RCP-001]\n\n"
+                "## 6. 리스크\n리스크입니다. [RCP-001]\n\n"
+                "## 7. 후속 조치\n후속 조치입니다. [RCP-001]"
+            ),
+            request_metadata={"generation_template": template},
+        )
+    )
+
+    assert assessment.status == GENERATION_TEMPLATE_COMPLETENESS_PASSED
+    assert assessment.required_section_count == 7
+    assert assessment.present_required_section_count == 7
+    assert assessment.required_section_coverage_percent == 100.0
+
+
 def test_template_completeness_fails_for_missing_required_section() -> None:
     assessment = assess_generation_template_completeness(
         _run(

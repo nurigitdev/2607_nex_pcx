@@ -141,6 +141,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert korean("generation_metrics.recent_runs") == "최근 생성 실행"
     assert korean("generation.template_completeness") == "Template 완성도"
     assert english("generation.template_completeness") == "Template Completeness"
+    assert korean("generation.truncated_generation") == "출력 잘림"
+    assert english("generation.requested_max_tokens") == "Requested Max Tokens"
     assert korean("generation.template_completeness_reason_missing_required_section") == (
         "필수 section 누락"
     )

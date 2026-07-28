@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260728_0036"
+HEAD_REVISION = "20260728_0037"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -127,6 +127,15 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         test_database_url,
         "SELECT to_regclass('public.idx_generation_templates_family_version') AS index_name",
     )
+    long_form_template_required_summary = fetch_one(
+        test_database_url,
+        """
+        SELECT bool_and((section ->> 'required')::boolean) AS all_required
+        FROM generation_templates,
+             jsonb_array_elements(section_schema) AS section
+        WHERE template_key IN ('report', 'proposal')
+        """,
+    )
     default_generation_provider = fetch_one(
         test_database_url,
         """
@@ -176,6 +185,7 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert (
         generation_template_family_index["index_name"] == "idx_generation_templates_family_version"
     )
+    assert long_form_template_required_summary["all_required"] is True
     assert default_generation_provider["provider_mode"] == "mock"
     assert default_generation_provider["model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
     assert keyword_index_table["table_name"] == "chunk_keyword_terms"
