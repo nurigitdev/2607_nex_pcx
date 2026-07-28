@@ -18,6 +18,7 @@
     "retrieval_context": "Search Context",
     "citation_readiness": "Citation Check",
     "generation": "Generation",
+    "document_summary_history": "Document Summary History",
     "generation_history": "Generation History",
     "generation_templates": "Generation Templates",
     "generation_provider_config": "Generation Provider Config",
@@ -325,6 +326,17 @@
     "run_status_running": "Running",
     "run_status_pending": "Pending",
     "run_status_canceled": "Canceled"
+  },
+  "document_summary_history": {
+    "title": "Document Summary History",
+    "subtitle": "Review summary runs generated from ingested documents by document and template.",
+    "run_count": "Summary Runs",
+    "latest_run": "Latest Run",
+    "recent_runs": "Recent Document Summary Runs",
+    "recent_runs_help": "Review target documents, applied templates, source chunk count, and generation status.",
+    "document": "Document",
+    "raw_history": "Raw Summary History JSON",
+    "no_runs": "No document summary runs match these filters."
   },
   "generation_metrics": {
     "title": "Generation Provider Metrics",

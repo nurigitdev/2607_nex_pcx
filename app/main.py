@@ -135,11 +135,17 @@ from app.core.document_inventory import (
     update_document_permission,
 )
 from app.core.document_summary import (
+    DEFAULT_DOCUMENT_SUMMARY_HISTORY_LIMIT,
     DEFAULT_DOCUMENT_SUMMARY_MAX_CHUNKS,
     DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY,
+    MAX_DOCUMENT_SUMMARY_HISTORY_LIMIT,
+    DocumentSummaryHistory,
+    DocumentSummaryHistoryFilter,
+    DocumentSummaryHistoryItem,
     DocumentSummaryInput,
     DocumentSummaryResult,
     InvalidDocumentSummaryError,
+    list_document_summary_history,
     run_document_summary_generation,
 )
 from app.core.embedding_coverage import (
@@ -4923,6 +4929,63 @@ def document_summary_result_payload(
         },
         "retrieval_context": retrieval_context_package_payload(result.retrieval_package),
         "generation": generation_execution_report_payload(result.generation_report),
+    }
+
+
+def document_summary_history_item_payload(
+    item: DocumentSummaryHistoryItem,
+) -> dict[str, object]:
+    run = item.run
+    return {
+        "generation_run_id": run.generation_run_id,
+        "search_log_id": run.search_log_id,
+        "document_id": item.document_id,
+        "file_id": item.file_id,
+        "document_title": item.document_title,
+        "original_file_name": item.original_file_name,
+        "document_label": item.document_label,
+        "document_group": item.document_group,
+        "file_type": item.file_type,
+        "template_key": item.template_key,
+        "template_name": item.template_name,
+        "summary_instruction": item.summary_instruction,
+        "source_chunk_count": item.source_chunk_count,
+        "provider_name": run.provider_name,
+        "provider_mode": run.provider_mode,
+        "model_id": run.model_id,
+        "status": run.status,
+        "guardrail_status": run.guardrail_status,
+        "retrieval_confidence_status": run.retrieval_confidence_status,
+        "citation_readiness_status": run.citation_readiness_status,
+        "total_token_count": run.total_token_count,
+        "elapsed_ms": run.elapsed_ms,
+        "created_at": _datetime_response(run.created_at),
+        "created_at_label": _datetime_label(run.created_at),
+        "links": {
+            "document": f"/documents/{item.document_id}" if item.document_id else None,
+            "generation_run": f"/generation/runs/{run.generation_run_id}",
+            "search_log": f"/search/logs?search_log_id={run.search_log_id}",
+            "retrieval_context": f"/search/context?search_log_id={run.search_log_id}",
+        },
+    }
+
+
+def document_summary_history_payload(history: DocumentSummaryHistory) -> dict[str, object]:
+    return {
+        "filters": {
+            "limit": history.filters.limit,
+            "run_status": history.filters.run_status,
+            "generation_template_key": history.filters.generation_template_key,
+        },
+        "summary": {
+            "run_count": history.summary.run_count,
+            "succeeded_count": history.summary.succeeded_count,
+            "failed_count": history.summary.failed_count,
+            "no_answer_count": history.summary.no_answer_count,
+            "latest_created_at": _datetime_response(history.summary.latest_created_at),
+            "latest_created_at_label": _datetime_label(history.summary.latest_created_at),
+        },
+        "runs": [document_summary_history_item_payload(item) for item in history.runs],
     }
 
 
@@ -12370,6 +12433,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=document_summary_result_payload(result),
         )
 
+    @app.get("/api/generation/document-summaries")
+    def api_list_document_summary_runs(
+        limit: int = Query(default=DEFAULT_DOCUMENT_SUMMARY_HISTORY_LIMIT),
+        run_status: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+        generation_template_key: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            history = list_document_summary_history(
+                settings.database_url,
+                history_filter=DocumentSummaryHistoryFilter(
+                    limit=limit,
+                    run_status=run_status,
+                    generation_template_key=generation_template_key,
+                ),
+            )
+        except InvalidDocumentSummaryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(content=document_summary_history_payload(history))
+
     @app.post("/api/search/logs/{search_log_id}/generation-runs/mock")
     def api_create_mock_generation_run(
         search_log_id: int,
@@ -15857,6 +15945,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "mock",
                     "remote_openai_compatible",
                 ),
+                run_status_options=(
+                    GENERATION_RUN_HISTORY_FILTER_ALL,
+                    "succeeded",
+                    "failed",
+                    "no_answer",
+                    "blocked",
+                    "running",
+                    "pending",
+                    "canceled",
+                ),
+                error_message=error_message,
+            ),
+        )
+
+    @app.get("/generation/document-summaries", response_class=HTMLResponse)
+    def document_summary_history_page(
+        request: Request,
+        limit: int = Query(default=DEFAULT_DOCUMENT_SUMMARY_HISTORY_LIMIT),
+        run_status: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+        generation_template_key: str = Query(default=GENERATION_RUN_HISTORY_FILTER_ALL),
+    ) -> HTMLResponse:
+        history: DocumentSummaryHistory | None = None
+        history_json = ""
+        summary_template_options: tuple[GenerationTemplateRecord, ...] = ()
+        error_message: str | None = None
+
+        history_filter = DocumentSummaryHistoryFilter(
+            limit=limit,
+            run_status=run_status,
+            generation_template_key=generation_template_key,
+        )
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                summary_template_options = tuple(
+                    template
+                    for template in list_generation_templates(settings.database_url)
+                    if template.document_type == "summary"
+                )
+                history = list_document_summary_history(
+                    settings.database_url,
+                    history_filter=history_filter,
+                )
+                history_json = json.dumps(
+                    document_summary_history_payload(history),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                history_filter = history.filters
+            except (InvalidDocumentSummaryError, InvalidGenerationTemplateError) as exc:
+                error_message = str(exc)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "document_summary_history.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                history=history,
+                history_json=history_json,
+                selected_limit=history_filter.limit,
+                selected_run_status=history_filter.run_status,
+                selected_generation_template_key=history_filter.generation_template_key,
+                max_limit=MAX_DOCUMENT_SUMMARY_HISTORY_LIMIT,
+                summary_template_options=summary_template_options,
                 run_status_options=(
                     GENERATION_RUN_HISTORY_FILTER_ALL,
                     "succeeded",

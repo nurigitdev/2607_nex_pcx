@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("document_summary_history.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("document_summary_history.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/generation">{{ t("generation.title") }}</a>
+    <a
+      class="btn btn-outline-primary btn-sm"
+      href="/api/generation/document-summaries?limit={{ selected_limit }}&run_status={{ selected_run_status }}&generation_template_key={{ selected_generation_template_key }}"
+    >
+      {{ t("common.api") }}
+    </a>
+  </div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4" data-document-summary-history-filters>
+  <form class="row g-3 align-items-end" method="get">
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="run_status">{{ t("generation_history.run_status_filter") }}</label>
+      <select
+        class="form-select"
+        id="run_status"
+        name="run_status"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        {% for option in run_status_options %}
+        <option value="{{ option }}" {% if selected_run_status == option %}selected{% endif %}>
+          {{ t("generation_history.run_status_" ~ option) }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-4">
+      <label class="form-label" for="generation_template_key">{{ t("generation.direct_template") }}</label>
+      <select
+        class="form-select"
+        id="generation_template_key"
+        name="generation_template_key"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="all" {% if selected_generation_template_key == "all" %}selected{% endif %}>
+          {{ t("common.all") }}
+        </option>
+        {% for template in summary_template_options %}
+        <option
+          value="{{ template.template_key }}"
+          {% if selected_generation_template_key == template.template_key %}selected{% endif %}
+        >
+          {{ template.template_name }} ({{ template.template_key }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="limit">{{ t("generation_history.limit") }}</label>
+      <input
+        class="form-control"
+        id="limit"
+        name="limit"
+        type="number"
+        min="1"
+        max="{{ max_limit }}"
+        value="{{ selected_limit }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("generation_history.apply") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if history %}
+{% set summary = history.summary %}
+<section class="document-detail-grid mb-4" data-document-summary-history-summary>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("document_summary_history.run_count") }}</div>
+    <div class="metric-value">{{ summary.run_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_history.run_status_succeeded") }}</div>
+    <div class="metric-value">{{ summary.succeeded_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_history.run_status_failed") }}</div>
+    <div class="metric-value">{{ summary.failed_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("generation_history.run_status_no_answer") }}</div>
+    <div class="metric-value">{{ summary.no_answer_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("document_summary_history.latest_run") }}</div>
+    <div class="metric-value fs-6">{{ summary.latest_created_at.strftime("%Y-%m-%d %H:%M:%S") if summary.latest_created_at else "-" }}</div>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-document-summary-history-table>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("document_summary_history.recent_runs") }}</h2>
+      <div class="text-secondary">{{ t("document_summary_history.recent_runs_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("generation_history.run") }}</th>
+          <th>{{ t("document_summary_history.document") }}</th>
+          <th>{{ t("generation.direct_template") }}</th>
+          <th>{{ t("generation.summary_instruction") }}</th>
+          <th>{{ t("generation.status") }}</th>
+          <th class="text-end">{{ t("generation.summary_max_chunks") }}</th>
+          <th class="text-end">{{ t("generation.tokens") }}</th>
+          <th class="text-end">{{ t("generation.elapsed_ms") }}</th>
+          <th>{{ t("generation_metrics.created_at") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in history.runs %}
+        {% set run = item.run %}
+        {% set run_status_class = "success" if run.status == "succeeded" else ("warning" if run.status == "no_answer" else ("danger" if run.status == "failed" else "secondary")) %}
+        <tr>
+          <td>
+            <a href="/generation/runs/{{ run.generation_run_id }}">#{{ run.generation_run_id }}</a>
+            <div class="text-secondary small">Search #{{ run.search_log_id }}</div>
+          </td>
+          <td class="text-break">
+            <div>{{ item.document_label }}</div>
+            <div class="text-secondary small">
+              {% if item.document_id %}
+              <a href="/documents/{{ item.document_id }}">Document #{{ item.document_id }}</a>
+              {% else %}
+              -
+              {% endif %}
+              {% if item.document_group %} · {{ item.document_group }}{% endif %}
+            </div>
+          </td>
+          <td>
+            <div>{{ item.template_name }}</div>
+            <span class="badge text-bg-light border">{{ item.template_key }}</span>
+          </td>
+          <td class="text-break">{{ item.summary_instruction or "-" }}</td>
+          <td>
+            <span class="badge text-bg-{{ run_status_class }}">{{ run.status }}</span>
+            <div class="text-secondary small">{{ run.guardrail_status }}</div>
+          </td>
+          <td class="text-end">{{ item.source_chunk_count }}</td>
+          <td class="text-end">{{ run.total_token_count if run.total_token_count is not none else "-" }}</td>
+          <td class="text-end">{{ run.elapsed_ms if run.elapsed_ms is not none else "-" }} ms</td>
+          <td class="text-nowrap">{{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-center text-secondary py-4" colspan="9">
+            {{ t("document_summary_history.no_runs") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="metric-card bg-white p-3" data-document-summary-history-json>
+  <div class="metric-label mb-2">{{ t("document_summary_history.raw_history") }}</div>
+  <pre class="json-preview operations-json-preview mb-0">{{ history_json }}</pre>
+</section>
+{% endif %}
+{% endblock %}

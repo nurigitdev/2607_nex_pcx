@@ -1,6 +1,7 @@
 """Document summary orchestration from stored chunks to generation runs."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from app.core.database import connect
@@ -12,8 +13,14 @@ from app.core.generation_executor import (
 )
 from app.core.generation_providers import GenerationProvider
 from app.core.generation_runs import (
+    DEFAULT_GENERATION_RUN_HISTORY_LIMIT,
     GENERATION_PROVIDER_MODE_MOCK,
     GENERATION_PROVIDER_MODE_REMOTE_OPENAI_COMPATIBLE,
+    GENERATION_RUN_HISTORY_FILTER_ALL,
+    GENERATION_STATUSES,
+    MAX_GENERATION_RUN_HISTORY_LIMIT,
+    GenerationRunRecord,
+    _generation_run_from_row,
 )
 from app.core.retrieval_context import (
     DEFAULT_CONTEXT_CHAR_BUDGET,
@@ -34,6 +41,8 @@ DOCUMENT_SUMMARY_STRATEGY_NAME = "document_summary"
 DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY = "summary"
 DEFAULT_DOCUMENT_SUMMARY_MAX_CHUNKS = 20
 MAX_DOCUMENT_SUMMARY_MAX_CHUNKS = 100
+DEFAULT_DOCUMENT_SUMMARY_HISTORY_LIMIT = DEFAULT_GENERATION_RUN_HISTORY_LIMIT
+MAX_DOCUMENT_SUMMARY_HISTORY_LIMIT = MAX_GENERATION_RUN_HISTORY_LIMIT
 
 DOCUMENT_SUMMARY_PROVIDER_MODES = {
     GENERATION_PROVIDER_MODE_MOCK,
@@ -66,6 +75,49 @@ class DocumentSummaryResult:
         return self.retrieval_package.search_log.search_log.search_log_id
 
 
+@dataclass(frozen=True)
+class DocumentSummaryHistoryFilter:
+    limit: int = DEFAULT_DOCUMENT_SUMMARY_HISTORY_LIMIT
+    run_status: str = GENERATION_RUN_HISTORY_FILTER_ALL
+    generation_template_key: str = GENERATION_RUN_HISTORY_FILTER_ALL
+
+
+@dataclass(frozen=True)
+class DocumentSummaryHistoryItem:
+    run: GenerationRunRecord
+    document_id: int | None
+    file_id: int | None
+    document_title: str | None
+    original_file_name: str | None
+    document_group: str | None
+    file_type: str | None
+    template_key: str
+    template_name: str
+    summary_instruction: str
+    source_chunk_count: int
+    created_at: datetime
+
+    @property
+    def document_label(self) -> str:
+        return self.document_title or self.original_file_name or "-"
+
+
+@dataclass(frozen=True)
+class DocumentSummaryHistorySummary:
+    run_count: int
+    succeeded_count: int
+    failed_count: int
+    no_answer_count: int
+    latest_created_at: datetime | None
+
+
+@dataclass(frozen=True)
+class DocumentSummaryHistory:
+    filters: DocumentSummaryHistoryFilter
+    summary: DocumentSummaryHistorySummary
+    runs: tuple[DocumentSummaryHistoryItem, ...]
+
+
 class InvalidDocumentSummaryError(ValueError):
     """Raised when a document summary run cannot be created."""
 
@@ -81,6 +133,42 @@ def _validate_provider_mode(provider_mode: str) -> str:
     if normalized not in DOCUMENT_SUMMARY_PROVIDER_MODES:
         raise InvalidDocumentSummaryError("provider_mode is not supported")
     return normalized
+
+
+def _validate_document_summary_history_limit(limit: int) -> int:
+    if limit < 1 or limit > MAX_DOCUMENT_SUMMARY_HISTORY_LIMIT:
+        raise InvalidDocumentSummaryError(
+            "limit must be between 1 and " f"{MAX_DOCUMENT_SUMMARY_HISTORY_LIMIT}"
+        )
+    return limit
+
+
+def _validate_document_summary_history_status(run_status: str) -> str:
+    normalized = (run_status or GENERATION_RUN_HISTORY_FILTER_ALL).strip().lower()
+    if not normalized:
+        return GENERATION_RUN_HISTORY_FILTER_ALL
+    if normalized == GENERATION_RUN_HISTORY_FILTER_ALL:
+        return normalized
+    if normalized not in GENERATION_STATUSES:
+        raise InvalidDocumentSummaryError("run_status is not supported")
+    return normalized
+
+
+def _validate_document_summary_history_template_key(template_key: str) -> str:
+    normalized = (template_key or GENERATION_RUN_HISTORY_FILTER_ALL).strip().lower()
+    return normalized or GENERATION_RUN_HISTORY_FILTER_ALL
+
+
+def validate_document_summary_history_filter(
+    history_filter: DocumentSummaryHistoryFilter,
+) -> DocumentSummaryHistoryFilter:
+    return DocumentSummaryHistoryFilter(
+        limit=_validate_document_summary_history_limit(history_filter.limit),
+        run_status=_validate_document_summary_history_status(history_filter.run_status),
+        generation_template_key=_validate_document_summary_history_template_key(
+            history_filter.generation_template_key
+        ),
+    )
 
 
 def _validate_chunk_policy_name(chunk_policy_name: str | None) -> str | None:
@@ -165,6 +253,139 @@ def _fetch_document_summary_chunk_ids(
                 [*params, max_chunks],
             )
             return tuple(int(row["chunk_id"]) for row in cursor.fetchall())
+
+
+def _document_summary_history_item_from_row(row: dict[str, Any]) -> DocumentSummaryHistoryItem:
+    runtime_metadata = dict(row.get("query_runtime_metadata") or {})
+    template_key = str(row.get("summary_template_key") or "").strip()
+    if not template_key:
+        template_key = str(runtime_metadata.get("generation_template_key") or "").strip()
+    template_name = str(row.get("summary_template_name") or template_key or "-")
+    return DocumentSummaryHistoryItem(
+        run=_generation_run_from_row(row),
+        document_id=row["summary_document_id"],
+        file_id=row["summary_file_id"],
+        document_title=row["document_title"],
+        original_file_name=row["original_file_name"],
+        document_group=row["summary_document_group"],
+        file_type=row["summary_file_type"],
+        template_key=template_key or "-",
+        template_name=template_name,
+        summary_instruction=str(runtime_metadata.get("summary_instruction") or ""),
+        source_chunk_count=int(row["source_chunk_count"] or 0),
+        created_at=row["created_at"],
+    )
+
+
+def _document_summary_history_summary(
+    runs: tuple[DocumentSummaryHistoryItem, ...],
+) -> DocumentSummaryHistorySummary:
+    return DocumentSummaryHistorySummary(
+        run_count=len(runs),
+        succeeded_count=sum(1 for item in runs if item.run.status == "succeeded"),
+        failed_count=sum(1 for item in runs if item.run.status == "failed"),
+        no_answer_count=sum(1 for item in runs if item.run.status == "no_answer"),
+        latest_created_at=runs[0].created_at if runs else None,
+    )
+
+
+def list_document_summary_history(
+    database_url: str,
+    *,
+    history_filter: DocumentSummaryHistoryFilter | None = None,
+) -> DocumentSummaryHistory:
+    validated = validate_document_summary_history_filter(
+        history_filter or DocumentSummaryHistoryFilter()
+    )
+    with connect(database_url) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                gr.*,
+                sl.query_runtime_metadata,
+                sl.document_group AS summary_document_group,
+                sl.file_type AS summary_file_type,
+                CASE
+                    WHEN (sl.query_runtime_metadata ->> 'document_id') ~ '^[0-9]+$'
+                        THEN (sl.query_runtime_metadata ->> 'document_id')::bigint
+                    ELSE NULL
+                END AS summary_document_id,
+                CASE
+                    WHEN (sl.query_runtime_metadata ->> 'file_id') ~ '^[0-9]+$'
+                        THEN (sl.query_runtime_metadata ->> 'file_id')::bigint
+                    ELSE NULL
+                END AS summary_file_id,
+                CASE
+                    WHEN jsonb_typeof(sl.query_runtime_metadata -> 'source_chunk_ids') = 'array'
+                        THEN jsonb_array_length(sl.query_runtime_metadata -> 'source_chunk_ids')
+                    ELSE 0
+                END AS source_chunk_count,
+                d.document_title,
+                f.original_file_name,
+                COALESCE(
+                    gt.template_key,
+                    gr.request_metadata #>> '{generation_template,template_key}',
+                    sl.query_runtime_metadata ->> 'generation_template_key',
+                    ''
+                ) AS summary_template_key,
+                COALESCE(
+                    gt.template_name,
+                    gr.request_metadata #>> '{generation_template,template_name}',
+                    ''
+                ) AS summary_template_name
+            FROM generation_runs gr
+            JOIN search_logs sl
+              ON sl.search_log_id = gr.search_log_id
+            LEFT JOIN documents d
+              ON d.document_id = CASE
+                    WHEN (sl.query_runtime_metadata ->> 'document_id') ~ '^[0-9]+$'
+                        THEN (sl.query_runtime_metadata ->> 'document_id')::bigint
+                    ELSE NULL
+                 END
+            LEFT JOIN files f
+              ON f.file_id = COALESCE(
+                    d.file_id,
+                    CASE
+                        WHEN (sl.query_runtime_metadata ->> 'file_id') ~ '^[0-9]+$'
+                            THEN (sl.query_runtime_metadata ->> 'file_id')::bigint
+                        ELSE NULL
+                    END
+                 )
+            LEFT JOIN generation_templates gt
+              ON gt.generation_template_id = gr.generation_template_id
+            WHERE (
+                sl.strategy_name = %s
+                OR sl.query_runtime_metadata ->> 'operation' = 'document_summary'
+                OR gr.created_by = 'api_document_summary'
+            )
+              AND (%s = 'all' OR gr.status = %s)
+              AND (
+                %s = 'all'
+                OR COALESCE(
+                    gt.template_key,
+                    gr.request_metadata #>> '{generation_template,template_key}',
+                    sl.query_runtime_metadata ->> 'generation_template_key',
+                    ''
+                ) = %s
+              )
+            ORDER BY gr.created_at DESC, gr.generation_run_id DESC
+            LIMIT %s
+            """,
+            (
+                DOCUMENT_SUMMARY_STRATEGY_NAME,
+                validated.run_status,
+                validated.run_status,
+                validated.generation_template_key,
+                validated.generation_template_key,
+                validated.limit,
+            ),
+        ).fetchall()
+    runs = tuple(_document_summary_history_item_from_row(dict(row)) for row in rows)
+    return DocumentSummaryHistory(
+        filters=validated,
+        summary=_document_summary_history_summary(runs),
+        runs=runs,
+    )
 
 
 def _create_document_summary_search_log(

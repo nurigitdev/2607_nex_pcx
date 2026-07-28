@@ -4,9 +4,11 @@ import pytest
 
 from app.core.document_summary import (
     DEFAULT_DOCUMENT_SUMMARY_TEMPLATE_KEY,
+    DocumentSummaryHistoryFilter,
     DocumentSummaryInput,
     InvalidDocumentSummaryError,
     run_document_summary_generation,
+    validate_document_summary_history_filter,
 )
 from app.core.generation_runs import (
     GENERATION_PROVIDER_MODE_MOCK,
@@ -268,3 +270,42 @@ def test_run_document_summary_generation_reports_missing_retrieval_package(
             "postgresql://example",
             DocumentSummaryInput(document_id=1, actor_user_id=1),
         )
+
+
+def test_validate_document_summary_history_filter_normalizes_values() -> None:
+    history_filter = validate_document_summary_history_filter(
+        DocumentSummaryHistoryFilter(
+            limit=10,
+            run_status=" SUCCEEDED ",
+            generation_template_key=" SUMMARY_RISK_ACTION ",
+        )
+    )
+    blank_filter = validate_document_summary_history_filter(
+        DocumentSummaryHistoryFilter(
+            limit=1,
+            run_status="",
+            generation_template_key=" ",
+        )
+    )
+
+    assert history_filter.limit == 10
+    assert history_filter.run_status == "succeeded"
+    assert history_filter.generation_template_key == "summary_risk_action"
+    assert blank_filter.run_status == "all"
+    assert blank_filter.generation_template_key == "all"
+
+
+@pytest.mark.parametrize(
+    ("history_filter", "message"),
+    (
+        (DocumentSummaryHistoryFilter(limit=0), "limit"),
+        (DocumentSummaryHistoryFilter(limit=501), "limit"),
+        (DocumentSummaryHistoryFilter(run_status="bad_status"), "run_status"),
+    ),
+)
+def test_validate_document_summary_history_filter_rejects_invalid_values(
+    history_filter: DocumentSummaryHistoryFilter,
+    message: str,
+) -> None:
+    with pytest.raises(InvalidDocumentSummaryError, match=message):
+        validate_document_summary_history_filter(history_filter)

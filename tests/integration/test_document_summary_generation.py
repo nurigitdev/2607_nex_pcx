@@ -294,3 +294,93 @@ def test_generation_ui_document_summary_form_redirects_to_created_run(
         assert "generation_error=document+was+not+found" in missing_response.headers["location"]
     finally:
         _cleanup_fixture(migrated_database_url, file_id)
+
+
+def test_document_summary_history_api_and_ui_filter_summary_runs(
+    migrated_database_url: str,
+) -> None:
+    file_id, document_id, actor_user_id = _create_document_summary_fixture(migrated_database_url)
+    _restore_mock_generation_provider(migrated_database_url)
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    try:
+        with TestClient(app) as client:
+            first_response = client.post(
+                f"/api/documents/{document_id}/summary-runs",
+                json={
+                    "actor_user_id": actor_user_id,
+                    "provider_mode": "mock",
+                    "generation_template_key": "summary_risk_action",
+                    "summary_instruction": "리스크 중심",
+                    "max_chunks": 2,
+                },
+            )
+            second_response = client.post(
+                f"/api/documents/{document_id}/summary-runs",
+                json={
+                    "actor_user_id": actor_user_id,
+                    "provider_mode": "mock",
+                    "generation_template_key": "summary_executive",
+                    "summary_instruction": "임원 보고 중심",
+                    "max_chunks": 1,
+                },
+            )
+            api_response = client.get(
+                "/api/generation/document-summaries",
+                params={
+                    "limit": 10,
+                    "run_status": "succeeded",
+                    "generation_template_key": "summary_risk_action",
+                },
+            )
+            invalid_response = client.get(
+                "/api/generation/document-summaries",
+                params={"run_status": "unsupported"},
+            )
+            page_response = client.get(
+                "/generation/document-summaries",
+                params={"generation_template_key": "summary_risk_action"},
+            )
+
+        first_body = first_response.json()
+        second_body = second_response.json()
+        history_body = api_response.json()
+        runs = history_body["runs"]
+        assert first_response.status_code == 201
+        assert second_response.status_code == 201
+        assert first_body["generation"]["prompt_package"]["template_key"] == "summary_risk_action"
+        assert second_body["generation"]["prompt_package"]["template_key"] == "summary_executive"
+        assert api_response.status_code == 200
+        assert history_body["filters"]["generation_template_key"] == "summary_risk_action"
+        assert history_body["summary"]["run_count"] == 1
+        assert history_body["summary"]["succeeded_count"] == 1
+        assert runs[0]["document_id"] == document_id
+        assert runs[0]["document_label"] == "Document Summary API document"
+        assert runs[0]["template_key"] == "summary_risk_action"
+        assert runs[0]["summary_instruction"] == "리스크 중심"
+        assert runs[0]["source_chunk_count"] == 2
+        assert runs[0]["links"]["generation_run"] == (
+            f"/generation/runs/{first_body['generation_run_id']}"
+        )
+        assert invalid_response.status_code == 400
+        assert "run_status" in invalid_response.json()["detail"]
+        assert page_response.status_code == 200
+        assert "문서 요약 이력" in page_response.text
+        assert "Document Summary API document" in page_response.text
+        assert "리스크/후속 조치 요약" in page_response.text
+        assert "summary_risk_action" in page_response.text
+        assert "data-document-summary-history-table" in page_response.text
+    finally:
+        _cleanup_fixture(migrated_database_url, file_id)
+
+
+def test_document_summary_history_api_returns_503_without_database() -> None:
+    app = create_app(Settings(database_url=None))
+
+    with TestClient(app) as client:
+        response = client.get("/api/generation/document-summaries")
+        page_response = client.get("/generation/document-summaries")
+
+    assert response.status_code == 503
+    assert page_response.status_code == 200
+    assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
