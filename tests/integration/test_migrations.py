@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260728_0038"
+HEAD_REVISION = "20260728_0039"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -151,6 +151,22 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
           AND is_active
         """,
     )
+    chat_session_table = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.chat_sessions') AS table_name",
+    )
+    chat_message_table = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.chat_messages') AS table_name",
+    )
+    chat_message_link_table = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.chat_message_links') AS table_name",
+    )
+    chat_message_sequence_index = fetch_one(
+        test_database_url,
+        "SELECT to_regclass('public.idx_chat_messages_session_sequence') AS index_name",
+    )
     default_generation_provider = fetch_one(
         test_database_url,
         """
@@ -202,6 +218,10 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     )
     assert long_form_template_required_summary["all_required"] is True
     assert summary_template_preset_count["count"] == 3
+    assert chat_session_table["table_name"] == "chat_sessions"
+    assert chat_message_table["table_name"] == "chat_messages"
+    assert chat_message_link_table["table_name"] == "chat_message_links"
+    assert chat_message_sequence_index["index_name"] == "idx_chat_messages_session_sequence"
     assert default_generation_provider["provider_mode"] == "mock"
     assert default_generation_provider["model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
     assert keyword_index_table["table_name"] == "chunk_keyword_terms"
