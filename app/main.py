@@ -833,6 +833,7 @@ class ChatMessagePostRequest(BaseModel):
 
 
 class ChatMessageRegenerateRequest(BaseModel):
+    content: str | None = Field(default=None, max_length=20000)
     intent_override: str | None = Field(default=None, max_length=80)
     execution_mode: str | None = Field(default=None, max_length=40)
     routing_metadata: dict[str, object] = Field(default_factory=dict)
@@ -1531,8 +1532,12 @@ def chat_regenerate_routing_metadata(
     payload_metadata: dict[str, object],
     *,
     source_message: ChatMessageRecord,
+    regenerated_content: str | None = None,
 ) -> dict[str, object]:
     metadata = dict(payload_metadata)
+    source_content = source_message.content.strip()
+    target_content = source_content if regenerated_content is None else regenerated_content.strip()
+    content_edited = target_content != source_content
     metadata.setdefault("source", "chat_regenerate_api")
     metadata.update(
         {
@@ -1540,17 +1545,44 @@ def chat_regenerate_routing_metadata(
             "regenerate_source_sequence_no": source_message.sequence_no,
             "regenerate_source_intent": source_message.intent,
             "regenerate_source_status": source_message.status,
+            "regenerate_content_mode": "edited" if content_edited else "reused",
+            "regenerate_source_content_preview": _text_preview(source_message.content),
         }
     )
+    if content_edited:
+        metadata["regenerate_edited_content_preview"] = _text_preview(target_content)
     return metadata
 
 
-def chat_regenerate_payload(source_message: ChatMessageRecord) -> dict[str, object]:
+def chat_regenerate_content_for_request(
+    source_message: ChatMessageRecord,
+    requested_content: str | None,
+) -> str:
+    if requested_content is None:
+        return source_message.content
+    normalized = requested_content.strip()
+    if not normalized:
+        raise InvalidChatRepositoryError("regenerate content must not be blank")
+    return normalized
+
+
+def chat_regenerate_payload(
+    source_message: ChatMessageRecord,
+    *,
+    regenerated_content: str | None = None,
+) -> dict[str, object]:
+    source_content = source_message.content.strip()
+    target_content = source_content if regenerated_content is None else regenerated_content.strip()
     return {
         "source_message_id": source_message.chat_message_id,
         "source_sequence_no": source_message.sequence_no,
         "source_intent": source_message.intent,
         "source_status": source_message.status,
+        "content_mode": "edited" if target_content != source_content else "reused",
+        "source_content_preview": _text_preview(source_message.content),
+        "edited_content_preview": (
+            _text_preview(target_content) if target_content != source_content else None
+        ),
     }
 
 
@@ -1582,6 +1614,13 @@ def chat_message_regenerate_context(
         "source_sequence_no": _positive_int_metadata(metadata.get("regenerate_source_sequence_no")),
         "source_intent": _string_metadata(metadata.get("regenerate_source_intent")),
         "source_status": _string_metadata(metadata.get("regenerate_source_status")),
+        "content_mode": _string_metadata(metadata.get("regenerate_content_mode")) or "reused",
+        "source_content_preview": _string_metadata(
+            metadata.get("regenerate_source_content_preview")
+        ),
+        "edited_content_preview": _string_metadata(
+            metadata.get("regenerate_edited_content_preview")
+        ),
         "regenerated_message_id": message.chat_message_id,
         "regenerated_sequence_no": message.sequence_no,
     }
@@ -13348,10 +13387,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Only user messages can be regenerated.",
             )
 
+        try:
+            regenerated_content = chat_regenerate_content_for_request(
+                source_message,
+                payload.content,
+            )
+        except InvalidChatRepositoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
         response = api_post_chat_message(
             chat_session_id,
             ChatMessagePostRequest(
-                content=source_message.content,
+                content=regenerated_content,
                 parent_message_id=source_message.chat_message_id,
                 run_mock_router=(payload.execution_mode != CHAT_MESSAGE_EXECUTION_MODE_ROUTE_ONLY),
                 intent_override=payload.intent_override,
@@ -13359,11 +13406,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 routing_metadata=chat_regenerate_routing_metadata(
                     payload.routing_metadata,
                     source_message=source_message,
+                    regenerated_content=regenerated_content,
                 ),
             ),
         )
         response_body = json.loads(response.body.decode("utf-8"))
-        response_body["regenerate"] = chat_regenerate_payload(source_message)
+        response_body["regenerate"] = chat_regenerate_payload(
+            source_message,
+            regenerated_content=regenerated_content,
+        )
         return JSONResponse(status_code=response.status_code, content=response_body)
 
     @app.post("/api/generation/direct-runs")

@@ -344,6 +344,12 @@
               {% if branch_context.source_status %}
               <span>{{ t("chat.source_status") }} {{ branch_context.source_status }}</span>
               {% endif %}
+              {% if branch_context.content_mode == "edited" %}
+              <span>{{ t("chat.edited_regenerate") }}</span>
+              {% if branch_context.edited_content_preview %}
+              <span>{{ t("chat.edited_preview") }} {{ branch_context.edited_content_preview }}</span>
+              {% endif %}
+              {% endif %}
               {% if branch_context.branch_role == "regenerated_response" and branch_context.regenerated_sequence_no %}
               <span>{{ t("chat.reply_to_regenerated") }} #{{ branch_context.regenerated_sequence_no }}</span>
               {% endif %}
@@ -516,6 +522,16 @@
               class="chat-regenerate-form mt-3"
               data-message-id="{{ item.message.chat_message_id }}"
             >
+              <div class="mb-2">
+                <label class="form-label small" for="chat-regenerate-content-{{ item.message.chat_message_id }}">{{ t("chat.edit_before_regenerate") }}</label>
+                <textarea
+                  class="form-control form-control-sm chat-regenerate-content"
+                  id="chat-regenerate-content-{{ item.message.chat_message_id }}"
+                  name="content"
+                  rows="2"
+                  {% if not database_configured or not selected_thread %}disabled{% endif %}
+                >{{ item.message.content }}</textarea>
+              </div>
               <div class="row g-2 align-items-end">
                 <div class="col-12 col-xl-5">
                   <label class="form-label small" for="chat-regenerate-intent-{{ item.message.chat_message_id }}">{{ t("chat.retry_intent") }}</label>
@@ -755,6 +771,7 @@
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({
+            content: formData.get("content"),
             intent_override: formData.get("intent_override") || null,
             execution_mode: formData.get("execution_mode") || "execute",
             routing_metadata: {source: "chat_regenerate_ui"},

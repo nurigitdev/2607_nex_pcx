@@ -30,6 +30,7 @@ from app.main import (
     chat_intent_route_for_message,
     chat_message_regenerate_context,
     chat_message_routing_metadata,
+    chat_regenerate_content_for_request,
     chat_regenerate_payload,
     chat_regenerate_routing_metadata,
     chat_session_default_generation_template_key,
@@ -165,28 +166,52 @@ def test_chat_regenerate_metadata_records_source_lineage() -> None:
         sequence_no=3,
         intent="grounded_answer",
         status="completed",
+        content="원본 질문입니다.",
     )
 
     default_metadata = chat_regenerate_routing_metadata({}, source_message=source_message)
     ui_metadata = chat_regenerate_routing_metadata(
         {"source": "chat_regenerate_ui", "operator": "tester"},
         source_message=source_message,
+        regenerated_content="수정한 질문입니다.",
     )
     payload = chat_regenerate_payload(source_message)
+    edited_payload = chat_regenerate_payload(
+        source_message,
+        regenerated_content="수정한 질문입니다.",
+    )
 
     assert default_metadata["source"] == "chat_regenerate_api"
+    assert default_metadata["regenerate_content_mode"] == "reused"
+    assert default_metadata["regenerate_source_content_preview"] == "원본 질문입니다."
     assert ui_metadata["source"] == "chat_regenerate_ui"
     assert ui_metadata["operator"] == "tester"
     assert ui_metadata["regenerate_source_message_id"] == 42
     assert ui_metadata["regenerate_source_sequence_no"] == 3
     assert ui_metadata["regenerate_source_intent"] == "grounded_answer"
     assert ui_metadata["regenerate_source_status"] == "completed"
+    assert ui_metadata["regenerate_content_mode"] == "edited"
+    assert ui_metadata["regenerate_edited_content_preview"] == "수정한 질문입니다."
     assert payload == {
         "source_message_id": 42,
         "source_sequence_no": 3,
         "source_intent": "grounded_answer",
         "source_status": "completed",
+        "content_mode": "reused",
+        "source_content_preview": "원본 질문입니다.",
+        "edited_content_preview": None,
     }
+    assert edited_payload["content_mode"] == "edited"
+    assert edited_payload["edited_content_preview"] == "수정한 질문입니다."
+
+
+def test_chat_regenerate_content_helper_reuses_or_normalizes_edits() -> None:
+    source_message = SimpleNamespace(content=" 기존 질문 ")
+
+    assert chat_regenerate_content_for_request(source_message, None) == " 기존 질문 "
+    assert chat_regenerate_content_for_request(source_message, " 수정 질문 ") == "수정 질문"
+    with pytest.raises(InvalidChatRepositoryError, match="regenerate content"):
+        chat_regenerate_content_for_request(source_message, " ")
 
 
 def test_chat_regenerate_context_parses_direct_and_response_branch() -> None:
@@ -205,6 +230,9 @@ def test_chat_regenerate_context_parses_direct_and_response_branch() -> None:
             "regenerate_source_sequence_no": "1",
             "regenerate_source_intent": "document_generation",
             "regenerate_source_status": "completed",
+            "regenerate_content_mode": "edited",
+            "regenerate_source_content_preview": "보고서를 작성해줘",
+            "regenerate_edited_content_preview": "보고서를 상세하게 작성해줘",
         },
     )
     retry_assistant = SimpleNamespace(
@@ -230,6 +258,9 @@ def test_chat_regenerate_context_parses_direct_and_response_branch() -> None:
     assert direct_context["source_message_id"] == 10
     assert direct_context["source_sequence_no"] == 1
     assert direct_context["source_intent"] == "document_generation"
+    assert direct_context["content_mode"] == "edited"
+    assert direct_context["source_content_preview"] == "보고서를 작성해줘"
+    assert direct_context["edited_content_preview"] == "보고서를 상세하게 작성해줘"
     assert branch_contexts[11]["branch_role"] == "regenerated_user"
     assert branch_contexts[12]["branch_role"] == "regenerated_response"
     assert branch_contexts[12]["regenerated_message_id"] == 11

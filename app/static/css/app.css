@@ -405,6 +405,11 @@ main.container-fluid {
   padding: 0.75rem;
 }
 
+.chat-regenerate-content {
+  max-height: 8rem;
+  resize: vertical;
+}
+
 .chat-empty-state {
   align-self: center;
   justify-self: center;

@@ -243,6 +243,7 @@ def test_chat_api_regenerates_user_message_with_override_lineage(
             regenerate_response = client.post(
                 f"/api/chat/sessions/{chat_session_id}/messages/{source_message_id}/regenerate",
                 json={
+                    "content": " 보고서를 상세하게 다시 작성해줘 ",
                     "intent_override": "general_answer",
                     "execution_mode": "execute",
                     "routing_metadata": {"source": "chat_regenerate_ui"},
@@ -262,6 +263,9 @@ def test_chat_api_regenerates_user_message_with_override_lineage(
             "source_sequence_no": 1,
             "source_intent": CHAT_INTENT_DOCUMENT_GENERATION,
             "source_status": "completed",
+            "content_mode": "edited",
+            "source_content_preview": "보고서를 작성해줘",
+            "edited_content_preview": "보고서를 상세하게 다시 작성해줘",
         }
         assert body["router"]["intent"] == CHAT_INTENT_GENERAL_ANSWER
         assert body["router"]["detected_intent"] == CHAT_INTENT_DOCUMENT_GENERATION
@@ -270,13 +274,22 @@ def test_chat_api_regenerates_user_message_with_override_lineage(
         assert "일반 답변 초안입니다." in assistant_message["content"]
         assert retry_message["parent_message_id"] == source_message_id
         assert retry_message["sequence_no"] == 2
-        assert retry_message["content"] == "보고서를 작성해줘"
+        assert retry_message["content"] == "보고서를 상세하게 다시 작성해줘"
         assert routing_metadata["source"] == "chat_regenerate_ui"
         assert routing_metadata["regenerate_source_message_id"] == source_message_id
         assert routing_metadata["regenerate_source_sequence_no"] == 1
+        assert routing_metadata["regenerate_content_mode"] == "edited"
+        assert routing_metadata["regenerate_source_content_preview"] == "보고서를 작성해줘"
+        assert routing_metadata["regenerate_edited_content_preview"] == (
+            "보고서를 상세하게 다시 작성해줘"
+        )
         assert routing_metadata["intent_override"] == CHAT_INTENT_GENERAL_ANSWER
         assert routing_metadata["execution_mode"] == "execute"
         assert retry_message["regenerate_context"]["branch_role"] == "regenerated_user"
+        assert retry_message["regenerate_context"]["content_mode"] == "edited"
+        assert retry_message["regenerate_context"]["edited_content_preview"] == (
+            "보고서를 상세하게 다시 작성해줘"
+        )
         assert retry_thread_message["regenerate_context"]["source_message_id"] == (
             source_message_id
         )
@@ -634,6 +647,15 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
                 json={"session_title": "검색 actor 없음"},
             )
             chat_session_id = int(no_actor_session_response.json()["session"]["chat_session_id"])
+            user_message = append_chat_message(
+                migrated_database_url,
+                ChatMessageInput(
+                    chat_session_id=chat_session_id,
+                    role=CHAT_ROLE_USER,
+                    content="빈 content 재실행 검증용입니다.",
+                    intent=CHAT_INTENT_GENERAL_ANSWER,
+                ),
+            )
             assistant_message = append_chat_message(
                 migrated_database_url,
                 ChatMessageInput(
@@ -653,6 +675,13 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
                     f"{assistant_message.chat_message_id}/regenerate"
                 ),
                 json={"execution_mode": "route_only"},
+            )
+            blank_content_regenerate_response = client.post(
+                (
+                    f"/api/chat/sessions/{chat_session_id}/messages/"
+                    f"{user_message.chat_message_id}/regenerate"
+                ),
+                json={"content": " ", "execution_mode": "route_only"},
             )
             invalid_intent_response = client.post(
                 f"/api/chat/sessions/{chat_session_id}/messages",
@@ -691,6 +720,8 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
     assert missing_regenerate_response.status_code == 404
     assert assistant_regenerate_response.status_code == 400
     assert "Only user messages" in assistant_regenerate_response.json()["detail"]
+    assert blank_content_regenerate_response.status_code == 400
+    assert "regenerate content" in blank_content_regenerate_response.json()["detail"]
     assert missing_actor_response.status_code == 400
     assert "actor_user_id" in missing_actor_response.json()["detail"]
     assert no_database_response.status_code == 503
@@ -751,6 +782,9 @@ def test_chat_page_renders_shell_and_existing_thread(
                 "regenerate_source_sequence_no": user.sequence_no,
                 "regenerate_source_intent": user.intent,
                 "regenerate_source_status": user.status,
+                "regenerate_content_mode": "edited",
+                "regenerate_source_content_preview": "관련 문서를 검색해서 요약해줘",
+                "regenerate_edited_content_preview": "근거 기반 답변으로 다시 실행해줘",
             },
         ),
     )
@@ -816,6 +850,10 @@ def test_chat_page_renders_shell_and_existing_thread(
         assert "다시 실행" in response.text
         assert "재실행 Branch" in response.text
         assert "재실행 응답" in response.text
+        assert "수정 후 다시 실행" in response.text
+        assert 'name="content"' in response.text
+        assert "편집됨" in response.text
+        assert "수정 내용 근거 기반 답변으로 다시 실행해줘" in response.text
         assert "원본 #1" in response.text
         assert "원본 의도 document_search_summary" in response.text
         assert "응답 대상 #3" in response.text

@@ -42,6 +42,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("chat.regenerate") == "Regenerate"
     assert korean("chat.regenerate_branch") == "재실행 Branch"
     assert english("chat.regenerated_response") == "Regenerated Response"
+    assert korean("chat.edit_before_regenerate") == "수정 후 다시 실행"
+    assert english("chat.edited_regenerate") == "Edited"
     assert korean("nav.embedding_provider") == "Provider 상태"
     assert english("embedding_provider.title") == "Embedding Provider Health"
     assert korean("nav.embedding_batches") == "Batch 실행"
