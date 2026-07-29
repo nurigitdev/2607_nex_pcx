@@ -29,6 +29,8 @@ from app.main import (
     chat_generation_template_default_options,
     chat_intent_route_for_message,
     chat_message_routing_metadata,
+    chat_regenerate_payload,
+    chat_regenerate_routing_metadata,
     chat_session_default_generation_template_key,
     chunk_source_trace_preview_payload,
     document_artifacts_redirect_url,
@@ -153,6 +155,36 @@ def test_chat_message_routing_metadata_records_override_context() -> None:
     assert metadata["detected_intent"] == "document_generation"
     assert metadata["intent_override"] == "grounded_answer"
     assert metadata["execution_mode"] == "route_only"
+
+
+def test_chat_regenerate_metadata_records_source_lineage() -> None:
+    source_message = SimpleNamespace(
+        chat_message_id=42,
+        sequence_no=3,
+        intent="grounded_answer",
+        status="completed",
+    )
+
+    default_metadata = chat_regenerate_routing_metadata({}, source_message=source_message)
+    ui_metadata = chat_regenerate_routing_metadata(
+        {"source": "chat_regenerate_ui", "operator": "tester"},
+        source_message=source_message,
+    )
+    payload = chat_regenerate_payload(source_message)
+
+    assert default_metadata["source"] == "chat_regenerate_api"
+    assert ui_metadata["source"] == "chat_regenerate_ui"
+    assert ui_metadata["operator"] == "tester"
+    assert ui_metadata["regenerate_source_message_id"] == 42
+    assert ui_metadata["regenerate_source_sequence_no"] == 3
+    assert ui_metadata["regenerate_source_intent"] == "grounded_answer"
+    assert ui_metadata["regenerate_source_status"] == "completed"
+    assert payload == {
+        "source_message_id": 42,
+        "source_sequence_no": 3,
+        "source_intent": "grounded_answer",
+        "source_status": "completed",
+    }
 
 
 def test_search_log_bm25_tokenizer_name_reads_direct_and_profile_metadata() -> None:

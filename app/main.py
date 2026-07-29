@@ -71,6 +71,7 @@ from app.core.chat import (
     InvalidChatRepositoryError,
     append_chat_message,
     create_chat_session,
+    get_chat_message,
     get_chat_session,
     get_chat_thread,
     link_chat_message_to_generation_run,
@@ -831,6 +832,12 @@ class ChatMessagePostRequest(BaseModel):
     routing_metadata: dict[str, object] = Field(default_factory=dict)
 
 
+class ChatMessageRegenerateRequest(BaseModel):
+    intent_override: str | None = Field(default=None, max_length=80)
+    execution_mode: str | None = Field(default=None, max_length=40)
+    routing_metadata: dict[str, object] = Field(default_factory=dict)
+
+
 class GenerationTemplateManagementRequest(BaseModel):
     template_key: str = Field(min_length=1, max_length=64)
     template_name: str = Field(min_length=1, max_length=200)
@@ -1518,6 +1525,33 @@ def chat_message_routing_metadata(
     if intent_override is not None:
         metadata["intent_override"] = intent_override
     return metadata
+
+
+def chat_regenerate_routing_metadata(
+    payload_metadata: dict[str, object],
+    *,
+    source_message: ChatMessageRecord,
+) -> dict[str, object]:
+    metadata = dict(payload_metadata)
+    metadata.setdefault("source", "chat_regenerate_api")
+    metadata.update(
+        {
+            "regenerate_source_message_id": source_message.chat_message_id,
+            "regenerate_source_sequence_no": source_message.sequence_no,
+            "regenerate_source_intent": source_message.intent,
+            "regenerate_source_status": source_message.status,
+        }
+    )
+    return metadata
+
+
+def chat_regenerate_payload(source_message: ChatMessageRecord) -> dict[str, object]:
+    return {
+        "source_message_id": source_message.chat_message_id,
+        "source_sequence_no": source_message.sequence_no,
+        "source_intent": source_message.intent,
+        "source_status": source_message.status,
+    }
 
 
 def chat_session_default_generation_template_key(
@@ -13196,6 +13230,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "thread": chat_thread_payload(thread),
             },
         )
+
+    @app.post("/api/chat/sessions/{chat_session_id}/messages/{chat_message_id}/regenerate")
+    def api_regenerate_chat_message(
+        chat_session_id: int,
+        chat_message_id: int,
+        payload: ChatMessageRegenerateRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            source_message = get_chat_message(settings.database_url, chat_message_id)
+        except InvalidChatRepositoryError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if source_message is None or source_message.chat_session_id != chat_session_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Chat message not found for session.",
+            )
+        if source_message.role != CHAT_ROLE_USER:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only user messages can be regenerated.",
+            )
+
+        response = api_post_chat_message(
+            chat_session_id,
+            ChatMessagePostRequest(
+                content=source_message.content,
+                parent_message_id=source_message.chat_message_id,
+                run_mock_router=(payload.execution_mode != CHAT_MESSAGE_EXECUTION_MODE_ROUTE_ONLY),
+                intent_override=payload.intent_override,
+                execution_mode=payload.execution_mode,
+                routing_metadata=chat_regenerate_routing_metadata(
+                    payload.routing_metadata,
+                    source_message=source_message,
+                ),
+            ),
+        )
+        response_body = json.loads(response.body.decode("utf-8"))
+        response_body["regenerate"] = chat_regenerate_payload(source_message)
+        return JSONResponse(status_code=response.status_code, content=response_body)
 
     @app.post("/api/generation/direct-runs")
     def api_create_direct_generation_run(payload: DirectGenerationRequest) -> JSONResponse:

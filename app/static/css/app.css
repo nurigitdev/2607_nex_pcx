@@ -380,6 +380,13 @@ main.container-fluid {
   color: var(--pcx-accent);
 }
 
+.chat-regenerate-form {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid #c9d7e8;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
 .chat-empty-state {
   align-self: center;
   justify-self: center;

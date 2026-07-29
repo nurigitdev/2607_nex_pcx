@@ -218,6 +218,66 @@ def test_chat_api_accepts_intent_override_and_execution_mode_selector(
             _delete_chat_session(migrated_database_url, chat_session_id)
 
 
+def test_chat_api_regenerates_user_message_with_override_lineage(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+    chat_session_id: int | None = None
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/chat/sessions",
+                json={"session_title": "재실행 대화"},
+            )
+            chat_session_id = int(create_response.json()["session"]["chat_session_id"])
+            original_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={
+                    "content": "보고서를 작성해줘",
+                    "execution_mode": "route_only",
+                    "routing_metadata": {"ui_surface": "chat"},
+                },
+            )
+            source_message_id = int(original_response.json()["user_message"]["chat_message_id"])
+            regenerate_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages/{source_message_id}/regenerate",
+                json={
+                    "intent_override": "grounded_answer",
+                    "execution_mode": "route_only",
+                    "routing_metadata": {"source": "chat_regenerate_ui"},
+                },
+            )
+
+        body = regenerate_response.json()
+        retry_message = body["user_message"]
+        routing_metadata = retry_message["routing_metadata"]
+
+        assert regenerate_response.status_code == 201
+        assert body["regenerate"] == {
+            "source_message_id": source_message_id,
+            "source_sequence_no": 1,
+            "source_intent": CHAT_INTENT_DOCUMENT_GENERATION,
+            "source_status": "completed",
+        }
+        assert body["router"]["intent"] == CHAT_INTENT_GROUNDED_ANSWER
+        assert body["router"]["detected_intent"] == CHAT_INTENT_DOCUMENT_GENERATION
+        assert body["router"]["route_source"] == "user_intent_override_v1"
+        assert body["assistant_message"] is None
+        assert retry_message["parent_message_id"] == source_message_id
+        assert retry_message["sequence_no"] == 2
+        assert retry_message["content"] == "보고서를 작성해줘"
+        assert routing_metadata["source"] == "chat_regenerate_ui"
+        assert routing_metadata["regenerate_source_message_id"] == source_message_id
+        assert routing_metadata["regenerate_source_sequence_no"] == 1
+        assert routing_metadata["intent_override"] == CHAT_INTENT_GROUNDED_ANSWER
+        assert routing_metadata["execution_mode"] == "route_only"
+        assert len(body["thread"]["messages"]) == 2
+    finally:
+        if chat_session_id is not None:
+            _delete_chat_session(migrated_database_url, chat_session_id)
+
+
 def test_chat_api_updates_session_runtime_defaults(
     migrated_database_url: str,
 ) -> None:
@@ -562,6 +622,26 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
                 json={"session_title": "검색 actor 없음"},
             )
             chat_session_id = int(no_actor_session_response.json()["session"]["chat_session_id"])
+            assistant_message = append_chat_message(
+                migrated_database_url,
+                ChatMessageInput(
+                    chat_session_id=chat_session_id,
+                    role=CHAT_ROLE_ASSISTANT,
+                    content="재실행할 수 없는 assistant 메시지입니다.",
+                    intent=CHAT_INTENT_GENERAL_ANSWER,
+                ),
+            )
+            missing_regenerate_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages/999999999/regenerate",
+                json={"execution_mode": "route_only"},
+            )
+            assistant_regenerate_response = client.post(
+                (
+                    f"/api/chat/sessions/{chat_session_id}/messages/"
+                    f"{assistant_message.chat_message_id}/regenerate"
+                ),
+                json={"execution_mode": "route_only"},
+            )
             invalid_intent_response = client.post(
                 f"/api/chat/sessions/{chat_session_id}/messages",
                 json={
@@ -596,6 +676,9 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
     assert "intent_override" in invalid_intent_response.json()["detail"]
     assert invalid_execution_mode_response.status_code == 400
     assert "execution_mode" in invalid_execution_mode_response.json()["detail"]
+    assert missing_regenerate_response.status_code == 404
+    assert assistant_regenerate_response.status_code == 400
+    assert "Only user messages" in assistant_regenerate_response.json()["detail"]
     assert missing_actor_response.status_code == 400
     assert "actor_user_id" in missing_actor_response.json()["detail"]
     assert no_database_response.status_code == 503
@@ -689,6 +772,10 @@ def test_chat_page_renders_shell_and_existing_thread(
         assert 'name="execution_mode"' in response.text
         assert "의도 선택" in response.text
         assert "의도만 저장" in response.text
+        assert 'class="chat-regenerate-form mt-3"' in response.text
+        assert "재실행 의도" in response.text
+        assert "다시 실행" in response.text
+        assert "/regenerate" in response.text
         assert no_database_response.status_code == 200
         assert "NEX_PCX_DATABASE_URL is not configured." in no_database_response.text
     finally:
