@@ -40,6 +40,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert english("chat.execution_mode_route_only") == "Save Intent Only"
     assert korean("chat.retry_intent") == "재실행 의도"
     assert english("chat.regenerate") == "Regenerate"
+    assert korean("chat.regenerate_branch") == "재실행 Branch"
+    assert english("chat.regenerated_response") == "Regenerated Response"
     assert korean("nav.embedding_provider") == "Provider 상태"
     assert english("embedding_provider.title") == "Embedding Provider Health"
     assert korean("nav.embedding_batches") == "Batch 실행"

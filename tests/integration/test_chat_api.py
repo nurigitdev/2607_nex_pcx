@@ -243,15 +243,18 @@ def test_chat_api_regenerates_user_message_with_override_lineage(
             regenerate_response = client.post(
                 f"/api/chat/sessions/{chat_session_id}/messages/{source_message_id}/regenerate",
                 json={
-                    "intent_override": "grounded_answer",
-                    "execution_mode": "route_only",
+                    "intent_override": "general_answer",
+                    "execution_mode": "execute",
                     "routing_metadata": {"source": "chat_regenerate_ui"},
                 },
             )
 
         body = regenerate_response.json()
         retry_message = body["user_message"]
+        assistant_message = body["assistant_message"]
         routing_metadata = retry_message["routing_metadata"]
+        retry_thread_message = body["thread"]["messages"][1]["message"]
+        assistant_thread_message = body["thread"]["messages"][2]["message"]
 
         assert regenerate_response.status_code == 201
         assert body["regenerate"] == {
@@ -260,19 +263,28 @@ def test_chat_api_regenerates_user_message_with_override_lineage(
             "source_intent": CHAT_INTENT_DOCUMENT_GENERATION,
             "source_status": "completed",
         }
-        assert body["router"]["intent"] == CHAT_INTENT_GROUNDED_ANSWER
+        assert body["router"]["intent"] == CHAT_INTENT_GENERAL_ANSWER
         assert body["router"]["detected_intent"] == CHAT_INTENT_DOCUMENT_GENERATION
         assert body["router"]["route_source"] == "user_intent_override_v1"
-        assert body["assistant_message"] is None
+        assert assistant_message["role"] == CHAT_ROLE_ASSISTANT
+        assert "일반 답변 초안입니다." in assistant_message["content"]
         assert retry_message["parent_message_id"] == source_message_id
         assert retry_message["sequence_no"] == 2
         assert retry_message["content"] == "보고서를 작성해줘"
         assert routing_metadata["source"] == "chat_regenerate_ui"
         assert routing_metadata["regenerate_source_message_id"] == source_message_id
         assert routing_metadata["regenerate_source_sequence_no"] == 1
-        assert routing_metadata["intent_override"] == CHAT_INTENT_GROUNDED_ANSWER
-        assert routing_metadata["execution_mode"] == "route_only"
-        assert len(body["thread"]["messages"]) == 2
+        assert routing_metadata["intent_override"] == CHAT_INTENT_GENERAL_ANSWER
+        assert routing_metadata["execution_mode"] == "execute"
+        assert retry_message["regenerate_context"]["branch_role"] == "regenerated_user"
+        assert retry_thread_message["regenerate_context"]["source_message_id"] == (
+            source_message_id
+        )
+        assert assistant_thread_message["regenerate_context"]["branch_role"] == (
+            "regenerated_response"
+        )
+        assert assistant_thread_message["regenerate_context"]["regenerated_sequence_no"] == 2
+        assert len(body["thread"]["messages"]) == 3
     finally:
         if chat_session_id is not None:
             _delete_chat_session(migrated_database_url, chat_session_id)
@@ -699,7 +711,7 @@ def test_chat_page_renders_shell_and_existing_thread(
             metadata={"default_generation_template_key": "report"},
         ),
     )
-    append_chat_message(
+    user = append_chat_message(
         migrated_database_url,
         ChatMessageInput(
             chat_session_id=session.chat_session_id,
@@ -724,6 +736,33 @@ def test_chat_page_renders_shell_and_existing_thread(
                     "retrieval_confidence_status": "answerable",
                 },
             },
+        ),
+    )
+    retry_user = append_chat_message(
+        migrated_database_url,
+        ChatMessageInput(
+            chat_session_id=session.chat_session_id,
+            parent_message_id=user.chat_message_id,
+            role=CHAT_ROLE_USER,
+            content="근거 기반 답변으로 다시 실행해줘",
+            intent=CHAT_INTENT_GROUNDED_ANSWER,
+            routing_metadata={
+                "regenerate_source_message_id": user.chat_message_id,
+                "regenerate_source_sequence_no": user.sequence_no,
+                "regenerate_source_intent": user.intent,
+                "regenerate_source_status": user.status,
+            },
+        ),
+    )
+    append_chat_message(
+        migrated_database_url,
+        ChatMessageInput(
+            chat_session_id=session.chat_session_id,
+            parent_message_id=retry_user.chat_message_id,
+            role=CHAT_ROLE_ASSISTANT,
+            content="재실행 응답입니다.",
+            intent=CHAT_INTENT_GROUNDED_ANSWER,
+            runtime_metadata={"execution_mode": "direct_grounded_generation"},
         ),
     )
     link_chat_message_to_search_log(
@@ -775,6 +814,11 @@ def test_chat_page_renders_shell_and_existing_thread(
         assert 'class="chat-regenerate-form mt-3"' in response.text
         assert "재실행 의도" in response.text
         assert "다시 실행" in response.text
+        assert "재실행 Branch" in response.text
+        assert "재실행 응답" in response.text
+        assert "원본 #1" in response.text
+        assert "원본 의도 document_search_summary" in response.text
+        assert "응답 대상 #3" in response.text
         assert "/regenerate" in response.text
         assert no_database_response.status_code == 200
         assert "NEX_PCX_DATABASE_URL is not configured." in no_database_response.text

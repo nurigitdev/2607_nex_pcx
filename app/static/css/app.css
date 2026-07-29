@@ -304,6 +304,24 @@ main.container-fluid {
   white-space: pre-wrap;
 }
 
+.chat-branch-context {
+  align-items: center;
+  background: #fff8e7;
+  border: 1px solid #ead391;
+  border-radius: 8px;
+  color: #5f4a05;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+}
+
+.chat-branch-title {
+  color: #3f3204;
+  font-weight: 700;
+}
+
 .chat-evidence-panel {
   background: #f8fafc;
   border: 1px solid #d8e2ec;

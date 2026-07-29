@@ -1554,6 +1554,70 @@ def chat_regenerate_payload(source_message: ChatMessageRecord) -> dict[str, obje
     }
 
 
+def _positive_int_metadata(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str) and value.isdigit():
+        parsed = int(value)
+        return parsed if parsed > 0 else None
+    return None
+
+
+def _string_metadata(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def chat_message_regenerate_context(
+    message: ChatMessageRecord,
+) -> dict[str, object] | None:
+    metadata = dict(message.routing_metadata or {})
+    source_message_id = _positive_int_metadata(metadata.get("regenerate_source_message_id"))
+    if source_message_id is None:
+        return None
+    return {
+        "branch_role": "regenerated_user",
+        "source_message_id": source_message_id,
+        "source_sequence_no": _positive_int_metadata(metadata.get("regenerate_source_sequence_no")),
+        "source_intent": _string_metadata(metadata.get("regenerate_source_intent")),
+        "source_status": _string_metadata(metadata.get("regenerate_source_status")),
+        "regenerated_message_id": message.chat_message_id,
+        "regenerated_sequence_no": message.sequence_no,
+    }
+
+
+def chat_thread_branch_contexts(
+    thread: ChatThreadRecord,
+) -> dict[int, dict[str, object]]:
+    messages_by_id = {item.message.chat_message_id: item.message for item in thread.messages}
+    contexts: dict[int, dict[str, object]] = {}
+    for item in thread.messages:
+        context = chat_message_regenerate_context(item.message)
+        if context is not None:
+            contexts[item.message.chat_message_id] = context
+
+    for item in thread.messages:
+        message = item.message
+        if message.chat_message_id in contexts or message.parent_message_id is None:
+            continue
+        parent_context = contexts.get(message.parent_message_id)
+        if parent_context is None:
+            continue
+        parent_message = messages_by_id.get(message.parent_message_id)
+        contexts[message.chat_message_id] = {
+            **parent_context,
+            "branch_role": "regenerated_response",
+            "response_message_id": message.chat_message_id,
+            "response_sequence_no": message.sequence_no,
+            "regenerated_message_id": message.parent_message_id,
+            "regenerated_sequence_no": (
+                parent_message.sequence_no if parent_message is not None else None
+            ),
+        }
+    return contexts
+
+
 def chat_session_default_generation_template_key(
     session: ChatSessionRecord,
 ) -> str | None:
@@ -1650,7 +1714,11 @@ def chat_intent_route_payload(route: ChatIntentRoute) -> dict[str, object]:
     }
 
 
-def chat_message_payload(message: ChatMessageRecord) -> dict[str, object]:
+def chat_message_payload(
+    message: ChatMessageRecord,
+    *,
+    regenerate_context: dict[str, object] | None = None,
+) -> dict[str, object]:
     return {
         "chat_message_id": message.chat_message_id,
         "chat_session_id": message.chat_session_id,
@@ -1664,6 +1732,11 @@ def chat_message_payload(message: ChatMessageRecord) -> dict[str, object]:
         "routing_metadata": message.routing_metadata,
         "runtime_metadata": message.runtime_metadata,
         "error_metadata": message.error_metadata,
+        "regenerate_context": (
+            regenerate_context
+            if regenerate_context is not None
+            else chat_message_regenerate_context(message)
+        ),
         "created_at": _datetime_response(message.created_at),
     }
 
@@ -1681,17 +1754,34 @@ def chat_message_link_payload(link: ChatMessageLinkRecord) -> dict[str, object]:
     }
 
 
-def chat_message_with_links_payload(item: ChatMessageWithLinks) -> dict[str, object]:
+def chat_message_with_links_payload(
+    item: ChatMessageWithLinks,
+    *,
+    branch_contexts: dict[int, dict[str, object]] | None = None,
+) -> dict[str, object]:
+    branch_context = (
+        branch_contexts.get(item.message.chat_message_id) if branch_contexts is not None else None
+    )
     return {
-        "message": chat_message_payload(item.message),
+        "message": chat_message_payload(
+            item.message,
+            regenerate_context=branch_context,
+        ),
         "links": [chat_message_link_payload(link) for link in item.links],
     }
 
 
 def chat_thread_payload(thread: ChatThreadRecord) -> dict[str, object]:
+    branch_contexts = chat_thread_branch_contexts(thread)
     return {
         "session": chat_session_payload(thread.session),
-        "messages": [chat_message_with_links_payload(item) for item in thread.messages],
+        "messages": [
+            chat_message_with_links_payload(
+                item,
+                branch_contexts=branch_contexts,
+            )
+            for item in thread.messages
+        ],
     }
 
 
@@ -16346,6 +16436,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         default_actor_id: int | str = ""
         default_profile_name = ""
         default_generation_template_key = ""
+        chat_branch_contexts: dict[int, dict[str, object]] = {}
         error_message = None
 
         if not settings.database_url:
@@ -16389,6 +16480,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     if selected_thread is None:
                         error_message = "Chat session not found."
+                    else:
+                        chat_branch_contexts = chat_thread_branch_contexts(selected_thread)
             except (
                 InvalidChatRepositoryError,
                 InvalidEmbeddingJobError,
@@ -16418,6 +16511,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 default_generation_template_key=default_generation_template_key,
                 chat_intent_options=CHAT_INTENT_OPTION_ORDER,
                 chat_execution_mode_options=CHAT_MESSAGE_EXECUTION_MODES,
+                chat_branch_contexts=chat_branch_contexts,
                 error_message=error_message,
             ),
         )

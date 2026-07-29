@@ -28,10 +28,12 @@ from app.main import (
     build_extraction_rerun_request,
     chat_generation_template_default_options,
     chat_intent_route_for_message,
+    chat_message_regenerate_context,
     chat_message_routing_metadata,
     chat_regenerate_payload,
     chat_regenerate_routing_metadata,
     chat_session_default_generation_template_key,
+    chat_thread_branch_contexts,
     chunk_source_trace_preview_payload,
     document_artifacts_redirect_url,
     document_block_summary_payload,
@@ -185,6 +187,75 @@ def test_chat_regenerate_metadata_records_source_lineage() -> None:
         "source_intent": "grounded_answer",
         "source_status": "completed",
     }
+
+
+def test_chat_regenerate_context_parses_direct_and_response_branch() -> None:
+    source_user = SimpleNamespace(
+        chat_message_id=10,
+        sequence_no=1,
+        parent_message_id=None,
+        routing_metadata={},
+    )
+    retry_user = SimpleNamespace(
+        chat_message_id=11,
+        sequence_no=2,
+        parent_message_id=10,
+        routing_metadata={
+            "regenerate_source_message_id": "10",
+            "regenerate_source_sequence_no": "1",
+            "regenerate_source_intent": "document_generation",
+            "regenerate_source_status": "completed",
+        },
+    )
+    retry_assistant = SimpleNamespace(
+        chat_message_id=12,
+        sequence_no=3,
+        parent_message_id=11,
+        routing_metadata={},
+    )
+    thread = SimpleNamespace(
+        messages=(
+            SimpleNamespace(message=source_user),
+            SimpleNamespace(message=retry_user),
+            SimpleNamespace(message=retry_assistant),
+        )
+    )
+
+    direct_context = chat_message_regenerate_context(retry_user)
+    branch_contexts = chat_thread_branch_contexts(thread)
+
+    assert chat_message_regenerate_context(source_user) is None
+    assert direct_context is not None
+    assert direct_context["branch_role"] == "regenerated_user"
+    assert direct_context["source_message_id"] == 10
+    assert direct_context["source_sequence_no"] == 1
+    assert direct_context["source_intent"] == "document_generation"
+    assert branch_contexts[11]["branch_role"] == "regenerated_user"
+    assert branch_contexts[12]["branch_role"] == "regenerated_response"
+    assert branch_contexts[12]["regenerated_message_id"] == 11
+    assert branch_contexts[12]["regenerated_sequence_no"] == 2
+
+
+def test_chat_regenerate_context_ignores_invalid_source_metadata() -> None:
+    invalid_messages = (
+        SimpleNamespace(
+            chat_message_id=1,
+            sequence_no=1,
+            routing_metadata={"regenerate_source_message_id": True},
+        ),
+        SimpleNamespace(
+            chat_message_id=2,
+            sequence_no=2,
+            routing_metadata={"regenerate_source_message_id": "0"},
+        ),
+        SimpleNamespace(
+            chat_message_id=3,
+            sequence_no=3,
+            routing_metadata={"regenerate_source_message_id": "abc"},
+        ),
+    )
+
+    assert all(chat_message_regenerate_context(message) is None for message in invalid_messages)
 
 
 def test_search_log_bm25_tokenizer_name_reads_direct_and_profile_metadata() -> None:
