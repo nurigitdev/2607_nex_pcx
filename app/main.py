@@ -746,6 +746,15 @@ from app.core.search_result_context import (
     get_search_result_source_context,
 )
 from app.core.vector_search import InvalidVectorSearchError, VectorSearchResult
+from app.core.vllm_runtime_metric_snapshots import (
+    DEFAULT_VLLM_RUNTIME_METRIC_SNAPSHOT_LIMIT,
+    MAX_VLLM_RUNTIME_METRIC_SNAPSHOT_LIMIT,
+    InvalidVLLMRuntimeMetricSnapshotError,
+    list_vllm_runtime_metric_snapshots,
+    summarize_vllm_runtime_metric_snapshots,
+    vllm_runtime_metric_snapshot_record_payload,
+    vllm_runtime_metric_snapshot_summary_payload,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=BASE_DIR / "web" / "templates")
@@ -1439,6 +1448,29 @@ def pipeline_job_response_payload(
 
 def _datetime_response(value: object | None) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else None
+
+
+def vllm_runtime_metric_snapshot_collection_payload(
+    snapshots: list[Any] | tuple[Any, ...],
+    *,
+    limit: int,
+    provider_name: str | None = None,
+    include_raw_samples: bool = False,
+) -> dict[str, object]:
+    summary = summarize_vllm_runtime_metric_snapshots(snapshots)
+    return {
+        "generated_at": _datetime_response(datetime.now(UTC)),
+        "provider_name": provider_name,
+        "limit": limit,
+        "summary": vllm_runtime_metric_snapshot_summary_payload(summary),
+        "snapshots": [
+            vllm_runtime_metric_snapshot_record_payload(
+                snapshot,
+                include_raw_samples=include_raw_samples,
+            )
+            for snapshot in snapshots
+        ],
+    }
 
 
 CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY = "default_generation_template_key"
@@ -14197,6 +14229,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return JSONResponse(content=generation_provider_metric_snapshot_payload(snapshot))
 
+    @app.get("/api/admin/vllm-runtime-metrics/snapshots")
+    def api_list_vllm_runtime_metric_snapshots(
+        provider_name: str | None = Query(default=None),
+        limit: int = Query(default=DEFAULT_VLLM_RUNTIME_METRIC_SNAPSHOT_LIMIT),
+        include_raw_samples: bool = Query(default=False),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            snapshots = list_vllm_runtime_metric_snapshots(
+                settings.database_url,
+                provider_name=provider_name,
+                limit=limit,
+            )
+        except InvalidVLLMRuntimeMetricSnapshotError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content=vllm_runtime_metric_snapshot_collection_payload(
+                snapshots,
+                provider_name=provider_name.strip() if provider_name else None,
+                limit=limit,
+                include_raw_samples=include_raw_samples,
+            )
+        )
+
     @app.get("/api/admin/generation-provider-configs")
     def api_list_generation_provider_runtime_configs(
         include_inactive: bool = True,
@@ -17915,6 +17975,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 snapshot_json=snapshot_json,
                 selected_limit=limit,
                 max_limit=MAX_GENERATION_PROVIDER_METRIC_SNAPSHOT_LIMIT,
+                error_message=error_message,
+            ),
+        )
+
+    @app.get("/admin/vllm-runtime-metrics", response_class=HTMLResponse)
+    def vllm_runtime_metrics_page(
+        request: Request,
+        provider_name: str | None = None,
+        limit: int = DEFAULT_VLLM_RUNTIME_METRIC_SNAPSHOT_LIMIT,
+    ) -> HTMLResponse:
+        snapshots: list[Any] = []
+        collection_payload: dict[str, object] | None = None
+        collection_json = ""
+        error_message = None
+        normalized_provider_name = provider_name.strip() if provider_name else None
+        if normalized_provider_name == "":
+            normalized_provider_name = None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                snapshots = list_vllm_runtime_metric_snapshots(
+                    settings.database_url,
+                    provider_name=normalized_provider_name,
+                    limit=limit,
+                )
+                collection_payload = vllm_runtime_metric_snapshot_collection_payload(
+                    snapshots,
+                    provider_name=normalized_provider_name,
+                    limit=limit,
+                )
+                collection_json = json.dumps(collection_payload, ensure_ascii=False, indent=2)
+            except InvalidVLLMRuntimeMetricSnapshotError as exc:
+                error_message = str(exc)
+                collection_payload = vllm_runtime_metric_snapshot_collection_payload(
+                    [],
+                    provider_name=normalized_provider_name,
+                    limit=limit,
+                )
+                collection_json = json.dumps(collection_payload, ensure_ascii=False, indent=2)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "vllm_runtime_metrics.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                snapshots=snapshots,
+                collection_payload=collection_payload,
+                collection_json=collection_json,
+                selected_provider_name=normalized_provider_name or "",
+                selected_limit=limit,
+                max_limit=MAX_VLLM_RUNTIME_METRIC_SNAPSHOT_LIMIT,
                 error_message=error_message,
             ),
         )

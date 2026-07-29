@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("vllm_runtime_metrics.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("vllm_runtime_metrics.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a
+      class="btn btn-outline-secondary btn-sm"
+      href="/admin/vllm-runtime-metrics?provider_name={{ selected_provider_name }}&limit={{ selected_limit }}"
+    >
+      {{ t("vllm_runtime_metrics.refresh") }}
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/generation-provider-metrics">
+      {{ t("vllm_runtime_metrics.open_generation_metrics") }}
+    </a>
+    <a
+      class="btn btn-outline-primary btn-sm"
+      href="/api/admin/vllm-runtime-metrics/snapshots?provider_name={{ selected_provider_name }}&limit={{ selected_limit }}"
+    >
+      {{ t("common.api") }}
+    </a>
+  </div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <form class="row g-3 align-items-end" method="get" data-vllm-runtime-metrics-filters>
+    <div class="col-12 col-md-5">
+      <label class="form-label" for="provider_name">{{ t("vllm_runtime_metrics.provider_name") }}</label>
+      <input
+        class="form-control"
+        id="provider_name"
+        name="provider_name"
+        type="text"
+        value="{{ selected_provider_name }}"
+        placeholder="dgx_vllm_qwen36_27b_nvfp4"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="limit">{{ t("vllm_runtime_metrics.limit") }}</label>
+      <input
+        class="form-control"
+        id="limit"
+        name="limit"
+        type="number"
+        min="1"
+        max="{{ max_limit }}"
+        value="{{ selected_limit }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("vllm_runtime_metrics.apply") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if collection_payload %}
+{% set summary = collection_payload.summary %}
+<section class="document-detail-grid mb-4" data-vllm-runtime-metrics-summary>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("vllm_runtime_metrics.snapshot_count") }}</div>
+    <div class="metric-value">{{ summary.snapshot_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("vllm_runtime_metrics.latest_kv_cache") }}</div>
+    <div class="metric-value">
+      {% if summary.latest_kv_cache_usage_percent is not none %}
+      {{ "%.2f"|format(summary.latest_kv_cache_usage_percent) }}%
+      {% else %}
+      -
+      {% endif %}
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("vllm_runtime_metrics.latest_waiting") }}</div>
+    <div class="metric-value">{{ summary.latest_waiting_requests if summary.latest_waiting_requests is not none else "-" }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("vllm_runtime_metrics.max_kv_cache") }}</div>
+    <div class="metric-value">
+      {% if summary.max_kv_cache_usage_percent is not none %}
+      {{ "%.2f"|format(summary.max_kv_cache_usage_percent) }}%
+      {% else %}
+      -
+      {% endif %}
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("vllm_runtime_metrics.max_waiting") }}</div>
+    <div class="metric-value">{{ summary.max_waiting_requests if summary.max_waiting_requests is not none else "-" }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("vllm_runtime_metrics.avg_ttft") }}</div>
+    <div class="metric-value">
+      {% if summary.average_time_to_first_token_seconds is not none %}
+      {{ "%.3f"|format(summary.average_time_to_first_token_seconds) }} s
+      {% else %}
+      -
+      {% endif %}
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("vllm_runtime_metrics.avg_e2e") }}</div>
+    <div class="metric-value">
+      {% if summary.average_e2e_request_latency_seconds is not none %}
+      {{ "%.3f"|format(summary.average_e2e_request_latency_seconds) }} s
+      {% else %}
+      -
+      {% endif %}
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("vllm_runtime_metrics.latest_sampled_at") }}</div>
+    <div class="generation-detail-compact-value">
+      {{ summary.latest_sampled_at[:19].replace("T", " ") if summary.latest_sampled_at else "-" }}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-vllm-runtime-metrics-table>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("vllm_runtime_metrics.snapshots") }}</h2>
+      <div class="text-secondary">{{ t("vllm_runtime_metrics.snapshots_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("vllm_runtime_metrics.snapshot") }}</th>
+          <th>{{ t("vllm_runtime_metrics.provider") }}</th>
+          <th class="text-end">{{ t("vllm_runtime_metrics.kv_cache") }}</th>
+          <th class="text-end">{{ t("vllm_runtime_metrics.requests") }}</th>
+          <th class="text-end">{{ t("vllm_runtime_metrics.tokens") }}</th>
+          <th class="text-end">{{ t("vllm_runtime_metrics.latency") }}</th>
+          <th>{{ t("vllm_runtime_metrics.sampled_at") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for snapshot in snapshots %}
+        <tr>
+          <td>
+            #{{ snapshot.snapshot_id }}
+            <div class="text-secondary small">
+              {{ snapshot.metric_count }} / {{ snapshot.vllm_metric_count }}
+            </div>
+          </td>
+          <td>
+            <div>{{ snapshot.provider_name }}</div>
+            <div class="model-path small">{{ snapshot.provider_base_url }}</div>
+            <div class="model-path small">{{ snapshot.model_id or "-" }}</div>
+          </td>
+          <td class="text-end">
+            <div>
+              {% if snapshot.kv_cache_usage_percent is not none %}
+              {{ "%.2f"|format(snapshot.kv_cache_usage_percent) }}%
+              {% else %}
+              -
+              {% endif %}
+            </div>
+            <div class="text-secondary small">
+              CPU:
+              {% if snapshot.cpu_cache_usage_percent is not none %}
+              {{ "%.2f"|format(snapshot.cpu_cache_usage_percent) }}%
+              {% else %}
+              -
+              {% endif %}
+            </div>
+          </td>
+          <td class="text-end">
+            <div>{{ snapshot.running_requests if snapshot.running_requests is not none else "-" }} / {{ snapshot.waiting_requests if snapshot.waiting_requests is not none else "-" }}</div>
+            <div class="text-secondary small">
+              {{ t("vllm_runtime_metrics.swapped") }}:
+              {{ snapshot.swapped_requests if snapshot.swapped_requests is not none else "-" }}
+            </div>
+          </td>
+          <td class="text-end">
+            <div>{{ snapshot.prompt_tokens_total if snapshot.prompt_tokens_total is not none else "-" }}</div>
+            <div class="text-secondary small">
+              {{ snapshot.generation_tokens_total if snapshot.generation_tokens_total is not none else "-" }}
+            </div>
+          </td>
+          <td class="text-end text-nowrap">
+            <div>
+              TTFT:
+              {% if snapshot.average_time_to_first_token_seconds is not none %}
+              {{ "%.3f"|format(snapshot.average_time_to_first_token_seconds) }}s
+              {% else %}
+              -
+              {% endif %}
+            </div>
+            <div class="text-secondary small">
+              E2E:
+              {% if snapshot.average_e2e_request_latency_seconds is not none %}
+              {{ "%.3f"|format(snapshot.average_e2e_request_latency_seconds) }}s
+              {% else %}
+              -
+              {% endif %}
+            </div>
+          </td>
+          <td class="text-nowrap">{{ snapshot.sampled_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-center text-secondary py-4" colspan="7">
+            {{ t("vllm_runtime_metrics.no_snapshots") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if collection_payload %}
+<section class="metric-card bg-white p-3" data-vllm-runtime-metrics-json>
+  <div class="metric-label mb-2">{{ t("vllm_runtime_metrics.raw_snapshot") }}</div>
+  <pre class="json-preview operations-json-preview mb-0">{{ collection_json }}</pre>
+</section>
+{% endif %}
+{% endblock %}
