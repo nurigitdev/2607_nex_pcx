@@ -9,6 +9,11 @@ def test_dashboard_renders_empty_state(client) -> None:
     assert "운영 상태" in response.text
     assert "정상" in response.text
     assert "/api/dashboard/operational-health" in response.text
+    assert "data-dashboard-vllm-readiness-card" in response.text
+    assert "vLLM Runtime 준비 상태" in response.text
+    assert "미확인" in response.text
+    assert "/admin/vllm-runtime-metrics" in response.text
+    assert "/api/admin/vllm-runtime-metrics/snapshots?limit=10" in response.text
     assert "문서" in response.text
     assert 'href="/documents"' in response.text
     assert 'href="/admin/chunk-policies"' in response.text
@@ -59,6 +64,8 @@ def test_dashboard_supports_english_language_switch(client) -> None:
     assert "RAG experiment bench operations" in response.text
     assert "Operational Health" in response.text
     assert "Healthy" in response.text
+    assert "vLLM Runtime Readiness" in response.text
+    assert "Unknown" in response.text
     assert "Last Updated" in response.text
     assert 'aria-label="Auto Refresh"' in response.text
     assert 'aria-label="Snapshot Export"' in response.text

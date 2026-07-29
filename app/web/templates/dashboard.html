@@ -86,6 +86,65 @@
   </div>
 </section>
 
+{% set vllm_readiness = vllm_runtime.readiness %}
+{% set vllm_summary = vllm_runtime.summary %}
+<section class="metric-card bg-white p-3 mb-4" data-dashboard-vllm-readiness-card>
+  <div class="dashboard-health-heading mb-3">
+    <div>
+      <div class="metric-label mb-1">{{ t("dashboard.vllm_readiness") }}</div>
+      <h2 class="h5 mb-1">{{ t("dashboard.vllm_readiness_title") }}</h2>
+      <div class="text-secondary">{{ t("dashboard.vllm_readiness_subtitle") }}</div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="badge text-bg-{{ vllm_readiness.badge_class }} fs-6 px-3 py-2">
+        {{ t("vllm_runtime_metrics.status_" ~ vllm_readiness.status) }}
+      </span>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/vllm-runtime-metrics">{{ t("dashboard.vllm_open_runtime") }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="/api/admin/vllm-runtime-metrics/snapshots?limit=10">{{ t("common.api") }}</a>
+    </div>
+  </div>
+
+  <div class="dashboard-status-grid mb-3">
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.vllm_latest_provider") }}</span>
+      <strong class="text-break">{{ vllm_summary.latest_provider_name or "-" }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.vllm_latest_sampled_at") }}</span>
+      <strong>{{ vllm_readiness.latest_sampled_at_label or "-" }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.vllm_latest_kv_cache") }}</span>
+      <strong>
+        {% if vllm_summary.latest_kv_cache_usage_percent is not none %}
+        {{ "%.2f%%"|format(vllm_summary.latest_kv_cache_usage_percent) }}
+        {% else %}
+        -
+        {% endif %}
+      </strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.vllm_latest_waiting") }}</span>
+      <strong>{{ vllm_summary.latest_waiting_requests if vllm_summary.latest_waiting_requests is not none else "-" }}</strong>
+    </div>
+  </div>
+
+  <div class="dashboard-health-signals">
+    {% if vllm_readiness.reason_codes %}
+      {% for reason_code in vllm_readiness.reason_codes %}
+      <span class="dashboard-health-signal dashboard-health-signal-{{ vllm_readiness.status }}">
+        {{ reason_code }}
+      </span>
+      {% endfor %}
+    {% else %}
+      <span class="text-secondary small">{{ t("dashboard.vllm_no_reason_codes") }}</span>
+    {% endif %}
+    {% if not vllm_readiness.latest_snapshot_id %}
+      <span class="text-secondary small">{{ t("dashboard.vllm_no_snapshot") }}</span>
+    {% endif %}
+  </div>
+</section>
+
 <div class="row g-3">
   <div class="col-12 col-md-6 col-xl-3">
     <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/documents">

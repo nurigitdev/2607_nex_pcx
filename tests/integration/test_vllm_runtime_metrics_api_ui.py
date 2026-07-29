@@ -7,6 +7,9 @@ from app.core.config import Settings
 from app.core.database import connect
 from app.core.vllm_runtime_metric_snapshots import record_vllm_runtime_metric_snapshot
 from app.core.vllm_runtime_metrics import scrape_vllm_runtime_metrics_from_text
+from app.core.vllm_runtime_readiness_settings import (
+    reset_vllm_runtime_readiness_threshold_settings,
+)
 from app.main import create_app
 
 pytestmark = pytest.mark.integration
@@ -152,6 +155,51 @@ def test_vllm_runtime_metric_snapshot_ui_shows_persisted_snapshots(
         assert invalid_limit_response.status_code == 200
         assert "limit must be greater than 0" in invalid_limit_response.text
     finally:
+        _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
+
+
+def test_dashboard_shows_vllm_runtime_readiness_card(
+    migrated_database_url: str,
+) -> None:
+    _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
+    try:
+        reset_vllm_runtime_readiness_threshold_settings(migrated_database_url)
+        record_vllm_runtime_metric_snapshot(
+            migrated_database_url,
+            _snapshot(
+                """
+                vllm:kv_cache_usage_perc 0.83
+                vllm:cpu_cache_usage_perc 0.12
+                vllm:num_requests_running 2
+                vllm:num_requests_waiting 3
+                vllm:num_requests_swapped 1
+                vllm:prompt_tokens_total 120
+                vllm:generation_tokens_total 300
+                vllm:time_to_first_token_seconds_sum 0.8
+                vllm:time_to_first_token_seconds_count 2
+                vllm:e2e_request_latency_seconds_sum 6
+                vllm:e2e_request_latency_seconds_count 2
+                """,
+                sampled_at=datetime.now(UTC).replace(microsecond=0) + timedelta(minutes=1),
+            ),
+        )
+        app = create_app(Settings(database_url=migrated_database_url))
+
+        with TestClient(app) as client:
+            response = client.get("/")
+
+        assert response.status_code == 200
+        assert "data-dashboard-vllm-readiness-card" in response.text
+        assert "vLLM Runtime 준비 상태" in response.text
+        assert PROVIDER_NAME in response.text
+        assert "83.00%" in response.text
+        assert "주의" in response.text
+        assert "kv_cache_pressure" in response.text
+        assert "waiting_queue_pressure" in response.text
+        assert "/admin/vllm-runtime-metrics" in response.text
+        assert "/api/admin/vllm-runtime-metrics/snapshots?limit=10" in response.text
+    finally:
+        reset_vllm_runtime_readiness_threshold_settings(migrated_database_url)
         _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
 
 

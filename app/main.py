@@ -1312,6 +1312,8 @@ DASHBOARD_REFRESH_INTERVAL_OPTIONS = (
     {"seconds": 60, "label": "60s"},
 )
 
+DASHBOARD_VLLM_RUNTIME_SNAPSHOT_LIMIT = 10
+
 DASHBOARD_HEALTH_THRESHOLD_UI_ROWS = (
     ("pipeline_stale", "critical"),
     ("pipeline_exhausted", "critical"),
@@ -8177,6 +8179,26 @@ def dashboard_operational_health_payload(
     if threshold_settings is not None:
         payload["thresholds"] = dict(threshold_settings.thresholds)
     return payload
+
+
+def dashboard_vllm_runtime_payload(database_url: str | None) -> dict[str, object]:
+    if not database_url:
+        return vllm_runtime_metric_snapshot_collection_payload(
+            [],
+            limit=DASHBOARD_VLLM_RUNTIME_SNAPSHOT_LIMIT,
+            readiness_thresholds=DEFAULT_VLLM_RUNTIME_READINESS_THRESHOLDS,
+        )
+
+    threshold_settings = load_vllm_runtime_readiness_threshold_settings(database_url)
+    snapshots = list_vllm_runtime_metric_snapshots(
+        database_url,
+        limit=DASHBOARD_VLLM_RUNTIME_SNAPSHOT_LIMIT,
+    )
+    return vllm_runtime_metric_snapshot_collection_payload(
+        snapshots,
+        limit=DASHBOARD_VLLM_RUNTIME_SNAPSHOT_LIMIT,
+        readiness_thresholds=threshold_settings.thresholds,
+    )
 
 
 def dashboard_snapshot_export_payload(
@@ -16210,6 +16232,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         threshold_settings = DashboardHealthThresholdSettings(
             thresholds=dict(DEFAULT_DASHBOARD_HEALTH_THRESHOLDS)
         )
+        vllm_runtime = dashboard_vllm_runtime_payload(None)
         rendered_at = datetime.now(UTC)
         selected_lookback_hours = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS
         selected_refresh_seconds = 0
@@ -16287,6 +16310,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception as exc:
                 if error_message is None:
                     error_message = str(exc)
+            try:
+                vllm_runtime = dashboard_vllm_runtime_payload(settings.database_url)
+            except (
+                InvalidVLLMRuntimeMetricSnapshotError,
+                InvalidVLLMRuntimeReadinessThresholdSettingsError,
+            ) as exc:
+                if error_message is None:
+                    error_message = str(exc)
+            except Exception as exc:
+                if error_message is None:
+                    error_message = str(exc)
 
         operational_health = summarize_dashboard_operational_health(
             pipeline_queue=pipeline_queue,
@@ -16340,6 +16374,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 dashboard_refresh_now_url=dashboard_query_url(request, {}),
                 evaluation_dashboard=evaluation_dashboard,
                 embedding_backlog=embedding_backlog,
+                vllm_runtime=vllm_runtime,
                 error_message=error_message,
             ),
         )
