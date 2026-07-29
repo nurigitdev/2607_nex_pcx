@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.57**
+**Software Requirements Specification v1.58**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.57
+문서 상태: Draft v1.58
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.57 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.58 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.57 |
+| 문서 버전 | v1.58 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -82,6 +82,7 @@
 | 1.55 | 2026-07-27 | Direct Generation UI MVP, 사용자가 생성 화면에서 질문, 검색 profile, provider mode, context 옵션을 지정해 검색-패키징-생성을 실행하는 요구사항 보강 |
 | 1.56 | 2026-07-27 | Generation template strategy, 보고서/제안서/요약문 등 문서 유형별 출력 구조, template metadata, prompt injection, Markdown export 실험 요구사항 보강 |
 | 1.57 | 2026-07-28 | Conversational UX strategy, chat orchestration intent, chat session/message/artifact/run linkage, 대화형 pre-CX 실험 인터페이스 요구사항 보강 |
+| 1.58 | 2026-07-29 | DGX provider resource monitor strategy, embedding/reranker/vLLM provider별 RAM/VRAM/swap/process 관측 요구사항과 운영 threshold 방향 보강 |
 
 # 목차
 
@@ -476,6 +477,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-084 | Template document generation chat path | 보고서/제안서/요약서 등 문서 생성 intent는 generation template을 명시/자동 선택하고, 생성 결과를 artifact로 저장한 뒤 chat message에는 view/download link를 표시해야 한다. | SHOULD |
 | FR-085 | Chat artifact linkage | chat message는 생성된 Markdown/DOCX 등 artifact, generation_run_id, search_log_id, document_summary_run metadata를 연결하여 사용자가 대화 중 산출물을 다시 열거나 다운로드할 수 있어야 한다. | SHOULD |
 | FR-086 | Chat UX transparency | 대화형 UI는 자동 intent routing 결과를 숨기지 않고 “일반 답변”, “문서 검색 요약”, “근거 기반 답변”, “문서 생성”, “문서 요약” 중 어떤 경로로 실행되었는지 message별 badge와 detail로 표시해야 한다. | SHOULD |
+| FR-087 | DGX provider resource monitor strategy | DGX-Spark에서 실행되는 remote embedding provider, remote reranker provider, vLLM runtime의 process, port, RAM RSS, GPU memory, swap pressure, uptime, readiness threshold를 provider별로 관측하고 운영 evidence로 저장/표시할 수 있어야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 
@@ -489,6 +491,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-001-06 | parsing 실패, embedding 실패, DB 저장 실패 목록을 최근순으로 표시한다. |
 | FR-001-07 | pipeline queue depth, running job 수, 오래 대기 중인 job, lease 만료 job, 실패 job 수를 표시한다. |
 | FR-001-08 | stage별 평균 처리 시간과 최근 실패 원인을 표시한다. |
+| FR-001-09 | DGX provider별 RAM RSS, GPU memory, swap pressure, readiness status를 Dashboard 또는 운영 메뉴에서 확인할 수 있어야 한다. |
 
 ## 4.4 파일 업로드 및 parsing 요구사항
 
@@ -596,6 +599,12 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - DGX vLLM smoke runner는 API key 값을 코드, CLI dry-run output, markdown/json 증적에 기록하지 않고 환경변수 이름과 configured 여부만 남겨야 한다. 성공 증적은 HTTP 2xx, non-empty answer, finish reason, token usage, provider metrics succeeded를 기준으로 판단한다. Qwen smoke request는 기본적으로 `chat_template_kwargs.enable_thinking=false`를 사용해 짧은 smoke token budget에서도 최종 assistant content가 반환되도록 한다.
 
 - 기본 remote LLM 후보는 `nvidia/Qwen3.6-27B-NVFP4`로 두되, 로컬 개발 환경과 remote DGX-Spark 접속이 불가능한 환경에서는 deterministic mock provider가 동일한 request/response shape로 동작해야 한다.
+
+- DGX-Spark resource monitor는 provider health와 별도로 host/process 관측을 수행한다. remote embedding provider(FastAPI), remote reranker provider(FastAPI), vLLM(OpenAI-compatible runtime)는 각각 process 식별자, bind port, command fingerprint, RAM RSS, CPU 사용률, GPU memory, swap 사용 여부, uptime을 수집 대상에 포함해야 한다.
+
+- vLLM `/metrics`는 KV cache, waiting queue, token throughput 같은 serving 내부 지표를 제공하지만, FastAPI embedding/reranker provider의 CPU RAM 점유와 system swap pressure는 포함하지 않는다. 따라서 운영 readiness는 vLLM metrics snapshot과 `psutil`/`nvidia-smi` 기반 provider resource snapshot을 함께 해석해야 한다.
+
+- Resource monitor snapshot은 secret 값과 prompt/document 내용을 저장하지 않고 provider name, provider type, host, port, pid, process command basename, resource counters, threshold status, collection error만 저장한다. 운영 UI는 warning/critical threshold 초과 시 어느 provider가 resource pressure를 유발하는지 식별 가능해야 한다.
 
 - Prompt package는 system instruction, user query, retrieval context blocks, citation rules, no-answer rule, response language preference를 분리해 구성하고, prompt version과 rendered prompt hash를 generation run에 기록해야 한다.
 
@@ -832,6 +841,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | search_result_feedback | 검색 결과별 정답/부분정답/오답 피드백 |
 | generation_templates | 생성 문서 유형별 template key/version/language/output format/section schema/style guidance/active/default 설정 |
 | generation_provider_configs | mock/vLLM 등 생성 provider 설정, model id, endpoint, timeout, decoding option |
+| provider_resource_snapshots | DGX remote provider별 host/process/port/RAM/GPU/swap/uptime/readiness snapshot |
 | generation_runs | search_log/retrieval package/prompt/provider 조합별 생성 실행 이력, status, answer, token usage, latency, guardrail metadata |
 | generation_run_citations | 생성 답변에서 참조한 retrieval context citation key와 chunk/source anchor lineage |
 | chat_sessions | 대화형 workspace의 session title, actor, status, default runtime/search option |
@@ -1833,6 +1843,7 @@ pytest tests/e2e
 | Retrieval confidence gate 미적용 | 관련 없는 검색 결과를 근거로 LLM이 그럴듯한 오답을 생성 | `answerable` 상태와 citation readiness를 generation run 전제 조건으로 기록하고, low/no-context는 no-answer 또는 blocked status로 처리 |
 | vLLM remote runtime 장애 | 생성 실행 실패, timeout, 운영자 혼선 | mock provider를 기본 fallback으로 유지하고 provider base URL/model/timeout/health smoke evidence를 generation runtime metadata로 기록 |
 | Qwen3.6-27B-NVFP4 GPU 자원 부족 | DGX memory pressure, 긴 latency, context length 제한 | 초기 context budget을 보수적으로 제한하고 max_tokens/temperature/top_p/context budget을 설정화하며, office network에서 별도 smoke 후 활성화 |
+| DGX provider별 resource pressure 식별 실패 | 어떤 provider가 RAM/VRAM/swap을 점유하는지 알 수 없어 운영 중 잘못된 프로세스를 재시작하거나 장애 대응이 지연됨 | provider별 process/port binding을 기준으로 RAM RSS, GPU memory, swap pressure, uptime snapshot을 저장하고 Dashboard/운영 메뉴에서 threshold status를 표시 |
 | Chat intent 오분류 | 일반 답변이 필요한 질문에 문서 검색을 수행하거나, 근거 답변이 필요한 질문을 일반 답변으로 처리 | 초기에는 deterministic rule/mock router와 명시적 mode 선택을 함께 제공하고, intent/confidence/routing reason을 message metadata로 기록 |
 | Chat 결과와 산출물 추적 누락 | 사용자가 대화 중 생성한 문서 또는 근거 run을 다시 찾기 어려움 | chat_message_links로 search_log, generation_run, document, artifact/download link를 저장하고 UI에 message별 card로 표시 |
 | 대화형 UX가 기존 실험 화면을 가림 | 모델/검색전략 비교라는 NeX_PCX 핵심 검증 목적이 약해짐 | Chat Workspace는 orchestration 실험 shell로 제한하고 Search Compare, Generation, Summary, Artifact 화면의 detail link를 유지 |

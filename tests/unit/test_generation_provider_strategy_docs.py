@@ -55,7 +55,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.57" in srs_text
+    assert "Software Requirements Specification v1.58" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
     assert "Qwen3.6-27B-NVFP4" in srs_text
@@ -95,6 +95,7 @@ def test_srs_documents_generation_provider_strategy() -> None:
     assert "FR-084" in srs_text
     assert "FR-085" in srs_text
     assert "FR-086" in srs_text
+    assert "FR-087" in srs_text
     assert "remote_openai_compatible" in srs_text
     assert "/v1/chat/completions" in srs_text
     assert "OpenAI-compatible vLLM client foundation" in srs_text
