@@ -89,4 +89,6 @@ def test_provider_resource_snapshot_api_ui_doc_defines_operator_contract() -> No
     assert "`include_raw_snapshot`" in api_ui_text
     assert "GET /admin/provider-resources" in api_ui_text
     assert "PID, RAM RSS, GPU memory" in api_ui_text
+    assert "Dashboard Provider Resource card" in api_ui_text
+    assert "vLLM runtime readiness card" in api_ui_text
     assert "No prompt text, document text" in api_ui_text

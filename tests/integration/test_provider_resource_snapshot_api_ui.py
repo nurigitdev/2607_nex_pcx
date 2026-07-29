@@ -16,6 +16,7 @@ pytestmark = pytest.mark.integration
 
 PROVIDER_NAME = "pytest-provider-resource-api-ui"
 NOW = datetime(2026, 7, 29, 15, 0, tzinfo=UTC)
+DASHBOARD_NOW = datetime(2099, 1, 1, 15, 0, tzinfo=UTC)
 
 
 def test_provider_resource_snapshot_api_lists_persisted_snapshots(
@@ -79,7 +80,11 @@ def test_provider_resource_snapshot_ui_shows_persisted_snapshots(
     try:
         record_provider_resource_probe_report(
             migrated_database_url,
-            _report(collected_at=NOW, rss_kib=4 * 1024 * 1024, gpu_mib=16384),
+            _report(
+                collected_at=DASHBOARD_NOW,
+                rss_kib=4 * 1024 * 1024,
+                gpu_mib=16384,
+            ),
         )
         app = create_app(Settings(database_url=migrated_database_url))
 
@@ -107,6 +112,41 @@ def test_provider_resource_snapshot_ui_shows_persisted_snapshots(
         assert "/api/admin/provider-resource-snapshots" in page_response.text
         assert invalid_limit_response.status_code == 200
         assert "limit must be greater than 0" in invalid_limit_response.text
+    finally:
+        _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
+
+
+def test_dashboard_provider_resource_card_summarizes_latest_snapshots(
+    migrated_database_url: str,
+) -> None:
+    _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
+    try:
+        record_provider_resource_probe_report(
+            migrated_database_url,
+            _report(
+                collected_at=DASHBOARD_NOW,
+                rss_kib=4 * 1024 * 1024,
+                gpu_mib=16384,
+            ),
+        )
+        app = create_app(Settings(database_url=migrated_database_url))
+
+        with TestClient(app) as client:
+            response = client.get("/")
+
+        assert response.status_code == 200
+        assert "data-dashboard-provider-resource-card" in response.text
+        assert "Provider Resource 준비 상태" in response.text
+        assert PROVIDER_NAME in response.text
+        assert "2099-01-02 00:00:00" in response.text
+        assert "4.00 GiB" in response.text
+        assert "16.00 GiB" in response.text
+        assert "50.00%" in response.text
+        assert "위험" in response.text
+        assert "ram_budget_pressure" in response.text
+        assert "swap_pressure" in response.text
+        assert "/admin/provider-resources" in response.text
+        assert "/api/admin/provider-resource-snapshots?limit=10" in response.text
     finally:
         _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
 

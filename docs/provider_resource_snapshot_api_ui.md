@@ -56,5 +56,19 @@ The page provides:
   codes
 - bounded raw JSON evidence for troubleshooting
 
+## Dashboard Card
+
+```http
+GET /
+```
+
+The Dashboard Provider Resource card reuses the latest persisted snapshot per
+provider and shows the operator-facing readiness summary beside the vLLM runtime readiness card:
+
+- latest provider, status badge, and collected time
+- warning/critical counts across the latest provider snapshots
+- max RAM RSS, max GPU memory, and max swap percent
+- latest provider reason codes with links to the detailed monitor and JSON API
+
 No prompt text, document text, request payload, API key, or secret is persisted
 or displayed.

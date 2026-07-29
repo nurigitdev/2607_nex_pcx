@@ -640,6 +640,7 @@ from app.core.provider_resource_snapshots import (
     DEFAULT_PROVIDER_RESOURCE_SNAPSHOT_LIMIT,
     MAX_PROVIDER_RESOURCE_SNAPSHOT_LIMIT,
     InvalidProviderResourceSnapshotError,
+    list_latest_provider_resource_snapshots,
     list_provider_resource_snapshots,
     provider_resource_snapshot_record_payload,
     provider_resource_snapshot_summary_payload,
@@ -1322,6 +1323,7 @@ DASHBOARD_REFRESH_INTERVAL_OPTIONS = (
 )
 
 DASHBOARD_VLLM_RUNTIME_SNAPSHOT_LIMIT = 10
+DASHBOARD_PROVIDER_RESOURCE_SNAPSHOT_LIMIT = 10
 
 DASHBOARD_HEALTH_THRESHOLD_UI_ROWS = (
     ("pipeline_stale", "critical"),
@@ -8236,6 +8238,20 @@ def dashboard_vllm_runtime_payload(database_url: str | None) -> dict[str, object
         snapshots,
         limit=DASHBOARD_VLLM_RUNTIME_SNAPSHOT_LIMIT,
         readiness_thresholds=threshold_settings.thresholds,
+    )
+
+
+def dashboard_provider_resource_payload(database_url: str | None) -> dict[str, object]:
+    if not database_url:
+        return provider_resource_snapshot_collection_payload(
+            [],
+            limit=DASHBOARD_PROVIDER_RESOURCE_SNAPSHOT_LIMIT,
+        )
+
+    snapshots = list_latest_provider_resource_snapshots(database_url)
+    return provider_resource_snapshot_collection_payload(
+        snapshots,
+        limit=DASHBOARD_PROVIDER_RESOURCE_SNAPSHOT_LIMIT,
     )
 
 
@@ -16312,6 +16328,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             thresholds=dict(DEFAULT_DASHBOARD_HEALTH_THRESHOLDS)
         )
         vllm_runtime = dashboard_vllm_runtime_payload(None)
+        provider_resources = dashboard_provider_resource_payload(None)
         rendered_at = datetime.now(UTC)
         selected_lookback_hours = DEFAULT_DASHBOARD_THROUGHPUT_LOOKBACK_HOURS
         selected_refresh_seconds = 0
@@ -16400,6 +16417,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception as exc:
                 if error_message is None:
                     error_message = str(exc)
+            try:
+                provider_resources = dashboard_provider_resource_payload(settings.database_url)
+            except InvalidProviderResourceSnapshotError as exc:
+                if error_message is None:
+                    error_message = str(exc)
+            except Exception as exc:
+                if error_message is None:
+                    error_message = str(exc)
 
         operational_health = summarize_dashboard_operational_health(
             pipeline_queue=pipeline_queue,
@@ -16454,6 +16479,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 evaluation_dashboard=evaluation_dashboard,
                 embedding_backlog=embedding_backlog,
                 vllm_runtime=vllm_runtime,
+                provider_resources=provider_resources,
                 error_message=error_message,
             ),
         )

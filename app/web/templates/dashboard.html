@@ -145,6 +145,75 @@
   </div>
 </section>
 
+{% set provider_resource_summary = provider_resources.summary %}
+{% set latest_provider_resource = provider_resources.snapshots[0] if provider_resources.snapshots else none %}
+<section class="metric-card bg-white p-3 mb-4" data-dashboard-provider-resource-card>
+  <div class="dashboard-health-heading mb-3">
+    <div>
+      <div class="metric-label mb-1">{{ t("dashboard.provider_resource_readiness") }}</div>
+      <h2 class="h5 mb-1">{{ t("dashboard.provider_resource_readiness_title") }}</h2>
+      <div class="text-secondary">{{ t("dashboard.provider_resource_readiness_subtitle") }}</div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="badge text-bg-{{ provider_resource_summary.latest_status_badge_class }} fs-6 px-3 py-2">
+        {{ t("provider_resources.status_" ~ (provider_resource_summary.latest_status or "unknown")) }}
+      </span>
+      <a class="btn btn-outline-secondary btn-sm" href="/admin/provider-resources">{{ t("dashboard.provider_resource_open") }}</a>
+      <a class="btn btn-outline-secondary btn-sm" href="/api/admin/provider-resource-snapshots?limit=10">{{ t("common.api") }}</a>
+    </div>
+  </div>
+
+  <div class="dashboard-status-grid mb-3">
+    <div class="dashboard-status-item dashboard-status-item-wide">
+      <span class="metric-label">{{ t("dashboard.provider_resource_latest_provider") }}</span>
+      <strong class="text-break">{{ provider_resource_summary.latest_provider_name or "-" }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.provider_resource_latest_collected_at") }}</span>
+      <strong>
+        {{ provider_resource_summary.latest_collected_at[:19].replace("T", " ") if provider_resource_summary.latest_collected_at else "-" }}
+      </strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.provider_resource_warning_critical") }}</span>
+      <strong>{{ provider_resource_summary.warning_count }} / {{ provider_resource_summary.critical_count }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.provider_resource_max_ram") }}</span>
+      <strong>{{ provider_resource_summary.max_process_rss_label }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.provider_resource_max_gpu") }}</span>
+      <strong>{{ provider_resource_summary.max_gpu_memory_used_label }}</strong>
+    </div>
+    <div class="dashboard-status-item">
+      <span class="metric-label">{{ t("dashboard.provider_resource_max_swap") }}</span>
+      <strong>
+        {% if provider_resource_summary.max_system_swap_used_percent is not none %}
+        {{ "%.2f%%"|format(provider_resource_summary.max_system_swap_used_percent) }}
+        {% else %}
+        -
+        {% endif %}
+      </strong>
+    </div>
+  </div>
+
+  <div class="dashboard-health-signals">
+    {% if latest_provider_resource and latest_provider_resource.reason_codes %}
+      {% for reason_code in latest_provider_resource.reason_codes %}
+      <span class="dashboard-health-signal dashboard-health-signal-{{ provider_resource_summary.latest_status or 'unknown' }}">
+        {{ reason_code }}
+      </span>
+      {% endfor %}
+    {% else %}
+      <span class="text-secondary small">{{ t("dashboard.provider_resource_no_reason_codes") }}</span>
+    {% endif %}
+    {% if not provider_resource_summary.latest_snapshot_id %}
+      <span class="text-secondary small">{{ t("dashboard.provider_resource_no_snapshot") }}</span>
+    {% endif %}
+  </div>
+</section>
+
 <div class="row g-3">
   <div class="col-12 col-md-6 col-xl-3">
     <a class="metric-card bg-white p-3 dashboard-drilldown-card" href="/documents">

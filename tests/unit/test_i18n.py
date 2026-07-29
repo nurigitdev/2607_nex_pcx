@@ -159,6 +159,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert korean("nav.provider_resources") == "Provider Resource"
     assert english("generation_metrics.title") == "Generation Provider Metrics"
     assert korean("generation_metrics.recent_runs") == "최근 생성 실행"
+    assert korean("dashboard.provider_resource_readiness_title") == "Provider Resource 준비 상태"
+    assert english("dashboard.provider_resource_readiness_title") == ("Provider Resource Readiness")
     assert english("provider_resources.title") == "Provider Resource Monitor"
     assert korean("provider_resources.status_warning") == "주의"
     assert english("provider_resources.max_gpu") == "Max GPU Memory"
