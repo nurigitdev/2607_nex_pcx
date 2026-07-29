@@ -6,6 +6,7 @@ STRATEGY_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_monitor_strat
 PROBE_SCRIPT_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_probe_script.md"
 SNAPSHOT_SCHEMA_DOC_PATH = PROJECT_ROOT / "docs" / "provider_resource_snapshot_schema.md"
 SNAPSHOT_API_UI_DOC_PATH = PROJECT_ROOT / "docs" / "provider_resource_snapshot_api_ui.md"
+SNAPSHOT_COLLECTION_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_snapshot_collection_runner.md"
 
 
 def _read(path: Path) -> str:
@@ -15,10 +16,13 @@ def _read(path: Path) -> str:
 def test_srs_documents_dgx_provider_resource_monitor_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.59" in srs_text
+    assert "Software Requirements Specification v1.60" in srs_text
     assert "DGX provider resource monitor strategy" in srs_text
     assert "FR-087" in srs_text
+    assert "FR-088" in srs_text
+    assert "DGX snapshot collection runner" in srs_text
     assert "provider_resource_snapshots" in srs_text
+    assert "vLLM `/metrics` snapshot" in srs_text
     assert "RAM RSS" in srs_text
     assert "resident memory share" in srs_text
     assert "unified-memory" in srs_text
@@ -47,6 +51,7 @@ def test_strategy_doc_defines_provider_resource_monitor_contract() -> None:
     assert "Slice 409: Remote Provider Resource Probe Script" in strategy_text
     assert "Slice 412: Dashboard Provider Resource Card" in strategy_text
     assert "Slice 413: DGX Provider Resident Memory Share API + UI" in strategy_text
+    assert "Slice 414: DGX Provider/vLLM Snapshot Collection Runner" in strategy_text
 
 
 def test_probe_script_doc_defines_read_only_dgx_evidence_contract() -> None:
@@ -99,3 +104,17 @@ def test_provider_resource_snapshot_api_ui_doc_defines_operator_contract() -> No
     assert "Dashboard Provider Resource card" in api_ui_text
     assert "vLLM runtime readiness card" in api_ui_text
     assert "No prompt text, document text" in api_ui_text
+
+
+def test_dgx_snapshot_collection_runner_doc_defines_operator_entrypoint() -> None:
+    collection_text = _read(SNAPSHOT_COLLECTION_DOC_PATH)
+
+    assert "DGX Provider/vLLM Snapshot Collection Runner" in collection_text
+    assert "scripts/collect_dgx_snapshots.py" in collection_text
+    assert "`vllm_runtime_metric_snapshots`" in collection_text
+    assert "`provider_resource_snapshots`" in collection_text
+    assert "--component all" in collection_text
+    assert "--max-cycles 5" in collection_text
+    assert "--provider-local-only" in collection_text
+    assert "`attention`" in collection_text
+    assert "critical provider state" in collection_text

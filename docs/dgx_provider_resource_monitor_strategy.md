@@ -106,6 +106,12 @@ Provider resource snapshots should correlate with it rather than replace it.
    - Expose RSS divided by system total RAM in API payloads.
    - Show resident memory share in Provider Resource and Dashboard cards.
 
+6. **Slice 414: DGX Provider/vLLM Snapshot Collection Runner**
+   - Add a bounded runner that persists vLLM runtime metrics and provider
+     resource snapshots in one operator command.
+   - Treat observed critical provider state as collection `attention` when
+     snapshot persistence succeeds, so monitoring pages still receive evidence.
+
 ## Operating Principle
 
 When a provider is unhealthy and resource pressure is high, operations should

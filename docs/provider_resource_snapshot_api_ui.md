@@ -2,7 +2,9 @@
 
 Slice 411 persists DGX provider resource probe results and exposes them through
 an operator API and UI. Slice 413 adds resident memory share fields for the
-unified-memory DGX-Spark runtime.
+unified-memory DGX-Spark runtime. Slice 414 adds a combined collection runner so
+operators can populate both Provider Resource and vLLM Runtime menus from one
+bounded command.
 
 ## Persist Probe Results
 
@@ -21,6 +23,17 @@ NEX_PCX_DATABASE_URL='postgresql://...' \
 `--persist` is intentionally rejected with `--dry-run`. SSH mode executes the
 read-only process probe on the DGX host and persists the received JSON on the
 app host.
+
+For ordinary operations, prefer the combined runner:
+
+```bash
+NEX_PCX_DATABASE_URL='postgresql://nex_pcx_app:<password>@127.0.0.1:5432/nex_pcx_app' \
+./.venv/bin/python scripts/collect_dgx_snapshots.py \
+  --component all \
+  --host 192.168.20.243 \
+  --ssh-user nexpcx \
+  --pretty
+```
 
 ## API
 

@@ -2,10 +2,12 @@
 
 Slice 402 added a read-only runtime metrics scraper for the DGX-Spark vLLM server.
 Slice 403 adds optional database snapshot persistence so runtime state can be
-kept as operational evidence and later trended. The scraper complements
-generation run metrics by observing the serving process itself: KV cache
-pressure, queue depth, token counters, request counters, and latency histogram
-averages.
+kept as operational evidence and later trended. Slice 414 adds
+`scripts/collect_dgx_snapshots.py` as the preferred operator entrypoint when the
+vLLM Runtime and Provider Resource menus both need fresh data. The scraper
+complements generation run metrics by observing the serving process itself: KV
+cache pressure, queue depth, token counters, request counters, and latency
+histogram averages.
 
 ## Command
 
@@ -42,6 +44,15 @@ export NEX_PCX_DATABASE_URL='postgresql://nex_pcx_app:<password>@127.0.0.1:5432/
 `--persist` stores a row in `vllm_runtime_metric_snapshots` and adds a
 `snapshot_record` object to the JSON output. Without `--persist`, the script
 remains read-only.
+
+For ordinary operations, prefer the combined collection runner:
+
+```bash
+NEX_PCX_DATABASE_URL='postgresql://nex_pcx_app:<password>@127.0.0.1:5432/nex_pcx_app' \
+./.venv/bin/python scripts/collect_dgx_snapshots.py \
+  --component all \
+  --pretty
+```
 
 ## Normalized Fields
 
