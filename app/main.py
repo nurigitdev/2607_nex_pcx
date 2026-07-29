@@ -755,6 +755,10 @@ from app.core.vllm_runtime_metric_snapshots import (
     vllm_runtime_metric_snapshot_record_payload,
     vllm_runtime_metric_snapshot_summary_payload,
 )
+from app.core.vllm_runtime_readiness import (
+    assess_vllm_runtime_readiness,
+    vllm_runtime_readiness_payload,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=BASE_DIR / "web" / "templates")
@@ -1458,11 +1462,13 @@ def vllm_runtime_metric_snapshot_collection_payload(
     include_raw_samples: bool = False,
 ) -> dict[str, object]:
     summary = summarize_vllm_runtime_metric_snapshots(snapshots)
+    readiness = assess_vllm_runtime_readiness(snapshots)
     return {
         "generated_at": _datetime_response(datetime.now(UTC)),
         "provider_name": provider_name,
         "limit": limit,
         "summary": vllm_runtime_metric_snapshot_summary_payload(summary),
+        "readiness": vllm_runtime_readiness_payload(readiness),
         "snapshots": [
             vllm_runtime_metric_snapshot_record_payload(
                 snapshot,

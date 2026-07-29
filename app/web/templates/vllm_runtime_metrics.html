@@ -65,6 +65,103 @@
 </section>
 
 {% if collection_payload %}
+{% set readiness = collection_payload.readiness %}
+<section class="metric-card bg-white p-3 mb-4" data-vllm-runtime-readiness>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+      <div class="metric-label mb-1">{{ t("vllm_runtime_metrics.readiness") }}</div>
+      <h2 class="h5 mb-1">{{ t("vllm_runtime_metrics.threshold_summary") }}</h2>
+      <div class="text-secondary">{{ t("vllm_runtime_metrics.readiness_help") }}</div>
+    </div>
+    <span class="badge text-bg-{{ readiness.badge_class }} fs-6 px-3 py-2">
+      {{ t("vllm_runtime_metrics.status_" ~ readiness.status) }}
+    </span>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-md-4">
+      <div class="metric-label">{{ t("vllm_runtime_metrics.assessed_at") }}</div>
+      <div class="generation-detail-compact-value">
+        {{ readiness.assessed_at_label or "-" }}
+      </div>
+    </div>
+    <div class="col-12 col-md-4">
+      <div class="metric-label">{{ t("vllm_runtime_metrics.latest_snapshot") }}</div>
+      <div class="generation-detail-compact-value">
+        {% if readiness.latest_snapshot_id %}
+        #{{ readiness.latest_snapshot_id }}
+        <div class="text-secondary small">{{ readiness.latest_sampled_at_label or "-" }}</div>
+        {% else %}
+        -
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-12 col-md-4">
+      <div class="metric-label">{{ t("vllm_runtime_metrics.reason_codes") }}</div>
+      <div class="d-flex flex-wrap gap-1 mt-1">
+        {% for reason_code in readiness.reason_codes %}
+        <span class="badge text-bg-light border text-secondary">{{ reason_code }}</span>
+        {% else %}
+        <span class="text-secondary">{{ t("vllm_runtime_metrics.no_reason_codes") }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="table-responsive" data-vllm-runtime-thresholds>
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("vllm_runtime_metrics.metric") }}</th>
+          <th>{{ t("vllm_runtime_metrics.status") }}</th>
+          <th class="text-end">{{ t("vllm_runtime_metrics.actual") }}</th>
+          <th class="text-end">{{ t("vllm_runtime_metrics.warning_threshold") }}</th>
+          <th class="text-end">{{ t("vllm_runtime_metrics.critical_threshold") }}</th>
+          <th>{{ t("vllm_runtime_metrics.unit") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for signal in readiness.signals %}
+        <tr>
+          <td>{{ t("vllm_runtime_metrics.signal_" ~ signal.code) }}</td>
+          <td>
+            <span class="badge text-bg-{{ signal.badge_class }}">
+              {{ t("vllm_runtime_metrics.status_" ~ signal.status) }}
+            </span>
+          </td>
+          <td class="text-end">
+            {% if signal.actual_value is not none %}
+            {{ "%.2f"|format(signal.actual_value) }}
+            {% else %}
+            -
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if signal.warning_threshold is not none %}
+            {{ "%.2f"|format(signal.warning_threshold) }}
+            {% else %}
+            -
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if signal.critical_threshold is not none %}
+            {{ "%.2f"|format(signal.critical_threshold) }}
+            {% else %}
+            -
+            {% endif %}
+          </td>
+          <td>{{ signal.unit }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-center text-secondary py-4" colspan="6">
+            {{ t("vllm_runtime_metrics.no_signals") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 {% set summary = collection_payload.summary %}
 <section class="document-detail-grid mb-4" data-vllm-runtime-metrics-summary>
   <div class="metric-card bg-white p-3">

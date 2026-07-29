@@ -20,6 +20,8 @@ The response includes:
 
 - `summary`: snapshot count, latest/max KV cache pressure, waiting requests,
   and average TTFT/E2E latency.
+- `readiness`: latest-snapshot readiness status, badge class, reason codes,
+  threshold defaults, and per-signal actual/warning/critical values.
 - `snapshots`: normalized rows from `vllm_runtime_metric_snapshots`.
 
 ## UI
@@ -30,6 +32,15 @@ Open the operator page at:
 GET /admin/vllm-runtime-metrics
 ```
 
-The page shows filter controls, summary cards, a recent snapshot table, and raw
-JSON evidence. It is read-only; metric collection still runs through
-`scripts/scrape_vllm_runtime_metrics.py --persist`.
+The page shows filter controls, a readiness badge, threshold summary, summary
+cards, a recent snapshot table, and raw JSON evidence. It is read-only; metric
+collection still runs through `scripts/scrape_vllm_runtime_metrics.py
+--persist`.
+
+The readiness badge uses the latest snapshot only:
+
+- `unknown`: no runtime snapshots are available.
+- `ok`: the latest snapshot is fresh and below all configured thresholds.
+- `warning`: one or more warning thresholds are breached.
+- `critical`: at least one critical threshold is breached, including missing
+  vLLM metrics or stale snapshots older than the critical threshold.

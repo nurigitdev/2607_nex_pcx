@@ -12,7 +12,7 @@ from app.main import create_app
 pytestmark = pytest.mark.integration
 
 PROVIDER_NAME = "pytest-vllm-runtime-api-ui"
-NOW = datetime(2026, 7, 29, 13, 0, tzinfo=UTC)
+NOW = datetime.now(UTC).replace(microsecond=0)
 
 
 def test_vllm_runtime_metric_snapshot_api_lists_persisted_snapshots(
@@ -79,6 +79,12 @@ def test_vllm_runtime_metric_snapshot_api_lists_persisted_snapshots(
         assert body["summary"]["latest_snapshot_id"] == second.snapshot_id
         assert body["summary"]["latest_kv_cache_usage_percent"] == 83.0
         assert body["summary"]["max_waiting_requests"] == 3
+        assert body["readiness"]["status"] == "warning"
+        assert body["readiness"]["thresholds"]["kv_cache_warning_percent"] == 80.0
+        assert set(body["readiness"]["reason_codes"]) == {
+            "kv_cache_pressure",
+            "waiting_queue_pressure",
+        }
         assert body["snapshots"][0]["snapshot_id"] == second.snapshot_id
         assert body["snapshots"][1]["snapshot_id"] == first.snapshot_id
         assert body["snapshots"][0]["raw_samples"][0]["name"] == "vllm:kv_cache_usage_perc"
@@ -127,12 +133,16 @@ def test_vllm_runtime_metric_snapshot_ui_shows_persisted_snapshots(
         assert page_response.status_code == 200
         assert "vLLM Runtime Metrics" in page_response.text
         assert "data-vllm-runtime-metrics-filters" in page_response.text
+        assert "data-vllm-runtime-readiness" in page_response.text
+        assert "data-vllm-runtime-thresholds" in page_response.text
         assert "data-vllm-runtime-metrics-summary" in page_response.text
         assert "data-vllm-runtime-metrics-table" in page_response.text
         assert "data-vllm-runtime-metrics-json" in page_response.text
         assert PROVIDER_NAME in page_response.text
         assert "83.00%" in page_response.text
-        assert "2026-07-29 22:00:00" in page_response.text
+        assert "주의" in page_response.text
+        assert "kv_cache_pressure" in page_response.text
+        assert "waiting_queue_pressure" in page_response.text
         assert "/api/admin/vllm-runtime-metrics/snapshots" in page_response.text
         assert invalid_limit_response.status_code == 200
         assert "limit must be greater than 0" in invalid_limit_response.text
