@@ -27,9 +27,10 @@ from app.core.chat import (
     list_chat_message_links,
     list_chat_messages,
     list_chat_sessions,
+    update_chat_session,
 )
 from app.core.citation_readiness import CITATION_READINESS_READY
-from app.core.database import connect
+from app.core.database import connect, fetch_one
 from app.core.generation_runs import (
     GENERATION_GUARDRAIL_ALLOWED,
     GENERATION_PROVIDER_MODE_MOCK,
@@ -53,6 +54,14 @@ def _delete_search_log(database_url: str, search_log_id: int) -> None:
     with connect(database_url) as conn:
         conn.execute("DELETE FROM search_logs WHERE search_log_id = %s", (search_log_id,))
         conn.commit()
+
+
+def _seed_actor_user_id(database_url: str) -> int:
+    row = fetch_one(
+        database_url,
+        "SELECT user_id FROM app_users WHERE login_id = 'alice.member'",
+    )
+    return int(row["user_id"])
 
 
 def _create_generation_fixture(database_url: str) -> tuple[int, int]:
@@ -204,10 +213,61 @@ def test_chat_repository_persists_thread_and_artifact_links(
         _delete_search_log(migrated_database_url, search_log_id)
 
 
+def test_chat_repository_updates_session_runtime_defaults(
+    migrated_database_url: str,
+) -> None:
+    actor_user_id = _seed_actor_user_id(migrated_database_url)
+    session = create_chat_session(
+        migrated_database_url,
+        ChatSessionInput(
+            session_title="수정 전 대화",
+            default_search_scope="company",
+            metadata={"source": "repository_test"},
+        ),
+    )
+    try:
+        updated = update_chat_session(
+            migrated_database_url,
+            session.chat_session_id,
+            ChatSessionInput(
+                session_title="수정 후 대화",
+                actor_user_id=actor_user_id,
+                default_provider_mode="remote_openai_compatible",
+                default_search_profile_name="reranked_vector_cosine",
+                default_search_scope="team",
+                metadata={"source": "repository_test", "default_generation_template_key": "report"},
+            ),
+        )
+        stored = get_chat_session(migrated_database_url, session.chat_session_id)
+
+        assert updated is not None
+        assert updated.chat_session_id == session.chat_session_id
+        assert updated.session_title == "수정 후 대화"
+        assert updated.actor_user_id == actor_user_id
+        assert updated.default_provider_mode == "remote_openai_compatible"
+        assert updated.default_search_profile_name == "reranked_vector_cosine"
+        assert updated.default_search_scope == "team"
+        assert updated.metadata == {
+            "source": "repository_test",
+            "default_generation_template_key": "report",
+        }
+        assert stored == updated
+    finally:
+        _delete_chat_session(migrated_database_url, session.chat_session_id)
+
+
 def test_chat_repository_returns_none_and_empty_for_missing_records(
     migrated_database_url: str,
 ) -> None:
     assert get_chat_session(migrated_database_url, 999999999) is None
+    assert (
+        update_chat_session(
+            migrated_database_url,
+            999999999,
+            ChatSessionInput(session_title="missing"),
+        )
+        is None
+    )
     assert get_chat_message(migrated_database_url, 999999999) is None
     assert get_chat_thread(migrated_database_url, 999999999) is None
     assert list_chat_messages(migrated_database_url, 999999999) == ()

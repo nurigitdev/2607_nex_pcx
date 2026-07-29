@@ -17,6 +17,7 @@
 {% endif %}
 
 <div class="alert alert-danger d-none" role="alert" id="chat-error-alert"></div>
+<div class="alert alert-success d-none" role="alert" id="chat-success-alert"></div>
 
 <div class="row g-4">
   <div class="col-12 col-xl-4">
@@ -190,6 +191,122 @@
         <span class="badge text-bg-light border">{{ selected_thread.session.status }}</span>
         {% endif %}
       </div>
+
+      {% if selected_thread %}
+      {% set selected_template_key = selected_thread.session.metadata.default_generation_template_key %}
+      <section class="border rounded-2 p-3 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <h3 class="h6 mb-0">{{ t("chat.edit_runtime_defaults") }}</h3>
+          <span class="badge text-bg-light border">#{{ selected_thread.session.chat_session_id }}</span>
+        </div>
+        <form id="chat-session-edit-form" data-session-id="{{ selected_thread.session.chat_session_id }}">
+          <div class="row g-3">
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="chat-edit-session-title">{{ t("chat.session_title") }}</label>
+              <input
+                class="form-control"
+                id="chat-edit-session-title"
+                name="session_title"
+                type="text"
+                value="{{ selected_thread.session.session_title }}"
+                required
+                {% if not database_configured %}disabled{% endif %}
+              >
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="chat-edit-actor-user-id">{{ t("chat.actor") }}</label>
+              <select
+                class="form-select"
+                id="chat-edit-actor-user-id"
+                name="actor_user_id"
+                {% if not database_configured or not actor_options %}disabled{% endif %}
+              >
+                <option value="">{{ t("chat.automatic") }}</option>
+                {% for actor in actor_options %}
+                <option value="{{ actor.user_id }}" {% if actor.user_id == selected_thread.session.actor_user_id %}selected{% endif %}>
+                  {{ actor.display_name }} / {{ actor.login_id }}
+                </option>
+                {% else %}
+                <option value="">{{ t("chat.no_actors") }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="chat-edit-provider-mode">{{ t("chat.provider_mode") }}</label>
+              <select
+                class="form-select"
+                id="chat-edit-provider-mode"
+                name="default_provider_mode"
+                {% if not database_configured %}disabled{% endif %}
+              >
+                {% for provider_mode in provider_mode_options %}
+                <option value="{{ provider_mode }}" {% if provider_mode == selected_thread.session.default_provider_mode %}selected{% endif %}>
+                  {{ provider_mode }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="chat-edit-search-scope">{{ t("chat.search_scope") }}</label>
+              <select
+                class="form-select"
+                id="chat-edit-search-scope"
+                name="default_search_scope"
+                {% if not database_configured %}disabled{% endif %}
+              >
+                <option value="" {% if not selected_thread.session.default_search_scope %}selected{% endif %}>{{ t("common.all") }}</option>
+                {% for search_scope in search_scope_options %}
+                <option value="{{ search_scope }}" {% if search_scope == selected_thread.session.default_search_scope %}selected{% endif %}>
+                  {{ t("search_scope." ~ search_scope) }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="chat-edit-search-profile">{{ t("chat.search_profile") }}</label>
+              <select
+                class="form-select"
+                id="chat-edit-search-profile"
+                name="default_search_profile_name"
+                {% if not database_configured %}disabled{% endif %}
+              >
+                <option value="" {% if not selected_thread.session.default_search_profile_name %}selected{% endif %}>{{ t("chat.automatic") }}</option>
+                {% for profile_name in profile_options %}
+                <option value="{{ profile_name }}" {% if profile_name == selected_thread.session.default_search_profile_name %}selected{% endif %}>
+                  {{ profile_name }}
+                </option>
+                {% else %}
+                <option value="">{{ t("chat.no_profiles") }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-lg-6">
+              <label class="form-label" for="chat-edit-generation-template-key">{{ t("chat.generation_template") }}</label>
+              <select
+                class="form-select"
+                id="chat-edit-generation-template-key"
+                name="default_generation_template_key"
+                {% if not database_configured %}disabled{% endif %}
+              >
+                <option value="" {% if not selected_template_key %}selected{% endif %}>{{ t("chat.automatic") }}</option>
+                {% for template in generation_template_options %}
+                <option value="{{ template.template_key }}" {% if template.template_key == selected_template_key %}selected{% endif %}>
+                  {{ template.template_name }} / {{ template.template_key }}{% if template.is_default %} · {{ t("generation_templates.applied_badge") }}{% endif %}
+                </option>
+                {% else %}
+                <option value="">{{ t("chat.no_templates") }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end mt-3">
+            <button class="btn btn-outline-primary" type="submit" {% if not database_configured %}disabled{% endif %}>
+              {{ t("chat.save_runtime_defaults") }}
+            </button>
+          </div>
+        </form>
+      </section>
+      {% endif %}
 
       <div
         class="chat-message-list"
@@ -422,28 +539,41 @@
 (() => {
   const languageQuery = new URLSearchParams(window.location.search).get("lang");
   const errorAlert = document.getElementById("chat-error-alert");
+  const successAlert = document.getElementById("chat-success-alert");
   const showError = (message) => {
     errorAlert.textContent = message;
     errorAlert.classList.remove("d-none");
+    successAlert?.classList.add("d-none");
+  };
+  const showSuccess = (message) => {
+    if (!successAlert) {
+      return;
+    }
+    successAlert.textContent = message;
+    successAlert.classList.remove("d-none");
+    errorAlert.classList.add("d-none");
+  };
+  const chatSessionPayloadFromForm = (form, metadata) => {
+    const formData = new FormData(form);
+    const actorUserId = formData.get("actor_user_id");
+    const defaultGenerationTemplateKey = formData.get("default_generation_template_key");
+    return {
+      session_title: formData.get("session_title"),
+      actor_user_id: actorUserId ? Number(actorUserId) : null,
+      default_provider_mode: formData.get("default_provider_mode"),
+      default_search_profile_name: formData.get("default_search_profile_name") || null,
+      default_search_scope: formData.get("default_search_scope") || null,
+      default_generation_template_key: defaultGenerationTemplateKey || null,
+      metadata,
+    };
   };
   const sessionForm = document.getElementById("chat-session-form");
   sessionForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const formData = new FormData(sessionForm);
-    const actorUserId = formData.get("actor_user_id");
-    const defaultGenerationTemplateKey = formData.get("default_generation_template_key");
     const response = await fetch("/api/chat/sessions", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        session_title: formData.get("session_title"),
-        actor_user_id: actorUserId ? Number(actorUserId) : null,
-        default_provider_mode: formData.get("default_provider_mode"),
-        default_search_profile_name: formData.get("default_search_profile_name") || null,
-        default_search_scope: formData.get("default_search_scope") || null,
-        default_generation_template_key: defaultGenerationTemplateKey || null,
-        metadata: {source: "chat_ui_shell"},
-      }),
+      body: JSON.stringify(chatSessionPayloadFromForm(sessionForm, {source: "chat_ui_shell"})),
     });
     const body = await response.json();
     if (!response.ok) {
@@ -457,6 +587,32 @@
       nextUrl.searchParams.set("lang", languageQuery);
     }
     window.location.href = nextUrl.toString();
+  });
+
+  const sessionEditForm = document.getElementById("chat-session-edit-form");
+  sessionEditForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const chatSessionId = sessionEditForm.dataset.sessionId;
+    if (!chatSessionId) {
+      showError("{{ t("chat.no_session_selected") }}");
+      return;
+    }
+    const response = await fetch(`/api/chat/sessions/${chatSessionId}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(
+        chatSessionPayloadFromForm(sessionEditForm, {
+          source: "chat_ui_runtime_defaults",
+        })
+      ),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      showError(body.detail || "{{ t("chat.session_update_failed") }}");
+      return;
+    }
+    showSuccess("{{ t("chat.session_update_saved") }}");
+    window.location.reload();
   });
 
   const messageList = document.getElementById("chat-message-list");

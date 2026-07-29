@@ -173,6 +173,79 @@ def test_chat_api_can_store_user_message_without_mock_assistant(
             _delete_chat_session(migrated_database_url, chat_session_id)
 
 
+def test_chat_api_updates_session_runtime_defaults(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+    actor_user_id = _seed_actor_user_id(migrated_database_url)
+    chat_session_id: int | None = None
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/chat/sessions",
+                json={
+                    "session_title": "수정 전 대화",
+                    "default_provider_mode": "mock",
+                    "default_generation_template_key": "report",
+                    "metadata": {"source": "create"},
+                },
+            )
+            chat_session_id = int(create_response.json()["session"]["chat_session_id"])
+            update_response = client.patch(
+                f"/api/chat/sessions/{chat_session_id}",
+                json={
+                    "session_title": "수정 후 대화",
+                    "actor_user_id": actor_user_id,
+                    "default_provider_mode": "remote_openai_compatible",
+                    "default_search_profile_name": "reranked_vector_cosine",
+                    "default_search_scope": "team",
+                    "default_generation_template_key": " Proposal ",
+                    "metadata": {"source": "edit"},
+                },
+            )
+            clear_template_response = client.patch(
+                f"/api/chat/sessions/{chat_session_id}",
+                json={
+                    "session_title": "수정 후 대화",
+                    "actor_user_id": actor_user_id,
+                    "default_provider_mode": "mock",
+                    "default_search_profile_name": None,
+                    "default_search_scope": None,
+                    "default_generation_template_key": None,
+                    "metadata": {"edited_again": True},
+                },
+            )
+            missing_update_response = client.patch(
+                "/api/chat/sessions/999999999",
+                json={"session_title": "없는 대화"},
+            )
+
+        updated_session = update_response.json()["session"]
+        cleared_session = clear_template_response.json()["session"]
+
+        assert update_response.status_code == 200
+        assert updated_session["session_title"] == "수정 후 대화"
+        assert updated_session["actor_user_id"] == actor_user_id
+        assert updated_session["default_provider_mode"] == "remote_openai_compatible"
+        assert updated_session["default_search_profile_name"] == "reranked_vector_cosine"
+        assert updated_session["default_search_scope"] == "team"
+        assert updated_session["default_generation_template_key"] == "proposal"
+        assert updated_session["metadata"] == {
+            "source": "edit",
+            "default_generation_template_key": "proposal",
+        }
+        assert clear_template_response.status_code == 200
+        assert cleared_session["default_search_profile_name"] is None
+        assert cleared_session["default_search_scope"] is None
+        assert cleared_session["default_generation_template_key"] is None
+        assert cleared_session["metadata"] == {"source": "edit", "edited_again": True}
+        assert missing_update_response.status_code == 404
+    finally:
+        if chat_session_id is not None:
+            _delete_chat_session(migrated_database_url, chat_session_id)
+
+
 def test_chat_api_executes_general_answer_with_mock_llm_path(
     migrated_database_url: str,
 ) -> None:
@@ -468,12 +541,16 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
 def test_chat_page_renders_shell_and_existing_thread(
     migrated_database_url: str,
 ) -> None:
+    actor_user_id = _seed_actor_user_id(migrated_database_url)
     session = create_chat_session(
         migrated_database_url,
         ChatSessionInput(
             session_title="UI Shell 대화",
+            actor_user_id=actor_user_id,
             default_provider_mode="mock",
+            default_search_profile_name="bm25_keyword",
             default_search_scope="company",
+            metadata={"default_generation_template_key": "report"},
         ),
     )
     append_chat_message(
@@ -533,8 +610,14 @@ def test_chat_page_renders_shell_and_existing_thread(
         assert 'id="chat-actor-user-id"' in response.text
         assert 'name="default_search_profile_name"' in response.text
         assert 'id="chat-generation-template-key"' in response.text
+        assert 'id="chat-session-edit-form"' in response.text
+        assert 'id="chat-edit-actor-user-id"' in response.text
+        assert 'id="chat-edit-generation-template-key"' in response.text
+        assert f'data-session-id="{session.chat_session_id}"' in response.text
+        assert "/api/chat/sessions/${chatSessionId}" in response.text
         assert "검색 Profile" in response.text
         assert "생성 Template" in response.text
+        assert "세션 기본값 수정" in response.text
         assert 'id="chat-message-form"' in response.text
         assert "/api/chat/sessions" in response.text
         assert 'name="run_mock_router"' in response.text

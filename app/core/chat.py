@@ -451,6 +451,43 @@ def create_chat_session(
     return _row_to_chat_session(dict(row))
 
 
+def update_chat_session(
+    database_url: str,
+    chat_session_id: int,
+    session_input: ChatSessionInput,
+) -> ChatSessionRecord | None:
+    _validate_positive(chat_session_id, "chat_session_id")
+    validated = validate_chat_session_input(session_input)
+    with connect(database_url) as conn:
+        row = conn.execute(
+            """
+            UPDATE chat_sessions
+            SET actor_user_id = %s,
+                session_title = %s,
+                default_language = %s,
+                default_provider_mode = %s,
+                default_search_profile_name = %s,
+                default_search_scope = %s,
+                metadata = %s,
+                updated_at = now()
+            WHERE chat_session_id = %s
+            RETURNING *
+            """,
+            (
+                validated.actor_user_id,
+                validated.session_title,
+                validated.default_language,
+                validated.default_provider_mode,
+                validated.default_search_profile_name,
+                validated.default_search_scope,
+                Json(validated.metadata),
+                chat_session_id,
+            ),
+        ).fetchone()
+        conn.commit()
+    return _row_to_chat_session(dict(row)) if row else None
+
+
 def get_chat_session(database_url: str, chat_session_id: int) -> ChatSessionRecord | None:
     _validate_positive(chat_session_id, "chat_session_id")
     with connect(database_url) as conn:

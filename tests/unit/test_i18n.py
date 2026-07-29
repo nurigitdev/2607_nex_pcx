@@ -34,6 +34,8 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert korean("chat.runtime_defaults") == "실행 기본값"
     assert english("chat.generation_template") == "Generation Template"
     assert korean("chat.no_actors") == "선택 가능한 사용자가 없습니다."
+    assert korean("chat.edit_runtime_defaults") == "세션 기본값 수정"
+    assert english("chat.save_runtime_defaults") == "Save Defaults"
     assert korean("nav.embedding_provider") == "Provider 상태"
     assert english("embedding_provider.title") == "Embedding Provider Health"
     assert korean("nav.embedding_batches") == "Batch 실행"

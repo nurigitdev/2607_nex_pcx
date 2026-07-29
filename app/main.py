@@ -75,6 +75,7 @@ from app.core.chat import (
     link_chat_message_to_search_log,
     list_chat_sessions,
     route_chat_intent_mock,
+    update_chat_session,
 )
 from app.core.chat_document_generation import (
     CHAT_DOCUMENT_GENERATION_TEMPLATE_KEYS,
@@ -813,6 +814,10 @@ class ChatSessionCreateRequest(BaseModel):
     default_search_scope: str | None = Field(default=None, max_length=40)
     default_generation_template_key: str | None = Field(default=None, max_length=64)
     metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ChatSessionUpdateRequest(ChatSessionCreateRequest):
+    pass
 
 
 class ChatMessagePostRequest(BaseModel):
@@ -12714,6 +12719,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Chat session not found.",
             )
         return JSONResponse(content=chat_thread_payload(thread))
+
+    @app.patch("/api/chat/sessions/{chat_session_id}")
+    def api_update_chat_session(
+        chat_session_id: int,
+        payload: ChatSessionUpdateRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            current_session = get_chat_session(settings.database_url, chat_session_id)
+            if current_session is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Chat session not found.",
+                )
+            session_metadata = chat_session_metadata_with_runtime_defaults(
+                settings.database_url,
+                metadata={**current_session.metadata, **payload.metadata},
+                default_generation_template_key=payload.default_generation_template_key,
+            )
+            session = update_chat_session(
+                settings.database_url,
+                chat_session_id,
+                ChatSessionInput(
+                    session_title=payload.session_title,
+                    actor_user_id=payload.actor_user_id,
+                    default_language=payload.default_language,
+                    default_provider_mode=payload.default_provider_mode,
+                    default_search_profile_name=payload.default_search_profile_name,
+                    default_search_scope=payload.default_search_scope,
+                    metadata=session_metadata,
+                ),
+            )
+        except (InvalidChatDocumentGenerationError, InvalidChatRepositoryError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        if session is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Chat session not found.",
+            )
+        return JSONResponse(content={"session": chat_session_payload(session)})
 
     @app.post("/api/chat/sessions/{chat_session_id}/messages")
     def api_post_chat_message(
