@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ t("provider_resources.title") }}</h1>
+    <p class="text-secondary mb-0">{{ t("provider_resources.subtitle") }}</p>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a
+      class="btn btn-outline-secondary btn-sm"
+      href="/admin/provider-resources?provider_name={{ selected_provider_name }}&provider_type={{ selected_provider_type }}&host={{ selected_host }}&status={{ selected_status }}&limit={{ selected_limit }}"
+    >
+      {{ t("provider_resources.refresh") }}
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="/admin/vllm-runtime-metrics">
+      {{ t("provider_resources.open_vllm_runtime") }}
+    </a>
+    <a
+      class="btn btn-outline-primary btn-sm"
+      href="/api/admin/provider-resource-snapshots?provider_name={{ selected_provider_name }}&provider_type={{ selected_provider_type }}&host={{ selected_host }}&status={{ selected_status }}&limit={{ selected_limit }}"
+    >
+      {{ t("common.api") }}
+    </a>
+  </div>
+</div>
+
+{% if error_message %}
+<div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+
+<section class="bg-white border rounded-2 p-3 mb-4">
+  <form class="row g-3 align-items-end" method="get" data-provider-resource-filters>
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="provider_name">{{ t("provider_resources.provider_name") }}</label>
+      <input
+        class="form-control"
+        id="provider_name"
+        name="provider_name"
+        type="text"
+        value="{{ selected_provider_name }}"
+        placeholder="qwen-primary"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="provider_type">{{ t("provider_resources.provider_type") }}</label>
+      <select
+        class="form-select"
+        id="provider_type"
+        name="provider_type"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="">{{ t("common.all") }}</option>
+        {% for provider_type in ["embedding", "reranker", "vllm"] %}
+        <option value="{{ provider_type }}" {% if selected_provider_type == provider_type %}selected{% endif %}>
+          {{ provider_type }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="host">{{ t("provider_resources.host") }}</label>
+      <input
+        class="form-control"
+        id="host"
+        name="host"
+        type="text"
+        value="{{ selected_host }}"
+        placeholder="192.168.20.243"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="status">{{ t("provider_resources.status") }}</label>
+      <select
+        class="form-select"
+        id="status"
+        name="status"
+        {% if not database_configured %}disabled{% endif %}
+      >
+        <option value="">{{ t("common.all") }}</option>
+        {% for status_name in ["ok", "warning", "critical", "unknown"] %}
+        <option value="{{ status_name }}" {% if selected_status == status_name %}selected{% endif %}>
+          {{ t("provider_resources.status_" ~ status_name) }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-2">
+      <label class="form-label" for="limit">{{ t("provider_resources.limit") }}</label>
+      <input
+        class="form-control"
+        id="limit"
+        name="limit"
+        type="number"
+        min="1"
+        max="{{ max_limit }}"
+        value="{{ selected_limit }}"
+        {% if not database_configured %}disabled{% endif %}
+      >
+    </div>
+    <div class="col-12 col-md-1">
+      <button class="btn btn-primary w-100" type="submit" {% if not database_configured %}disabled{% endif %}>
+        {{ t("provider_resources.apply") }}
+      </button>
+    </div>
+  </form>
+</section>
+
+{% if collection_payload %}
+{% set summary = collection_payload.summary %}
+<section class="document-detail-grid mb-4" data-provider-resource-summary>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("provider_resources.snapshot_count") }}</div>
+    <div class="metric-value">{{ summary.snapshot_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("provider_resources.latest_provider") }}</div>
+    <div class="generation-detail-compact-value">
+      {{ summary.latest_provider_name or "-" }}
+      {% if summary.latest_status %}
+      <div class="mt-1">
+        <span class="badge text-bg-{{ summary.latest_status_badge_class }}">
+          {{ t("provider_resources.status_" ~ summary.latest_status) }}
+        </span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("provider_resources.warning_critical") }}</div>
+    <div class="metric-value">{{ summary.warning_count }} / {{ summary.critical_count }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("provider_resources.max_ram") }}</div>
+    <div class="metric-value">{{ summary.max_process_rss_label }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("provider_resources.max_gpu") }}</div>
+    <div class="metric-value">{{ summary.max_gpu_memory_used_label }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("provider_resources.max_swap") }}</div>
+    <div class="metric-value">
+      {% if summary.max_system_swap_used_percent is not none %}
+      {{ "%.2f"|format(summary.max_system_swap_used_percent) }}%
+      {% else %}
+      -
+      {% endif %}
+    </div>
+  </div>
+  <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("provider_resources.latest_collected_at") }}</div>
+    <div class="generation-detail-compact-value">
+      {{ summary.latest_collected_at[:19].replace("T", " ") if summary.latest_collected_at else "-" }}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="metric-card bg-white p-0 overflow-hidden mb-4" data-provider-resource-table>
+  <div class="dashboard-panel-header p-3">
+    <div>
+      <h2 class="h5 mb-1">{{ t("provider_resources.snapshots") }}</h2>
+      <div class="text-secondary">{{ t("provider_resources.snapshots_help") }}</div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>{{ t("provider_resources.snapshot") }}</th>
+          <th>{{ t("provider_resources.provider") }}</th>
+          <th>{{ t("provider_resources.process") }}</th>
+          <th class="text-end">{{ t("provider_resources.ram_gpu") }}</th>
+          <th class="text-end">{{ t("provider_resources.cpu_swap") }}</th>
+          <th>{{ t("provider_resources.reasons") }}</th>
+          <th>{{ t("provider_resources.collected_at") }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for snapshot in snapshots %}
+        {% set badge_class = "success" if snapshot.status == "ok" else "warning" if snapshot.status == "warning" else "danger" if snapshot.status == "critical" else "secondary" %}
+        <tr>
+          <td>
+            #{{ snapshot.snapshot_id }}
+            <div class="text-secondary small">{{ snapshot.match_confidence }}</div>
+          </td>
+          <td>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <span>{{ snapshot.provider_name }}</span>
+              <span class="badge text-bg-{{ badge_class }}">
+                {{ t("provider_resources.status_" ~ snapshot.status) }}
+              </span>
+            </div>
+            <div class="model-path small">{{ snapshot.host }}:{{ snapshot.port }}</div>
+            <div class="model-path small">{{ snapshot.model_id or "-" }}</div>
+          </td>
+          <td>
+            <div>{{ snapshot.process_pid if snapshot.process_pid is not none else "-" }}</div>
+            <div class="text-secondary small">{{ snapshot.process_user or "-" }}</div>
+            <div class="text-secondary small">{{ snapshot.process_uptime_seconds if snapshot.process_uptime_seconds is not none else "-" }}s</div>
+          </td>
+          <td class="text-end">
+            <div>{{ snapshot.process_rss_bytes | filesizeformat(true) if snapshot.process_rss_bytes is not none else "-" }}</div>
+            <div class="text-secondary small">
+              GPU: {{ snapshot.gpu_memory_used_bytes | filesizeformat(true) if snapshot.gpu_memory_used_bytes is not none else "-" }}
+            </div>
+          </td>
+          <td class="text-end">
+            <div>
+              {% if snapshot.process_cpu_percent is not none %}
+              {{ "%.2f"|format(snapshot.process_cpu_percent) }}%
+              {% else %}
+              -
+              {% endif %}
+            </div>
+            <div class="text-secondary small">
+              Swap:
+              {% if snapshot.system_swap_used_percent is not none %}
+              {{ "%.2f"|format(snapshot.system_swap_used_percent) }}%
+              {% else %}
+              -
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            <div class="d-flex flex-wrap gap-1">
+              {% for reason_code in snapshot.reason_codes %}
+              <span class="badge text-bg-light border text-secondary">{{ reason_code }}</span>
+              {% else %}
+              <span class="text-secondary">{{ t("provider_resources.no_reason_codes") }}</span>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="text-nowrap">{{ snapshot.collected_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="text-center text-secondary py-4" colspan="7">
+            {{ t("provider_resources.no_snapshots") }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if collection_payload %}
+<section class="metric-card bg-white p-3" data-provider-resource-json>
+  <div class="metric-label mb-2">{{ t("provider_resources.raw_snapshot") }}</div>
+  <pre class="json-preview operations-json-preview mb-0">{{ collection_json }}</pre>
+</section>
+{% endif %}
+{% endblock %}

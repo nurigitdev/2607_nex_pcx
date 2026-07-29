@@ -2,7 +2,15 @@ import importlib.util
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
+
+from app.core.provider_resource_probe import (
+    ProviderResourceTarget,
+    build_provider_resource_probe_report,
+)
+from app.core.provider_resource_snapshots import ProviderResourceSnapshotRecord
 
 
 def _load_script_module():
@@ -96,3 +104,124 @@ def test_probe_provider_resources_reports_bad_selector(capsys) -> None:
 
     assert exit_code == 2
     assert "provider resource probe plan failed" in capsys.readouterr().err
+
+
+def test_probe_provider_resources_persists_local_snapshot(monkeypatch, capsys) -> None:
+    report = build_provider_resource_probe_report(
+        targets=(
+            ProviderResourceTarget(
+                provider_name="pytest-vllm",
+                provider_type="vllm",
+                host="192.168.20.243",
+                port=12000,
+                process_match="vllm",
+            ),
+        ),
+        ps_text="9001 1 nexpcx 2048 4096 3.5 90 /home/nexpcx/.venv/bin/python -m vllm",
+        ss_text='LISTEN 0 2048 0.0.0.0:12000 0.0.0.0:* users:(("python",pid=9001,fd=3))',
+        meminfo_text="""
+        MemTotal:       100000 kB
+        MemAvailable:    80000 kB
+        SwapTotal:           0 kB
+        SwapFree:            0 kB
+        """,
+        collected_at=datetime(2026, 7, 29, 14, tzinfo=UTC),
+    )
+    calls = {}
+
+    def fake_collect_local_report(args, targets):
+        calls["target_count"] = len(targets)
+        return report
+
+    def fake_record(database_url, payload, *, runtime_metadata=None):
+        calls["database_url"] = database_url
+        calls["provider_name"] = payload["snapshots"][0]["provider_name"]
+        calls["runtime_metadata"] = runtime_metadata
+        return [_snapshot_record(provider_name=payload["snapshots"][0]["provider_name"])]
+
+    monkeypatch.setattr(probe_script, "collect_local_report", fake_collect_local_report)
+    monkeypatch.setattr(probe_script, "record_provider_resource_probe_payload", fake_record)
+
+    exit_code = probe_script.main(
+        [
+            "--provider",
+            "generation",
+            "--database-url",
+            "postgresql://pytest/db",
+            "--persist",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert calls == {
+        "target_count": 1,
+        "database_url": "postgresql://pytest/db",
+        "provider_name": "pytest-vllm",
+        "runtime_metadata": {
+            "source": "scripts/probe_provider_resources.py",
+            "remote": False,
+        },
+    }
+    assert payload["snapshot_records"][0]["provider_name"] == "pytest-vllm"
+
+
+def test_probe_provider_resources_rejects_invalid_persistence_options(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("NEX_PCX_DATABASE_URL", raising=False)
+
+    dry_run_exit_code = probe_script.main(["--dry-run", "--persist"])
+    missing_db_exit_code = probe_script.main(["--provider", "vllm", "--persist"])
+
+    captured = capsys.readouterr()
+    assert dry_run_exit_code == 2
+    assert missing_db_exit_code == 1
+    assert "dry-run cannot be persisted" in captured.err
+    assert "database URL is required" in captured.err
+
+
+def _snapshot_record(**overrides: object) -> ProviderResourceSnapshotRecord:
+    values = {
+        "snapshot_id": 7,
+        "probe_run_id": UUID("33333333-3333-4333-8333-333333333333"),
+        "host": "192.168.20.243",
+        "provider_name": "pytest-vllm",
+        "provider_type": "vllm",
+        "model_id": "/models/qwen",
+        "port": 12000,
+        "status": "ok",
+        "reason_codes": (),
+        "match_confidence": "port",
+        "process_pid": 9001,
+        "process_ppid": 1,
+        "process_user": "nexpcx",
+        "process_rss_bytes": 2048 * 1024,
+        "process_vms_bytes": 4096 * 1024,
+        "process_cpu_percent": 3.5,
+        "process_uptime_seconds": 90,
+        "process_command_preview": "python -m vllm",
+        "process_command_hash": "hash",
+        "listener_process_name": "python",
+        "listener_raw_line": "LISTEN 0 2048 0.0.0.0:12000",
+        "gpu_process_name": None,
+        "gpu_memory_used_bytes": None,
+        "system_total_ram_bytes": 100000 * 1024,
+        "system_available_ram_bytes": 80000 * 1024,
+        "system_memory_available_percent": 80.0,
+        "system_swap_total_bytes": 0,
+        "system_swap_used_bytes": 0,
+        "system_swap_used_percent": None,
+        "collector_error": None,
+        "collector_errors": (),
+        "report_status": "ok",
+        "report_target_count": 1,
+        "report_ok_count": 1,
+        "report_warning_count": 0,
+        "report_critical_count": 0,
+        "report_unknown_count": 0,
+        "runtime_metadata": {"source": "pytest"},
+        "raw_snapshot": {"provider_name": "pytest-vllm"},
+        "collected_at": datetime(2026, 7, 29, 14, tzinfo=UTC),
+        "created_at": datetime(2026, 7, 29, 14, tzinfo=UTC),
+    }
+    values.update(overrides)
+    return ProviderResourceSnapshotRecord(**values)

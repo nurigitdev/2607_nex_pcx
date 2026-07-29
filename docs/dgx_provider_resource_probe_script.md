@@ -65,6 +65,27 @@ the remote workdir:
 The SSH path runs the probe remotely with `--local-only` and returns JSON to the
 caller.
 
+## Persisted Snapshot
+
+Slice 411 adds `--persist` so the app host can store returned snapshots in
+`provider_resource_snapshots`:
+
+```bash
+NEX_PCX_DATABASE_URL='postgresql://...' \
+./.venv/bin/python scripts/probe_provider_resources.py \
+  --ssh-user nexpcx \
+  --host 192.168.20.243 \
+  --provider all \
+  --persist \
+  --json-output artifacts/dgx_provider_resources.json \
+  --markdown-output artifacts/dgx_provider_resources.md \
+  --pretty
+```
+
+`--dry-run` cannot be persisted. The persisted record includes normalized
+process/resource counters and does not store secrets, prompts, document text, or
+request payloads.
+
 ## Evidence Fields
 
 Each provider snapshot includes:

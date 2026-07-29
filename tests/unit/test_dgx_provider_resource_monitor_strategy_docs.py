@@ -5,6 +5,7 @@ SRS_PATH = PROJECT_ROOT / "260702_NeX_PCX_SRS_v1.3.md"
 STRATEGY_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_monitor_strategy.md"
 PROBE_SCRIPT_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_probe_script.md"
 SNAPSHOT_SCHEMA_DOC_PATH = PROJECT_ROOT / "docs" / "provider_resource_snapshot_schema.md"
+SNAPSHOT_API_UI_DOC_PATH = PROJECT_ROOT / "docs" / "provider_resource_snapshot_api_ui.md"
 
 
 def _read(path: Path) -> str:
@@ -54,6 +55,8 @@ def test_probe_script_doc_defines_read_only_dgx_evidence_contract() -> None:
     assert "`dgx_vllm_qwen36_27b_nvfp4`" in probe_text
     assert "--ssh-user nexpcx" in probe_text
     assert "--local-only" in probe_text
+    assert "--persist" in probe_text
+    assert "`provider_resource_snapshots`" in probe_text
     assert "read-only" in probe_text
     assert "`process_not_found`" in probe_text
     assert "SHA-256 hash" in probe_text
@@ -73,3 +76,17 @@ def test_provider_resource_snapshot_schema_doc_defines_persistence_contract() ->
     assert "`idx_provider_resource_snapshots_provider_collected`" in schema_text
     assert "`provider_resource_snapshot_retention_days`" in schema_text
     assert "stores no prompt text" in schema_text
+
+
+def test_provider_resource_snapshot_api_ui_doc_defines_operator_contract() -> None:
+    api_ui_text = _read(SNAPSHOT_API_UI_DOC_PATH)
+
+    assert "Provider Resource Snapshot API + UI" in api_ui_text
+    assert "--persist" in api_ui_text
+    assert "`--dry-run`" in api_ui_text
+    assert "GET /api/admin/provider-resource-snapshots" in api_ui_text
+    assert "`provider_type`" in api_ui_text
+    assert "`include_raw_snapshot`" in api_ui_text
+    assert "GET /admin/provider-resources" in api_ui_text
+    assert "PID, RAM RSS, GPU memory" in api_ui_text
+    assert "No prompt text, document text" in api_ui_text

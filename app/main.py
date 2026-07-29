@@ -636,6 +636,15 @@ from app.core.pipeline_jobs import (
     list_pipeline_jobs,
     retry_pipeline_job,
 )
+from app.core.provider_resource_snapshots import (
+    DEFAULT_PROVIDER_RESOURCE_SNAPSHOT_LIMIT,
+    MAX_PROVIDER_RESOURCE_SNAPSHOT_LIMIT,
+    InvalidProviderResourceSnapshotError,
+    list_provider_resource_snapshots,
+    provider_resource_snapshot_record_payload,
+    provider_resource_snapshot_summary_payload,
+    summarize_provider_resource_snapshots,
+)
 from app.core.query_embeddings import InvalidQueryEmbeddingError
 from app.core.remote_reranker_operations import get_remote_reranker_operations_status
 from app.core.reranked_search import RERANKED_SEARCH_PROFILE_NAME
@@ -1497,6 +1506,35 @@ def vllm_runtime_metric_snapshot_collection_payload(
             vllm_runtime_metric_snapshot_record_payload(
                 snapshot,
                 include_raw_samples=include_raw_samples,
+            )
+            for snapshot in snapshots
+        ],
+    }
+
+
+def provider_resource_snapshot_collection_payload(
+    snapshots: list[Any] | tuple[Any, ...],
+    *,
+    limit: int,
+    provider_name: str | None = None,
+    provider_type: str | None = None,
+    host: str | None = None,
+    status: str | None = None,
+    include_raw_snapshot: bool = False,
+) -> dict[str, object]:
+    summary = summarize_provider_resource_snapshots(snapshots)
+    return {
+        "generated_at": _datetime_response(datetime.now(UTC)),
+        "provider_name": provider_name,
+        "provider_type": provider_type,
+        "host": host,
+        "status": status,
+        "limit": limit,
+        "summary": provider_resource_snapshot_summary_payload(summary),
+        "snapshots": [
+            provider_resource_snapshot_record_payload(
+                snapshot,
+                include_raw_snapshot=include_raw_snapshot,
             )
             for snapshot in snapshots
         ],
@@ -14279,6 +14317,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return JSONResponse(content=generation_provider_metric_snapshot_payload(snapshot))
 
+    @app.get("/api/admin/provider-resource-snapshots")
+    def api_list_provider_resource_snapshots(
+        provider_name: str | None = Query(default=None),
+        provider_type: str | None = Query(default=None),
+        host: str | None = Query(default=None),
+        snapshot_status: str | None = Query(default=None, alias="status"),
+        limit: int = Query(default=DEFAULT_PROVIDER_RESOURCE_SNAPSHOT_LIMIT),
+        include_raw_snapshot: bool = Query(default=False),
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+        try:
+            normalized_provider_name = provider_name.strip() if provider_name else None
+            normalized_provider_type = provider_type.strip() if provider_type else None
+            normalized_host = host.strip() if host else None
+            normalized_status = snapshot_status.strip() if snapshot_status else None
+            snapshots = list_provider_resource_snapshots(
+                settings.database_url,
+                provider_name=normalized_provider_name,
+                provider_type=normalized_provider_type,
+                host=normalized_host,
+                status=normalized_status,
+                limit=limit,
+            )
+        except InvalidProviderResourceSnapshotError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content=provider_resource_snapshot_collection_payload(
+                snapshots,
+                provider_name=normalized_provider_name,
+                provider_type=normalized_provider_type,
+                host=normalized_host,
+                status=normalized_status,
+                limit=limit,
+                include_raw_snapshot=include_raw_snapshot,
+            )
+        )
+
     @app.get("/api/admin/vllm-runtime-metrics/snapshots")
     def api_list_vllm_runtime_metric_snapshots(
         provider_name: str | None = Query(default=None),
@@ -18163,6 +18242,76 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 readiness_threshold_rows=vllm_runtime_readiness_threshold_ui_rows(
                     threshold_settings
                 ),
+                error_message=error_message,
+            ),
+        )
+
+    @app.get("/admin/provider-resources", response_class=HTMLResponse)
+    def provider_resources_page(
+        request: Request,
+        provider_name: str | None = None,
+        provider_type: str | None = None,
+        host: str | None = None,
+        snapshot_status: str | None = Query(default=None, alias="status"),
+        limit: int = DEFAULT_PROVIDER_RESOURCE_SNAPSHOT_LIMIT,
+    ) -> HTMLResponse:
+        snapshots: list[Any] = []
+        collection_payload: dict[str, object] | None = None
+        collection_json = ""
+        error_message = None
+        normalized_provider_name = provider_name.strip() if provider_name else None
+        normalized_provider_type = provider_type.strip() if provider_type else None
+        normalized_host = host.strip() if host else None
+        normalized_status = snapshot_status.strip() if snapshot_status else None
+
+        if not settings.database_url:
+            error_message = "NEX_PCX_DATABASE_URL is not configured."
+        else:
+            try:
+                snapshots = list_provider_resource_snapshots(
+                    settings.database_url,
+                    provider_name=normalized_provider_name,
+                    provider_type=normalized_provider_type,
+                    host=normalized_host,
+                    status=normalized_status,
+                    limit=limit,
+                )
+                collection_payload = provider_resource_snapshot_collection_payload(
+                    snapshots,
+                    provider_name=normalized_provider_name,
+                    provider_type=normalized_provider_type,
+                    host=normalized_host,
+                    status=normalized_status,
+                    limit=limit,
+                )
+                collection_json = json.dumps(collection_payload, ensure_ascii=False, indent=2)
+            except InvalidProviderResourceSnapshotError as exc:
+                error_message = str(exc)
+                collection_payload = provider_resource_snapshot_collection_payload(
+                    [],
+                    provider_name=normalized_provider_name,
+                    provider_type=normalized_provider_type,
+                    host=normalized_host,
+                    status=normalized_status,
+                    limit=limit,
+                )
+                collection_json = json.dumps(collection_payload, ensure_ascii=False, indent=2)
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "provider_resources.html",
+            template_context(
+                request,
+                database_configured=bool(settings.database_url),
+                snapshots=snapshots,
+                collection_payload=collection_payload,
+                collection_json=collection_json,
+                selected_provider_name=normalized_provider_name or "",
+                selected_provider_type=normalized_provider_type or "",
+                selected_host=normalized_host or "",
+                selected_status=normalized_status or "",
+                selected_limit=limit,
+                max_limit=MAX_PROVIDER_RESOURCE_SNAPSHOT_LIMIT,
                 error_message=error_message,
             ),
         )

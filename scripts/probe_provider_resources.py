@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -18,6 +19,11 @@ from app.core.provider_resource_probe import (  # noqa: E402
     provider_resource_probe_report_payload,
     render_provider_resource_probe_markdown,
     select_provider_resource_targets,
+)
+from app.core.provider_resource_snapshots import (  # noqa: E402
+    InvalidProviderResourceSnapshotError,
+    provider_resource_snapshot_record_payload,
+    record_provider_resource_probe_payload,
 )
 
 DEFAULT_REMOTE_WORKDIR = "/home/nexpcx/2607_nex_pcx"
@@ -49,6 +55,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Print JSON to stdout.")
     parser.add_argument("--json-output", default=None)
     parser.add_argument("--markdown-output", default=None)
+    parser.add_argument(
+        "--database-url",
+        default=os.getenv("NEX_PCX_DATABASE_URL"),
+        help="Database URL used with --persist. Defaults to NEX_PCX_DATABASE_URL.",
+    )
+    parser.add_argument(
+        "--persist",
+        action="store_true",
+        help="Persist provider resource snapshots to the database.",
+    )
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args(argv)
 
@@ -63,6 +79,11 @@ def main(argv: list[str] | None = None) -> int:
 
     report = None
     if args.dry_run:
+        if args.persist:
+            print(
+                "provider resource persistence failed: dry-run cannot be persisted", file=sys.stderr
+            )
+            return 2
         payload = _dry_run_payload(args, targets)
     elif args.ssh_user and not args.local_only:
         try:
@@ -73,6 +94,29 @@ def main(argv: list[str] | None = None) -> int:
     else:
         report = collect_local_report(args, targets)
         payload = provider_resource_probe_report_payload(report)
+
+    if args.persist:
+        if not args.database_url:
+            print("provider resource persistence failed: database URL is required", file=sys.stderr)
+            return 1
+        try:
+            records = record_provider_resource_probe_payload(
+                args.database_url,
+                payload,
+                runtime_metadata={
+                    "source": "scripts/probe_provider_resources.py",
+                    "remote": bool(args.ssh_user and not args.local_only),
+                },
+            )
+        except InvalidProviderResourceSnapshotError as exc:
+            print(f"provider resource persistence failed: {exc}", file=sys.stderr)
+            return 1
+        except Exception as exc:  # pragma: no cover - defensive CLI boundary
+            print(f"provider resource persistence failed: {exc}", file=sys.stderr)
+            return 1
+        payload["snapshot_records"] = [
+            provider_resource_snapshot_record_payload(record) for record in records
+        ]
 
     json_text = json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None)
     if args.json_output:
