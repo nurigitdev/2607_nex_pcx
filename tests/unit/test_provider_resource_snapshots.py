@@ -6,8 +6,10 @@ import pytest
 from app.core.provider_resource_snapshots import (
     InvalidProviderResourceSnapshotError,
     ProviderResourceSnapshotRecord,
+    calculate_provider_resource_percent,
     format_provider_resource_bytes,
     format_provider_resource_duration,
+    format_provider_resource_percent,
     provider_resource_snapshot_record_payload,
     provider_resource_snapshot_summary_payload,
     summarize_provider_resource_snapshots,
@@ -30,6 +32,8 @@ def test_provider_resource_snapshot_record_payload_formats_operational_fields() 
     assert payload["badge_class"] == "warning"
     assert payload["reason_codes"] == ["swap_pressure"]
     assert payload["process_rss_label"] == "2.00 GiB"
+    assert payload["process_resident_memory_share_percent"] == 1.5625
+    assert payload["process_resident_memory_share_label"] == "1.56%"
     assert payload["gpu_memory_used_label"] == "8.00 GiB"
     assert payload["process_uptime_label"] == "1h 1m"
     assert payload["collected_at"] == NOW.isoformat()
@@ -53,6 +57,8 @@ def test_provider_resource_snapshot_summary_handles_empty_and_populated_records(
         "unknown_count": 0,
         "max_process_rss_bytes": None,
         "max_process_rss_label": "-",
+        "max_process_resident_memory_share_percent": None,
+        "max_process_resident_memory_share_label": "-",
         "max_gpu_memory_used_bytes": None,
         "max_gpu_memory_used_label": "-",
         "max_system_swap_used_percent": None,
@@ -81,6 +87,8 @@ def test_provider_resource_snapshot_summary_handles_empty_and_populated_records(
     assert payload["ok_count"] == 1
     assert payload["critical_count"] == 1
     assert payload["max_process_rss_label"] == "3.00 GiB"
+    assert payload["max_process_resident_memory_share_percent"] == 2.34375
+    assert payload["max_process_resident_memory_share_label"] == "2.34%"
     assert payload["max_gpu_memory_used_label"] == "8.00 GiB"
     assert payload["max_system_swap_used_percent"] == 31.2
 
@@ -108,6 +116,12 @@ def test_provider_resource_format_helpers_cover_boundaries() -> None:
     assert format_provider_resource_bytes(0) == "0 B"
     assert format_provider_resource_bytes(2048) == "2.00 KiB"
     assert format_provider_resource_bytes(2 * 1024**4) == "2.00 TiB"
+    assert calculate_provider_resource_percent(None, 128) is None
+    assert calculate_provider_resource_percent(1, None) is None
+    assert calculate_provider_resource_percent(1, 0) is None
+    assert calculate_provider_resource_percent(1, 4) == 25.0
+    assert format_provider_resource_percent(None) == "-"
+    assert format_provider_resource_percent(12.345) == "12.35%"
     assert format_provider_resource_duration(None) == "-"
     assert format_provider_resource_duration(42) == "42s"
     assert format_provider_resource_duration(125) == "2m 5s"

@@ -12,9 +12,11 @@ not enough when the same 128 GB DGX-Spark host runs multiple heavy providers:
 - remote reranker provider served by FastAPI
 - vLLM OpenAI-compatible generation runtime
 
-Operators need to know which provider process is consuming RAM, GPU memory, or
+Operators need to know which provider process is consuming resident memory or
 swap before deciding whether to retry jobs, drain workers, restart a provider,
-or reduce generation/chunk workload.
+or reduce generation/chunk workload. DGX-Spark uses unified memory, so GPU
+runtime memory should be treated as supporting evidence rather than an
+independent VRAM capacity signal.
 
 ## Monitoring Boundary
 
@@ -24,7 +26,7 @@ Provider health and provider resource monitoring are separate signals.
 | --- | --- | --- |
 | HTTP health | `/healthz`, `/metrics`, `/v1/chat/completions` smoke | Provider contract is reachable |
 | vLLM runtime metrics | vLLM Prometheus `/metrics` | KV cache, queue, token throughput, request latency |
-| Host resource snapshot | `psutil`, process table, `nvidia-smi` | RAM RSS, GPU memory, CPU, swap, uptime, process binding |
+| Host resource snapshot | `psutil`, process table, `nvidia-smi` | RAM RSS, resident memory share, GPU runtime memory, CPU, swap, uptime, process binding |
 
 The resource monitor should never infer answer quality or search quality. It
 only explains whether provider processes have enough host resources to keep
@@ -55,9 +57,10 @@ Each provider resource snapshot should include:
 - provider identity: name, type, host, port, model id
 - process identity: pid, parent pid, user, command basename, command hash or
   redacted command preview
-- host resource counters: RSS bytes, VMS bytes, CPU percent, process uptime
-- GPU resource counters: GPU index, GPU UUID/name when available, used GPU
-  memory bytes, utilization percent when available
+- host resource counters: RSS bytes, resident memory share percent, VMS bytes,
+  CPU percent, process uptime
+- GPU runtime counters: GPU index, GPU UUID/name when available, runtime memory
+  bytes, utilization percent when available
 - system pressure counters: total/available RAM, total/used swap, swap percent
 - status: `ok`, `warning`, `critical`, or `unknown`
 - reason codes such as `process_not_found`, `port_not_listening`,
@@ -76,7 +79,7 @@ Initial thresholds should be conservative and configurable later:
 | System RAM available | below 20% | below 10% |
 | System swap used | above 1 GB or 10% | above 8 GB or 30% |
 | Provider RAM RSS | above configured per-provider budget | above hard budget |
-| GPU memory used | above 85% | above 95% |
+| GPU runtime memory used | supporting signal only | supporting signal only |
 | Process missing | warning when optional, critical when active/default |
 
 For vLLM, KV cache readiness remains in `vllm_runtime_metric_snapshots`.
@@ -87,8 +90,8 @@ Provider resource snapshots should correlate with it rather than replace it.
 1. **Slice 409: Remote Provider Resource Probe Script**
    - Add a read-only probe that runs on the DGX host or app host with SSH/manual
      output support.
-   - Collect process, port, RAM, GPU memory, and swap information as JSON and
-     Markdown evidence.
+   - Collect process, port, RAM, GPU runtime memory, and swap information as
+     JSON and Markdown evidence.
 
 2. **Slice 410: Provider Resource Snapshot Schema Migration**
    - Add a `provider_resource_snapshots` table for normalized resource evidence.
@@ -98,6 +101,10 @@ Provider resource snapshots should correlate with it rather than replace it.
 
 4. **Slice 412: Dashboard Provider Resource Card**
    - Surface latest provider resource readiness beside vLLM runtime readiness.
+
+5. **Slice 413: DGX Provider Resident Memory Share API + UI**
+   - Expose RSS divided by system total RAM in API payloads.
+   - Show resident memory share in Provider Resource and Dashboard cards.
 
 ## Operating Principle
 

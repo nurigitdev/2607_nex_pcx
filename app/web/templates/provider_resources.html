@@ -137,6 +137,10 @@
     <div class="metric-value">{{ summary.max_process_rss_label }}</div>
   </div>
   <div class="metric-card bg-white p-3">
+    <div class="metric-label">{{ t("provider_resources.max_resident_share") }}</div>
+    <div class="metric-value">{{ summary.max_process_resident_memory_share_label }}</div>
+  </div>
+  <div class="metric-card bg-white p-3">
     <div class="metric-label">{{ t("provider_resources.max_gpu") }}</div>
     <div class="metric-value">{{ summary.max_gpu_memory_used_label }}</div>
   </div>
@@ -205,7 +209,13 @@
           <td class="text-end">
             <div>{{ snapshot.process_rss_bytes | filesizeformat(true) if snapshot.process_rss_bytes is not none else "-" }}</div>
             <div class="text-secondary small">
-              GPU: {{ snapshot.gpu_memory_used_bytes | filesizeformat(true) if snapshot.gpu_memory_used_bytes is not none else "-" }}
+              {{ t("provider_resources.resident_share") }}: {{ snapshot.process_resident_memory_share_label }}
+            </div>
+            <div class="text-secondary small">
+              {{ t("provider_resources.system_total_ram") }}: {{ snapshot.system_total_ram_label }}
+            </div>
+            <div class="text-secondary small">
+              {{ t("provider_resources.gpu_runtime") }}: {{ snapshot.gpu_memory_used_bytes | filesizeformat(true) if snapshot.gpu_memory_used_bytes is not none else "-" }}
             </div>
           </td>
           <td class="text-end">

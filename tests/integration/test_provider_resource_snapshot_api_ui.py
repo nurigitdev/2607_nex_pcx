@@ -61,7 +61,9 @@ def test_provider_resource_snapshot_api_lists_persisted_snapshots(
         assert body["summary"]["snapshot_count"] == 2
         assert body["summary"]["latest_snapshot_id"] == second.snapshot_id
         assert body["summary"]["max_process_rss_label"] == "4.00 GiB"
+        assert body["summary"]["max_process_resident_memory_share_label"] == "3.12%"
         assert body["summary"]["max_gpu_memory_used_label"] == "16.00 GiB"
+        assert body["snapshots"][0]["process_resident_memory_share_label"] == "3.12%"
         assert [snapshot["snapshot_id"] for snapshot in body["snapshots"]] == [
             second.snapshot_id,
             first.snapshot_id,
@@ -106,6 +108,8 @@ def test_provider_resource_snapshot_ui_shows_persisted_snapshots(
         assert "data-provider-resource-json" in page_response.text
         assert PROVIDER_NAME in page_response.text
         assert "4.00 GiB" in page_response.text
+        assert "3.12%" in page_response.text
+        assert "Resident Share" in page_response.text
         assert "16.00 GiB" in page_response.text
         assert "주의" in page_response.text
         assert "swap_pressure" in page_response.text
@@ -140,6 +144,7 @@ def test_dashboard_provider_resource_card_summarizes_latest_snapshots(
         assert PROVIDER_NAME in response.text
         assert "2099-01-02 00:00:00" in response.text
         assert "4.00 GiB" in response.text
+        assert "3.12%" in response.text
         assert "16.00 GiB" in response.text
         assert "50.00%" in response.text
         assert "위험" in response.text

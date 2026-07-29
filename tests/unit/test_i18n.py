@@ -161,9 +161,11 @@ def test_translator_uses_korean_default_and_english_catalog() -> None:
     assert korean("generation_metrics.recent_runs") == "최근 생성 실행"
     assert korean("dashboard.provider_resource_readiness_title") == "Provider Resource 준비 상태"
     assert english("dashboard.provider_resource_readiness_title") == ("Provider Resource Readiness")
+    assert korean("dashboard.provider_resource_max_resident_share") == "최대 Resident Share"
     assert english("provider_resources.title") == "Provider Resource Monitor"
     assert korean("provider_resources.status_warning") == "주의"
-    assert english("provider_resources.max_gpu") == "Max GPU Memory"
+    assert english("provider_resources.max_resident_share") == "Max Resident Share"
+    assert english("provider_resources.max_gpu") == "Max GPU Runtime Memory"
     assert korean("generation.template_completeness") == "Template 완성도"
     assert english("generation.template_completeness") == "Template Completeness"
     assert korean("generation.truncated_generation") == "출력 잘림"

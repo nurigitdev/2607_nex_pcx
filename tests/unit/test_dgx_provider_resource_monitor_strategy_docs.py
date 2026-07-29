@@ -15,12 +15,14 @@ def _read(path: Path) -> str:
 def test_srs_documents_dgx_provider_resource_monitor_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.58" in srs_text
+    assert "Software Requirements Specification v1.59" in srs_text
     assert "DGX provider resource monitor strategy" in srs_text
     assert "FR-087" in srs_text
     assert "provider_resource_snapshots" in srs_text
     assert "RAM RSS" in srs_text
-    assert "GPU memory" in srs_text
+    assert "resident memory share" in srs_text
+    assert "unified-memory" in srs_text
+    assert "GPU runtime memory" in srs_text
     assert "swap pressure" in srs_text
     assert "remote embedding provider" in srs_text
     assert "remote reranker provider" in srs_text
@@ -36,13 +38,15 @@ def test_strategy_doc_defines_provider_resource_monitor_contract() -> None:
     assert "`192.168.20.243`" in strategy_text
     assert "Port binding should be the primary local process match" in strategy_text
     assert "RSS bytes" in strategy_text
-    assert "GPU resource counters" in strategy_text
-    assert "memory bytes" in strategy_text
+    assert "resident memory share percent" in strategy_text
+    assert "GPU runtime counters" in strategy_text
+    assert "runtime memory" in strategy_text
     assert "`ok`, `warning`, `critical`, or `unknown`" in strategy_text
     assert "`process_not_found`" in strategy_text
     assert "Secrets, prompt text, document text" in strategy_text
     assert "Slice 409: Remote Provider Resource Probe Script" in strategy_text
     assert "Slice 412: Dashboard Provider Resource Card" in strategy_text
+    assert "Slice 413: DGX Provider Resident Memory Share API + UI" in strategy_text
 
 
 def test_probe_script_doc_defines_read_only_dgx_evidence_contract() -> None:
@@ -70,6 +74,7 @@ def test_provider_resource_snapshot_schema_doc_defines_persistence_contract() ->
     assert "one row per provider target" in schema_text
     assert "`probe_run_id`" in schema_text
     assert "`process_rss_bytes`" in schema_text
+    assert "`process_resident_memory_share_percent`" in schema_text
     assert "`gpu_memory_used_bytes`" in schema_text
     assert "`system_swap_used_percent`" in schema_text
     assert "`ok`, `warning`, `critical`, or `unknown`" in schema_text
@@ -87,8 +92,10 @@ def test_provider_resource_snapshot_api_ui_doc_defines_operator_contract() -> No
     assert "GET /api/admin/provider-resource-snapshots" in api_ui_text
     assert "`provider_type`" in api_ui_text
     assert "`include_raw_snapshot`" in api_ui_text
+    assert "`process_resident_memory_share_percent`" in api_ui_text
     assert "GET /admin/provider-resources" in api_ui_text
-    assert "PID, RAM RSS, GPU memory" in api_ui_text
+    assert "PID, RAM RSS, resident share, GPU runtime memory" in api_ui_text
+    assert "DGX-Spark uses unified memory" in api_ui_text
     assert "Dashboard Provider Resource card" in api_ui_text
     assert "vLLM runtime readiness card" in api_ui_text
     assert "No prompt text, document text" in api_ui_text

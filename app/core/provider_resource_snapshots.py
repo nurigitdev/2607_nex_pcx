@@ -75,6 +75,23 @@ class ProviderResourceSnapshotRecord:
     collected_at: datetime
     created_at: datetime
 
+    @property
+    def process_resident_memory_share_percent(self) -> float | None:
+        return calculate_provider_resource_percent(
+            self.process_rss_bytes,
+            self.system_total_ram_bytes,
+        )
+
+    @property
+    def process_resident_memory_share_label(self) -> str:
+        return format_provider_resource_percent(
+            self.process_resident_memory_share_percent,
+        )
+
+    @property
+    def system_total_ram_label(self) -> str:
+        return format_provider_resource_bytes(self.system_total_ram_bytes)
+
 
 @dataclass(frozen=True)
 class ProviderResourceSnapshotSummary:
@@ -89,6 +106,7 @@ class ProviderResourceSnapshotSummary:
     critical_count: int
     unknown_count: int
     max_process_rss_bytes: int | None
+    max_process_resident_memory_share_percent: float | None
     max_gpu_memory_used_bytes: int | None
     max_system_swap_used_percent: float | None
 
@@ -301,6 +319,7 @@ def summarize_provider_resource_snapshots(
             critical_count=0,
             unknown_count=0,
             max_process_rss_bytes=None,
+            max_process_resident_memory_share_percent=None,
             max_gpu_memory_used_bytes=None,
             max_system_swap_used_percent=None,
         )
@@ -326,6 +345,9 @@ def summarize_provider_resource_snapshots(
             1 for snapshot in snapshots if snapshot.status == PROVIDER_RESOURCE_STATUS_UNKNOWN
         ),
         max_process_rss_bytes=_max_optional(snapshot.process_rss_bytes for snapshot in snapshots),
+        max_process_resident_memory_share_percent=_max_optional(
+            snapshot.process_resident_memory_share_percent for snapshot in snapshots
+        ),
         max_gpu_memory_used_bytes=_max_optional(
             snapshot.gpu_memory_used_bytes for snapshot in snapshots
         ),
@@ -357,6 +379,8 @@ def provider_resource_snapshot_record_payload(
         "process_user": record.process_user,
         "process_rss_bytes": record.process_rss_bytes,
         "process_rss_label": format_provider_resource_bytes(record.process_rss_bytes),
+        "process_resident_memory_share_percent": (record.process_resident_memory_share_percent),
+        "process_resident_memory_share_label": (record.process_resident_memory_share_label),
         "process_vms_bytes": record.process_vms_bytes,
         "process_vms_label": format_provider_resource_bytes(record.process_vms_bytes),
         "process_cpu_percent": record.process_cpu_percent,
@@ -417,6 +441,12 @@ def provider_resource_snapshot_summary_payload(
         "unknown_count": summary.unknown_count,
         "max_process_rss_bytes": summary.max_process_rss_bytes,
         "max_process_rss_label": format_provider_resource_bytes(summary.max_process_rss_bytes),
+        "max_process_resident_memory_share_percent": (
+            summary.max_process_resident_memory_share_percent
+        ),
+        "max_process_resident_memory_share_label": format_provider_resource_percent(
+            summary.max_process_resident_memory_share_percent
+        ),
         "max_gpu_memory_used_bytes": summary.max_gpu_memory_used_bytes,
         "max_gpu_memory_used_label": format_provider_resource_bytes(
             summary.max_gpu_memory_used_bytes
@@ -488,6 +518,21 @@ def format_provider_resource_duration(seconds: int | None) -> str:
         return f"{hours}h {remaining_minutes}m"
     days, remaining_hours = divmod(hours, 24)
     return f"{days}d {remaining_hours}h"
+
+
+def calculate_provider_resource_percent(
+    value: int | float | None,
+    total: int | float | None,
+) -> float | None:
+    if value is None or total is None:
+        return None
+    if total <= 0:
+        return None
+    return float(value) / float(total) * 100.0
+
+
+def format_provider_resource_percent(value: float | None) -> str:
+    return "-" if value is None else f"{value:.2f}%"
 
 
 def _validate_report_payload(report_payload: Mapping[str, Any]) -> dict[str, Any]:

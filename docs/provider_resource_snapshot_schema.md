@@ -30,6 +30,15 @@ Resource fields:
 - swap usage: `system_swap_total_bytes`, `system_swap_used_bytes`,
   `system_swap_used_percent`
 
+Derived API fields:
+
+- `process_resident_memory_share_percent` is calculated as
+  `process_rss_bytes / system_total_ram_bytes * 100`
+- `process_resident_memory_share_label` is formatted for operator UI display
+
+The resident memory share fields are intentionally derived from stored snapshot
+columns rather than duplicated as persistence fields.
+
 Status fields:
 
 - `status`: `ok`, `warning`, `critical`, or `unknown`
