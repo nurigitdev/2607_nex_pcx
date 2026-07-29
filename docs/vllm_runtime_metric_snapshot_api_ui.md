@@ -24,6 +24,29 @@ The response includes:
   threshold defaults, and per-signal actual/warning/critical values.
 - `snapshots`: normalized rows from `vllm_runtime_metric_snapshots`.
 
+Readiness threshold settings are DB-backed through `app_log_settings`:
+
+```text
+GET /api/admin/vllm-runtime-metrics/readiness-thresholds
+PUT /api/admin/vllm-runtime-metrics/readiness-thresholds
+POST /api/admin/vllm-runtime-metrics/readiness-thresholds/reset
+```
+
+The `PUT` payload is:
+
+```json
+{
+  "thresholds": {
+    "kv_cache_warning_percent": 80,
+    "kv_cache_critical_percent": 90
+  }
+}
+```
+
+Unknown threshold codes, out-of-range values, non-integer values for count
+thresholds, and warning thresholds greater than critical thresholds are rejected
+with HTTP 400.
+
 ## UI
 
 Open the operator page at:
@@ -32,10 +55,10 @@ Open the operator page at:
 GET /admin/vllm-runtime-metrics
 ```
 
-The page shows filter controls, a readiness badge, threshold summary, summary
-cards, a recent snapshot table, and raw JSON evidence. It is read-only; metric
-collection still runs through `scripts/scrape_vllm_runtime_metrics.py
---persist`.
+The page shows filter controls, editable readiness threshold settings, a
+readiness badge, threshold summary, summary cards, a recent snapshot table, and
+raw JSON evidence. Metric collection still runs through
+`scripts/scrape_vllm_runtime_metrics.py --persist`.
 
 The readiness badge uses the latest snapshot only:
 

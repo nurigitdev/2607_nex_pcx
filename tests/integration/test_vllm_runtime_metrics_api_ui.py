@@ -133,6 +133,11 @@ def test_vllm_runtime_metric_snapshot_ui_shows_persisted_snapshots(
         assert page_response.status_code == 200
         assert "vLLM Runtime Metrics" in page_response.text
         assert "data-vllm-runtime-metrics-filters" in page_response.text
+        assert "data-vllm-runtime-readiness-settings" in page_response.text
+        assert 'data-settings-url="/api/admin/vllm-runtime-metrics/readiness-thresholds"' in (
+            page_response.text
+        )
+        assert 'data-vllm-threshold-code="kv_cache_warning_percent"' in page_response.text
         assert "data-vllm-runtime-readiness" in page_response.text
         assert "data-vllm-runtime-thresholds" in page_response.text
         assert "data-vllm-runtime-metrics-summary" in page_response.text
@@ -150,15 +155,124 @@ def test_vllm_runtime_metric_snapshot_ui_shows_persisted_snapshots(
         _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
 
 
+def test_vllm_runtime_readiness_threshold_settings_api_round_trips(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+
+    with TestClient(app) as client:
+        reset_before_response = client.post(
+            "/api/admin/vllm-runtime-metrics/readiness-thresholds/reset"
+        )
+        get_response = client.get("/api/admin/vllm-runtime-metrics/readiness-thresholds")
+        update_response = client.put(
+            "/api/admin/vllm-runtime-metrics/readiness-thresholds",
+            json={
+                "thresholds": {
+                    "kv_cache_warning_percent": 88,
+                    "kv_cache_critical_percent": 96,
+                    "waiting_requests_warning": 4,
+                }
+            },
+        )
+        bad_unknown_response = client.put(
+            "/api/admin/vllm-runtime-metrics/readiness-thresholds",
+            json={"thresholds": {"unknown": 1}},
+        )
+        bad_pair_response = client.put(
+            "/api/admin/vllm-runtime-metrics/readiness-thresholds",
+            json={
+                "thresholds": {
+                    "kv_cache_warning_percent": 99,
+                    "kv_cache_critical_percent": 90,
+                }
+            },
+        )
+        reset_after_response = client.post(
+            "/api/admin/vllm-runtime-metrics/readiness-thresholds/reset"
+        )
+
+    assert reset_before_response.status_code == 200
+    assert get_response.status_code == 200
+    assert get_response.json()["settings"]["thresholds"]["kv_cache_warning_percent"] == 80.0
+    assert update_response.status_code == 200
+    assert update_response.json()["settings"]["thresholds"]["kv_cache_warning_percent"] == 88.0
+    assert update_response.json()["settings"]["thresholds"]["waiting_requests_warning"] == 4
+    assert bad_unknown_response.status_code == 400
+    assert bad_pair_response.status_code == 400
+    assert reset_after_response.status_code == 200
+    assert reset_after_response.json()["settings"]["thresholds"]["kv_cache_warning_percent"] == 80.0
+
+
+def test_vllm_runtime_metric_snapshot_api_uses_db_threshold_settings(
+    migrated_database_url: str,
+) -> None:
+    _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
+    try:
+        record_vllm_runtime_metric_snapshot(
+            migrated_database_url,
+            _snapshot(
+                """
+                vllm:kv_cache_usage_perc 0.83
+                vllm:num_requests_waiting 3
+                vllm:time_to_first_token_seconds_sum 0.4
+                vllm:time_to_first_token_seconds_count 1
+                vllm:e2e_request_latency_seconds_sum 2
+                vllm:e2e_request_latency_seconds_count 1
+                """,
+                sampled_at=NOW,
+            ),
+        )
+        app = create_app(Settings(database_url=migrated_database_url))
+
+        with TestClient(app) as client:
+            client.put(
+                "/api/admin/vllm-runtime-metrics/readiness-thresholds",
+                json={
+                    "thresholds": {
+                        "kv_cache_warning_percent": 90,
+                        "kv_cache_critical_percent": 95,
+                        "waiting_requests_warning": 4,
+                        "waiting_requests_critical": 9,
+                    }
+                },
+            )
+            response = client.get(
+                "/api/admin/vllm-runtime-metrics/snapshots",
+                params={"provider_name": PROVIDER_NAME},
+            )
+            reset_response = client.post(
+                "/api/admin/vllm-runtime-metrics/readiness-thresholds/reset"
+            )
+
+        assert response.status_code == 200
+        assert response.json()["readiness"]["status"] == "ok"
+        assert response.json()["readiness"]["reason_codes"] == []
+        assert response.json()["readiness"]["thresholds"]["kv_cache_warning_percent"] == 90.0
+        assert reset_response.status_code == 200
+    finally:
+        _cleanup_provider_snapshots(migrated_database_url, PROVIDER_NAME)
+
+
 def test_vllm_runtime_metric_snapshot_ui_reports_missing_database() -> None:
     app = create_app(Settings(database_url=None))
 
     with TestClient(app) as client:
         page_response = client.get("/admin/vllm-runtime-metrics")
+        get_response = client.get("/api/admin/vllm-runtime-metrics/readiness-thresholds")
+        put_response = client.put(
+            "/api/admin/vllm-runtime-metrics/readiness-thresholds",
+            json={"thresholds": {}},
+        )
+        reset_response = client.post("/api/admin/vllm-runtime-metrics/readiness-thresholds/reset")
 
     assert page_response.status_code == 200
     assert "vLLM Runtime Metrics" in page_response.text
+    assert "data-vllm-runtime-readiness-settings" in page_response.text
     assert "NEX_PCX_DATABASE_URL is not configured." in page_response.text
+    assert get_response.status_code == 503
+    assert put_response.status_code == 503
+    assert reset_response.status_code == 503
 
 
 def _snapshot(metrics_text: str, *, sampled_at: datetime):

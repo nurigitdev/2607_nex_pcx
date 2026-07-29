@@ -756,8 +756,20 @@ from app.core.vllm_runtime_metric_snapshots import (
     vllm_runtime_metric_snapshot_summary_payload,
 )
 from app.core.vllm_runtime_readiness import (
+    DEFAULT_VLLM_RUNTIME_READINESS_THRESHOLDS,
+    VLLMRuntimeReadinessThresholds,
     assess_vllm_runtime_readiness,
     vllm_runtime_readiness_payload,
+)
+from app.core.vllm_runtime_readiness_settings import (
+    InvalidVLLMRuntimeReadinessThresholdSettingsError,
+    VLLMRuntimeReadinessThresholdSettings,
+    VLLMRuntimeReadinessThresholdSettingsInput,
+    load_vllm_runtime_readiness_threshold_settings,
+    reset_vllm_runtime_readiness_threshold_settings,
+    update_vllm_runtime_readiness_threshold_settings,
+    vllm_runtime_readiness_threshold_settings_payload,
+    vllm_runtime_readiness_threshold_ui_rows,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -1051,6 +1063,10 @@ class EmbeddingBatchRunCleanupRequest(BaseModel):
 
 class DashboardHealthThresholdSettingsRequest(BaseModel):
     thresholds: dict[str, int] = Field(default_factory=dict)
+
+
+class VLLMRuntimeReadinessThresholdSettingsRequest(BaseModel):
+    thresholds: dict[str, float | int] = Field(default_factory=dict)
 
 
 class ProviderPreflightScheduleRequest(BaseModel):
@@ -1460,9 +1476,15 @@ def vllm_runtime_metric_snapshot_collection_payload(
     limit: int,
     provider_name: str | None = None,
     include_raw_samples: bool = False,
+    readiness_thresholds: VLLMRuntimeReadinessThresholds = (
+        DEFAULT_VLLM_RUNTIME_READINESS_THRESHOLDS
+    ),
 ) -> dict[str, object]:
     summary = summarize_vllm_runtime_metric_snapshots(snapshots)
-    readiness = assess_vllm_runtime_readiness(snapshots)
+    readiness = assess_vllm_runtime_readiness(
+        snapshots,
+        thresholds=readiness_thresholds,
+    )
     return {
         "generated_at": _datetime_response(datetime.now(UTC)),
         "provider_name": provider_name,
@@ -14252,6 +14274,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 provider_name=provider_name,
                 limit=limit,
             )
+            threshold_settings = load_vllm_runtime_readiness_threshold_settings(
+                settings.database_url
+            )
         except InvalidVLLMRuntimeMetricSnapshotError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return JSONResponse(
@@ -14260,7 +14285,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 provider_name=provider_name.strip() if provider_name else None,
                 limit=limit,
                 include_raw_samples=include_raw_samples,
+                readiness_thresholds=threshold_settings.thresholds,
             )
+        )
+
+    @app.get("/api/admin/vllm-runtime-metrics/readiness-thresholds")
+    def api_get_vllm_runtime_readiness_threshold_settings() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        threshold_settings = load_vllm_runtime_readiness_threshold_settings(settings.database_url)
+        return JSONResponse(
+            content={
+                "settings": vllm_runtime_readiness_threshold_settings_payload(threshold_settings)
+            }
+        )
+
+    @app.put("/api/admin/vllm-runtime-metrics/readiness-thresholds")
+    def api_update_vllm_runtime_readiness_threshold_settings(
+        payload: VLLMRuntimeReadinessThresholdSettingsRequest,
+    ) -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        try:
+            threshold_settings = update_vllm_runtime_readiness_threshold_settings(
+                settings.database_url,
+                VLLMRuntimeReadinessThresholdSettingsInput(thresholds=dict(payload.thresholds)),
+            )
+        except InvalidVLLMRuntimeReadinessThresholdSettingsError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        return JSONResponse(
+            content={
+                "settings": vllm_runtime_readiness_threshold_settings_payload(threshold_settings)
+            }
+        )
+
+    @app.post("/api/admin/vllm-runtime-metrics/readiness-thresholds/reset")
+    def api_reset_vllm_runtime_readiness_threshold_settings() -> JSONResponse:
+        if not settings.database_url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="NEX_PCX_DATABASE_URL is not configured.",
+            )
+
+        threshold_settings = reset_vllm_runtime_readiness_threshold_settings(settings.database_url)
+        return JSONResponse(
+            content={
+                "settings": vllm_runtime_readiness_threshold_settings_payload(threshold_settings)
+            }
         )
 
     @app.get("/api/admin/generation-provider-configs")
@@ -17995,6 +18074,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         collection_payload: dict[str, object] | None = None
         collection_json = ""
         error_message = None
+        threshold_settings = VLLMRuntimeReadinessThresholdSettings(
+            thresholds=DEFAULT_VLLM_RUNTIME_READINESS_THRESHOLDS
+        )
         normalized_provider_name = provider_name.strip() if provider_name else None
         if normalized_provider_name == "":
             normalized_provider_name = None
@@ -18003,6 +18085,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error_message = "NEX_PCX_DATABASE_URL is not configured."
         else:
             try:
+                threshold_settings = load_vllm_runtime_readiness_threshold_settings(
+                    settings.database_url
+                )
                 snapshots = list_vllm_runtime_metric_snapshots(
                     settings.database_url,
                     provider_name=normalized_provider_name,
@@ -18012,6 +18097,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     snapshots,
                     provider_name=normalized_provider_name,
                     limit=limit,
+                    readiness_thresholds=threshold_settings.thresholds,
                 )
                 collection_json = json.dumps(collection_payload, ensure_ascii=False, indent=2)
             except InvalidVLLMRuntimeMetricSnapshotError as exc:
@@ -18020,6 +18106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     [],
                     provider_name=normalized_provider_name,
                     limit=limit,
+                    readiness_thresholds=threshold_settings.thresholds,
                 )
                 collection_json = json.dumps(collection_payload, ensure_ascii=False, indent=2)
 
@@ -18035,6 +18122,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 selected_provider_name=normalized_provider_name or "",
                 selected_limit=limit,
                 max_limit=MAX_VLLM_RUNTIME_METRIC_SNAPSHOT_LIMIT,
+                readiness_threshold_settings=(
+                    vllm_runtime_readiness_threshold_settings_payload(threshold_settings)
+                ),
+                readiness_threshold_rows=vllm_runtime_readiness_threshold_ui_rows(
+                    threshold_settings
+                ),
                 error_message=error_message,
             ),
         )
