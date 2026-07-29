@@ -6,11 +6,13 @@ import io
 import json
 import os
 import traceback as traceback_module
+from collections.abc import Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -55,6 +57,9 @@ from app.core.chat import (
     CHAT_INTENT_GENERAL_ANSWER,
     CHAT_INTENT_GROUNDED_ANSWER,
     CHAT_INTENTS,
+    CHAT_LINK_TYPE_DOCUMENT_SUMMARY,
+    CHAT_LINK_TYPE_DOWNLOAD,
+    CHAT_LINK_TYPE_GENERATION_RUN,
     CHAT_MESSAGE_STATUS_COMPLETED,
     CHAT_ROLE_ASSISTANT,
     CHAT_ROLE_USER,
@@ -74,6 +79,7 @@ from app.core.chat import (
     get_chat_message,
     get_chat_session,
     get_chat_thread,
+    link_chat_message_to_download_url,
     link_chat_message_to_generation_run,
     link_chat_message_to_search_log,
     list_chat_sessions,
@@ -1793,6 +1799,169 @@ def chat_message_link_payload(link: ChatMessageLinkRecord) -> dict[str, object]:
     }
 
 
+def _chat_artifact_positive_id(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            parsed = int(stripped)
+            return parsed if parsed > 0 else None
+    return None
+
+
+def chat_generation_artifact_shortcuts(
+    generation_run_id: int,
+    *,
+    document_summary: bool = False,
+) -> tuple[dict[str, object], ...]:
+    normalized_run_id = _chat_artifact_positive_id(generation_run_id)
+    if normalized_run_id is None:
+        return ()
+    export_base = (
+        "/api/generation/document-summaries" if document_summary else "/api/generation/runs"
+    )
+    return (
+        {
+            "shortcut_type": "preview",
+            "format": "html",
+            "url": f"/generation/runs/{normalized_run_id}",
+            "label_key": "chat.preview_artifact",
+            "label": None,
+        },
+        {
+            "shortcut_type": "download",
+            "format": "markdown",
+            "url": f"{export_base}/{normalized_run_id}/export/markdown",
+            "label_key": "chat.download_markdown",
+            "label": None,
+        },
+        {
+            "shortcut_type": "download",
+            "format": "docx",
+            "url": f"{export_base}/{normalized_run_id}/export/docx",
+            "label_key": "chat.download_docx",
+            "label": None,
+        },
+    )
+
+
+def _chat_runtime_generation_run_id(
+    runtime_metadata: Mapping[str, Any],
+    key: str,
+) -> int | None:
+    value = runtime_metadata.get(key)
+    if not isinstance(value, Mapping):
+        return None
+    return _chat_artifact_positive_id(value.get("generation_run_id"))
+
+
+def _dedupe_chat_artifact_shortcuts(
+    shortcuts: list[dict[str, object]],
+) -> tuple[dict[str, object], ...]:
+    deduped: list[dict[str, object]] = []
+    seen_urls: set[str] = set()
+    for shortcut in shortcuts:
+        url = shortcut.get("url")
+        if not isinstance(url, str) or not url:
+            continue
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        deduped.append(shortcut)
+    return tuple(deduped)
+
+
+def chat_message_artifact_shortcuts(
+    message: ChatMessageRecord,
+    links: tuple[ChatMessageLinkRecord, ...] = (),
+) -> tuple[dict[str, object], ...]:
+    runtime_metadata = dict(message.runtime_metadata or {})
+    shortcuts: list[dict[str, object]] = []
+    grounded_generation_run_id = _chat_runtime_generation_run_id(
+        runtime_metadata,
+        "chat_grounded_answer",
+    )
+    document_generation_run_id = _chat_runtime_generation_run_id(
+        runtime_metadata,
+        "chat_document_generation",
+    )
+    document_summary_run_id = _chat_runtime_generation_run_id(
+        runtime_metadata,
+        "chat_document_summary",
+    )
+    for generation_run_id in (grounded_generation_run_id, document_generation_run_id):
+        if generation_run_id is not None:
+            shortcuts.extend(chat_generation_artifact_shortcuts(generation_run_id))
+    if document_summary_run_id is not None:
+        shortcuts.extend(
+            chat_generation_artifact_shortcuts(document_summary_run_id, document_summary=True)
+        )
+    for link in links:
+        if link.link_type == CHAT_LINK_TYPE_GENERATION_RUN and link.target_id:
+            shortcuts.extend(chat_generation_artifact_shortcuts(link.target_id))
+        elif link.link_type == CHAT_LINK_TYPE_DOCUMENT_SUMMARY and link.target_id:
+            shortcuts.extend(
+                chat_generation_artifact_shortcuts(link.target_id, document_summary=True)
+            )
+        elif link.link_type == CHAT_LINK_TYPE_DOWNLOAD and link.target_url:
+            metadata = dict(link.metadata or {})
+            shortcuts.append(
+                {
+                    "shortcut_type": "download",
+                    "format": str(metadata.get("format") or "file"),
+                    "url": link.target_url,
+                    "label_key": metadata.get("label_key"),
+                    "label": link.label or "Download",
+                }
+            )
+    return _dedupe_chat_artifact_shortcuts(shortcuts)
+
+
+def link_chat_message_to_generation_artifact_downloads(
+    database_url: str,
+    *,
+    chat_message_id: int,
+    generation_run_id: int,
+    source: str,
+    document_summary: bool = False,
+) -> tuple[ChatMessageLinkRecord, ...]:
+    normalized_run_id = _chat_artifact_positive_id(generation_run_id)
+    if normalized_run_id is None:
+        return ()
+    export_base = (
+        "/api/generation/document-summaries" if document_summary else "/api/generation/runs"
+    )
+    return (
+        link_chat_message_to_download_url(
+            database_url,
+            chat_message_id=chat_message_id,
+            target_url=f"{export_base}/{normalized_run_id}/export/markdown",
+            label="Markdown",
+            metadata={
+                "source": source,
+                "format": "markdown",
+                "generation_run_id": normalized_run_id,
+                "label_key": "chat.download_markdown",
+            },
+        ),
+        link_chat_message_to_download_url(
+            database_url,
+            chat_message_id=chat_message_id,
+            target_url=f"{export_base}/{normalized_run_id}/export/docx",
+            label="DOCX",
+            metadata={
+                "source": source,
+                "format": "docx",
+                "generation_run_id": normalized_run_id,
+                "label_key": "chat.download_docx",
+            },
+        ),
+    )
+
+
 def chat_message_with_links_payload(
     item: ChatMessageWithLinks,
     *,
@@ -1807,6 +1976,9 @@ def chat_message_with_links_payload(
             regenerate_context=branch_context,
         ),
         "links": [chat_message_link_payload(link) for link in item.links],
+        "artifact_shortcuts": [
+            dict(shortcut) for shortcut in chat_message_artifact_shortcuts(item.message, item.links)
+        ],
     }
 
 
@@ -13315,6 +13487,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         label=f"Generation Run #{grounded_answer.generation_run_id}",
                         metadata={"source": "chat_grounded_answer"},
                     )
+                    link_chat_message_to_generation_artifact_downloads(
+                        settings.database_url,
+                        chat_message_id=assistant_message.chat_message_id,
+                        generation_run_id=grounded_answer.generation_run_id,
+                        source="chat_grounded_answer",
+                    )
                 if document_generation is not None:
                     link_chat_message_to_search_log(
                         settings.database_url,
@@ -13332,6 +13510,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "source": "chat_document_generation",
                             "template_key": document_generation.template_key,
                         },
+                    )
+                    link_chat_message_to_generation_artifact_downloads(
+                        settings.database_url,
+                        chat_message_id=assistant_message.chat_message_id,
+                        generation_run_id=document_generation.generation_run_id,
+                        source="chat_document_generation",
                     )
             thread = get_chat_thread(settings.database_url, chat_session_id)
         except (
@@ -16563,6 +16747,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 chat_intent_options=CHAT_INTENT_OPTION_ORDER,
                 chat_execution_mode_options=CHAT_MESSAGE_EXECUTION_MODES,
                 chat_branch_contexts=chat_branch_contexts,
+                chat_message_artifact_shortcuts=chat_message_artifact_shortcuts,
                 error_message=error_message,
             ),
         )

@@ -122,7 +122,11 @@
     "template": "Template",
     "open_search_log": "Open Search Log",
     "open_generation_run": "Open Generation Run",
-    "open_retrieval_context": "Open Retrieval Context"
+    "open_retrieval_context": "Open Retrieval Context",
+    "artifact_shortcuts": "Artifact Shortcuts",
+    "preview_artifact": "Preview Result",
+    "download_markdown": "Download Markdown",
+    "download_docx": "Download DOCX"
   },
   "retrieval_confidence": {
     "title": "Retrieval Confidence",

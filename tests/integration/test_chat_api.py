@@ -7,6 +7,7 @@ from app.core.chat import (
     CHAT_INTENT_DOCUMENT_SUMMARY,
     CHAT_INTENT_GENERAL_ANSWER,
     CHAT_INTENT_GROUNDED_ANSWER,
+    CHAT_LINK_TYPE_DOWNLOAD,
     CHAT_LINK_TYPE_GENERATION_RUN,
     CHAT_LINK_TYPE_SEARCH_LOG,
     CHAT_ROLE_ASSISTANT,
@@ -517,7 +518,11 @@ def test_chat_api_executes_grounded_answer_and_links_generation_run(
         grounded = assistant["runtime_metadata"]["chat_grounded_answer"]
         search_log_id = int(grounded["search_log_id"])
         generation_run_id = int(grounded["generation_run_id"])
-        link_types = {link["link_type"] for link in body["thread"]["messages"][1]["links"]}
+        assistant_thread_item = body["thread"]["messages"][1]
+        link_types = {link["link_type"] for link in assistant_thread_item["links"]}
+        artifact_urls = {
+            shortcut["url"] for shortcut in assistant_thread_item["artifact_shortcuts"]
+        }
         generation_row = fetch_one(
             migrated_database_url,
             """
@@ -536,6 +541,10 @@ def test_chat_api_executes_grounded_answer_and_links_generation_run(
         assert grounded["retrieval_context_included_count"] >= 0
         assert CHAT_LINK_TYPE_SEARCH_LOG in link_types
         assert CHAT_LINK_TYPE_GENERATION_RUN in link_types
+        assert CHAT_LINK_TYPE_DOWNLOAD in link_types
+        assert f"/generation/runs/{generation_run_id}" in artifact_urls
+        assert f"/api/generation/runs/{generation_run_id}/export/markdown" in artifact_urls
+        assert f"/api/generation/runs/{generation_run_id}/export/docx" in artifact_urls
         assert int(generation_row["search_log_id"]) == search_log_id
         assert generation_row["provider_mode"] == "mock"
         assert int(generation_row["created_by_user_id"]) == actor_user_id
@@ -583,7 +592,11 @@ def test_chat_api_executes_document_generation_with_template_metadata(
         document_generation = assistant["runtime_metadata"]["chat_document_generation"]
         search_log_id = int(document_generation["search_log_id"])
         generation_run_id = int(document_generation["generation_run_id"])
-        link_types = {link["link_type"] for link in body["thread"]["messages"][1]["links"]}
+        assistant_thread_item = body["thread"]["messages"][1]
+        link_types = {link["link_type"] for link in assistant_thread_item["links"]}
+        artifact_urls = {
+            shortcut["url"] for shortcut in assistant_thread_item["artifact_shortcuts"]
+        }
         generation_row = fetch_one(
             migrated_database_url,
             """
@@ -602,6 +615,10 @@ def test_chat_api_executes_document_generation_with_template_metadata(
         assert document_generation["grounded_answer"]["search_log_id"] == search_log_id
         assert CHAT_LINK_TYPE_SEARCH_LOG in link_types
         assert CHAT_LINK_TYPE_GENERATION_RUN in link_types
+        assert CHAT_LINK_TYPE_DOWNLOAD in link_types
+        assert f"/generation/runs/{generation_run_id}" in artifact_urls
+        assert f"/api/generation/runs/{generation_run_id}/export/markdown" in artifact_urls
+        assert f"/api/generation/runs/{generation_run_id}/export/docx" in artifact_urls
         assert generation_row["generation_template_id"] is not None
         assert generation_row["request_metadata"]["template_key"] == "proposal"
     finally:
@@ -799,6 +816,25 @@ def test_chat_page_renders_shell_and_existing_thread(
             runtime_metadata={"execution_mode": "direct_grounded_generation"},
         ),
     )
+    append_chat_message(
+        migrated_database_url,
+        ChatMessageInput(
+            chat_session_id=session.chat_session_id,
+            parent_message_id=user.chat_message_id,
+            role=CHAT_ROLE_ASSISTANT,
+            content="보고서 산출물입니다.",
+            intent=CHAT_INTENT_DOCUMENT_GENERATION,
+            runtime_metadata={
+                "execution_mode": "template_direct_generation",
+                "chat_document_generation": {
+                    "generation_run_id": 77,
+                    "search_log_id": 24,
+                    "template_key": "report",
+                    "prompt_version": "report_v1",
+                },
+            },
+        ),
+    )
     link_chat_message_to_search_log(
         migrated_database_url,
         chat_message_id=assistant.chat_message_id,
@@ -858,6 +894,13 @@ def test_chat_page_renders_shell_and_existing_thread(
         assert "원본 의도 document_search_summary" in response.text
         assert "응답 대상 #3" in response.text
         assert "/regenerate" in response.text
+        assert "산출물 바로가기" in response.text
+        assert "결과 보기" in response.text
+        assert "Markdown 다운로드" in response.text
+        assert "DOCX 다운로드" in response.text
+        assert 'href="/generation/runs/77"' in response.text
+        assert 'href="/api/generation/runs/77/export/markdown"' in response.text
+        assert 'href="/api/generation/runs/77/export/docx"' in response.text
         assert no_database_response.status_code == 200
         assert "NEX_PCX_DATABASE_URL is not configured." in no_database_response.text
     finally:

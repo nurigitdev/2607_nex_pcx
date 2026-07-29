@@ -321,6 +321,7 @@
           {% set grounded_answer = runtime.chat_grounded_answer %}
           {% set document_generation = runtime.chat_document_generation %}
           {% set branch_context = chat_branch_contexts.get(item.message.chat_message_id) %}
+          {% set artifact_shortcuts = chat_message_artifact_shortcuts(item.message, item.links) %}
           <article class="chat-message chat-message-{{ item.message.role }}">
             <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
               <span class="fw-semibold">{{ item.message.role }}</span>
@@ -490,12 +491,29 @@
             </div>
             {% endif %}
 
+            {% if artifact_shortcuts %}
+            <div class="chat-artifact-panel mt-3">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <span class="chat-artifact-title">{{ t("chat.artifact_shortcuts") }}</span>
+                <span class="badge text-bg-light border">{{ artifact_shortcuts|length }}</span>
+              </div>
+              <div class="chat-artifact-actions">
+                {% for shortcut in artifact_shortcuts %}
+                <a class="chat-artifact-button" href="{{ shortcut.url }}">
+                  {% if shortcut.label_key %}{{ t(shortcut.label_key) }}{% else %}{{ shortcut.label }}{% endif %}
+                </a>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+
             {% if item.message.intent or item.links %}
             <div class="chat-link-list mt-3">
               {% if item.message.intent %}
               <span class="badge text-bg-light border">{{ item.message.intent }}</span>
               {% endif %}
               {% for link in item.links %}
+              {% if link.link_type != "download" %}
               {% if link.target_url %}
               <a class="chat-link-chip" href="{{ link.target_url }}">{{ link.label or link.link_type }}</a>
               {% elif link.link_type == "search_log" and link.target_id %}
@@ -512,6 +530,7 @@
               </a>
               {% else %}
               <span class="badge text-bg-light border">{{ link.label or link.link_type }} #{{ link.target_id }}</span>
+              {% endif %}
               {% endif %}
               {% endfor %}
             </div>

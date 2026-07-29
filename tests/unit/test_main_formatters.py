@@ -4,7 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.chat import InvalidChatRepositoryError
+from app.core.chat import (
+    CHAT_LINK_TYPE_DOCUMENT_SUMMARY,
+    CHAT_LINK_TYPE_DOWNLOAD,
+    CHAT_LINK_TYPE_GENERATION_RUN,
+    InvalidChatRepositoryError,
+)
 from app.core.chunks import ChunkRecord
 from app.core.config import Settings
 from app.core.document_inventory import DocumentInventoryItem
@@ -26,8 +31,10 @@ from app.main import (
     _percent_value,
     _resolve_extraction_rerun_profile_name,
     build_extraction_rerun_request,
+    chat_generation_artifact_shortcuts,
     chat_generation_template_default_options,
     chat_intent_route_for_message,
+    chat_message_artifact_shortcuts,
     chat_message_regenerate_context,
     chat_message_routing_metadata,
     chat_regenerate_content_for_request,
@@ -109,6 +116,82 @@ def test_select_default_chat_generation_template_key_prefers_default_then_report
     )
     assert select_default_chat_generation_template_key((_chat_template("proposal"),)) == "proposal"
     assert select_default_chat_generation_template_key(()) == ""
+
+
+def test_chat_generation_artifact_shortcuts_builds_export_urls() -> None:
+    regular_shortcuts = chat_generation_artifact_shortcuts(42)
+    summary_shortcuts = chat_generation_artifact_shortcuts(43, document_summary=True)
+
+    assert [shortcut["shortcut_type"] for shortcut in regular_shortcuts] == [
+        "preview",
+        "download",
+        "download",
+    ]
+    assert [shortcut["url"] for shortcut in regular_shortcuts] == [
+        "/generation/runs/42",
+        "/api/generation/runs/42/export/markdown",
+        "/api/generation/runs/42/export/docx",
+    ]
+    assert [shortcut["url"] for shortcut in summary_shortcuts] == [
+        "/generation/runs/43",
+        "/api/generation/document-summaries/43/export/markdown",
+        "/api/generation/document-summaries/43/export/docx",
+    ]
+    assert chat_generation_artifact_shortcuts(0) == ()
+
+
+def test_chat_message_artifact_shortcuts_dedupes_runtime_and_link_sources() -> None:
+    message = SimpleNamespace(
+        runtime_metadata={
+            "chat_grounded_answer": {"generation_run_id": "7"},
+            "chat_document_generation": {"generation_run_id": 7},
+        }
+    )
+    shortcuts = chat_message_artifact_shortcuts(
+        message,
+        (
+            SimpleNamespace(
+                link_type=CHAT_LINK_TYPE_GENERATION_RUN,
+                target_id=7,
+                target_url=None,
+                label=None,
+                metadata={},
+            ),
+            SimpleNamespace(
+                link_type=CHAT_LINK_TYPE_DOWNLOAD,
+                target_id=None,
+                target_url="/api/generation/runs/7/export/docx",
+                label="DOCX",
+                metadata={"format": "docx", "label_key": "chat.download_docx"},
+            ),
+            SimpleNamespace(
+                link_type=CHAT_LINK_TYPE_DOWNLOAD,
+                target_id=None,
+                target_url="/files/manual-review.pdf",
+                label="Manual Review",
+                metadata={"format": "pdf"},
+            ),
+            SimpleNamespace(
+                link_type=CHAT_LINK_TYPE_DOCUMENT_SUMMARY,
+                target_id=8,
+                target_url=None,
+                label=None,
+                metadata={},
+            ),
+        ),
+    )
+
+    assert [shortcut["url"] for shortcut in shortcuts] == [
+        "/generation/runs/7",
+        "/api/generation/runs/7/export/markdown",
+        "/api/generation/runs/7/export/docx",
+        "/files/manual-review.pdf",
+        "/generation/runs/8",
+        "/api/generation/document-summaries/8/export/markdown",
+        "/api/generation/document-summaries/8/export/docx",
+    ]
+    assert shortcuts[3]["label"] == "Manual Review"
+    assert chat_message_artifact_shortcuts(SimpleNamespace(runtime_metadata={"legacy": True})) == ()
 
 
 def test_chat_message_intent_override_helpers_normalize_and_route() -> None:

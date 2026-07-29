@@ -375,6 +375,48 @@ main.container-fluid {
   margin-top: 0.75rem;
 }
 
+.chat-artifact-panel {
+  background: #f4fbf8;
+  border: 1px solid #c8e5d8;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.chat-artifact-title {
+  color: #14523b;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.chat-artifact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chat-artifact-button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #abcfc0;
+  border-radius: 6px;
+  color: #14523b;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  max-width: 100%;
+  min-height: 1.85rem;
+  overflow-wrap: anywhere;
+  padding: 0.3rem 0.55rem;
+  text-decoration: none;
+}
+
+.chat-artifact-button:hover {
+  background: #e5f5ee;
+  border-color: #53a77e;
+  color: #0d3c2a;
+}
+
 .chat-link-chip {
   align-items: center;
   background: #fff;

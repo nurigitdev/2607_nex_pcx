@@ -122,7 +122,11 @@
     "template": "Template",
     "open_search_log": "검색 이력 열기",
     "open_generation_run": "생성 실행 열기",
-    "open_retrieval_context": "검색 Context 열기"
+    "open_retrieval_context": "검색 Context 열기",
+    "artifact_shortcuts": "산출물 바로가기",
+    "preview_artifact": "결과 보기",
+    "download_markdown": "Markdown 다운로드",
+    "download_docx": "DOCX 다운로드"
   },
   "retrieval_confidence": {
     "title": "검색 신뢰도",
