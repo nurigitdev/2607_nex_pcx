@@ -3,6 +3,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRS_PATH = PROJECT_ROOT / "260702_NeX_PCX_SRS_v1.3.md"
 STRATEGY_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_monitor_strategy.md"
+PROBE_SCRIPT_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_probe_script.md"
 
 
 def _read(path: Path) -> str:
@@ -40,3 +41,18 @@ def test_strategy_doc_defines_provider_resource_monitor_contract() -> None:
     assert "Secrets, prompt text, document text" in strategy_text
     assert "Slice 409: Remote Provider Resource Probe Script" in strategy_text
     assert "Slice 412: Dashboard Provider Resource Card" in strategy_text
+
+
+def test_probe_script_doc_defines_read_only_dgx_evidence_contract() -> None:
+    probe_text = _read(PROBE_SCRIPT_DOC_PATH)
+
+    assert "DGX Provider Resource Probe Script" in probe_text
+    assert "scripts/probe_provider_resources.py" in probe_text
+    assert "`kure-primary`" in probe_text
+    assert "`qwen-reranker-primary`" in probe_text
+    assert "`dgx_vllm_qwen36_27b_nvfp4`" in probe_text
+    assert "--ssh-user nexpcx" in probe_text
+    assert "--local-only" in probe_text
+    assert "read-only" in probe_text
+    assert "`process_not_found`" in probe_text
+    assert "SHA-256 hash" in probe_text
