@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260728_0039"
+HEAD_REVISION = "20260729_0040"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -188,6 +188,22 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         WHERE conname = 'pipeline_jobs_stage_check'
         """,
     )
+    vllm_metric_snapshot_table = fetch_one(
+        test_database_url,
+        """
+        SELECT to_regclass(
+            'public.vllm_runtime_metric_snapshots'
+        ) AS table_name
+        """,
+    )
+    vllm_metric_snapshot_provider_index = fetch_one(
+        test_database_url,
+        """
+        SELECT to_regclass(
+            'public.idx_vllm_runtime_metric_snapshots_provider_sampled'
+        ) AS index_name
+        """,
+    )
 
     assert revision["version_num"] == HEAD_REVISION
     assert extension["extversion"]
@@ -226,6 +242,11 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert default_generation_provider["model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
     assert keyword_index_table["table_name"] == "chunk_keyword_terms"
     assert keyword_indexing_stage_constraint["enabled"] is True
+    assert vllm_metric_snapshot_table["table_name"] == "vllm_runtime_metric_snapshots"
+    assert (
+        vllm_metric_snapshot_provider_index["index_name"]
+        == "idx_vllm_runtime_metric_snapshots_provider_sampled"
+    )
 
 
 def test_alembic_downgrade_base_clears_revision(test_database_url: str) -> None:

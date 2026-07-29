@@ -1,9 +1,11 @@
 # vLLM Runtime Metrics Scraper
 
-Slice 402 adds a read-only runtime metrics scraper for the DGX-Spark vLLM server.
-It complements generation run metrics by observing the serving process itself:
-KV cache pressure, queue depth, token counters, request counters, and latency
-histogram averages.
+Slice 402 added a read-only runtime metrics scraper for the DGX-Spark vLLM server.
+Slice 403 adds optional database snapshot persistence so runtime state can be
+kept as operational evidence and later trended. The scraper complements
+generation run metrics by observing the serving process itself: KV cache
+pressure, queue depth, token counters, request counters, and latency histogram
+averages.
 
 ## Command
 
@@ -25,6 +27,22 @@ For offline parser checks, pass a saved Prometheus text file:
   --pretty
 ```
 
+To persist the normalized snapshot:
+
+```bash
+export NEX_PCX_DATABASE_URL='postgresql://nex_pcx_app:<password>@127.0.0.1:5432/nex_pcx_app'
+./.venv/bin/python scripts/scrape_vllm_runtime_metrics.py \
+  --base-url http://192.168.20.243:12000 \
+  --provider-name dgx_vllm_qwen36_27b_nvfp4 \
+  --model-id /home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4 \
+  --persist \
+  --pretty
+```
+
+`--persist` stores a row in `vllm_runtime_metric_snapshots` and adds a
+`snapshot_record` object to the JSON output. Without `--persist`, the script
+remains read-only.
+
 ## Normalized Fields
 
 - `kv_cache_usage_percent`: max observed vLLM KV/GPU cache usage percent.
@@ -36,6 +54,3 @@ For offline parser checks, pass a saved Prometheus text file:
 - `average_time_to_first_token_seconds`: histogram mean TTFT.
 - `average_inter_token_latency_seconds`: histogram mean inter-token latency.
 - `average_e2e_request_latency_seconds`: histogram mean end-to-end request latency.
-
-This slice does not persist snapshots yet. The next natural slice is a database
-snapshot table plus API/UI panels for trend and threshold monitoring.

@@ -10,6 +10,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.core.vllm_runtime_metric_snapshots import (  # noqa: E402
+    InvalidVLLMRuntimeMetricSnapshotError,
+    record_vllm_runtime_metric_snapshot,
+    vllm_runtime_metric_snapshot_record_payload,
+)
 from app.core.vllm_runtime_metrics import (  # noqa: E402
     DEFAULT_VLLM_RUNTIME_METRICS_TIMEOUT_SECONDS,
     InvalidVLLMRuntimeMetricsError,
@@ -57,6 +62,16 @@ def main() -> int:
     parser.add_argument("--json-output", default=None)
     parser.add_argument("--markdown-output", default=None)
     parser.add_argument("--include-raw-samples", action="store_true")
+    parser.add_argument(
+        "--database-url",
+        default=os.getenv("NEX_PCX_DATABASE_URL"),
+        help="Database URL used with --persist. Defaults to NEX_PCX_DATABASE_URL.",
+    )
+    parser.add_argument(
+        "--persist",
+        action="store_true",
+        help="Persist the normalized vLLM runtime metrics snapshot to the database.",
+    )
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
 
@@ -70,6 +85,28 @@ def main() -> int:
         snapshot,
         include_raw_samples=args.include_raw_samples,
     )
+    if args.persist:
+        if not args.database_url:
+            print(
+                "vLLM runtime metrics persistence failed: database URL is required", file=sys.stderr
+            )
+            return 1
+        try:
+            record = record_vllm_runtime_metric_snapshot(
+                args.database_url,
+                snapshot,
+                runtime_metadata={
+                    "source": "scripts/scrape_vllm_runtime_metrics.py",
+                    "sample_file": bool(args.sample_file),
+                },
+            )
+        except InvalidVLLMRuntimeMetricSnapshotError as exc:
+            print(f"vLLM runtime metrics persistence failed: {exc}", file=sys.stderr)
+            return 1
+        except Exception as exc:  # pragma: no cover - defensive CLI boundary
+            print(f"vLLM runtime metrics persistence failed: {exc}", file=sys.stderr)
+            return 1
+        payload["snapshot_record"] = vllm_runtime_metric_snapshot_record_payload(record)
     json_text = json.dumps(payload, ensure_ascii=False, indent=2 if args.pretty else None)
     if args.json_output:
         _write_text(Path(args.json_output), json_text + "\n")
