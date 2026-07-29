@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.chat import InvalidChatRepositoryError
 from app.core.chunks import ChunkRecord
 from app.core.config import Settings
 from app.core.document_inventory import DocumentInventoryItem
@@ -26,6 +27,8 @@ from app.main import (
     _resolve_extraction_rerun_profile_name,
     build_extraction_rerun_request,
     chat_generation_template_default_options,
+    chat_intent_route_for_message,
+    chat_message_routing_metadata,
     chat_session_default_generation_template_key,
     chunk_source_trace_preview_payload,
     document_artifacts_redirect_url,
@@ -37,6 +40,8 @@ from app.main import (
     extraction_quality_snapshot_payload,
     extraction_quality_snapshot_summary_payload,
     extraction_rerun_feedback_payload,
+    normalize_chat_message_execution_mode,
+    normalize_chat_message_intent_override,
     search_log_bm25_tokenizer_name,
     search_log_reranked_vector_profile_name,
     search_reranker_runtime_control_payload,
@@ -99,6 +104,55 @@ def test_select_default_chat_generation_template_key_prefers_default_then_report
     )
     assert select_default_chat_generation_template_key((_chat_template("proposal"),)) == "proposal"
     assert select_default_chat_generation_template_key(()) == ""
+
+
+def test_chat_message_intent_override_helpers_normalize_and_route() -> None:
+    route, detected_route, route_source = chat_intent_route_for_message(
+        "보고서를 작성해줘",
+        " General_Answer ",
+    )
+
+    assert route.intent == "general_answer"
+    assert route.intent_confidence == 1.0
+    assert route.rationale == "user_intent_override"
+    assert detected_route.intent == "document_generation"
+    assert route_source == "user_intent_override_v1"
+    assert normalize_chat_message_intent_override(None) is None
+    assert normalize_chat_message_intent_override(" ") is None
+    with pytest.raises(InvalidChatRepositoryError, match="intent_override"):
+        normalize_chat_message_intent_override("legacy")
+
+
+def test_chat_message_execution_mode_helper_preserves_legacy_boolean() -> None:
+    assert normalize_chat_message_execution_mode(None, run_mock_router=True) == "execute"
+    assert normalize_chat_message_execution_mode(None, run_mock_router=False) == "route_only"
+    assert (
+        normalize_chat_message_execution_mode(" Route_Only ", run_mock_router=True) == "route_only"
+    )
+    with pytest.raises(InvalidChatRepositoryError, match="execution_mode"):
+        normalize_chat_message_execution_mode("invalid", run_mock_router=True)
+
+
+def test_chat_message_routing_metadata_records_override_context() -> None:
+    route, detected_route, route_source = chat_intent_route_for_message(
+        "보고서를 작성해줘",
+        "grounded_answer",
+    )
+
+    metadata = chat_message_routing_metadata(
+        {"source": "unit"},
+        route=route,
+        detected_route=detected_route,
+        route_source=route_source,
+        execution_mode="route_only",
+        intent_override=route.intent,
+    )
+
+    assert metadata["source"] == "unit"
+    assert metadata["router"] == "user_intent_override_v1"
+    assert metadata["detected_intent"] == "document_generation"
+    assert metadata["intent_override"] == "grounded_answer"
+    assert metadata["execution_mode"] == "route_only"
 
 
 def test_search_log_bm25_tokenizer_name_reads_direct_and_profile_metadata() -> None:

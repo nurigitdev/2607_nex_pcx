@@ -506,20 +506,37 @@
           required
           {% if not database_configured or not selected_thread %}disabled{% endif %}
         ></textarea>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
-          <div class="form-check">
-            <input
-              class="form-check-input"
-              type="checkbox"
-              id="chat-run-mock-router"
-              name="run_mock_router"
-              checked
+        <div class="row g-3 mt-1">
+          <div class="col-12 col-lg-6">
+            <label class="form-label" for="chat-intent-override">{{ t("chat.intent_override") }}</label>
+            <select
+              class="form-select"
+              id="chat-intent-override"
+              name="intent_override"
               {% if not database_configured or not selected_thread %}disabled{% endif %}
             >
-            <label class="form-check-label" for="chat-run-mock-router">
-              {{ t("chat.run_mock_router") }}
-            </label>
+              <option value="">{{ t("chat.intent_auto") }}</option>
+              {% for intent_name in chat_intent_options %}
+              <option value="{{ intent_name }}">{{ t("chat.intent_" ~ intent_name) }}</option>
+              {% endfor %}
+            </select>
           </div>
+          <div class="col-12 col-lg-6">
+            <label class="form-label" for="chat-execution-mode">{{ t("chat.execution_mode") }}</label>
+            <select
+              class="form-select"
+              id="chat-execution-mode"
+              name="execution_mode"
+              {% if not database_configured or not selected_thread %}disabled{% endif %}
+            >
+              {% for execution_mode in chat_execution_mode_options %}
+              <option value="{{ execution_mode }}">{{ t("chat.execution_mode_" ~ execution_mode) }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
+          <div class="small text-secondary">{{ t("chat.execution_mode_help") }}</div>
           <button
             class="btn btn-primary"
             type="submit"
@@ -625,12 +642,16 @@
       return;
     }
     const formData = new FormData(messageForm);
+    const executionMode = formData.get("execution_mode") || "execute";
+    const intentOverride = formData.get("intent_override");
     const response = await fetch(`/api/chat/sessions/${chatSessionId}/messages`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         content: formData.get("content"),
-        run_mock_router: formData.get("run_mock_router") === "on",
+        run_mock_router: executionMode === "execute",
+        execution_mode: executionMode,
+        intent_override: intentOverride || null,
         routing_metadata: {source: "chat_ui_shell"},
       }),
     });

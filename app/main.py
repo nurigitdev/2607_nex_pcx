@@ -51,8 +51,10 @@ from app.core.bm25_search import BM25_SEARCH_PROFILE_NAME
 from app.core.chat import (
     CHAT_INTENT_DOCUMENT_GENERATION,
     CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+    CHAT_INTENT_DOCUMENT_SUMMARY,
     CHAT_INTENT_GENERAL_ANSWER,
     CHAT_INTENT_GROUNDED_ANSWER,
+    CHAT_INTENTS,
     CHAT_MESSAGE_STATUS_COMPLETED,
     CHAT_ROLE_ASSISTANT,
     CHAT_ROLE_USER,
@@ -824,6 +826,8 @@ class ChatMessagePostRequest(BaseModel):
     content: str = Field(min_length=1, max_length=20000)
     parent_message_id: int | None = Field(default=None, ge=1)
     run_mock_router: bool = True
+    intent_override: str | None = Field(default=None, max_length=80)
+    execution_mode: str | None = Field(default=None, max_length=40)
     routing_metadata: dict[str, object] = Field(default_factory=dict)
 
 
@@ -1424,6 +1428,96 @@ def _datetime_response(value: object | None) -> str | None:
 
 
 CHAT_SESSION_DEFAULT_GENERATION_TEMPLATE_KEY = "default_generation_template_key"
+CHAT_MESSAGE_EXECUTION_MODE_EXECUTE = "execute"
+CHAT_MESSAGE_EXECUTION_MODE_ROUTE_ONLY = "route_only"
+CHAT_MESSAGE_EXECUTION_MODES = (
+    CHAT_MESSAGE_EXECUTION_MODE_EXECUTE,
+    CHAT_MESSAGE_EXECUTION_MODE_ROUTE_ONLY,
+)
+CHAT_INTENT_OPTION_ORDER = (
+    CHAT_INTENT_GENERAL_ANSWER,
+    CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY,
+    CHAT_INTENT_GROUNDED_ANSWER,
+    CHAT_INTENT_DOCUMENT_GENERATION,
+    CHAT_INTENT_DOCUMENT_SUMMARY,
+)
+CHAT_INTENT_SUGGESTED_ACTIONS = {
+    CHAT_INTENT_GENERAL_ANSWER: "call_llm_without_document_context",
+    CHAT_INTENT_DOCUMENT_SEARCH_SUMMARY: "run_search_then_summarize_retrieved_chunks",
+    CHAT_INTENT_GROUNDED_ANSWER: "run_retrieval_context_package_then_generation",
+    CHAT_INTENT_DOCUMENT_GENERATION: "select_template_and_run_grounded_generation",
+    CHAT_INTENT_DOCUMENT_SUMMARY: "select_document_or_corpus_summary_flow",
+}
+
+
+def normalize_chat_message_intent_override(intent_override: str | None) -> str | None:
+    if intent_override is None:
+        return None
+    normalized = intent_override.strip().lower()
+    if not normalized:
+        return None
+    if normalized not in CHAT_INTENTS:
+        raise InvalidChatRepositoryError("intent_override is not supported")
+    return normalized
+
+
+def normalize_chat_message_execution_mode(
+    execution_mode: str | None,
+    *,
+    run_mock_router: bool,
+) -> str:
+    if execution_mode is None or not execution_mode.strip():
+        return (
+            CHAT_MESSAGE_EXECUTION_MODE_EXECUTE
+            if run_mock_router
+            else CHAT_MESSAGE_EXECUTION_MODE_ROUTE_ONLY
+        )
+    normalized = execution_mode.strip().lower()
+    if normalized not in CHAT_MESSAGE_EXECUTION_MODES:
+        raise InvalidChatRepositoryError("execution_mode is not supported")
+    return normalized
+
+
+def chat_intent_route_for_message(
+    content: str,
+    intent_override: str | None,
+) -> tuple[ChatIntentRoute, ChatIntentRoute, str]:
+    detected_route = route_chat_intent_mock(content)
+    normalized_override = normalize_chat_message_intent_override(intent_override)
+    if normalized_override is None:
+        return detected_route, detected_route, "mock_intent_router_v1"
+    return (
+        ChatIntentRoute(
+            intent=normalized_override,
+            intent_confidence=1.0,
+            rationale="user_intent_override",
+            suggested_action=CHAT_INTENT_SUGGESTED_ACTIONS[normalized_override],
+        ),
+        detected_route,
+        "user_intent_override_v1",
+    )
+
+
+def chat_message_routing_metadata(
+    payload_metadata: dict[str, object],
+    *,
+    route: ChatIntentRoute,
+    detected_route: ChatIntentRoute,
+    route_source: str,
+    execution_mode: str,
+    intent_override: str | None,
+) -> dict[str, object]:
+    metadata = {
+        **payload_metadata,
+        "router": route_source,
+        "rationale": route.rationale,
+        "suggested_action": route.suggested_action,
+        "detected_intent": detected_route.intent,
+        "execution_mode": execution_mode,
+    }
+    if intent_override is not None:
+        metadata["intent_override"] = intent_override
+    return metadata
 
 
 def chat_session_default_generation_template_key(
@@ -12783,8 +12877,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Chat session not found.",
                 )
-            route = route_chat_intent_mock(payload.content)
+            route, detected_route, route_source = chat_intent_route_for_message(
+                payload.content,
+                payload.intent_override,
+            )
+            execution_mode = normalize_chat_message_execution_mode(
+                payload.execution_mode,
+                run_mock_router=payload.run_mock_router,
+            )
             router_payload = chat_intent_route_payload(route)
+            router_payload.update(
+                {
+                    "detected_intent": detected_route.intent,
+                    "route_source": route_source,
+                    "execution_mode": execution_mode,
+                }
+            )
+            normalized_intent_override = normalize_chat_message_intent_override(
+                payload.intent_override
+            )
+            message_routing_metadata = chat_message_routing_metadata(
+                payload.routing_metadata,
+                route=route,
+                detected_route=detected_route,
+                route_source=route_source,
+                execution_mode=execution_mode,
+                intent_override=normalized_intent_override,
+            )
             user_message = append_chat_message(
                 settings.database_url,
                 ChatMessageInput(
@@ -12795,22 +12914,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     intent=route.intent,
                     status=CHAT_MESSAGE_STATUS_COMPLETED,
                     intent_confidence=route.intent_confidence,
-                    routing_metadata={
-                        **payload.routing_metadata,
-                        "router": "mock_intent_router_v1",
-                        "rationale": route.rationale,
-                        "suggested_action": route.suggested_action,
-                    },
+                    routing_metadata=message_routing_metadata,
                 ),
             )
             assistant_message: ChatMessageRecord | None = None
-            if payload.run_mock_router:
+            if execution_mode == CHAT_MESSAGE_EXECUTION_MODE_EXECUTE:
                 document_generation: ChatDocumentGenerationResult | None = None
                 grounded_answer: ChatGroundedAnswerResult | None = None
                 search_summary: ChatSearchSummaryResult | None = None
                 assistant_content = chat_mock_assistant_content(route)
                 assistant_runtime_metadata: dict[str, object] = {
-                    "router": "mock_intent_router_v1",
+                    "router": route_source,
                     "suggested_action": route.suggested_action,
                     "execution_mode": "placeholder",
                 }
@@ -12837,7 +12951,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             runtime_metadata={
                                 "chat_session_id": chat_session_id,
                                 "user_message_id": user_message.chat_message_id,
-                                "router": "mock_intent_router_v1",
+                                "router": route_source,
                                 "route_intent": route.intent,
                                 "routing_metadata": dict(payload.routing_metadata),
                             },
@@ -12847,7 +12961,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     assistant_content = general_answer.answer_text
                     assistant_runtime_metadata = {
-                        "router": "mock_intent_router_v1",
+                        "router": route_source,
                         "suggested_action": route.suggested_action,
                         "execution_mode": general_answer.response_metadata.get(
                             "execution_mode",
@@ -12875,7 +12989,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             runtime_metadata={
                                 "chat_session_id": chat_session_id,
                                 "user_message_id": user_message.chat_message_id,
-                                "router": "mock_intent_router_v1",
+                                "router": route_source,
                                 "route_intent": route.intent,
                                 "routing_metadata": dict(payload.routing_metadata),
                             },
@@ -12889,7 +13003,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     assistant_content = search_summary.answer_text
                     assistant_runtime_metadata = {
-                        "router": "mock_intent_router_v1",
+                        "router": route_source,
                         "suggested_action": route.suggested_action,
                         "execution_mode": search_summary.execution_mode,
                         "chat_search_summary": chat_search_summary_payload(search_summary),
@@ -12937,7 +13051,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     assistant_content = grounded_answer.answer_text
                     assistant_runtime_metadata = {
-                        "router": "mock_intent_router_v1",
+                        "router": route_source,
                         "suggested_action": route.suggested_action,
                         "execution_mode": grounded_answer.execution_mode,
                         "chat_grounded_answer": chat_grounded_answer_payload(grounded_answer),
@@ -12995,7 +13109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     assistant_content = document_generation.answer_text
                     assistant_runtime_metadata = {
-                        "router": "mock_intent_router_v1",
+                        "router": route_source,
                         "suggested_action": route.suggested_action,
                         "execution_mode": document_generation.execution_mode,
                         "chat_document_generation": chat_document_generation_payload(
@@ -16223,6 +16337,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 search_scope_options=SEARCH_COMPARE_SCOPE_OPTIONS,
                 generation_template_options=generation_template_options,
                 default_generation_template_key=default_generation_template_key,
+                chat_intent_options=CHAT_INTENT_OPTION_ORDER,
+                chat_execution_mode_options=CHAT_MESSAGE_EXECUTION_MODES,
                 error_message=error_message,
             ),
         )

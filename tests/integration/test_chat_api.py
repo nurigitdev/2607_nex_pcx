@@ -173,6 +173,51 @@ def test_chat_api_can_store_user_message_without_mock_assistant(
             _delete_chat_session(migrated_database_url, chat_session_id)
 
 
+def test_chat_api_accepts_intent_override_and_execution_mode_selector(
+    migrated_database_url: str,
+) -> None:
+    app = create_app(Settings(database_url=migrated_database_url))
+    chat_session_id: int | None = None
+
+    try:
+        with TestClient(app) as client:
+            create_response = client.post(
+                "/api/chat/sessions",
+                json={"session_title": "의도 선택 대화"},
+            )
+            chat_session_id = int(create_response.json()["session"]["chat_session_id"])
+            message_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={
+                    "content": "보고서를 작성해줘",
+                    "intent_override": " General_Answer ",
+                    "execution_mode": "route_only",
+                    "run_mock_router": True,
+                    "routing_metadata": {"ui_surface": "chat"},
+                },
+            )
+
+        body = message_response.json()
+        routing_metadata = body["user_message"]["routing_metadata"]
+
+        assert message_response.status_code == 201
+        assert body["router"]["intent"] == CHAT_INTENT_GENERAL_ANSWER
+        assert body["router"]["detected_intent"] == CHAT_INTENT_DOCUMENT_GENERATION
+        assert body["router"]["route_source"] == "user_intent_override_v1"
+        assert body["router"]["execution_mode"] == "route_only"
+        assert body["assistant_message"] is None
+        assert body["user_message"]["intent"] == CHAT_INTENT_GENERAL_ANSWER
+        assert body["user_message"]["intent_confidence"] == 1.0
+        assert routing_metadata["ui_surface"] == "chat"
+        assert routing_metadata["router"] == "user_intent_override_v1"
+        assert routing_metadata["detected_intent"] == CHAT_INTENT_DOCUMENT_GENERATION
+        assert routing_metadata["intent_override"] == CHAT_INTENT_GENERAL_ANSWER
+        assert routing_metadata["execution_mode"] == "route_only"
+    finally:
+        if chat_session_id is not None:
+            _delete_chat_session(migrated_database_url, chat_session_id)
+
+
 def test_chat_api_updates_session_runtime_defaults(
     migrated_database_url: str,
 ) -> None:
@@ -517,6 +562,20 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
                 json={"session_title": "검색 actor 없음"},
             )
             chat_session_id = int(no_actor_session_response.json()["session"]["chat_session_id"])
+            invalid_intent_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={
+                    "content": "의도 override 오류",
+                    "intent_override": "legacy",
+                },
+            )
+            invalid_execution_mode_response = client.post(
+                f"/api/chat/sessions/{chat_session_id}/messages",
+                json={
+                    "content": "실행 mode 오류",
+                    "execution_mode": "legacy",
+                },
+            )
             missing_actor_response = client.post(
                 f"/api/chat/sessions/{chat_session_id}/messages",
                 json={"content": "관련 문서를 검색해서 요약해줘"},
@@ -533,6 +592,10 @@ def test_chat_api_returns_expected_errors(migrated_database_url: str) -> None:
     assert invalid_session_response.status_code == 400
     assert invalid_template_response.status_code == 400
     assert "default_generation_template_key" in invalid_template_response.json()["detail"]
+    assert invalid_intent_response.status_code == 400
+    assert "intent_override" in invalid_intent_response.json()["detail"]
+    assert invalid_execution_mode_response.status_code == 400
+    assert "execution_mode" in invalid_execution_mode_response.json()["detail"]
     assert missing_actor_response.status_code == 400
     assert "actor_user_id" in missing_actor_response.json()["detail"]
     assert no_database_response.status_code == 503
@@ -620,7 +683,12 @@ def test_chat_page_renders_shell_and_existing_thread(
         assert "세션 기본값 수정" in response.text
         assert 'id="chat-message-form"' in response.text
         assert "/api/chat/sessions" in response.text
-        assert 'name="run_mock_router"' in response.text
+        assert 'id="chat-intent-override"' in response.text
+        assert 'id="chat-execution-mode"' in response.text
+        assert 'name="intent_override"' in response.text
+        assert 'name="execution_mode"' in response.text
+        assert "의도 선택" in response.text
+        assert "의도만 저장" in response.text
         assert no_database_response.status_code == 200
         assert "NEX_PCX_DATABASE_URL is not configured." in no_database_response.text
     finally:
