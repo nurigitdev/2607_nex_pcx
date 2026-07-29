@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260729_0041"
+HEAD_REVISION = "20260729_0042"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -212,6 +212,38 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         WHERE setting_name LIKE 'vllm_runtime_%%'
         """,
     )
+    provider_resource_snapshot_table = fetch_one(
+        test_database_url,
+        """
+        SELECT to_regclass(
+            'public.provider_resource_snapshots'
+        ) AS table_name
+        """,
+    )
+    provider_resource_snapshot_provider_index = fetch_one(
+        test_database_url,
+        """
+        SELECT to_regclass(
+            'public.idx_provider_resource_snapshots_provider_collected'
+        ) AS index_name
+        """,
+    )
+    provider_resource_snapshot_status_constraint = fetch_one(
+        test_database_url,
+        """
+        SELECT pg_get_constraintdef(oid) LIKE '%%critical%%' AS enabled
+        FROM pg_constraint
+        WHERE conname = 'provider_resource_snapshots_status_check'
+        """,
+    )
+    provider_resource_snapshot_settings = fetch_one(
+        test_database_url,
+        """
+        SELECT count(*) AS count
+        FROM app_log_settings
+        WHERE setting_name LIKE 'provider_resource_%%'
+        """,
+    )
 
     assert revision["version_num"] == HEAD_REVISION
     assert extension["extversion"]
@@ -256,6 +288,13 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         == "idx_vllm_runtime_metric_snapshots_provider_sampled"
     )
     assert vllm_readiness_threshold_settings["count"] == 14
+    assert provider_resource_snapshot_table["table_name"] == "provider_resource_snapshots"
+    assert (
+        provider_resource_snapshot_provider_index["index_name"]
+        == "idx_provider_resource_snapshots_provider_collected"
+    )
+    assert provider_resource_snapshot_status_constraint["enabled"] is True
+    assert provider_resource_snapshot_settings["count"] == 3
 
 
 def test_alembic_downgrade_base_clears_revision(test_database_url: str) -> None:

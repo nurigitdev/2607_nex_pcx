@@ -4,6 +4,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRS_PATH = PROJECT_ROOT / "260702_NeX_PCX_SRS_v1.3.md"
 STRATEGY_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_monitor_strategy.md"
 PROBE_SCRIPT_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_probe_script.md"
+SNAPSHOT_SCHEMA_DOC_PATH = PROJECT_ROOT / "docs" / "provider_resource_snapshot_schema.md"
 
 
 def _read(path: Path) -> str:
@@ -56,3 +57,19 @@ def test_probe_script_doc_defines_read_only_dgx_evidence_contract() -> None:
     assert "read-only" in probe_text
     assert "`process_not_found`" in probe_text
     assert "SHA-256 hash" in probe_text
+
+
+def test_provider_resource_snapshot_schema_doc_defines_persistence_contract() -> None:
+    schema_text = _read(SNAPSHOT_SCHEMA_DOC_PATH)
+
+    assert "Provider Resource Snapshot Schema" in schema_text
+    assert "`provider_resource_snapshots`" in schema_text
+    assert "one row per provider target" in schema_text
+    assert "`probe_run_id`" in schema_text
+    assert "`process_rss_bytes`" in schema_text
+    assert "`gpu_memory_used_bytes`" in schema_text
+    assert "`system_swap_used_percent`" in schema_text
+    assert "`ok`, `warning`, `critical`, or `unknown`" in schema_text
+    assert "`idx_provider_resource_snapshots_provider_collected`" in schema_text
+    assert "`provider_resource_snapshot_retention_days`" in schema_text
+    assert "stores no prompt text" in schema_text
