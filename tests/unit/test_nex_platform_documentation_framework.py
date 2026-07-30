@@ -17,6 +17,7 @@ EXPECTED_DOCS = [
     "09_source_material_inventory.md",
     "10_2week_mvp_capability_map.md",
     "11_common_contract_freeze_candidate_map.md",
+    "12_service_boundary_decision_record.md",
 ]
 
 
@@ -140,6 +141,7 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "Retrieval package" in common
     assert "Do not create a large shared utility package first" in common
     assert "11_common_contract_freeze_candidate_map.md" in common
+    assert "12_service_boundary_decision_record.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -223,6 +225,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "P0 scope gate" in inventory
     assert "10_2week_mvp_capability_map.md" in inventory
     assert "11_common_contract_freeze_candidate_map.md" in inventory
+    assert "12_service_boundary_decision_record.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -285,6 +288,69 @@ def test_two_week_mvp_map_keeps_acceptance_and_quality_gate_targets() -> None:
     assert "branch coverage" in mvp_map
     assert "target 85%" in mvp_map
     assert "Day 14" in mvp_map
+
+
+def test_service_boundary_decision_record_identifies_service_sources() -> None:
+    decision_record = _read("12_service_boundary_decision_record.md")
+
+    for source_id in (
+        "NP-SRC-07",
+        "NP-SRC-08",
+        "NP-SRC-09",
+        "NP-SRC-10",
+        "NP-SRC-11",
+        "NP-SRC-13",
+    ):
+        assert source_id in decision_record
+
+    for service_name in (
+        "nex-oa",
+        "nex-ag",
+        "nex-cx",
+        "nex-ae-web",
+        "nex-ae-back",
+        "nex-mo",
+    ):
+        assert service_name in decision_record
+
+    assert "Freeze Now" in decision_record
+    assert "Freeze Candidate" in decision_record
+    assert "Boundary Conflict" in decision_record
+
+
+def test_service_boundary_decision_record_freezes_generation_ownership() -> None:
+    decision_record = _read("12_service_boundary_decision_record.md")
+
+    assert "`nex-cx` owns retrieval context" in decision_record
+    assert "`nex-ae-back` owns user intent" in decision_record
+    assert "`nex-mo` owns generation provider execution" in decision_record
+    assert "retrieval context package, not a broad structured draft framework" in (decision_record)
+    assert "AE may call MO generation" in decision_record
+    assert "generated artifact metadata" in decision_record
+
+
+def test_service_boundary_decision_record_keeps_data_authority_separated() -> None:
+    decision_record = _read("12_service_boundary_decision_record.md")
+
+    assert "No cross-service database joins" in decision_record
+    assert "Only OA writes" in decision_record
+    assert "Only CX writes" in decision_record
+    assert "Only MO writes" in decision_record
+    assert "Generated artifacts remain AE-owned" in decision_record
+    assert "AG observes and governs through service APIs" in decision_record
+    assert "Provider runtimes are reached through `nex-mo` stable APIs" in (decision_record)
+
+
+def test_service_boundary_summary_links_decision_record_and_frozen_owners() -> None:
+    boundary = _read("01_service_boundary.md")
+
+    assert "12_service_boundary_decision_record.md" in boundary
+    assert "Frozen Ownership Summary" in boundary
+    assert "`nex-oa` owns identity" in boundary
+    assert "`nex-cx` owns original assets" in boundary
+    assert "`nex-ae-back` owns intent" in boundary
+    assert "`nex-mo` owns provider aliases" in boundary
+    assert "`nex-ag` observes and governs through service APIs" in boundary
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:

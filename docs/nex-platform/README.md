@@ -22,6 +22,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 10. [Source Material Inventory](09_source_material_inventory.md)
 11. [2-Week MVP Capability Map](10_2week_mvp_capability_map.md)
 12. [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md)
+13. [Service Boundary Decision Record](12_service_boundary_decision_record.md)
 
 ## Platform Services
 
@@ -53,5 +54,7 @@ Slice 418 created the skeleton and review method. Slice 419 registered the
 uploaded source material inventory and seeded the review matrix. Slice 420
 distilled the 2-week barebone SRS into a service-owned MVP capability map.
 Slice 421 distilled canonical terminology, state, API, error, job, logging, and
-trace contracts into freeze candidates. Later slices should fill the skeleton
-with source-backed decisions instead of copying large documents wholesale.
+trace contracts into freeze candidates. Slice 422 reconciled the service-specific
+source documents into a boundary decision record and ownership freeze candidate.
+Later slices should fill the skeleton with source-backed decisions instead of
+copying large documents wholesale.

@@ -44,6 +44,8 @@ packages until service boundaries have survived implementation.
 
 - JSON schema files for each shared contract, starting from
   [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md).
+- Service owner-specific schemas and API boundaries, starting from
+  [Service Boundary Decision Record](12_service_boundary_decision_record.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

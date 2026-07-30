@@ -6,6 +6,10 @@ This document defines the first NeX-Platform service boundaries. The names are
 stable enough to use in SRS and architecture drafts, but the internal module
 layout of each service remains open until implementation planning.
 
+See [Service Boundary Decision Record](12_service_boundary_decision_record.md)
+for the Slice 422 ownership freeze candidate, source conflicts, and canonical
+call chains.
+
 ## Boundary Matrix
 
 | Service | Owns | Does Not Own | Primary Consumers |
@@ -27,6 +31,16 @@ layout of each service remains open until implementation planning.
 | Prompt/runtime package | `nex-ae-back` | Combines user intent, template, retrieval context, and provider settings. |
 | Provider route | `nex-mo` | Includes provider id, model, URL, port, profile, health, and runtime metadata. |
 | Audit event | `nex-ag` collects, all services emit | Must include actor, action, target, timestamp, result, and correlation id. |
+
+## Frozen Ownership Summary
+
+| Boundary | Decision |
+| --- | --- |
+| Auth authority | `nex-oa` owns identity, sessions, tokens, service accounts, service tokens, signing keys, and permission claims. |
+| Content authority | `nex-cx` owns original assets, extracted artifacts, normalized text, chunks, BM25, vectors, graph extension points, retrieval, and evidence packages. |
+| User orchestration | `nex-ae-back` owns intent, execution mode, prompt/template composition, final answer formatting, and generated artifact metadata. |
+| Provider execution | `nex-mo` owns provider aliases, runtime contracts, provider health, model metrics, and resource telemetry. |
+| Governance | `nex-ag` observes and governs through service APIs; it does not own identity issuing, corpus data, or provider inference. |
 
 ## Integration Style
 
