@@ -20,6 +20,7 @@ EXPECTED_DOCS = [
     "12_service_boundary_decision_record.md",
     "13_ae_agent_orchestration_contract.md",
     "14_cx_ae_retrieval_context_package_contract.md",
+    "15_generation_routing_boundary_reconciliation.md",
 ]
 
 
@@ -62,7 +63,8 @@ def test_service_boundary_preserves_user_confirmed_ownership() -> None:
     assert "BM25 keyword index" in boundary
     assert "graph metadata" in boundary
     assert "prompt intent detection" in boundary
-    assert "generation requests through `nex-mo`" in boundary
+    assert "search and generation requests to `nex-cx`" in boundary
+    assert "Direct `nex-ae-api` to `nex-mo` generation is a later policy decision" in (boundary)
     assert "Embedding provider" in boundary
     assert "reranker provider" in boundary
     assert "generation provider" in boundary
@@ -142,11 +144,13 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "Provider contract" in common
     assert "Retrieval package" in common
     assert "Agent orchestration package" in common
+    assert "Generation routing contract" in common
     assert "Do not create a large shared utility package first" in common
     assert "11_common_contract_freeze_candidate_map.md" in common
     assert "12_service_boundary_decision_record.md" in common
     assert "13_ae_agent_orchestration_contract.md" in common
     assert "14_cx_ae_retrieval_context_package_contract.md" in common
+    assert "15_generation_routing_boundary_reconciliation.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -233,6 +237,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "12_service_boundary_decision_record.md" in inventory
     assert "13_ae_agent_orchestration_contract.md" in inventory
     assert "14_cx_ae_retrieval_context_package_contract.md" in inventory
+    assert "15_generation_routing_boundary_reconciliation.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -257,7 +262,10 @@ def test_two_week_mvp_capability_map_distills_source_into_service_owners() -> No
 
     assert "Browser -> nex-ae-web -> nex-ae-api -> nex-cx -> nex-mo" in mvp_map
     assert "nex-ae-api`" in mvp_map
-    assert "source context and retrieval package ownership in `nex-cx`" in mvp_map
+    assert "route document-grounded generation through `nex-cx`" in mvp_map
+    assert "Direct `nex-ae-api` to `nex-mo` generation requires a later explicit policy" in (
+        mvp_map
+    )
 
 
 def test_two_week_mvp_map_preserves_core_retrieval_generation_and_ops_choices() -> None:
@@ -332,7 +340,9 @@ def test_service_boundary_decision_record_freezes_generation_ownership() -> None
     assert "`nex-ae-api` owns user intent" in decision_record
     assert "`nex-mo` owns generation provider execution" in decision_record
     assert "retrieval context package, not a broad structured draft framework" in (decision_record)
-    assert "AE may call MO generation" in decision_record
+    assert "Direct `nex-ae-api` to `nex-mo` generation is not the default MVP route" in (
+        decision_record
+    )
     assert "generated artifact metadata" in decision_record
 
 
@@ -380,8 +390,9 @@ def test_ae_agent_orchestration_contract_separates_cx_mo_and_ae_ownership() -> N
     assert "`nex-cx` owns retrieval context packages" in contract
     assert "`nex-mo` owns provider execution" in contract
     assert "User-facing generation does not make CX the final answer owner" in contract
-    assert "AE -> CX retrieval package -> AE template/prompt package -> MO generation" in contract
-    assert "CX generation API compatibility" in contract
+    assert "AE -> CX retrieval package -> AE template/output policy" in contract
+    assert "CX generation API -> MO generation" in contract
+    assert "CX-mediated generation routing" in contract
     assert "AE remains the orchestrator" in contract
 
 
@@ -390,9 +401,11 @@ def test_ae_agent_orchestration_contract_tracks_packages_jobs_and_guardrails() -
 
     assert "Agent Request Package" in contract
     assert "Retrieval Context Package" in contract
-    assert "Prompt Runtime Package" in contract
+    assert "Generation Policy Package" in contract
     assert "Agent Result Package" in contract
     assert "`INTENT_DETECTED`" in contract
+    assert "`PROMPT_POLICY_PACKAGED`" in contract
+    assert "`CX_GENERATION_REQUESTED`" in contract
     assert "`GENERATION_RUNNING`" in contract
     assert "These are `current_stage` values, not `job_status` enum values" in contract
     assert "No direct provider URL" in contract
@@ -411,8 +424,9 @@ def test_cx_ae_retrieval_context_contract_freezes_call_direction() -> None:
     assert "`nex-mo`" in contract
     assert "AE requests retrieval from CX" in contract
     assert "CX returns evidence, permission, scoring, and confidence metadata to AE" in contract
-    assert "AE calls MO for generation by default" in contract
-    assert "Compatibility generation facade" in contract
+    assert "AE calls CX for document-grounded generation by default" in contract
+    assert "CX calls MO stable API for provider execution" in contract
+    assert "Direct AE-to-MO generation requires a later explicit policy" in contract
 
 
 def test_cx_ae_retrieval_context_contract_defines_package_fields() -> None:
@@ -438,10 +452,34 @@ def test_cx_ae_retrieval_context_contract_handles_no_answer_and_permissions() ->
     assert "`PARTIAL`" in contract
     assert "`FAILED`" in contract
     assert "CX applies permission filtering before scoring output is returned" in contract
-    assert "AE does not call MO generation for `NO_ANSWER`" in contract
+    assert "AE does not call CX or MO generation for `NO_ANSWER`" in contract
     assert "no_answer_reason" in contract
     assert "filtered_document_count" in contract
     assert "filtered_chunk_count" in contract
+
+
+def test_generation_routing_reconciliation_freezes_cx_mediated_document_generation() -> None:
+    routing = _read("15_generation_routing_boundary_reconciliation.md")
+
+    assert "Generation Routing Boundary Reconciliation" in routing
+    assert "`nex-ae-api` requests generation through `nex-cx`" in routing
+    assert "`nex-cx` calls `nex-mo` stable generation API" in routing
+    assert "AE document-generation request targets CX, not MO" in routing
+    assert "No AE direct provider call for document generation" in routing
+    assert "No raw provider URL" in routing
+
+
+def test_generation_routing_reconciliation_keeps_ae_cx_mo_ownership_separate() -> None:
+    routing = _read("15_generation_routing_boundary_reconciliation.md")
+
+    assert "`execution_mode`" in routing
+    assert "Intent-analysis prompt policy" in routing
+    assert "Provider-facing prompt package" in routing
+    assert "Generation provider request" in routing
+    assert "Structured draft validation" in routing
+    assert "Artifact rendering and links" in routing
+    assert "General Answer Or Intent Analysis" in routing
+    assert "requires a later explicit policy" in routing
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:

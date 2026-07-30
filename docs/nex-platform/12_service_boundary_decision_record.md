@@ -40,7 +40,7 @@ to freeze the first platform spine before writing service SRS documents.
 | Service ownership | Each service owns its database, write model, and authoritative records. |
 | Cross-service access | Services communicate through explicit APIs and signed service claims, not shared tables. |
 | Model access | Provider runtimes are reached through `nex-mo` stable APIs, not direct provider URLs. |
-| Retrieval before generation | `nex-cx` produces retrieval context; `nex-ae-api` composes prompt/template/final response; `nex-mo` executes provider calls. |
+| Retrieval before generation | `nex-cx` produces retrieval context; `nex-ae-api` owns user intent/template/final response; `nex-cx` mediates document-grounded generation before `nex-mo` executes provider calls. |
 | Admin visibility | `nex-ag` reads health, readiness, metrics, logs, audit, and policy status through service APIs. |
 | Auth authority | `nex-oa` is NeX Open Auth, not operations administration; it owns identity and service-auth trust decisions. |
 
@@ -63,8 +63,8 @@ to freeze the first platform spine before writing service SRS documents.
 | Service authentication | Service -> `nex-oa` service-token/JWKS path -> target service | Every service validates explicit service claims. |
 | Upload and ingestion | Browser -> AE -> `nex-cx` -> `nex-mo` embedding API | AE owns workspace UX; CX owns content lifecycle; MO owns model execution. |
 | Search | Browser -> AE -> `nex-cx` search -> `nex-mo` embedding/reranker APIs | CX owns retrieval and evidence package. |
-| Direct generation | Browser -> AE -> `nex-cx` retrieval package -> AE prompt/template package -> `nex-mo` generation API -> AE artifact | AE owns user intent and final composition; CX does not own final answer UX. |
-| Summary | Browser -> AE -> `nex-cx` document/evidence package -> AE prompt package -> `nex-mo` generation API | Summary is generation with a different prompt/template mode. |
+| Direct generation | Browser -> AE -> `nex-cx` retrieval package -> AE generation policy/template -> `nex-cx` generation API -> `nex-mo` generation API -> AE artifact | AE owns user intent and final composition; CX owns document-grounded generation execution record and evidence lineage. |
+| Summary | Browser -> AE -> `nex-cx` document/evidence package -> AE summary policy -> `nex-cx` generation API -> `nex-mo` generation API | Summary is generation with a different prompt/template mode. |
 | Generated artifact download | Browser -> AE artifact API | AE owns generated artifact metadata; CX stores generated output only if explicitly re-ingested as source content. |
 | Operations dashboard | `nex-ag` -> service `/health`, `/ready`, `/version`, admin APIs | AG observes and governs through service APIs; it does not read service databases. |
 
@@ -77,7 +77,8 @@ to freeze the first platform spine before writing service SRS documents.
 | Uploaded source asset and extracted artifact | `nex-cx` | AE, AG | Only CX writes after AE upload handoff. |
 | Chunk, BM25 term, vector, graph edge | `nex-cx` | AE, AG | Only CX writes; MO returns vectors/scores but does not store corpus indexes. |
 | Retrieval context package and no-answer metadata | `nex-cx` | AE | CX writes package evidence; AE can persist run linkage. |
-| Prompt package, generation run, answer, artifact metadata | `nex-ae-api` | AE web, AG | AE writes user-facing generation records and artifacts. |
+| Provider-facing prompt package and document-grounded generation execution record | `nex-cx` | AE, AG | CX connects evidence, prompt package, MO request metadata, structured draft, and citation lineage. |
+| User-facing generation request, answer presentation, and artifact metadata | `nex-ae-api` | AE web, AG | AE writes chat/workspace records, final formatting, and artifact links. |
 | Provider route, model alias, provider metric | `nex-mo` | CX, AE, AG | Only MO writes provider registry and runtime telemetry. |
 | Admin policy setting and audit event | `nex-ag` plus service-local emitters | Administrators and operators | AG owns governance view; each service emits local audit/log events. |
 
@@ -90,20 +91,22 @@ split it more deliberately.
 Freeze candidate:
 
 - `nex-cx` owns retrieval context, evidence quality, citation anchors,
-  permission filtering, source context expansion, and no-answer metadata.
+  permission filtering, source context expansion, no-answer metadata,
+  provider-facing prompt package, and document-grounded generation execution
+  record.
 - `nex-ae-api` owns user intent, explicit execution mode, prompt contract,
-  template version, final answer formatting, generated artifact metadata, and
-  user-visible generation history.
+  template choice, user-facing system prompt policy, final answer formatting,
+  generated artifact metadata, and user-visible generation history.
 - `nex-mo` owns generation provider execution, provider runtime metadata,
   timeout/cancel propagation, usage metadata, and model capability aliases.
 
 Consequence:
 
-- A `nex-cx` endpoint named `/api/v1/generations` should not become the default
-  MVP owner for final user-facing generation.
-- If `nex-cx` exposes generation-related APIs in the first MVP, they should be
-  limited to retrieval-grounding preparation or retained as compatibility
-  aliases until the AE/CX contract is finalized.
+- A `nex-cx` endpoint named `/api/v1/generations` can be the default MVP route
+  for document-grounded generation, but it must not own final chat state,
+  artifact links, or user-facing formatting.
+- Direct `nex-ae-api` to `nex-mo` generation is not the default MVP route. It
+  requires a later explicit policy and contract.
 - The first frozen contract between CX and AE should be the retrieval context package, not a broad structured draft framework.
 
 ## Permission Boundary Decision
@@ -144,8 +147,8 @@ Consequence:
 | Conflict | Handling |
 | --- | --- |
 | `NP-SRC-07` file name says OA operations/administration. | Use only identity/auth/service-auth content for OA; move operations administration concerns to AG. |
-| `NP-SRC-09` includes CX generation, prompt, structured draft, and artifact areas. | Keep CX retrieval/evidence/content lifecycle; move user-facing prompt/template/final answer/artifact ownership to AE. |
-| `NP-SRC-11` contains language that AE should not call MO for document generation. | For the platform split, AE may call MO generation through a stable service-authenticated generation provider contract after retrieving context from CX. |
+| `NP-SRC-09` includes CX generation, prompt, structured draft, and artifact areas. | Keep CX retrieval/evidence/content lifecycle and document-grounded generation execution record; keep final user-facing chat/artifact ownership in AE. |
+| `NP-SRC-11` contains language that AE should not call MO for document generation. | Reconciled in [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md): AE calls CX for document-grounded generation, and CX calls MO stable API. |
 | `NP-SRC-08` contains service lifecycle and host control scope. | Keep AG observation/readiness/audit in MVP; defer host start/stop/restart control unless operational launch requires it. |
 | Full SRS and 2-week MVP scope differ. | Use `NP-SRC-13` and this boundary record as the first scope gate; use full SRS only as completeness cross-check. |
 
@@ -157,7 +160,7 @@ Every service-specific SRS should derive tests for:
 - AG obtains status through APIs rather than direct database access.
 - AE search/generation requests carry OA claims to CX.
 - CX applies permission filtering before returning evidence.
-- AE generation uses a CX retrieval context package and an MO provider alias.
+- AE document generation uses a CX retrieval context package and a CX generation API before MO provider execution.
 - MO accepts provider requests by alias/capability, not by raw provider URL.
 - OA service-token scopes distinguish `cx:search`, `cx:ingest`,
   `mo:embedding`, `mo:reranking`, `mo:generation`, and admin read/write scopes.
@@ -169,6 +172,6 @@ This record should feed:
 
 - NeX-Platform MVP SRS v0.1 service owner sections.
 - CX-to-AE retrieval context package contract.
-- AE-to-MO generation provider contract.
+- CX-to-MO generation provider contract.
 - OA claim and service scope catalog.
 - AG read-only operations dashboard scope.

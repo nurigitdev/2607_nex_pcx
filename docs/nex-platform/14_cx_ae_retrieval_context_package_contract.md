@@ -29,8 +29,8 @@ or decline unsupported answers in a reproducible way?
 | Intent/mode decision | `nex-ae-api` | Internal AE policy | Execution mode | AE API owns intent classification and explicit mode override. |
 | Retrieval planning | `nex-ae-api` | `nex-cx` | Retrieval context request | AE asks CX for corpus-aware evidence, not for final user-facing generation ownership. |
 | Retrieval response | `nex-cx` | `nex-ae-api` | Retrieval context package | CX returns ranked evidence, source anchors, permission snapshot, scores, and no-answer metadata. |
-| Grounded generation | `nex-ae-api` | `nex-mo` | Prompt runtime package | AE builds template/system prompt and calls MO generation by capability alias. |
-| Compatibility generation facade | `nex-ae-api` | `nex-cx` | Optional CX generation helper | Allowed only as transitional compatibility; CX must still preserve AE prompt/template ownership and MO provider execution. |
+| Grounded generation | `nex-ae-api` | `nex-cx` | Generation request package | AE sends template/output policy and selected evidence; CX builds provider-facing prompt package and calls MO. |
+| Provider execution | `nex-cx` | `nex-mo` | MO generation request | CX calls MO stable API by capability alias; AE does not call MO directly for document generation. |
 | Workspace response | `nex-ae-api` | `nex-ae-web` | Agent result package | AE persists chat message, quality metadata, artifact links, and lineage. |
 
 The preferred MVP route is:
@@ -40,35 +40,28 @@ nex-ae-web
 -> nex-ae-api
 -> nex-cx retrieval context package
 -> nex-ae-api prompt/template/system prompt package
+-> nex-cx generation request
 -> nex-mo generation provider
+-> nex-cx generation record
 -> nex-ae-api answer/artifact/chat response
 -> nex-ae-web
 ```
 
-The no-document route is:
+The no-document route is policy-controlled. The MVP should prefer:
 
 ```text
 nex-ae-web
 -> nex-ae-api
 -> nex-ae-api system prompt package
+-> nex-cx general-generation facade
 -> nex-mo generation provider
 -> nex-ae-api chat response
 -> nex-ae-web
 ```
 
-If an implementation keeps a CX generation endpoint for compatibility, it must
-be documented as:
-
-```text
-nex-ae-api
--> nex-cx compatibility generation facade
--> nex-mo generation provider
--> nex-cx grounding metadata
--> nex-ae-api final answer/artifact ownership
-```
-
-That compatibility route must not make CX the owner of chat state, prompt
-template selection, final user-facing formatting, or generated artifact links.
+Direct AE-to-MO generation requires a later explicit policy. CX-mediated routing
+must not make CX the owner of chat state, template selection, final user-facing
+formatting, or generated artifact links.
 
 ## Retrieval Context Request
 
@@ -176,20 +169,20 @@ AE receives the retrieval context package and then decides the next call:
 | AE Decision | Required Prior CX Package? | Next Receiver | Notes |
 | --- | --- | --- | --- |
 | Show search results only | Yes | `nex-ae-web` | AE formats evidence list and source drilldown. |
-| Grounded answer | Yes | `nex-mo` | AE builds prompt runtime package with citations and package hash. |
-| Document generation | Yes when source-grounded | `nex-mo` | AE adds selected template, system prompt, output contract, and package hash. |
-| General answer | No | `nex-mo` | AE builds system prompt without CX evidence. |
+| Grounded answer | Yes | `nex-cx` generation API | AE sends generation policy and package hash; CX calls MO. |
+| Document generation | Yes when source-grounded | `nex-cx` generation API | AE adds selected template, output contract, and package hash; CX calls MO. |
+| General answer | No | `nex-cx` general-generation facade by default | Direct AE-to-MO requires a later policy. |
 | No-answer response | Yes | `nex-ae-web` | AE returns no-answer/low-confidence response without generation unless explicitly overridden. |
-| Compatibility CX generation | Yes | `nex-cx` facade | Transitional only; CX still should call MO for provider execution and return control to AE. |
+| Provider execution | Yes for generation | `nex-mo` from CX | CX calls MO stable API and returns control to AE. |
 
 Direction rule:
 
 - AE requests retrieval from CX.
 - CX returns evidence, permission, scoring, and confidence metadata to AE.
 - AE owns prompt/template/system prompt assembly.
-- AE calls MO for generation by default.
-- AE may call a CX generation facade only when the chosen platform build
-  explicitly keeps that compatibility route.
+- AE calls CX for document-grounded generation by default.
+- CX calls MO stable API for provider execution.
+- Direct AE-to-MO generation requires a later explicit policy.
 - AE returns chat response and artifact links to web users.
 
 ## Contract Tests To Derive
@@ -204,17 +197,21 @@ Direction rule:
 - Evidence items include `chunk_id`, `chunk_policy_id`, `source_anchor`,
   `citation_label`, `scores`, and `permission_result`.
 - AE persists `retrieval_package_id` and `package_hash` in generation history.
-- AE does not call MO generation for `NO_ANSWER` unless the user explicitly
+- AE does not call CX or MO generation for `NO_ANSWER` unless the user explicitly
   requests ungrounded/general answer mode.
 - AE never sends raw provider URL, raw auth token, or direct CX database fields
   in the retrieval request.
+- AE does not call MO directly for document-grounded generation.
 
 ## Next Inputs
 
 This contract should feed:
 
 - AE prompt runtime package contract.
-- MO generation provider request/response contract.
+- CX-to-MO generation provider request/response contract.
 - CX search API skeleton.
 - OA claim and service scope catalog.
 - MVP SRS v0.1 retrieval/generation acceptance criteria.
+
+Generation routing is reconciled in
+[Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md).

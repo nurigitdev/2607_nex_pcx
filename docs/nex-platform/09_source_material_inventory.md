@@ -59,6 +59,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-12` | v2.0 communication/customer timeline scope can pull the MVP away from document intelligence. | Keep as roadmap/deferred unless it reveals a required extension point. |
 | `NP-SRC-10` | AE workspace material includes broad future agent capability. | Freeze bounded MVP agent orchestration in [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md); defer autonomous multi-step domain agents. |
 | `NP-SRC-09` | CX material includes broad search, generation, structured draft, and artifact scope. | Freeze the CX-to-AE retrieval/evidence package in [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md); keep final user-facing generation orchestration in AE. |
+| `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Source documents state that AE should not call MO directly for document generation. | Reconcile direct-call wording in [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md): AE orchestrates, CX mediates document-grounded generation, MO executes providers. |
 
 ## Next Review Sequence
 
@@ -67,6 +68,7 @@ decisions rather than copying large source material wholesale.
 3. Completed: Map `NP-SRC-07` through `NP-SRC-11` to the user-confirmed service boundaries.
 4. Completed: Freeze bounded `nex-ae-api` agent orchestration from `NP-SRC-10`.
 5. Completed: Freeze CX-to-AE retrieval context package direction from `NP-SRC-09`.
-6. Use `NP-SRC-15` to settle development environment and directory assumptions.
-7. Use `NP-SRC-01` as a final cross-check for missing requirements.
-8. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+6. Completed: Reconcile document-grounded generation routing through CX before MO.
+7. Use `NP-SRC-15` to settle development environment and directory assumptions.
+8. Use `NP-SRC-01` as a final cross-check for missing requirements.
+9. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

@@ -25,6 +25,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 13. [Service Boundary Decision Record](12_service_boundary_decision_record.md)
 14. [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md)
 15. [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md)
+16. [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md)
 
 ## Platform Services
 
@@ -63,6 +64,8 @@ intent, retrieval, prompt/template packaging, generation calls, artifact links,
 and chat workspace responses. Slice 424 froze the first CX-to-AE retrieval
 context package direction: AE requests corpus-grounded evidence from CX, CX
 returns permission-filtered evidence/no-answer metadata, and AE owns the next
-prompt/template/generation hand-off.
+prompt/template/generation hand-off. Slice 425 reconciled generation routing so
+document-grounded generation is AE-orchestrated but CX-mediated before MO
+provider execution.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

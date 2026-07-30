@@ -54,8 +54,8 @@ user-confirmed NeX-Platform boundary is slightly different:
 | --- | --- | --- |
 | Browser calls | Browser calls NeX-AE API only. | Keep. Browser should call `nex-ae-web`/`nex-ae-api`, not `nex-cx` or `nex-mo` directly. |
 | Search orchestration | `NeX-CX` owns search. | Keep for retrieval execution and evidence packaging. |
-| Generation orchestration | `NeX-CX` owns generation orchestration. | Boundary Review: move user intent, prompt composition, template choice, and final formatting to `nex-ae-api`; keep source context and retrieval package ownership in `nex-cx`; keep provider execution in `nex-mo`. |
-| Provider calls | `NeX-CX` calls `NeX-MO`. | Keep for retrieval-time embedding/reranking. `nex-ae-api` may call `nex-mo` for direct generation only through an explicit generation-provider contract. |
+| Generation orchestration | `NeX-CX` owns generation orchestration. | Reconciled: keep user intent, template choice, final formatting, chat state, and artifact links in `nex-ae-api`; route document-grounded generation through `nex-cx`; keep provider execution in `nex-mo`. |
+| Provider calls | `NeX-CX` calls `NeX-MO`. | Keep for retrieval-time embedding/reranking and document-grounded generation. Direct `nex-ae-api` to `nex-mo` generation requires a later explicit policy. |
 | Admin operations | `NeX-AG` shows service/license state. | Keep, with later governance expansion. |
 | Auth | `NeX-OA` owns user auth and service account token. | Keep and rename mentally as NeX Open Auth, not operations administration. |
 
@@ -110,7 +110,7 @@ Browser -> nex-ae-web -> nex-ae-api -> nex-cx -> nex-mo
 | Use Qwen3 embedding 2560, Qwen3 reranker, and Qwen LLM as default provider aliases. | MVP Core | Matches PCX direction and source SRS, but implementation should call aliases. |
 | Treat MeCab BM25 as preferred Korean tokenizer, with fallback if installation blocks MVP. | MVP Stretch | The tokenizer improves Korean retrieval, but dependency/runtime readiness can block the 2-week schedule. |
 | Treat HWP/HWPX Kordoc MCP as stretch unless runtime is ready before CX extraction work starts. | MVP Stretch | Valuable for Korean enterprise documents, but external process integration is a schedule risk. |
-| Move end-user generation orchestration to `nex-ae-api`. | Boundary Review | Current platform boundary says AE API acts as the agent/orchestrator; CX should expose retrieval/evidence and content lifecycle. |
+| Keep document-grounded generation CX-mediated. | MVP Core | AE API acts as the agent/orchestrator and final UX owner, but CX connects evidence, prompt package, generation record, and MO provider usage. |
 | Defer GraphDB. | Deferred | Source explicitly excludes GraphDB from the barebone. |
 | Defer provider failover and ensemble. | Deferred | Useful later, but the MVP needs one active provider per capability. |
 | Defer service lifecycle UI and host agent. | Deferred | AG dashboard is MVP; start/stop/restart control can follow after the service spine proves stable. |

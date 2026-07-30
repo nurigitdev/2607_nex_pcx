@@ -17,9 +17,10 @@ packages until service boundaries have survived implementation.
 | Auth claims | User id, groups, roles, scopes, service principal, trust boundary. | All services, `nex-oa` |
 | Service identity | Service-to-service authentication and API key metadata. | All backend services |
 | Health/readiness | Liveness, dependency readiness, degraded reason, last check time. | `nex-mo`, `nex-ag`, all services |
-| Provider contract | Embedding, reranker, generation request/response and runtime metadata. | `nex-mo`, `nex-ae-api` |
+| Provider contract | Embedding, reranker, generation request/response and runtime metadata. | `nex-mo`, `nex-cx` |
 | Retrieval package | Query, profiles, chunks, scores, source anchors, no-answer evidence. | `nex-cx`, `nex-ae-api` |
-| Agent orchestration package | Intent, execution mode, prompt runtime package, retrieval package reference, job stage, and result lineage. | `nex-ae-api`, `nex-ae-web` |
+| Agent orchestration package | Intent, execution mode, generation policy package, retrieval package reference, job stage, and result lineage. | `nex-ae-api`, `nex-ae-web` |
+| Generation routing contract | AE-owned user intent, CX-mediated document generation, MO provider execution, and returned usage lineage. | `nex-ae-api`, `nex-cx`, `nex-mo` |
 | Artifact contract | Generated document metadata, preview, export, download link, lineage. | `nex-ae-api`, `nex-ae-web` |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
@@ -51,6 +52,8 @@ packages until service boundaries have survived implementation.
   [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md).
 - Retrieval context package schemas, starting from
   [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md).
+- Generation routing and mediation schemas, starting from
+  [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.
