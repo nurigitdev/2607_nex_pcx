@@ -166,3 +166,6 @@ This decision supersedes the direct `nex-ae-api` -> `nex-mo` default route in
 Slice 423 and Slice 424. Those documents should keep AE as the agent owner but
 route document-grounded generation and LLM-assisted intent classification
 through CX unless a later decision explicitly changes the policy.
+
+The first AE-to-CX generation request package is defined in
+[AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md).

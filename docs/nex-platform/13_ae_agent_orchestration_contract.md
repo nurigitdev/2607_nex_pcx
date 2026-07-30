@@ -202,7 +202,7 @@ These are `current_stage` values, not `job_status` enum values.
 This contract should feed:
 
 - CX-to-AE retrieval context package schema.
-- AE generation policy package and CX generation request schema.
+- AE-to-CX generation request package schema.
 - AE chat workspace SRS requirements.
 - CX-to-MO generation provider contract.
 - AG operational event and job-stage display rules.
@@ -211,3 +211,5 @@ The CX-to-AE retrieval context package direction is detailed in
 [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md).
 Generation routing is reconciled in
 [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md).
+The first AE-to-CX generation request package is defined in
+[AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md).

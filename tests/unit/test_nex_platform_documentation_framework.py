@@ -21,6 +21,7 @@ EXPECTED_DOCS = [
     "13_ae_agent_orchestration_contract.md",
     "14_cx_ae_retrieval_context_package_contract.md",
     "15_generation_routing_boundary_reconciliation.md",
+    "16_ae_cx_generation_request_package_contract.md",
 ]
 
 
@@ -151,6 +152,7 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "13_ae_agent_orchestration_contract.md" in common
     assert "14_cx_ae_retrieval_context_package_contract.md" in common
     assert "15_generation_routing_boundary_reconciliation.md" in common
+    assert "16_ae_cx_generation_request_package_contract.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -213,6 +215,8 @@ def test_common_contract_freeze_map_keeps_unsettled_contracts_out_of_freeze_now(
     assert "Structured draft contract" in freeze_map
     assert "Artifact rendering contract" in freeze_map
     assert "Generation ownership" in freeze_map
+    assert "AE-to-CX generation request package" in freeze_map
+    assert "16_ae_cx_generation_request_package_contract.md" in freeze_map
     assert "Statement coverage target differs" in freeze_map
     assert "Freeze contracts first" in freeze_map
 
@@ -238,6 +242,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "13_ae_agent_orchestration_contract.md" in inventory
     assert "14_cx_ae_retrieval_context_package_contract.md" in inventory
     assert "15_generation_routing_boundary_reconciliation.md" in inventory
+    assert "16_ae_cx_generation_request_package_contract.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -343,6 +348,7 @@ def test_service_boundary_decision_record_freezes_generation_ownership() -> None
     assert "Direct `nex-ae-api` to `nex-mo` generation is not the default MVP route" in (
         decision_record
     )
+    assert "AE-to-CX generation request package" in decision_record
     assert "generated artifact metadata" in decision_record
 
 
@@ -480,6 +486,52 @@ def test_generation_routing_reconciliation_keeps_ae_cx_mo_ownership_separate() -
     assert "Artifact rendering and links" in routing
     assert "General Answer Or Intent Analysis" in routing
     assert "requires a later explicit policy" in routing
+    assert "16_ae_cx_generation_request_package_contract.md" in routing
+
+
+def test_ae_cx_generation_request_contract_defines_request_envelope_and_owners() -> None:
+    contract = _read("16_ae_cx_generation_request_package_contract.md")
+
+    assert "AE-to-CX Generation Request Package Contract" in contract
+    assert "`POST /api/v1/generations`" in contract
+    assert "`nex-ae-api`" in contract
+    assert "`nex-cx`" in contract
+    assert "Generation Request Package, not a raw provider prompt" in contract
+    assert "`request_schema_version`" in contract
+    assert "`chat_document_id`" in contract
+    assert "`interaction_id`" in contract
+    assert "`actor_claims_ref`" in contract
+    assert "`service_claims_ref`" in contract
+
+
+def test_ae_cx_generation_request_contract_tracks_generation_policy_fields() -> None:
+    contract = _read("16_ae_cx_generation_request_package_contract.md")
+
+    assert "`retrieval_package_ref`" in contract
+    assert "`selected_evidence_ids`" in contract
+    assert "`context_scope`" in contract
+    assert "`template_ref`" in contract
+    assert "`prompt_contract_ref`" in contract
+    assert "`output_contract`" in contract
+    assert "`generation_parameters`" in contract
+    assert "`quality_policy`" in contract
+    assert "`client_package_hash`" in contract
+    assert "`provider_prompt_package_hash`" in contract
+
+
+def test_ae_cx_generation_request_contract_freezes_validation_and_replay_rules() -> None:
+    contract = _read("16_ae_cx_generation_request_package_contract.md")
+
+    assert "`selected_evidence_ids` must be empty or a subset" in contract
+    assert "CX rejects stale or unknown `retrieval_package_id`" in contract
+    assert "`NO_ANSWER` retrieval packages cannot be used" in contract
+    assert "AE must not send provider URL, port, raw vLLM options, or model file paths" in (
+        contract
+    )
+    assert "Same key plus same `client_package_hash` returns the same `generation_id`" in (contract)
+    assert "`cx.no_answer_generation_blocked`" in contract
+    assert "`cx.provider_runtime_field_forbidden`" in contract
+    assert "`application/problem+json`" in contract
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:

@@ -120,6 +120,7 @@ GET  /admin/v1/workers
 | DB pool defaults | Source values are examples, not production tuning. | Freeze setting names, not numeric defaults. |
 | Service lifecycle drain APIs | Useful for production readiness, but host control is outside the first MVP. | Freeze `/health`, `/ready`, `/version`; make drain hook a later hardening contract. |
 | Evidence contract | Retrieval/generation needs stable evidence IDs, source locations, permission snapshots, and citation labels. | Freeze minimal retrieval package after CX/AE generation boundary review. |
+| AE-to-CX generation request package | Generation ownership is now reconciled, but the final JSON Schema file is not generated yet. | Use [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md) as the first schema seed. |
 | Structured draft contract | Needed for document generation and artifact rendering. | Freeze after template, artifact, and AE/CX generation ownership are settled. |
 | Artifact rendering contract | Valuable for generated documents. | Freeze MD export first; defer DOCX/PPTX/PDF details. |
 | Channel request context | Helpful for future web/app/voice channels. | Keep optional fields; do not design channel-specific data models yet. |

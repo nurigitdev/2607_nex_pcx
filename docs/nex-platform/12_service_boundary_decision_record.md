@@ -136,7 +136,7 @@ Consequence:
 | Candidate | Next Decision Needed |
 | --- | --- |
 | CX retrieval context package schema | Define minimum fields for chunks, scores, source anchors, permission snapshot, no-answer status, and package hash. |
-| AE prompt package schema | Define prompt version, template version, execution mode, context package reference, and safety/formatting metadata. |
+| AE-to-CX generation request package | Define prompt version, template version, execution mode, retrieval package reference, output contract, quality policy, and bounded generation parameters. |
 | AE artifact schema | Define Markdown-first artifact metadata, preview, download, lineage, and optional later DOCX/PDF render records. |
 | MO provider capability aliases | Define stable capability names for embedding, reranking, generation, and future speech providers. |
 | AG policy write surface | Decide which policy changes AG can write in MVP versus read-only observe. |
@@ -172,6 +172,7 @@ This record should feed:
 
 - NeX-Platform MVP SRS v0.1 service owner sections.
 - CX-to-AE retrieval context package contract.
+- AE-to-CX generation request package contract.
 - CX-to-MO generation provider contract.
 - OA claim and service scope catalog.
 - AG read-only operations dashboard scope.

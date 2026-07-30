@@ -207,7 +207,7 @@ Direction rule:
 
 This contract should feed:
 
-- AE prompt runtime package contract.
+- AE-to-CX generation request package contract.
 - CX-to-MO generation provider request/response contract.
 - CX search API skeleton.
 - OA claim and service scope catalog.
@@ -215,3 +215,5 @@ This contract should feed:
 
 Generation routing is reconciled in
 [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md).
+The AE-to-CX generation request package is defined in
+[AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md).
