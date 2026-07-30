@@ -21,6 +21,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 9. [Source Document Review Matrix](08_source_document_review_matrix.md)
 10. [Source Material Inventory](09_source_material_inventory.md)
 11. [2-Week MVP Capability Map](10_2week_mvp_capability_map.md)
+12. [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md)
 
 ## Platform Services
 
@@ -51,5 +52,6 @@ This framework is designed to absorb four source streams:
 Slice 418 created the skeleton and review method. Slice 419 registered the
 uploaded source material inventory and seeded the review matrix. Slice 420
 distilled the 2-week barebone SRS into a service-owned MVP capability map.
-Later slices should fill the skeleton with source-backed decisions instead of
-copying large documents wholesale.
+Slice 421 distilled canonical terminology, state, API, error, job, logging, and
+trace contracts into freeze candidates. Later slices should fill the skeleton
+with source-backed decisions instead of copying large documents wholesale.

@@ -42,7 +42,8 @@ packages until service boundaries have survived implementation.
 
 ## Documentation To Add Later
 
-- JSON schema files for each shared contract.
+- JSON schema files for each shared contract, starting from
+  [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

@@ -45,7 +45,7 @@ decisions rather than copying large source material wholesale.
 | Priority | Documents | Reason |
 | --- | --- | --- |
 | P0 scope gate | `NP-SRC-13` | The reduced 2-week MVP document should keep the first NeX-Platform baseline small. Distilled in [2-Week MVP Capability Map](10_2week_mvp_capability_map.md). |
-| P1 MVP/contract | `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-04`, `NP-SRC-07`, `NP-SRC-08`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11`, `NP-SRC-15` | These define the minimum service spine, contracts, service responsibilities, and development setup. |
+| P1 MVP/contract | `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-04`, `NP-SRC-07`, `NP-SRC-08`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11`, `NP-SRC-15` | These define the minimum service spine, contracts, service responsibilities, and development setup. `NP-SRC-02` and `NP-SRC-03` are distilled in [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md). |
 | P2 reconcile | `NP-SRC-14` | Common functions must be reconciled after service ownership is fixed. |
 | P3 deferred hardening | `NP-SRC-01`, `NP-SRC-05`, `NP-SRC-06` | These are important but broad enough to bloat the first baseline if read too early. |
 | P4 roadmap | `NP-SRC-12` | v2.0 communication intelligence should remain a future extension unless a current MVP hook is required. |
@@ -61,7 +61,7 @@ decisions rather than copying large source material wholesale.
 ## Next Review Sequence
 
 1. Completed: Distill `NP-SRC-13` into a small MVP capability map.
-2. Reconcile `NP-SRC-02` and `NP-SRC-03` into common contract and foundation rules.
+2. Completed: Reconcile `NP-SRC-02` and `NP-SRC-03` into common contract and foundation rules.
 3. Map `NP-SRC-07` through `NP-SRC-11` to the user-confirmed service boundaries.
 4. Use `NP-SRC-15` to settle development environment and directory assumptions.
 5. Use `NP-SRC-01` as a final cross-check for missing requirements.

@@ -16,6 +16,7 @@ EXPECTED_DOCS = [
     "08_source_document_review_matrix.md",
     "09_source_material_inventory.md",
     "10_2week_mvp_capability_map.md",
+    "11_common_contract_freeze_candidate_map.md",
 ]
 
 
@@ -124,6 +125,7 @@ def test_review_matrix_registers_all_uploaded_source_materials() -> None:
     assert "Deferred v2.0 concept" in matrix
     assert "Use as the first scope filter" in matrix
     assert "10_2week_mvp_capability_map.md" in matrix
+    assert "11_common_contract_freeze_candidate_map.md" in matrix
     assert "Seeded" in matrix
     assert "Mock-first, live smoke as optional evidence" in matrix
 
@@ -137,6 +139,71 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "Provider contract" in common
     assert "Retrieval package" in common
     assert "Do not create a large shared utility package first" in common
+    assert "11_common_contract_freeze_candidate_map.md" in common
+
+
+def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
+    freeze_map = _read("11_common_contract_freeze_candidate_map.md")
+
+    assert "NP-SRC-02" in freeze_map
+    assert "NP-SRC-03" in freeze_map
+    assert "Freeze Now" in freeze_map
+    assert "Freeze Candidate" in freeze_map
+    assert "Conflict" in freeze_map
+    assert "/api/v1/..." in freeze_map
+    assert "/admin/v1/..." in freeze_map
+    assert "/health" in freeze_map
+    assert "/ready" in freeze_map
+    assert "/version" in freeze_map
+    assert "application/problem+json" in freeze_map
+    assert "Idempotency-Key" in freeze_map
+    assert "X-Request-ID" in freeze_map
+    assert "traceparent" in freeze_map
+    assert "cursor" in freeze_map
+    assert "next_cursor" in freeze_map
+
+
+def test_common_contract_freeze_map_separates_states_and_job_stage() -> None:
+    freeze_map = _read("11_common_contract_freeze_candidate_map.md")
+
+    assert "`lifecycle_state`" in freeze_map
+    assert "`health_status`" in freeze_map
+    assert "`job_status`" in freeze_map
+    assert "PENDING" in freeze_map
+    assert "CANCEL_REQUESTED" in freeze_map
+    assert "TIMEOUT" in freeze_map
+    assert "DETERMINATE" in freeze_map
+    assert "INDETERMINATE" in freeze_map
+    assert "STREAMING" in freeze_map
+    assert "DEGRADED` belongs to `health_status`, not `lifecycle_state`" in freeze_map
+    assert "current_stage`, not `job_status`" in freeze_map
+
+
+def test_common_contract_freeze_map_tracks_db_logging_and_security_contracts() -> None:
+    freeze_map = _read("11_common_contract_freeze_candidate_map.md")
+
+    assert "cross-service database access" in freeze_map
+    assert "Application log core fields" in freeze_map
+    assert "password" in freeze_map
+    assert "authorization" in freeze_map
+    assert "access_token" in freeze_map
+    assert "service_secret" in freeze_map
+    assert "Audit fields" in freeze_map
+    assert "Security log fields" in freeze_map
+    assert "raw tokens" in freeze_map
+
+
+def test_common_contract_freeze_map_keeps_unsettled_contracts_out_of_freeze_now() -> None:
+    freeze_map = _read("11_common_contract_freeze_candidate_map.md")
+
+    assert "OpenAPI/JSON Schema generation" in freeze_map
+    assert "Shared `nex_common` package" in freeze_map
+    assert "Evidence contract" in freeze_map
+    assert "Structured draft contract" in freeze_map
+    assert "Artifact rendering contract" in freeze_map
+    assert "Generation ownership" in freeze_map
+    assert "Statement coverage target differs" in freeze_map
+    assert "Freeze contracts first" in freeze_map
 
 
 def test_source_material_inventory_tracks_files_without_committing_raw_sources() -> None:
@@ -155,6 +222,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "nex-oa` as NeX Open Auth" in inventory
     assert "P0 scope gate" in inventory
     assert "10_2week_mvp_capability_map.md" in inventory
+    assert "11_common_contract_freeze_candidate_map.md" in inventory
     assert "P4 roadmap" in inventory
 
 
