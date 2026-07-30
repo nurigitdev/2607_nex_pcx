@@ -201,8 +201,10 @@ def test_remote_reranker_operations_status_defaults_to_dgx_target(
     assert status.status_code == 200
     assert captured["plan"].base_url == "http://192.168.20.243:9104"
     assert captured["plan"].ssh_target == "nexpcx@192.168.20.243"
+    assert captured["plan"].systemd_unit_name == "nex-pcx-reranker-provider.service"
     assert status.payload["app_runtime"]["status"] == "mock_selected"
     assert status.payload["provider"]["pid_file"].endswith("run/remote_reranker_provider_9104.pid")
+    assert status.payload["provider"]["systemd_unit_name"] == "nex-pcx-reranker-provider.service"
 
 
 @pytest.mark.parametrize(
@@ -308,6 +310,10 @@ def test_run_remote_reranker_operations_status_checks_ssh_health_and_smoke(
                 "file_pid=2437559\n"
                 "pid_file=run/remote_reranker_provider_9104.pid\n"
                 "log_file=logs/remote_reranker_provider_9104.log\n"
+                "systemd_unit=nex-pcx-reranker-provider.service\n"
+                "systemd_active=active\n"
+                "systemd_enabled=enabled\n"
+                "systemd_main_pid=2437559\n"
             )
         )
 
@@ -321,8 +327,11 @@ def test_run_remote_reranker_operations_status_checks_ssh_health_and_smoke(
     assert report.pid == "2437559"
     assert report.request_smoke_passed is True
     assert report.request_smoke_summary["provider_elapsed_ms"] == 11
+    assert report.command_observation.values["systemd_active"] == "active"
+    assert report.command_observation.values["systemd_enabled"] == "enabled"
     assert commands[0][:5] == ("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5")
     assert commands[0][5] == "nexpcx@192.168.20.243"
+    assert "systemctl --user is-active nex-pcx-reranker-provider.service" in commands[0][-1]
 
 
 def test_run_remote_reranker_operations_status_skips_smoke_on_health_mismatch(

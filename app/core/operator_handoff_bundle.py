@@ -14,6 +14,7 @@ DEFAULT_HANDOFF_EVIDENCE_PATHS = (
     "docs/production_provider_route_settings.md",
     "docs/production_remote_provider_startup_evidence.md",
     "docs/production_remote_provider_user_systemd_evidence.md",
+    "docs/production_remote_reranker_user_systemd_evidence.md",
     "docs/production_app_host_startup_evidence.md",
     "docs/production_operator_handoff_bundle_evidence.md",
     "docs/production_app_identity_validation_evidence.md",

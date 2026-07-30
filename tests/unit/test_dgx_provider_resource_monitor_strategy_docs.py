@@ -16,7 +16,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_dgx_provider_resource_monitor_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.61" in srs_text
+    assert "Software Requirements Specification v1.62" in srs_text
     assert "DGX provider resource monitor strategy" in srs_text
     assert "FR-087" in srs_text
     assert "FR-088" in srs_text
@@ -31,6 +31,8 @@ def test_srs_documents_dgx_provider_resource_monitor_strategy() -> None:
     assert "remote embedding provider" in srs_text
     assert "remote reranker provider" in srs_text
     assert "vLLM runtime" in srs_text
+    assert "nex-pcx-reranker-provider.service" in srs_text
+    assert "systemd --user" in srs_text
 
 
 def test_strategy_doc_defines_provider_resource_monitor_contract() -> None:

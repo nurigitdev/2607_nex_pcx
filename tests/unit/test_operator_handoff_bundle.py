@@ -89,6 +89,9 @@ def test_default_handoff_evidence_paths_include_production_evidence_docs() -> No
     assert "docs/production_remote_provider_user_systemd_evidence.md" in (
         DEFAULT_HANDOFF_EVIDENCE_PATHS
     )
+    assert "docs/production_remote_reranker_user_systemd_evidence.md" in (
+        DEFAULT_HANDOFF_EVIDENCE_PATHS
+    )
     assert "docs/production_app_host_startup_evidence.md" in DEFAULT_HANDOFF_EVIDENCE_PATHS
     assert "docs/production_operator_handoff_bundle_evidence.md" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)
     assert "docs/production_app_identity_validation_evidence.md" in (DEFAULT_HANDOFF_EVIDENCE_PATHS)

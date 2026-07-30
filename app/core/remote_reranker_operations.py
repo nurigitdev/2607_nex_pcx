@@ -30,6 +30,7 @@ DEFAULT_REMOTE_RERANKER_WORKDIR = "/home/nexpcx/2607_nex_pcx"
 DEFAULT_REMOTE_RERANKER_PORT = 9104
 DEFAULT_REMOTE_RERANKER_PROVIDER_HOST = "0.0.0.0"
 DEFAULT_REMOTE_RERANKER_PROVIDER_NAME = "qwen-reranker-primary"
+DEFAULT_REMOTE_RERANKER_SYSTEMD_UNIT_NAME = "nex-pcx-reranker-provider.service"
 DEFAULT_REMOTE_RERANKER_BACKEND = "qwen_reranker"
 DEFAULT_REMOTE_RERANKER_DEVICE = "cuda:0"
 DEFAULT_REMOTE_RERANKER_HEALTH_TIMEOUT_SECONDS = 5.0
@@ -63,6 +64,7 @@ class RemoteRerankerOperationsPlan:
     pid_file: str
     log_file: str
     process_pattern: str
+    systemd_unit_name: str
     remote_status_command: str
 
 
@@ -221,6 +223,7 @@ def build_remote_reranker_operations_plan(
         pid_file=pid_file,
         log_file=log_file,
         process_pattern=process_pattern,
+        systemd_unit_name=DEFAULT_REMOTE_RERANKER_SYSTEMD_UNIT_NAME,
         remote_status_command="",
     )
     return RemoteRerankerOperationsPlan(
@@ -368,6 +371,15 @@ def _run_remote_status_command(
 
 def _remote_status_command(plan: RemoteRerankerOperationsPlan) -> str:
     return _remote_prelude(plan) + (
+        "unit_active='unavailable'; unit_enabled='unavailable'; unit_main_pid=''; "
+        "if command -v systemctl >/dev/null 2>&1; then "
+        f"unit_active=$(systemctl --user is-active {shlex.quote(plan.systemd_unit_name)} "
+        "2>/dev/null || true); "
+        f"unit_enabled=$(systemctl --user is-enabled {shlex.quote(plan.systemd_unit_name)} "
+        "2>/dev/null || true); "
+        f"unit_main_pid=$(systemctl --user show {shlex.quote(plan.systemd_unit_name)} "
+        "-p MainPID --value 2>/dev/null || true); "
+        "fi; "
         f"pid=$(pgrep -f {shlex.quote(plan.process_pattern)} | head -n 1 || true); "
         f"file_pid=''; if [ -f {shlex.quote(plan.pid_file)} ]; then "
         f"file_pid=$(cat {shlex.quote(plan.pid_file)} 2>/dev/null || true); fi; "
@@ -379,7 +391,11 @@ def _remote_status_command(plan: RemoteRerankerOperationsPlan) -> str:
         "fi; "
         "printf 'file_pid=%s\\n' \"$file_pid\"; "
         f"printf 'pid_file=%s\\n' {shlex.quote(plan.pid_file)}; "
-        f"printf 'log_file=%s\\n' {shlex.quote(plan.log_file)}"
+        f"printf 'log_file=%s\\n' {shlex.quote(plan.log_file)}; "
+        f"printf '\\nsystemd_unit=%s\\n' {shlex.quote(plan.systemd_unit_name)}; "
+        "printf 'systemd_active=%s\\n' \"$unit_active\"; "
+        "printf 'systemd_enabled=%s\\n' \"$unit_enabled\"; "
+        "printf 'systemd_main_pid=%s\\n' \"$unit_main_pid\""
     )
 
 
@@ -674,6 +690,7 @@ def _provider_payload(plan: RemoteRerankerOperationsPlan) -> dict[str, Any]:
         "workdir": plan.workdir,
         "pid_file": f"{plan.workdir}/{plan.pid_file}",
         "log_file": f"{plan.workdir}/{plan.log_file}",
+        "systemd_unit_name": plan.systemd_unit_name,
     }
 
 

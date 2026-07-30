@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.61**
+**Software Requirements Specification v1.62**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.61
+문서 상태: Draft v1.62
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.61 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.62 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.5-122B-A10B-NVFP4 generation runtime |
-| 문서 버전 | v1.61 |
+| 문서 버전 | v1.62 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -86,6 +86,7 @@
 | 1.59 | 2026-07-29 | DGX-Spark unified-memory 환경을 고려해 provider/vLLM별 resident memory share와 GPU runtime memory 해석 기준을 운영 UI/API 요구사항에 보강 |
 | 1.60 | 2026-07-29 | DGX provider resource snapshot과 vLLM runtime metric snapshot을 한 번에 저장하는 bounded collection runner 운영 요구사항 보강 |
 | 1.61 | 2026-07-30 | DGX vLLM 기본 runtime을 Qwen3.5-122B-A10B-NVFP4로 정렬하고 기존 Qwen3.6 provider 이력과 신규 122B provider config를 분리하는 운영 요구사항 보강 |
+| 1.62 | 2026-07-30 | Remote reranker provider를 embedding provider와 동일한 `systemd --user` 운영 단위로 등록하고 health/request smoke evidence를 남기는 요구사항 보강 |
 
 # 목차
 
@@ -579,6 +580,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - DGX remote reranker Search Compare live E2E 검증은 target DB가 `reranked_vector_cosine` search profile seed를 포함하는 migration revision 이상인지 확인하고, query embedding provider route, reranker provider URL, search_log_id, candidate_count, reranked result score, source vector score/rank, source_query_runtime_metadata를 운영 증적으로 남겨야 한다.
 - remote reranker background lifecycle runner는 `start`, `status`, `stop`, `smoke` 동작을 제공하고, 이미 실행 중인 provider 중복 실행을 방지하며, PID file, log file, `/healthz`, `/v1/rerank` request smoke 결과를 JSON/Markdown evidence로 남길 수 있어야 한다.
 - Remote reranker operations status API/UI는 운영자가 web admin 화면에서 process running 여부, PID/log 경로, `/healthz` readiness, provider model/profile/backend/device 계약 일치 여부, 선택적 `/v1/rerank` request smoke 결과를 읽기 전용으로 확인할 수 있어야 한다. 또한 앱 runtime 설정의 `NEX_PCX_RERANKER_PROVIDER_MODE`, remote URL, timeout 값을 함께 표시하여 provider가 살아 있어도 Search Compare가 mock/runtime misconfigured 상태로 동작하는 상황을 구분할 수 있어야 한다.
+- Remote reranker provider는 DGX 운영 환경에서 embedding provider 3개와 동일하게 `systemd --user` 서비스로 등록할 수 있어야 한다. 기본 unit name은 `nex-pcx-reranker-provider.service`, 기본 포트는 `9104`이며, unit/env 생성 결과에는 DB secret을 포함하지 않고 model path, backend, profile, device 같은 provider-local 설정만 포함해야 한다.
+- Remote reranker user systemd 운영 증적은 `systemctl --user status`, `journalctl --user`, `/healthz`, `/v1/rerank` request smoke, user linger 상태를 함께 기록해야 하며, operations status API는 process 관측값과 함께 user systemd unit name, active/enabled/MainPID 관측값을 표시할 수 있어야 한다.
 
 - 검색 결과에는 rank, score/distance, 문서명, page/slide/sheet, heading_path, chunk preview, 피드백 버튼을 포함한다.
 
