@@ -15,6 +15,7 @@ EXPECTED_DOCS = [
     "07_pcx_lessons_learned_seed.md",
     "08_source_document_review_matrix.md",
     "09_source_material_inventory.md",
+    "10_2week_mvp_capability_map.md",
 ]
 
 
@@ -122,6 +123,8 @@ def test_review_matrix_registers_all_uploaded_source_materials() -> None:
     assert "Identity boundary review" in matrix
     assert "Deferred v2.0 concept" in matrix
     assert "Use as the first scope filter" in matrix
+    assert "10_2week_mvp_capability_map.md" in matrix
+    assert "Seeded" in matrix
     assert "Mock-first, live smoke as optional evidence" in matrix
 
 
@@ -151,7 +154,69 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "13_260724_NeX_Platform_2Week_Barebone_SRS_v1.1.md" in inventory
     assert "nex-oa` as NeX Open Auth" in inventory
     assert "P0 scope gate" in inventory
+    assert "10_2week_mvp_capability_map.md" in inventory
     assert "P4 roadmap" in inventory
+
+
+def test_two_week_mvp_capability_map_distills_source_into_service_owners() -> None:
+    mvp_map = _read("10_2week_mvp_capability_map.md")
+
+    assert "NP-SRC-13" in mvp_map
+    assert "MVP Core" in mvp_map
+    assert "MVP Stretch" in mvp_map
+    assert "Deferred" in mvp_map
+    assert "Boundary Review" in mvp_map
+
+    for service_name in (
+        "nex-oa",
+        "nex-ag",
+        "nex-ae-web",
+        "nex-ae-back",
+        "nex-cx",
+        "nex-mo",
+    ):
+        assert service_name in mvp_map
+
+    assert "Browser -> nex-ae-web -> nex-ae-back -> nex-cx -> nex-mo" in mvp_map
+    assert "nex-ae-back`" in mvp_map
+    assert "source context and retrieval package ownership in `nex-cx`" in mvp_map
+
+
+def test_two_week_mvp_map_preserves_core_retrieval_generation_and_ops_choices() -> None:
+    mvp_map = _read("10_2week_mvp_capability_map.md")
+
+    assert "heading_1000_100" in mvp_map
+    assert "prev_chunk_id" in mvp_map
+    assert "next_chunk_id" in mvp_map
+    assert "BM25" in mvp_map
+    assert "Qwen3 embedding 2560" in mvp_map
+    assert "Qwen3 reranker" in mvp_map
+    assert "Qwen LLM" in mvp_map
+    assert "5-service health/ready/version" in mvp_map
+    assert "Markdown artifact" in mvp_map
+
+
+def test_two_week_mvp_map_marks_risky_or_large_scope_as_stretch_or_deferred() -> None:
+    mvp_map = _read("10_2week_mvp_capability_map.md")
+
+    assert "MeCab BM25 as preferred Korean tokenizer" in mvp_map
+    assert "HWP/HWPX Kordoc MCP as stretch" in mvp_map
+    assert "Defer GraphDB" in mvp_map
+    assert "Defer provider failover and ensemble" in mvp_map
+    assert "Defer service lifecycle UI and host agent" in mvp_map
+    assert "Email verification" in mvp_map
+    assert "complex RBAC" in mvp_map
+
+
+def test_two_week_mvp_map_keeps_acceptance_and_quality_gate_targets() -> None:
+    mvp_map = _read("10_2week_mvp_capability_map.md")
+
+    assert "First Acceptance Scenario" in mvp_map
+    assert "Regression passes" in mvp_map
+    assert "statement coverage target 95%" in mvp_map
+    assert "branch coverage" in mvp_map
+    assert "target 85%" in mvp_map
+    assert "Day 14" in mvp_map
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:
