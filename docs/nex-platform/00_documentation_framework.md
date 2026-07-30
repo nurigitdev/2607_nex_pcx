@@ -59,6 +59,7 @@ Use this order when sources conflict:
 | Testing Strategy | Yes | Keep regression and coverage gates clear from day one. |
 | Common Modules | Yes | Identify shared contracts without prematurely creating shared libraries. |
 | Review Matrix | Yes | Provide the intake lane for the 400,000-token and 2-week documents. |
+| Source Material Inventory | Yes | Register uploaded source files, hashes, review priority, and conflict notes without committing raw source files. |
 
 ## Definition of Done for Documentation Slices
 
@@ -68,3 +69,4 @@ Use this order when sources conflict:
 - Testing implications are recorded.
 - Operational evidence or required future evidence is listed.
 - The document can be tested with lightweight doc-contract tests.
+- Raw source material stays in `artifacts/nex-platform/source-materials/` unless the user explicitly approves committing it.

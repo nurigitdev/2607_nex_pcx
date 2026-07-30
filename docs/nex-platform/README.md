@@ -19,6 +19,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 7. [Common Modules Skeleton](06_common_modules_skeleton.md)
 8. [PCX Lessons Learned Seed](07_pcx_lessons_learned_seed.md)
 9. [Source Document Review Matrix](08_source_document_review_matrix.md)
+10. [Source Material Inventory](09_source_material_inventory.md)
 
 ## Platform Services
 
@@ -46,6 +47,7 @@ This framework is designed to absorb four source streams:
 
 ## Immediate Output
 
-Slice 418 only creates the skeleton and review method. Later slices should fill
-the skeleton with source-backed decisions instead of copying large documents
-wholesale.
+Slice 418 created the skeleton and review method. Slice 419 registers the
+uploaded source material inventory and seeds the review matrix. Later slices
+should fill the skeleton with source-backed decisions instead of copying large
+documents wholesale.

@@ -14,6 +14,7 @@ EXPECTED_DOCS = [
     "06_common_modules_skeleton.md",
     "07_pcx_lessons_learned_seed.md",
     "08_source_document_review_matrix.md",
+    "09_source_material_inventory.md",
 ]
 
 
@@ -110,6 +111,20 @@ def test_review_matrix_accepts_large_docs_without_scope_bloat() -> None:
     assert "choose the smaller MVP" in matrix
 
 
+def test_review_matrix_registers_all_uploaded_source_materials() -> None:
+    matrix = _read("08_source_document_review_matrix.md")
+
+    for index in range(1, 16):
+        assert f"NP-SRC-{index:02d}" in matrix
+
+    assert "09_source_material_inventory.md" in matrix
+    assert "2-week MVP constraint" in matrix
+    assert "Identity boundary review" in matrix
+    assert "Deferred v2.0 concept" in matrix
+    assert "Use as the first scope filter" in matrix
+    assert "Mock-first, live smoke as optional evidence" in matrix
+
+
 def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     common = _read("06_common_modules_skeleton.md")
 
@@ -119,6 +134,24 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "Provider contract" in common
     assert "Retrieval package" in common
     assert "Do not create a large shared utility package first" in common
+
+
+def test_source_material_inventory_tracks_files_without_committing_raw_sources() -> None:
+    inventory = _read("09_source_material_inventory.md")
+
+    assert "15 Markdown files" in inventory
+    assert "24,342 lines" in inventory
+    assert "Do not commit raw source files by default" in inventory
+    assert "artifacts/nex-platform/source-materials/" in inventory
+
+    for source_id in ("NP-SRC-01", "NP-SRC-07", "NP-SRC-13", "NP-SRC-15"):
+        assert source_id in inventory
+
+    assert "01_260723_NeX_Platform_v1.11_SRS.md" in inventory
+    assert "13_260724_NeX_Platform_2Week_Barebone_SRS_v1.1.md" in inventory
+    assert "nex-oa` as NeX Open Auth" in inventory
+    assert "P0 scope gate" in inventory
+    assert "P4 roadmap" in inventory
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:
