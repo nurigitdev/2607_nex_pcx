@@ -23,6 +23,7 @@ from app.reranker_provider_service import (  # noqa: E402
 from scripts.run_reranker_provider import (  # noqa: E402
     DEFAULT_RERANKER_PROVIDER_NAME,
     DEFAULT_RERANKER_PROVIDER_PORT,
+    DEFAULT_RERANKER_PROVIDER_TORCH_DTYPE,
     RerankerProviderLaunchPlan,
     build_launch_plan,
 )
@@ -68,6 +69,7 @@ def build_setup_plan(
     route_host: str | None = None,
     route_base_url: str | None = None,
     device: str = DEFAULT_DEVICE,
+    torch_dtype: str | None = DEFAULT_RERANKER_PROVIDER_TORCH_DTYPE,
     provider_name: str = DEFAULT_RERANKER_PROVIDER_NAME,
     provider_model_id: str = DEFAULT_RERANKER_MODEL_ID,
     profile_name: str = DEFAULT_RERANKER_PROFILE_NAME,
@@ -106,6 +108,7 @@ def build_setup_plan(
         host=host,
         port=port,
         device=device,
+        torch_dtype=torch_dtype,
         models_dir=selected_models_dir,
         model_dir_name=selected_model_dir_name,
         provider_model_id=provider_model_id,
@@ -376,6 +379,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--route-host", default=None)
     parser.add_argument("--route-base-url", default=None)
     parser.add_argument("--device", default=DEFAULT_DEVICE)
+    parser.add_argument("--torch-dtype", default=DEFAULT_RERANKER_PROVIDER_TORCH_DTYPE)
     parser.add_argument("--provider-name", default=DEFAULT_RERANKER_PROVIDER_NAME)
     parser.add_argument("--provider-model-id", default=DEFAULT_RERANKER_MODEL_ID)
     parser.add_argument("--profile-name", default=DEFAULT_RERANKER_PROFILE_NAME)
@@ -409,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:
             route_host=args.route_host,
             route_base_url=args.route_base_url,
             device=args.device,
+            torch_dtype=args.torch_dtype,
             provider_name=args.provider_name,
             provider_model_id=args.provider_model_id,
             profile_name=args.profile_name,

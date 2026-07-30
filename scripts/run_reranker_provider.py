@@ -27,6 +27,7 @@ DEFAULT_RERANKER_PROVIDER_NAME = "qwen-reranker-primary"
 DEFAULT_RERANKER_PROVIDER_HOST = "127.0.0.1"
 DEFAULT_RERANKER_PROVIDER_PORT = 9104
 DEFAULT_RERANKER_PROVIDER_DEVICE = "cuda:0"
+DEFAULT_RERANKER_PROVIDER_TORCH_DTYPE = "bfloat16"
 RERANKER_PROVIDER_BACKENDS = (
     RERANKER_PROVIDER_BACKEND_QWEN,
     RERANKER_PROVIDER_BACKEND_MOCK,
@@ -42,6 +43,7 @@ class RerankerProviderLaunchPlan:
     host: str
     port: int
     device: str
+    torch_dtype: str | None
     models_dir: str
     model_dir_name: str
     command: tuple[str, ...]
@@ -68,6 +70,7 @@ def build_launch_plan(
     host: str = DEFAULT_RERANKER_PROVIDER_HOST,
     port: int = DEFAULT_RERANKER_PROVIDER_PORT,
     device: str = DEFAULT_RERANKER_PROVIDER_DEVICE,
+    torch_dtype: str | None = DEFAULT_RERANKER_PROVIDER_TORCH_DTYPE,
     models_dir: Path | str | None = None,
     model_dir_name: str = DEFAULT_RERANKER_MODEL_DIR_NAME,
     provider_model_id: str = DEFAULT_RERANKER_MODEL_ID,
@@ -83,6 +86,7 @@ def build_launch_plan(
     if port <= 0 or port > 65535:
         raise ValueError("port must be between 1 and 65535")
     selected_device = _require_nonblank(device, "device")
+    selected_torch_dtype = (torch_dtype or "").strip() or None
     selected_models_dir = _require_nonblank(
         str(models_dir or get_settings().embedding_models_dir),
         "models_dir",
@@ -115,6 +119,7 @@ def build_launch_plan(
         host=selected_host,
         port=port,
         device=selected_device,
+        torch_dtype=selected_torch_dtype,
         models_dir=selected_models_dir,
         model_dir_name=selected_model_dir_name,
         command=tuple(command),
@@ -123,6 +128,11 @@ def build_launch_plan(
             "NEX_PCX_RERANKER_PROVIDER_MODEL_ID": selected_provider_model_id,
             "NEX_PCX_RERANKER_PROVIDER_PROFILE_NAME": selected_reranker_profile_name,
             "NEX_PCX_RERANKER_PROVIDER_DEVICE": selected_device,
+            **(
+                {"NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE": selected_torch_dtype}
+                if selected_torch_dtype is not None
+                else {}
+            ),
             "NEX_PCX_RERANKER_PROVIDER_MODELS_DIR": selected_models_dir,
             "NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME": selected_model_dir_name,
         },
@@ -158,6 +168,7 @@ def _print_human_plan(plan: RerankerProviderLaunchPlan, *, dry_run: bool) -> Non
     print(f"- profile: {plan.reranker_profile_name}")
     print(f"- base_url: {plan.base_url}")
     print(f"- provider_model_id: {plan.provider_model_id}")
+    print(f"- torch_dtype: {plan.torch_dtype}")
     print(f"- models_dir: {plan.models_dir}")
     print(f"- model_dir_name: {plan.model_dir_name}")
     print(f"- command: {plan.shell_command}")
@@ -176,6 +187,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default=DEFAULT_RERANKER_PROVIDER_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_RERANKER_PROVIDER_PORT)
     parser.add_argument("--device", default=DEFAULT_RERANKER_PROVIDER_DEVICE)
+    parser.add_argument("--torch-dtype", default=DEFAULT_RERANKER_PROVIDER_TORCH_DTYPE)
     parser.add_argument("--models-dir", default=None)
     parser.add_argument("--model-dir-name", default=DEFAULT_RERANKER_MODEL_DIR_NAME)
     parser.add_argument("--provider-model-id", default=DEFAULT_RERANKER_MODEL_ID)
@@ -198,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             host=args.host,
             port=args.port,
             device=args.device,
+            torch_dtype=args.torch_dtype,
             models_dir=args.models_dir,
             model_dir_name=args.model_dir_name,
             provider_model_id=args.provider_model_id,

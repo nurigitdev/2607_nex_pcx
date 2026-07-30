@@ -124,6 +124,7 @@ def test_reranker_provider_service_settings_read_environment(monkeypatch, tmp_pa
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_MODEL_ID", "local-qwen-reranker")
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_PROFILE_NAME", "qwen3_reranker_4b_local")
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_DEVICE", "cuda:1")
+    monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE", "bf16")
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_READY", "false")
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_MODELS_DIR", str(tmp_path))
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME", "reranker-model")
@@ -134,6 +135,7 @@ def test_reranker_provider_service_settings_read_environment(monkeypatch, tmp_pa
     assert settings.provider_model_id == "local-qwen-reranker"
     assert settings.reranker_profile_name == "qwen3_reranker_4b_local"
     assert settings.device == "cuda:1"
+    assert settings.torch_dtype == "bf16"
     assert settings.ready is False
     assert settings.local_model_dir == tmp_path / "reranker-model"
 
@@ -169,11 +171,18 @@ def test_reranker_provider_service_can_use_qwen_cross_encoder_backend(
     monkeypatch,
 ) -> None:
     calls = {}
+    bfloat16_dtype = object()
+
+    class FakeParameter:
+        dtype = "torch.bfloat16"
 
     class FakeCrossEncoder:
         def __init__(self, model_source, **kwargs) -> None:
             calls["model_source"] = model_source
             calls["kwargs"] = kwargs
+
+        def parameters(self):
+            return iter([FakeParameter()])
 
         def predict(self, pairs):
             calls["pairs"] = list(pairs)
@@ -184,19 +193,26 @@ def test_reranker_provider_service_can_use_qwen_cross_encoder_backend(
         "sentence_transformers",
         SimpleNamespace(CrossEncoder=FakeCrossEncoder),
     )
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(bfloat16=bfloat16_dtype))
     model_dir = tmp_path / "qwen3_reranker_4b"
     model_dir.mkdir()
     app = create_app(
         RerankerProviderServiceSettings(
             backend=RERANKER_PROVIDER_BACKEND_QWEN,
             device="cuda:0",
+            torch_dtype="bfloat16",
             models_dir=tmp_path,
         )
     )
 
     with TestClient(app) as client:
+        health_response = client.get("/healthz")
         response = client.post("/v1/rerank", json=_request_payload())
 
+    assert health_response.status_code == 200
+    health = health_response.json()
+    assert health["runtime_metadata"]["requested_torch_dtype"] == "bfloat16"
+    assert health["runtime_metadata"]["loaded_parameter_dtype"] == "bfloat16"
     assert response.status_code == 200
     body = response.json()
     assert body["results"][0]["candidate_key"] == "c2"
@@ -204,8 +220,13 @@ def test_reranker_provider_service_can_use_qwen_cross_encoder_backend(
     assert body["results"][0]["score_components"]["raw_cross_encoder_score"] == 5.5
     assert body["runtime_metadata"]["backend"] == "qwen_reranker"
     assert body["runtime_metadata"]["model_source"] == str(model_dir)
+    assert body["runtime_metadata"]["requested_torch_dtype"] == "bfloat16"
+    assert body["runtime_metadata"]["loaded_parameter_dtype"] == "bfloat16"
     assert calls["model_source"] == str(model_dir)
-    assert calls["kwargs"] == {"device": "cuda:0"}
+    assert calls["kwargs"] == {
+        "device": "cuda:0",
+        "model_kwargs": {"torch_dtype": bfloat16_dtype},
+    }
     assert calls["pairs"] == [
         ("policy", "unrelated document text"),
         ("policy", "policy document text"),

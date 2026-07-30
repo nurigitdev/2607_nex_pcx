@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.62**
+**Software Requirements Specification v1.63**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.62
+문서 상태: Draft v1.63
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.62 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.63 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
 | 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.5-122B-A10B-NVFP4 generation runtime |
-| 문서 버전 | v1.62 |
+| 문서 버전 | v1.63 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -87,6 +87,7 @@
 | 1.60 | 2026-07-29 | DGX provider resource snapshot과 vLLM runtime metric snapshot을 한 번에 저장하는 bounded collection runner 운영 요구사항 보강 |
 | 1.61 | 2026-07-30 | DGX vLLM 기본 runtime을 Qwen3.5-122B-A10B-NVFP4로 정렬하고 기존 Qwen3.6 provider 이력과 신규 122B provider config를 분리하는 운영 요구사항 보강 |
 | 1.62 | 2026-07-30 | Remote reranker provider를 embedding provider와 동일한 `systemd --user` 운영 단위로 등록하고 health/request smoke evidence를 남기는 요구사항 보강 |
+| 1.63 | 2026-07-30 | Qwen embedding/reranker provider의 BF16 runtime dtype 설정과 health/runtime memory evidence 요구사항 보강 |
 
 # 목차
 
@@ -239,6 +240,8 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 - Qwen3-Embedding-4B 2560 profile은 GPU 메모리와 처리 시간이 가장 많이 필요하므로 별도 worker로 분리한다.
 
 - Qwen3-Embedding-4B 2560 profile은 pgvector의 일반 vector type 차원 한계를 초과하므로 MVP에서는 halfvec(2560) 저장 방식을 사용한다.
+
+- Qwen3-Embedding-4B와 Qwen3-Reranker-4B처럼 checkpoint가 BF16으로 검증된 모델은 provider 실행 시 `bfloat16` runtime dtype을 명시할 수 있어야 하며, KURE/BGE처럼 FP32 checkpoint로 확인된 모델에는 기본 dtype override를 적용하지 않는다.
 
 - 개발 환경에서는 명시적인 download script로 embedding model을 `models/` 하위 디렉토리에 내려받을 수 있다.
 
@@ -483,6 +486,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-086 | Chat UX transparency | 대화형 UI는 자동 intent routing 결과를 숨기지 않고 “일반 답변”, “문서 검색 요약”, “근거 기반 답변”, “문서 생성”, “문서 요약” 중 어떤 경로로 실행되었는지 message별 badge와 detail로 표시해야 한다. | SHOULD |
 | FR-087 | DGX provider resource monitor strategy | DGX-Spark에서 실행되는 remote embedding provider, remote reranker provider, vLLM runtime의 process, port, RAM RSS, 전체 system memory 대비 resident memory share, GPU runtime memory, swap pressure, uptime, readiness threshold를 provider별로 관측하고 운영 evidence로 저장/표시할 수 있어야 한다. | SHOULD |
 | FR-088 | DGX snapshot collection runner | 운영자는 한 번의 bounded foreground runner 실행으로 vLLM `/metrics` snapshot과 DGX provider process resource snapshot을 함께 수집해 DB에 저장하고, JSON/Markdown evidence를 secret 없이 남길 수 있어야 한다. 관측된 provider 상태가 critical이어도 snapshot 저장이 성공했다면 수집 실패가 아닌 attention 상태로 보고해야 한다. | SHOULD |
+| FR-089 | Qwen BF16 runtime dtype evidence | Qwen embedding/reranker provider는 `bfloat16` runtime dtype override를 지원하고, `/healthz`와 request runtime metadata에서 requested dtype과 실제 loaded parameter dtype을 표시해야 하며, 운영자는 재시작 전후 memory evidence를 남길 수 있어야 한다. | SHOULD |
 
 ## 4.3 대시보드 요구사항
 
@@ -571,7 +575,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - Search Compare UI는 `reranked_vector_cosine` profile을 명시적으로 선택할 수 있어야 하며, 선택 시 1차 후보 검색에 사용할 source vector profile과 현재 reranker runtime mode/base URL/timeout/profile/model 상태를 함께 표시해야 한다.
 - Search Compare UI는 reranked profile 결과에서 source vector profile, candidate_top_k, candidate_count, reranker provider/profile/backend/device/latency metadata를 profile별 runtime panel에 표시해 remote/mock reranker 실행 여부를 사용자가 확인할 수 있어야 한다.
 - Qwen3-Reranker-4B remote runtime provider는 `sentence-transformers` CrossEncoder backend를 통해 query/document pair score를 계산하고, score 내림차순과 source rank tie-breaker 기준으로 top-k rerank 결과를 반환해야 한다.
-- reranker runtime service는 `NEX_PCX_RERANKER_PROVIDER_BACKEND`, `NEX_PCX_RERANKER_PROVIDER_MODELS_DIR`, `NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME`, `NEX_PCX_RERANKER_PROVIDER_DEVICE`, `NEX_PCX_RERANKER_PROVIDER_READY` 설정으로 DGX 환경의 모델 경로, device, readiness를 제어할 수 있어야 한다.
+- reranker runtime service는 `NEX_PCX_RERANKER_PROVIDER_BACKEND`, `NEX_PCX_RERANKER_PROVIDER_MODELS_DIR`, `NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME`, `NEX_PCX_RERANKER_PROVIDER_DEVICE`, `NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE`, `NEX_PCX_RERANKER_PROVIDER_READY` 설정으로 DGX 환경의 모델 경로, device, dtype, readiness를 제어할 수 있어야 한다.
+- Qwen3-Reranker-4B remote provider는 checkpoint dtype이 BF16으로 검증된 경우 기본 `NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE=bfloat16` 설정을 사용하고, `/healthz`와 `/v1/rerank` runtime metadata에 requested_torch_dtype와 loaded_parameter_dtype을 포함해야 한다.
 - Qwen3-Reranker-4B remote provider는 embedding provider 기본 포트 9101~9103과 충돌하지 않도록 기본 포트 `9104`를 사용하며, foreground launch script와 health smoke runner를 통해 DGX에서 `/healthz` 계약을 검증할 수 있어야 한다.
 - remote reranker foreground smoke는 실행 전 기존 health endpoint 활성 여부를 확인하고, 실행 후 provider_type, provider_model_id, reranker_profile_name, device, backend, model_dir readiness가 기대값과 일치하는지 검증한 뒤 process stop과 health endpoint 종료까지 확인해야 한다.
 - remote reranker request smoke는 `/v1/rerank`에 query와 후보 chunk text를 전달하여 provider_type, reranker_model_id, reranker_profile_name, retrieval_strategy, candidate_count, returned_count, top_k, rank sequence, finite score, runtime_metadata(service/backend/device)를 검증하고, score/rank preview를 markdown evidence로 남길 수 있어야 한다.
@@ -666,6 +671,8 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 - 고객사 또는 폐쇄망 설치 시에는 사전 다운로드된 model bundle을 전달하고, 설치 후 manifest/revision/local path 검증을 수행해야 한다.
 
 - `qwen3_4b_1000`과 `qwen3_4b_2560` profile은 동일한 `Qwen/Qwen3-Embedding-4B` model directory를 공유하되 output dimension과 storage type 정책을 profile metadata로 분리한다.
+
+- Qwen3-Embedding-4B remote provider는 checkpoint dtype이 BF16으로 검증된 경우 기본 `NEX_PCX_PROVIDER_TORCH_DTYPE=bfloat16` 설정으로 로딩할 수 있어야 하며, `/healthz`와 embedding response runtime metadata에 requested_torch_dtype, loaded_parameter_dtype, shared_model_cache_key를 포함해야 한다.
 
 - embedding worker는 profile별 provider 설정을 해석하여 mock, local sentence-transformers, remote HTTP provider 중 하나를 호출할 수 있어야 한다.
 
@@ -1246,6 +1253,8 @@ embedding profile 초기 데이터는 다음과 같다.
 | bge_m3_1024 | BAAI/bge-m3 | 1024 | vector | 8192 | 8192 | true | dense embedding, query instruction 없음 | multilingual / dense 기준선 |
 | qwen3_4b_1000 | Qwen/Qwen3-Embedding-4B | 1000 | vector | 32768 | 8192 | true | query-side instruction 사용 여부를 profile metadata에 기록 | Qwen 저용량 profile |
 | qwen3_4b_2560 | Qwen/Qwen3-Embedding-4B | 2560 | halfvec | 32768 | 8192 | true | query-side instruction 사용 여부를 profile metadata에 기록 | Qwen 최대 차원 profile |
+
+Qwen3-Embedding-4B와 Qwen3-Reranker-4B provider의 `dtype` 또는 runtime dtype override는 checkpoint dtype이 BF16으로 확인된 모델에 한정해 사용한다. 운영 health evidence는 requested dtype과 loaded parameter dtype을 모두 저장하여, 설정값만 BF16이고 실제 모델은 다른 dtype으로 로딩되는 상황을 구분할 수 있어야 한다.
 
 ## 5.9 profile별 embedding table
 

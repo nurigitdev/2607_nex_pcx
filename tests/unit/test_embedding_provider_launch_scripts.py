@@ -139,7 +139,10 @@ def test_embedding_provider_launch_plan_builds_shell_command_from_core_helper() 
     assert plan.command[-1] == "--reload"
     assert plan.environment["NEX_PCX_PROVIDER_BACKEND"] == "qwen_embedding"
     assert plan.environment["NEX_PCX_PROVIDER_PROFILE_NAMES"] == "qwen3_4b_1000,qwen3_4b_2560"
+    assert plan.torch_dtype == "bfloat16"
+    assert plan.environment["NEX_PCX_PROVIDER_TORCH_DTYPE"] == "bfloat16"
     assert "NEX_PCX_PROVIDER_DEVICE=cuda:0" in plan.shell_command
+    assert "NEX_PCX_PROVIDER_TORCH_DTYPE=bfloat16" in plan.shell_command
     assert "./.venv/bin/python -m uvicorn" in plan.shell_command
 
 
@@ -201,6 +204,7 @@ def test_run_embedding_provider_builds_qwen_launch_plan() -> None:
         "NEX_PCX_PROVIDER_PROFILE_NAMES": "qwen3_4b_1000,qwen3_4b_2560",
         "NEX_PCX_PROVIDER_MODEL_ID": "gpu-qwen3-4b",
         "NEX_PCX_PROVIDER_DEVICE": "cuda:0",
+        "NEX_PCX_PROVIDER_TORCH_DTYPE": "bfloat16",
         "NEX_PCX_PROVIDER_MODELS_DIR": "/srv/nex_pcx/models",
     }
 
@@ -230,10 +234,36 @@ def test_run_embedding_provider_script_prints_json_dry_run_plan() -> None:
     assert payload["plan"]["preset_name"] == "qwen"
     assert payload["plan"]["base_url"] == "http://127.0.0.1:9109"
     assert payload["plan"]["environment"]["NEX_PCX_PROVIDER_BACKEND"] == "qwen_embedding"
+    assert payload["plan"]["environment"]["NEX_PCX_PROVIDER_TORCH_DTYPE"] == "bfloat16"
     assert (
         payload["plan"]["environment"]["NEX_PCX_PROVIDER_PROFILE_NAMES"]
         == "qwen3_4b_1000,qwen3_4b_2560"
     )
+
+
+def test_run_embedding_provider_launch_plan_accepts_torch_dtype_override() -> None:
+    plan = run_embedding_provider.build_launch_plan(
+        get_embedding_provider_preset("qwen"),
+        python_bin="/opt/nex-pcx/.venv/bin/python",
+        device="cuda:0",
+        models_dir="/srv/nex_pcx/models",
+        torch_dtype="float16",
+    )
+
+    assert plan.torch_dtype == "float16"
+    assert plan.environment["NEX_PCX_PROVIDER_TORCH_DTYPE"] == "float16"
+
+
+def test_run_embedding_provider_launch_plan_omits_torch_dtype_for_non_qwen_presets() -> None:
+    plan = run_embedding_provider.build_launch_plan(
+        get_embedding_provider_preset("kure"),
+        python_bin="/opt/nex-pcx/.venv/bin/python",
+        device="cuda:0",
+        models_dir="/srv/nex_pcx/models",
+    )
+
+    assert plan.torch_dtype is None
+    assert "NEX_PCX_PROVIDER_TORCH_DTYPE" not in plan.environment
 
 
 def test_register_embedding_provider_routes_builds_shared_qwen_route_plans() -> None:

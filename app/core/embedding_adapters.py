@@ -7,6 +7,11 @@ from typing import Protocol
 
 from app.core.embedding_jobs import EmbeddingProfileRecord
 from app.core.embedding_vectors import EmbeddingVectorTable, generate_mock_embedding
+from app.core.model_runtime_dtypes import (
+    model_first_parameter_dtype_name,
+    normalize_torch_dtype_name,
+    torch_dtype_from_name,
+)
 
 DEFAULT_ADAPTER_NAME = "mock"
 SENTENCE_TRANSFORMERS_ADAPTER_NAME = "sentence_transformers"
@@ -143,6 +148,7 @@ class SentenceTransformersEmbeddingAdapter:
         _validate_profile(profile)
         self.profile = profile
         self.model_source = profile.local_model_path or profile.model_name
+        self.requested_torch_dtype = normalize_torch_dtype_name(profile.dtype)
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
@@ -154,6 +160,9 @@ class SentenceTransformersEmbeddingAdapter:
         model_kwargs = {}
         if profile.device:
             model_kwargs["device"] = profile.device
+        torch_dtype = torch_dtype_from_name(profile.dtype)
+        if torch_dtype is not None:
+            model_kwargs["model_kwargs"] = {"torch_dtype": torch_dtype}
         self._model = SentenceTransformer(self.model_source, **model_kwargs)
 
     def embed_documents(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
@@ -185,6 +194,8 @@ class SentenceTransformersEmbeddingAdapter:
             "query_instruction": self.profile.query_instruction,
             "document_instruction": self.profile.document_instruction,
             "dtype": self.profile.dtype,
+            "requested_torch_dtype": self.requested_torch_dtype,
+            "loaded_parameter_dtype": model_first_parameter_dtype_name(self._model),
             "device": self.profile.device,
         }
 
@@ -204,10 +215,11 @@ class QwenEmbeddingAdapter:
         _validate_profile(profile)
         self.profile = profile
         self.model_source = profile.local_model_path or profile.model_name
+        self.requested_torch_dtype = normalize_torch_dtype_name(profile.dtype)
         self._cache_key = (
             self.model_source,
             profile.device or "",
-            profile.dtype or "",
+            self.requested_torch_dtype or "",
         )
         self._model = self._load_shared_model()
 
@@ -240,6 +252,8 @@ class QwenEmbeddingAdapter:
             "query_instruction": self.profile.query_instruction,
             "document_instruction": self.profile.document_instruction,
             "dtype": self.profile.dtype,
+            "requested_torch_dtype": self.requested_torch_dtype,
+            "loaded_parameter_dtype": model_first_parameter_dtype_name(self._model),
             "device": self.profile.device,
             "shared_model_cache_key": ":".join(self._cache_key),
         }
@@ -263,6 +277,9 @@ class QwenEmbeddingAdapter:
         model_kwargs = {}
         if self.profile.device:
             model_kwargs["device"] = self.profile.device
+        torch_dtype = torch_dtype_from_name(self.profile.dtype)
+        if torch_dtype is not None:
+            model_kwargs["model_kwargs"] = {"torch_dtype": torch_dtype}
         model = SentenceTransformer(self.model_source, **model_kwargs)
         self._shared_models[self._cache_key] = model
         return model
@@ -369,7 +386,8 @@ class EmbeddingAdapterCache:
         return (
             f"{profile.adapter_name}:{profile.profile_name}:"
             f"{profile.dimension}:{profile.storage_type}:"
-            f"{profile.local_model_path or profile.model_name}:{profile.device or ''}"
+            f"{profile.local_model_path or profile.model_name}:"
+            f"{profile.device or ''}:{normalize_torch_dtype_name(profile.dtype) or ''}"
         )
 
 

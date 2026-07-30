@@ -30,6 +30,7 @@ from app.core.embedding_providers import (
     validate_embedding_provider_response,
 )
 from app.core.embedding_vectors import generate_mock_embedding, get_embedding_vector_table
+from app.core.model_runtime_dtypes import normalize_torch_dtype_name
 
 PROVIDER_BACKEND_MOCK = "mock"
 PROVIDER_BACKEND_SENTENCE_TRANSFORMERS = "sentence_transformers"
@@ -44,6 +45,7 @@ class EmbeddingProviderServiceSettings:
     profile_names: tuple[str, ...] = ("kure_v1_1024",)
     dimension: int = 1024
     device: str = "cpu"
+    torch_dtype: str | None = None
     ready: bool = True
     models_dir: Path = Path("models")
 
@@ -122,6 +124,9 @@ class LocalSentenceTransformersProvider:
             for profile_name in settings.profile_names
         }
 
+    def runtime_metadata(self) -> dict[str, object]:
+        return _provider_adapter_runtime_metadata(self._adapters)
+
     def embed(self, request: EmbeddingProviderRequest) -> EmbeddingProviderResponse:
         validated = validate_embedding_provider_request(request)
         if validated.model_key != self.settings.model_key:
@@ -179,6 +184,9 @@ class LocalQwenEmbeddingProvider:
             )
             for profile_name in settings.profile_names
         }
+
+    def runtime_metadata(self) -> dict[str, object]:
+        return _provider_adapter_runtime_metadata(self._adapters)
 
     @property
     def profile_dimensions(self) -> dict[str, int]:
@@ -238,6 +246,7 @@ def get_embedding_provider_service_settings() -> EmbeddingProviderServiceSetting
         profile_names=_split_profile_names(getenv("NEX_PCX_PROVIDER_PROFILE_NAMES")),
         dimension=int(getenv("NEX_PCX_PROVIDER_DIMENSION", "1024")),
         device=getenv("NEX_PCX_PROVIDER_DEVICE", "cpu"),
+        torch_dtype=getenv("NEX_PCX_PROVIDER_TORCH_DTYPE"),
         ready=_parse_bool(getenv("NEX_PCX_PROVIDER_READY", "true")),
         models_dir=Path(
             getenv("NEX_PCX_PROVIDER_MODELS_DIR", str(app_settings.embedding_models_dir))
@@ -264,8 +273,12 @@ def create_app(
             "service": "nex_pcx_embedding_provider_skeleton",
             "backend": provider_settings.backend,
             "models_dir": str(provider_settings.models_dir),
+            "requested_torch_dtype": normalize_torch_dtype_name(provider_settings.torch_dtype),
         }
         dimension: int | None = provider_settings.dimension
+        adapter_runtime_metadata = getattr(embedding_provider, "runtime_metadata", None)
+        if callable(adapter_runtime_metadata):
+            runtime_metadata.update(adapter_runtime_metadata())
         profile_dimensions = getattr(embedding_provider, "profile_dimensions", None)
         if profile_dimensions:
             normalized_profile_dimensions = dict(profile_dimensions)
@@ -357,7 +370,35 @@ def _embedding_model_profile_for_provider(
         adapter_name=adapter_name,
         local_model_path=str(local_model_dir),
         device=settings.device,
+        dtype=settings.torch_dtype,
     )
+
+
+def _provider_adapter_runtime_metadata(
+    adapters: dict[str, EmbeddingAdapter],
+) -> dict[str, object]:
+    adapter_metadata = {
+        profile_name: adapter.runtime_metadata() for profile_name, adapter in adapters.items()
+    }
+    loaded_parameter_dtypes = sorted(
+        {
+            str(metadata["loaded_parameter_dtype"])
+            for metadata in adapter_metadata.values()
+            if metadata.get("loaded_parameter_dtype") is not None
+        }
+    )
+    requested_torch_dtypes = sorted(
+        {
+            str(metadata["requested_torch_dtype"])
+            for metadata in adapter_metadata.values()
+            if metadata.get("requested_torch_dtype") is not None
+        }
+    )
+    return {
+        "adapter_runtime_metadata": adapter_metadata,
+        "loaded_parameter_dtypes": loaded_parameter_dtypes,
+        "requested_torch_dtypes": requested_torch_dtypes,
+    }
 
 
 app = create_app()

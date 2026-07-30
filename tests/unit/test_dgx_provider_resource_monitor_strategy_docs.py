@@ -7,6 +7,9 @@ PROBE_SCRIPT_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_provider_resource_probe_scr
 SNAPSHOT_SCHEMA_DOC_PATH = PROJECT_ROOT / "docs" / "provider_resource_snapshot_schema.md"
 SNAPSHOT_API_UI_DOC_PATH = PROJECT_ROOT / "docs" / "provider_resource_snapshot_api_ui.md"
 SNAPSHOT_COLLECTION_DOC_PATH = PROJECT_ROOT / "docs" / "dgx_snapshot_collection_runner.md"
+QWEN_BF16_EVIDENCE_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "qwen_provider_bf16_runtime_dtype_memory_evidence.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -16,10 +19,13 @@ def _read(path: Path) -> str:
 def test_srs_documents_dgx_provider_resource_monitor_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.62" in srs_text
+    assert "Software Requirements Specification v1.63" in srs_text
     assert "DGX provider resource monitor strategy" in srs_text
     assert "FR-087" in srs_text
     assert "FR-088" in srs_text
+    assert "FR-089" in srs_text
+    assert "Qwen BF16 runtime dtype evidence" in srs_text
+    assert "loaded parameter dtype" in srs_text
     assert "DGX snapshot collection runner" in srs_text
     assert "provider_resource_snapshots" in srs_text
     assert "vLLM `/metrics` snapshot" in srs_text
@@ -33,6 +39,21 @@ def test_srs_documents_dgx_provider_resource_monitor_strategy() -> None:
     assert "vLLM runtime" in srs_text
     assert "nex-pcx-reranker-provider.service" in srs_text
     assert "systemd --user" in srs_text
+
+
+def test_qwen_bf16_evidence_doc_records_dtype_and_memory_reduction() -> None:
+    evidence_text = _read(QWEN_BF16_EVIDENCE_DOC_PATH)
+
+    assert "Qwen Provider BF16 Runtime Dtype Memory Evidence" in evidence_text
+    assert "`NEX_PCX_PROVIDER_TORCH_DTYPE`" in evidence_text
+    assert "`NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE`" in evidence_text
+    assert '"requested_torch_dtype": "bfloat16"' in evidence_text
+    assert '"loaded_parameter_dtype": "bfloat16"' in evidence_text
+    assert "Qwen embedding" in evidence_text
+    assert "Qwen reranker" in evidence_text
+    assert "`31513`" in evidence_text
+    assert "`16025`" in evidence_text
+    assert "`49.1%`" in evidence_text
 
 
 def test_strategy_doc_defines_provider_resource_monitor_contract() -> None:

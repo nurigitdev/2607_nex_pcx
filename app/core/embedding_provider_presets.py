@@ -18,6 +18,7 @@ class EmbeddingProviderPreset:
     profile_names: tuple[str, ...]
     default_host: str
     default_port: int
+    default_torch_dtype: str | None = None
 
     @property
     def default_base_url(self) -> str:
@@ -64,6 +65,7 @@ class EmbeddingProviderLaunchPlan:
     port: int
     device: str
     models_dir: str
+    torch_dtype: str | None
     command: tuple[str, ...]
     environment: dict[str, str]
 
@@ -110,6 +112,7 @@ EMBEDDING_PROVIDER_PRESETS: tuple[EmbeddingProviderPreset, ...] = (
         profile_names=("qwen3_4b_1000", "qwen3_4b_2560"),
         default_host="127.0.0.1",
         default_port=9103,
+        default_torch_dtype="bfloat16",
     ),
 )
 
@@ -200,6 +203,7 @@ def build_embedding_provider_launch_plan(
     device: str = "cpu",
     models_dir: str,
     provider_model_id: str | None = None,
+    torch_dtype: str | None = None,
     reload: bool = False,
 ) -> EmbeddingProviderLaunchPlan:
     selected_host = (host or preset.default_host).strip()
@@ -220,6 +224,7 @@ def build_embedding_provider_launch_plan(
     selected_provider_model_id = (provider_model_id or preset.provider_model_id).strip()
     if not selected_provider_model_id:
         raise InvalidEmbeddingProviderPresetError("provider_model_id is required")
+    selected_torch_dtype = (torch_dtype or preset.default_torch_dtype or "").strip() or None
 
     command = [
         selected_python_bin,
@@ -234,6 +239,17 @@ def build_embedding_provider_launch_plan(
     if reload:
         command.append("--reload")
 
+    environment = {
+        "NEX_PCX_PROVIDER_BACKEND": preset.backend,
+        "NEX_PCX_PROVIDER_MODEL_KEY": preset.model_key,
+        "NEX_PCX_PROVIDER_PROFILE_NAMES": ",".join(preset.profile_names),
+        "NEX_PCX_PROVIDER_MODEL_ID": selected_provider_model_id,
+        "NEX_PCX_PROVIDER_DEVICE": selected_device,
+        "NEX_PCX_PROVIDER_MODELS_DIR": selected_models_dir,
+    }
+    if selected_torch_dtype is not None:
+        environment["NEX_PCX_PROVIDER_TORCH_DTYPE"] = selected_torch_dtype
+
     return EmbeddingProviderLaunchPlan(
         preset_name=preset.preset_name,
         provider_name=preset.provider_name,
@@ -245,15 +261,9 @@ def build_embedding_provider_launch_plan(
         port=selected_port,
         device=selected_device,
         models_dir=selected_models_dir,
+        torch_dtype=selected_torch_dtype,
         command=tuple(command),
-        environment={
-            "NEX_PCX_PROVIDER_BACKEND": preset.backend,
-            "NEX_PCX_PROVIDER_MODEL_KEY": preset.model_key,
-            "NEX_PCX_PROVIDER_PROFILE_NAMES": ",".join(preset.profile_names),
-            "NEX_PCX_PROVIDER_MODEL_ID": selected_provider_model_id,
-            "NEX_PCX_PROVIDER_DEVICE": selected_device,
-            "NEX_PCX_PROVIDER_MODELS_DIR": selected_models_dir,
-        },
+        environment=environment,
     )
 
 

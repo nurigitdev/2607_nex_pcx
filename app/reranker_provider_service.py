@@ -11,6 +11,11 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
+from app.core.model_runtime_dtypes import (
+    model_first_parameter_dtype_name,
+    normalize_torch_dtype_name,
+    torch_dtype_from_name,
+)
 from app.core.rerankers import (
     DEFAULT_RERANKER_MODEL_ID,
     DEFAULT_RERANKER_PROFILE_NAME,
@@ -36,6 +41,7 @@ class RerankerProviderServiceSettings:
     provider_model_id: str = DEFAULT_RERANKER_MODEL_ID
     reranker_profile_name: str = DEFAULT_RERANKER_PROFILE_NAME
     device: str = "cpu"
+    torch_dtype: str | None = None
     ready: bool = True
     models_dir: Path = Path("models")
     model_dir_name: str = DEFAULT_RERANKER_MODEL_DIR_NAME
@@ -88,6 +94,7 @@ class QwenCrossEncoderRerankerProvider:
     def __init__(self, settings: RerankerProviderServiceSettings) -> None:
         self.settings = settings
         self.model_source = str(settings.local_model_dir)
+        self.requested_torch_dtype = normalize_torch_dtype_name(settings.torch_dtype)
         if not settings.local_model_dir.is_dir():
             raise ValueError(f"Reranker model directory does not exist: {settings.local_model_dir}")
         try:
@@ -101,6 +108,9 @@ class QwenCrossEncoderRerankerProvider:
         model_kwargs = {}
         if settings.device:
             model_kwargs["device"] = settings.device
+        torch_dtype = torch_dtype_from_name(settings.torch_dtype)
+        if torch_dtype is not None:
+            model_kwargs["model_kwargs"] = {"torch_dtype": torch_dtype}
         self._model = CrossEncoder(self.model_source, **model_kwargs)
 
     def rerank(self, request: RerankRequest) -> RerankResult:
@@ -138,6 +148,8 @@ class QwenCrossEncoderRerankerProvider:
             runtime_metadata=_runtime_metadata(
                 backend=RERANKER_PROVIDER_BACKEND_QWEN,
                 device=self.settings.device,
+                requested_torch_dtype=self.requested_torch_dtype,
+                loaded_parameter_dtype=model_first_parameter_dtype_name(self._model),
                 model_source=self.model_source,
                 elapsed_ms=elapsed_ms,
                 input_count=len(validated.candidates),
@@ -160,6 +172,7 @@ def get_reranker_provider_service_settings() -> RerankerProviderServiceSettings:
             DEFAULT_RERANKER_PROFILE_NAME,
         ),
         device=getenv("NEX_PCX_RERANKER_PROVIDER_DEVICE", "cpu"),
+        torch_dtype=getenv("NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE"),
         ready=_parse_bool(getenv("NEX_PCX_RERANKER_PROVIDER_READY", "true")),
         models_dir=Path(
             getenv(
@@ -201,6 +214,8 @@ def create_app(
                 "models_dir": str(provider_settings.models_dir),
                 "model_dir": str(provider_settings.local_model_dir),
                 "model_dir_exists": provider_settings.local_model_dir.is_dir(),
+                "requested_torch_dtype": normalize_torch_dtype_name(provider_settings.torch_dtype),
+                "loaded_parameter_dtype": _loaded_parameter_dtype(reranker_provider),
             },
         }
 
@@ -324,11 +339,15 @@ def _runtime_metadata(
     model_source: str,
     elapsed_ms: int,
     input_count: int,
+    requested_torch_dtype: str | None = None,
+    loaded_parameter_dtype: str | None = None,
 ) -> dict[str, object]:
     return {
         "service": "nex_pcx_reranker_provider_service",
         "backend": backend,
         "device": device,
+        "requested_torch_dtype": requested_torch_dtype,
+        "loaded_parameter_dtype": loaded_parameter_dtype,
         "model_source": model_source,
         "elapsed_ms": elapsed_ms,
         "input_count": input_count,
@@ -368,6 +387,13 @@ def _build_provider(settings: RerankerProviderServiceSettings) -> object:
     if settings.backend == RERANKER_PROVIDER_BACKEND_QWEN:
         return QwenCrossEncoderRerankerProvider(settings)
     raise ValueError(f"Unsupported reranker provider backend: {settings.backend}")
+
+
+def _loaded_parameter_dtype(provider: object) -> str | None:
+    model = getattr(provider, "_model", None)
+    if model is None:
+        return None
+    return model_first_parameter_dtype_name(model)
 
 
 app = create_app()

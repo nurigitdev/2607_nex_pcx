@@ -10,6 +10,7 @@ COVERAGE_BRANCH_FAIL_UNDER="${COVERAGE_BRANCH_FAIL_UNDER:-85}"
 "${PYTHON_BIN}" -m pytest \
     --cov=app \
     --cov-branch \
+    --cov-fail-under=0 \
     --cov-report=term-missing \
     --cov-report="json:${COVERAGE_JSON}" \
     tests/unit tests/smoke tests/integration tests/regression

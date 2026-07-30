@@ -39,6 +39,7 @@ def test_reranker_provider_launch_plan_builds_qwen_runtime_command() -> None:
     assert plan.reranker_profile_name == DEFAULT_RERANKER_PROFILE_NAME
     assert plan.provider_model_id == DEFAULT_RERANKER_MODEL_ID
     assert plan.base_url == "http://0.0.0.0:19104"
+    assert plan.torch_dtype == "bfloat16"
     assert plan.command == (
         "/opt/nex-pcx/.venv/bin/python",
         "-m",
@@ -55,10 +56,12 @@ def test_reranker_provider_launch_plan_builds_qwen_runtime_command() -> None:
         "NEX_PCX_RERANKER_PROVIDER_MODEL_ID": "Qwen/Qwen3-Reranker-4B",
         "NEX_PCX_RERANKER_PROVIDER_PROFILE_NAME": "qwen3_reranker_4b",
         "NEX_PCX_RERANKER_PROVIDER_DEVICE": "cuda:0",
+        "NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE": "bfloat16",
         "NEX_PCX_RERANKER_PROVIDER_MODELS_DIR": "/srv/nex_pcx/models",
         "NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME": "qwen3_reranker_4b",
     }
     assert "NEX_PCX_RERANKER_PROVIDER_BACKEND=qwen_reranker" in plan.shell_command
+    assert "NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE=bfloat16" in plan.shell_command
     assert "app.reranker_provider_service:app" in plan.shell_command
 
 
@@ -107,4 +110,15 @@ def test_run_reranker_provider_script_prints_json_dry_run_plan() -> None:
     assert payload["plan"]["provider_name"] == "qwen-reranker-primary"
     assert payload["plan"]["base_url"] == "http://127.0.0.1:19104"
     assert payload["plan"]["environment"]["NEX_PCX_RERANKER_PROVIDER_BACKEND"] == "qwen_reranker"
+    assert payload["plan"]["environment"]["NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE"] == "bfloat16"
     assert payload["plan"]["environment"]["NEX_PCX_RERANKER_PROVIDER_MODELS_DIR"] == "/tmp/models"
+
+
+def test_reranker_provider_launch_plan_can_disable_torch_dtype_env() -> None:
+    plan = run_reranker_provider.build_launch_plan(
+        python_bin="/opt/nex-pcx/.venv/bin/python",
+        torch_dtype=None,
+    )
+
+    assert plan.torch_dtype is None
+    assert "NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE" not in plan.environment

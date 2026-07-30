@@ -170,10 +170,17 @@ def test_embedding_provider_service_can_use_qwen_backend_for_two_profiles(
     monkeypatch,
 ) -> None:
     calls = {"init": [], "encode": []}
+    bfloat16_dtype = object()
+
+    class FakeParameter:
+        dtype = "torch.bfloat16"
 
     class FakeSentenceTransformer:
         def __init__(self, model_source, **kwargs) -> None:
             calls["init"].append((model_source, kwargs))
+
+        def parameters(self):
+            return iter([FakeParameter()])
 
         def encode(self, texts, **kwargs):
             calls["encode"].append((list(texts), kwargs))
@@ -185,6 +192,7 @@ def test_embedding_provider_service_can_use_qwen_backend_for_two_profiles(
         "sentence_transformers",
         SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
     )
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(bfloat16=bfloat16_dtype))
     QwenEmbeddingAdapter.clear_shared_model_cache()
     model_dir = tmp_path / "qwen3_embedding_4b"
     model_dir.mkdir()
@@ -196,6 +204,7 @@ def test_embedding_provider_service_can_use_qwen_backend_for_two_profiles(
             profile_names=("qwen3_4b_1000", "qwen3_4b_2560"),
             dimension=1024,
             device="cpu",
+            torch_dtype="bfloat16",
             models_dir=tmp_path,
         )
     )
@@ -233,6 +242,15 @@ def test_embedding_provider_service_can_use_qwen_backend_for_two_profiles(
         "qwen3_4b_1000": 1000,
         "qwen3_4b_2560": 2560,
     }
+    assert health["runtime_metadata"]["requested_torch_dtype"] == "bfloat16"
+    assert health["runtime_metadata"]["requested_torch_dtypes"] == ["bfloat16"]
+    assert health["runtime_metadata"]["loaded_parameter_dtypes"] == ["bfloat16"]
+    assert (
+        health["runtime_metadata"]["adapter_runtime_metadata"]["qwen3_4b_1000"][
+            "loaded_parameter_dtype"
+        ]
+        == "bfloat16"
+    )
     assert response_1000.status_code == 200
     assert response_2560.status_code == 200
     body_1000 = response_1000.json()
@@ -242,7 +260,15 @@ def test_embedding_provider_service_can_use_qwen_backend_for_two_profiles(
     assert body_1000["runtime_metadata"]["backend"] == "qwen_embedding"
     assert body_2560["dimension"] == 2560
     assert len(body_2560["embeddings"][0]) == 2560
-    assert calls["init"] == [(str(model_dir), {"device": "cpu"})]
+    assert calls["init"] == [
+        (
+            str(model_dir),
+            {
+                "device": "cpu",
+                "model_kwargs": {"torch_dtype": bfloat16_dtype},
+            },
+        )
+    ]
     assert calls["encode"][0][1]["truncate_dim"] == 1000
     assert calls["encode"][1][1]["truncate_dim"] == 2560
     QwenEmbeddingAdapter.clear_shared_model_cache()

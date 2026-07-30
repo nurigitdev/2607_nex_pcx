@@ -114,6 +114,7 @@ def build_setup_plan(
     route_base_url: str | None = None,
     device: str = DEFAULT_DEVICE,
     provider_model_id: str | None = None,
+    torch_dtype: str | None = None,
     service_name: str | None = None,
     user: str = DEFAULT_GPU_USER,
     group: str | None = None,
@@ -155,6 +156,7 @@ def build_setup_plan(
         device=device,
         models_dir=selected_models_dir,
         provider_model_id=provider_model_id,
+        torch_dtype=torch_dtype,
     )
     selected_route_base_url = _resolve_route_base_url(
         route_base_url=route_base_url,
@@ -296,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--route-base-url", default=None)
     parser.add_argument("--device", default=DEFAULT_DEVICE)
     parser.add_argument("--provider-model-id", default=None)
+    parser.add_argument("--torch-dtype", default=None)
     parser.add_argument("--service-name", default=None)
     parser.add_argument("--user", default=DEFAULT_GPU_USER)
     parser.add_argument("--group", default=None)
@@ -322,6 +325,7 @@ def main(argv: list[str] | None = None) -> int:
             route_base_url=args.route_base_url,
             device=args.device,
             provider_model_id=args.provider_model_id,
+            torch_dtype=args.torch_dtype,
             service_name=args.service_name,
             user=args.user,
             group=args.group,

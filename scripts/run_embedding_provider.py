@@ -30,6 +30,7 @@ def build_launch_plan(
     device: str = "cpu",
     models_dir: Path | str | None = None,
     provider_model_id: str | None = None,
+    torch_dtype: str | None = None,
     reload: bool = False,
 ) -> EmbeddingProviderLaunchPlan:
     return build_embedding_provider_launch_plan(
@@ -40,6 +41,7 @@ def build_launch_plan(
         device=device,
         models_dir=str(models_dir or get_settings().embedding_models_dir),
         provider_model_id=provider_model_id,
+        torch_dtype=torch_dtype,
         reload=reload,
     )
 
@@ -84,6 +86,7 @@ def main() -> int:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--models-dir", default=None)
     parser.add_argument("--provider-model-id", default=None)
+    parser.add_argument("--torch-dtype", default=None)
     parser.add_argument("--python-bin", default=sys.executable)
     parser.add_argument("--reload", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -99,6 +102,7 @@ def main() -> int:
         device=args.device,
         models_dir=args.models_dir,
         provider_model_id=args.provider_model_id,
+        torch_dtype=args.torch_dtype,
         reload=args.reload,
     )
 

@@ -25,7 +25,7 @@ def make_profile(**overrides) -> EmbeddingModelProfile:
         "adapter_name": DEFAULT_ADAPTER_NAME,
         "normalize_embeddings": True,
         "pooling_strategy": "sentence-transformers-default",
-        "dtype": "float32",
+        "dtype": None,
     }
     values.update(overrides)
     return EmbeddingModelProfile(**values)
@@ -47,7 +47,7 @@ def test_mock_embedding_adapter_embeds_documents_and_query_deterministically() -
         "storage_type": "vector",
         "normalize_embeddings": True,
         "pooling_strategy": "sentence-transformers-default",
-        "dtype": "float32",
+        "dtype": None,
     }
 
 
@@ -69,7 +69,7 @@ def test_embedding_adapter_cache_reuses_loaded_adapter() -> None:
     second = cache.get_adapter(profile)
 
     assert first is second
-    assert cache.loaded_cache_keys() == ("mock:kure_v1_1024:8:vector:nlpai-lab/KURE-v1:",)
+    assert cache.loaded_cache_keys() == ("mock:kure_v1_1024:8:vector:nlpai-lab/KURE-v1::",)
 
 
 def test_embedding_adapter_cache_preloads_and_clears_profiles() -> None:
@@ -83,8 +83,8 @@ def test_embedding_adapter_cache_preloads_and_clears_profiles() -> None:
 
     assert len(adapters) == 2
     assert cache.loaded_cache_keys() == (
-        "mock:kure_v1_1024:8:vector:nlpai-lab/KURE-v1:",
-        "mock:qwen3_4b_2560:16:halfvec:nlpai-lab/KURE-v1:",
+        "mock:kure_v1_1024:8:vector:nlpai-lab/KURE-v1::",
+        "mock:qwen3_4b_2560:16:halfvec:nlpai-lab/KURE-v1::",
     )
     cache.clear()
     assert cache.loaded_cache_keys() == ()
@@ -254,7 +254,7 @@ def test_embedding_adapter_cache_supports_sentence_transformers(monkeypatch) -> 
 
     assert adapter.embed_query("hello") == (1.0, 2.0, 3.0)
     assert cache.loaded_cache_keys() == (
-        "sentence_transformers:kure_v1_1024:3:vector:models/bge_m3:",
+        "sentence_transformers:kure_v1_1024:3:vector:models/bge_m3::",
     )
 
 
@@ -285,6 +285,64 @@ def test_embedding_adapter_cache_supports_qwen_embedding(monkeypatch) -> None:
 
     assert adapter.embed_query("hello") == (1.0, 2.0, 3.0)
     assert cache.loaded_cache_keys() == (
-        "qwen_embedding:qwen3_4b_1000:3:vector:models/qwen3_embedding_4b:",
+        "qwen_embedding:qwen3_4b_1000:3:vector:models/qwen3_embedding_4b::",
+    )
+    QwenEmbeddingAdapter.clear_shared_model_cache()
+
+
+def test_qwen_embedding_adapter_loads_shared_model_with_bfloat16_dtype(
+    monkeypatch,
+) -> None:
+    calls = {"init": []}
+    bfloat16_dtype = object()
+
+    class FakeParameter:
+        dtype = "torch.bfloat16"
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_source, **kwargs) -> None:
+            calls["init"].append((model_source, kwargs))
+
+        def parameters(self):
+            return iter([FakeParameter()])
+
+        def encode(self, texts, **kwargs):
+            dimension = kwargs["truncate_dim"]
+            return [[1.0 for _ in range(dimension)] for _ in texts]
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
+    )
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(bfloat16=bfloat16_dtype))
+    QwenEmbeddingAdapter.clear_shared_model_cache()
+    adapter = QwenEmbeddingAdapter(
+        make_profile(
+            profile_name="qwen3_4b_2560",
+            model_name="qwen3_embedding_4b",
+            dimension=5,
+            adapter_name=QWEN_EMBEDDING_ADAPTER_NAME,
+            local_model_path="models/qwen3_embedding_4b",
+            device="cuda:0",
+            dtype="bf16",
+        )
+    )
+
+    assert adapter.embed_query("hello") == (1.0, 1.0, 1.0, 1.0, 1.0)
+    assert calls["init"] == [
+        (
+            "models/qwen3_embedding_4b",
+            {
+                "device": "cuda:0",
+                "model_kwargs": {"torch_dtype": bfloat16_dtype},
+            },
+        )
+    ]
+    assert adapter.runtime_metadata()["requested_torch_dtype"] == "bfloat16"
+    assert adapter.runtime_metadata()["loaded_parameter_dtype"] == "bfloat16"
+    assert (
+        adapter.runtime_metadata()["shared_model_cache_key"]
+        == "models/qwen3_embedding_4b:cuda:0:bfloat16"
     )
     QwenEmbeddingAdapter.clear_shared_model_cache()

@@ -13,6 +13,7 @@ def test_quality_gate_runs_pytest_coverage_once() -> None:
     assert "tests/unit tests/smoke tests/integration tests/regression" in script_text
     assert "--cov=app" in script_text
     assert "--cov-branch" in script_text
+    assert "--cov-fail-under=0" in script_text
     assert '--cov-report="json:${COVERAGE_JSON}"' in script_text
     assert "-m coverage json" not in script_text
 
