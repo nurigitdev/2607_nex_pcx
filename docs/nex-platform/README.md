@@ -24,6 +24,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 12. [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md)
 13. [Service Boundary Decision Record](12_service_boundary_decision_record.md)
 14. [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md)
+15. [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md)
 
 ## Platform Services
 
@@ -59,6 +60,9 @@ trace contracts into freeze candidates. Slice 422 reconciled the service-specifi
 source documents into a boundary decision record and ownership freeze candidate.
 Slice 423 defined `nex-ae-api` as the bounded user-facing agent orchestrator for
 intent, retrieval, prompt/template packaging, generation calls, artifact links,
-and chat workspace responses.
+and chat workspace responses. Slice 424 froze the first CX-to-AE retrieval
+context package direction: AE requests corpus-grounded evidence from CX, CX
+returns permission-filtered evidence/no-answer metadata, and AE owns the next
+prompt/template/generation hand-off.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

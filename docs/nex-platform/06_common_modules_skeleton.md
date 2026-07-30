@@ -49,6 +49,8 @@ packages until service boundaries have survived implementation.
   [Service Boundary Decision Record](12_service_boundary_decision_record.md).
 - Agent orchestration schemas, starting from
   [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md).
+- Retrieval context package schemas, starting from
+  [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

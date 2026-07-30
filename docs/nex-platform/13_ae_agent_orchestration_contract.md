@@ -200,3 +200,6 @@ This contract should feed:
 - AE chat workspace SRS requirements.
 - MO generation provider contract.
 - AG operational event and job-stage display rules.
+
+The CX-to-AE retrieval context package direction is detailed in
+[CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md).

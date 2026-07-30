@@ -19,6 +19,7 @@ EXPECTED_DOCS = [
     "11_common_contract_freeze_candidate_map.md",
     "12_service_boundary_decision_record.md",
     "13_ae_agent_orchestration_contract.md",
+    "14_cx_ae_retrieval_context_package_contract.md",
 ]
 
 
@@ -145,6 +146,7 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "11_common_contract_freeze_candidate_map.md" in common
     assert "12_service_boundary_decision_record.md" in common
     assert "13_ae_agent_orchestration_contract.md" in common
+    assert "14_cx_ae_retrieval_context_package_contract.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -230,6 +232,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "11_common_contract_freeze_candidate_map.md" in inventory
     assert "12_service_boundary_decision_record.md" in inventory
     assert "13_ae_agent_orchestration_contract.md" in inventory
+    assert "14_cx_ae_retrieval_context_package_contract.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -395,6 +398,50 @@ def test_ae_agent_orchestration_contract_tracks_packages_jobs_and_guardrails() -
     assert "No direct provider URL" in contract
     assert "No ungrounded citation" in contract
     assert "retrieval package hash" in contract
+
+
+def test_cx_ae_retrieval_context_contract_freezes_call_direction() -> None:
+    contract = _read("14_cx_ae_retrieval_context_package_contract.md")
+
+    assert "Direction Decision" in contract
+    assert "User prompt intake" in contract
+    assert "`nex-ae-web`" in contract
+    assert "`nex-ae-api`" in contract
+    assert "`nex-cx`" in contract
+    assert "`nex-mo`" in contract
+    assert "AE requests retrieval from CX" in contract
+    assert "CX returns evidence, permission, scoring, and confidence metadata to AE" in contract
+    assert "AE calls MO for generation by default" in contract
+    assert "Compatibility generation facade" in contract
+
+
+def test_cx_ae_retrieval_context_contract_defines_package_fields() -> None:
+    contract = _read("14_cx_ae_retrieval_context_package_contract.md")
+
+    assert "Retrieval Context Request" in contract
+    assert "Retrieval Context Package" in contract
+    assert "Evidence Item Shape" in contract
+    assert "`retrieval_package_id`" in contract
+    assert "`package_hash`" in contract
+    assert "`permission_snapshot`" in contract
+    assert "`evidence_items`" in contract
+    assert "`source_anchor`" in contract
+    assert "`citation_label`" in contract
+    assert "`scores`" in contract
+
+
+def test_cx_ae_retrieval_context_contract_handles_no_answer_and_permissions() -> None:
+    contract = _read("14_cx_ae_retrieval_context_package_contract.md")
+
+    assert "`NO_ANSWER`" in contract
+    assert "`LOW_CONFIDENCE`" in contract
+    assert "`PARTIAL`" in contract
+    assert "`FAILED`" in contract
+    assert "CX applies permission filtering before scoring output is returned" in contract
+    assert "AE does not call MO generation for `NO_ANSWER`" in contract
+    assert "no_answer_reason" in contract
+    assert "filtered_document_count" in contract
+    assert "filtered_chunk_count" in contract
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:
