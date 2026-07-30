@@ -17,9 +17,10 @@ packages until service boundaries have survived implementation.
 | Auth claims | User id, groups, roles, scopes, service principal, trust boundary. | All services, `nex-oa` |
 | Service identity | Service-to-service authentication and API key metadata. | All backend services |
 | Health/readiness | Liveness, dependency readiness, degraded reason, last check time. | `nex-mo`, `nex-ag`, all services |
-| Provider contract | Embedding, reranker, generation request/response and runtime metadata. | `nex-mo`, `nex-ae-back` |
-| Retrieval package | Query, profiles, chunks, scores, source anchors, no-answer evidence. | `nex-cx`, `nex-ae-back` |
-| Artifact contract | Generated document metadata, preview, export, download link, lineage. | `nex-ae-back`, `nex-ae-web` |
+| Provider contract | Embedding, reranker, generation request/response and runtime metadata. | `nex-mo`, `nex-ae-api` |
+| Retrieval package | Query, profiles, chunks, scores, source anchors, no-answer evidence. | `nex-cx`, `nex-ae-api` |
+| Agent orchestration package | Intent, execution mode, prompt runtime package, retrieval package reference, job stage, and result lineage. | `nex-ae-api`, `nex-ae-web` |
+| Artifact contract | Generated document metadata, preview, export, download link, lineage. | `nex-ae-api`, `nex-ae-web` |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
 ## Contract Style
@@ -46,6 +47,8 @@ packages until service boundaries have survived implementation.
   [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md).
 - Service owner-specific schemas and API boundaries, starting from
   [Service Boundary Decision Record](12_service_boundary_decision_record.md).
+- Agent orchestration schemas, starting from
+  [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

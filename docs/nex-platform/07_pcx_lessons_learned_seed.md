@@ -29,7 +29,7 @@ linked to SRS sections, commits, tests, screenshots, or smoke evidence.
 
 | Lesson | Platform Impact |
 | --- | --- |
-| Search results must be packaged before generation. | `nex-ae-back` should own retrieval context package composition. |
+| Search results must be packaged before generation. | `nex-ae-api` should own retrieval context package composition. |
 | Citations and source anchors make answers inspectable. | Generation responses should store citation coverage and quality metadata. |
 | Templates need prompt-contract alignment. | Active template version and prompt version must be recorded together. |
 | Long generation requests need visible progress. | UI should show internal stages: query, retrieval, packaging, provider request, citation check, artifact export. |

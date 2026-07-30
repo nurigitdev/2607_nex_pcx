@@ -52,17 +52,17 @@ user-confirmed NeX-Platform boundary is slightly different:
 
 | Concern | Source Direction | Distilled Platform Alignment |
 | --- | --- | --- |
-| Browser calls | Browser calls NeX-AE API only. | Keep. Browser should call `nex-ae-web`/`nex-ae-back`, not `nex-cx` or `nex-mo` directly. |
+| Browser calls | Browser calls NeX-AE API only. | Keep. Browser should call `nex-ae-web`/`nex-ae-api`, not `nex-cx` or `nex-mo` directly. |
 | Search orchestration | `NeX-CX` owns search. | Keep for retrieval execution and evidence packaging. |
-| Generation orchestration | `NeX-CX` owns generation orchestration. | Boundary Review: move user intent, prompt composition, template choice, and final formatting to `nex-ae-back`; keep source context and retrieval package ownership in `nex-cx`; keep provider execution in `nex-mo`. |
-| Provider calls | `NeX-CX` calls `NeX-MO`. | Keep for retrieval-time embedding/reranking. `nex-ae-back` may call `nex-mo` for direct generation only through an explicit generation-provider contract. |
+| Generation orchestration | `NeX-CX` owns generation orchestration. | Boundary Review: move user intent, prompt composition, template choice, and final formatting to `nex-ae-api`; keep source context and retrieval package ownership in `nex-cx`; keep provider execution in `nex-mo`. |
+| Provider calls | `NeX-CX` calls `NeX-MO`. | Keep for retrieval-time embedding/reranking. `nex-ae-api` may call `nex-mo` for direct generation only through an explicit generation-provider contract. |
 | Admin operations | `NeX-AG` shows service/license state. | Keep, with later governance expansion. |
 | Auth | `NeX-OA` owns user auth and service account token. | Keep and rename mentally as NeX Open Auth, not operations administration. |
 
 Canonical first-call chain:
 
 ```text
-Browser -> nex-ae-web -> nex-ae-back -> nex-cx -> nex-mo
+Browser -> nex-ae-web -> nex-ae-api -> nex-cx -> nex-mo
 ```
 
 ## Service Capability Map
@@ -72,7 +72,7 @@ Browser -> nex-ae-web -> nex-ae-back -> nex-cx -> nex-mo
 | `nex-oa` | Bootstrap admin, signup, login, password change, JWT access token, service account token, development/test license validation. | Refresh token if schedule allows. | Email verification, password reset email, complex RBAC, organization chart. |
 | `nex-ag` | Admin login, 5-service health/ready/version dashboard, license status, last polling time, response time, error state. | Basic service status snapshot history. | Service start/stop/restart UI, host agent, advanced alerting, multi-host operations. |
 | `nex-ae-web` | Login, signup, password change, workspace, document groups, chat documents, drag-and-drop upload, prompt input, search/generate mode, progress, preview, Markdown download. | SSE job progress. One-second polling is acceptable as a fallback while keeping the same job event contract. | Agent automation, advanced template authoring, DOCX/PPTX/PDF rendering. |
-| `nex-ae-back` | Auth flow adapter to `nex-oa`, workspace API, interaction/activity persistence, attachment/artifact metadata, calls to `nex-cx`, result shaping. | Template-aware generation request packaging. | Domain agent, tool calling, autonomous routines. |
+| `nex-ae-api` | Auth flow adapter to `nex-oa`, workspace API, interaction/activity persistence, attachment/artifact metadata, calls to `nex-cx`, result shaping. | Template-aware generation request packaging. | Domain agent, tool calling, autonomous routines. |
 | `nex-cx` | Upload registration, content object/version, extraction registry, active extractor selection, normalized Markdown/text, active chunk policy, prev/next chunk links, BM25, vector search, hybrid retrieval, evidence package. | HWP/HWPX through Kordoc MCP if runtime is already ready; MeCab tokenizer if dependency is settled. | GraphDB, retention/archive automation, advanced backup UI, Kordoc compare/fill features. |
 | `nex-mo` | Provider registry, capability aliases, active provider per capability, embedding API, reranking API, generation API, health/ready/version, timeout, usage metadata. | Live DGX provider smoke and health evidence in the first demo. | Automatic provider routing/failover, ensemble providers, model revision/deployment lifecycle. |
 | Shared | Per-service database/user separation, no cross-service foreign keys, health/ready/version, request id, traceparent, idempotency key, problem+json errors, common job state. | Monorepo common package if it reduces duplicate contract work. | Large shared utility framework before contracts stabilize. |
@@ -83,7 +83,7 @@ Browser -> nex-ae-web -> nex-ae-back -> nex-cx -> nex-mo
 | --- | --- | --- |
 | Users, credentials, service accounts, auth events, license | `nex-oa` | AE stores no password or credential records. |
 | Service definitions, status snapshots, admin actions | `nex-ag` | AG reads service state through APIs. |
-| Document groups, chat documents, interactions, activities, attachments, artifacts | `nex-ae-back` | User workspace state and downloadable artifact metadata. |
+| Document groups, chat documents, interactions, activities, attachments, artifacts | `nex-ae-api` | User workspace state and downloadable artifact metadata. |
 | Content objects, versions, source assets, extractors, chunk policies, chunks, BM25 indexes, embedding profiles, segment embeddings, search evidence | `nex-cx` | No other service directly writes CX-owned storage. |
 | Providers, aliases, provider requests, activation events | `nex-mo` | CX and AE should reference aliases or route IDs, not implementation-specific process details. |
 | Jobs, job events, workers | Service-local or shared contract | Each service may own its own job tables, but the state model should be canonical. |
@@ -94,7 +94,7 @@ Browser -> nex-ae-web -> nex-ae-back -> nex-cx -> nex-mo
 | --- | --- |
 | `nex-oa` | `/api/v1/auth/signup`, `/api/v1/auth/login`, `/api/v1/auth/change-password`, `/api/v1/auth/service-token`, `/api/v1/auth/me`, `/admin/v1/licenses/current`, `/health`, `/ready`, `/version`. |
 | `nex-ag` | `/admin/v1/services`, `/admin/v1/services/status`, `/admin/v1/license`, `/health`, `/ready`, `/version`. |
-| `nex-ae-back` | Workspace, document group, chat document, interaction, upload attachment, artifact download, and job event proxy APIs. |
+| `nex-ae-api` | Workspace, document group, chat document, interaction, upload attachment, artifact download, and job event proxy APIs. |
 | `nex-cx` | `/api/v1/documents/uploads`, `/api/v1/jobs/{job_id}`, `/api/v1/jobs/{job_id}/events`, `/api/v1/search`, `/api/v1/generations`, `/api/v1/structured-drafts/{draft_id}`, extractor/chunk policy admin APIs, `/health`, `/ready`, `/version`. |
 | `nex-mo` | `/api/v1/embeddings`, `/api/v1/rerankings`, `/api/v1/generations`, `/admin/v1/providers`, `/admin/v1/providers/{provider_id}/activate`, `/health`, `/ready`, `/version`. |
 
@@ -110,7 +110,7 @@ Browser -> nex-ae-web -> nex-ae-back -> nex-cx -> nex-mo
 | Use Qwen3 embedding 2560, Qwen3 reranker, and Qwen LLM as default provider aliases. | MVP Core | Matches PCX direction and source SRS, but implementation should call aliases. |
 | Treat MeCab BM25 as preferred Korean tokenizer, with fallback if installation blocks MVP. | MVP Stretch | The tokenizer improves Korean retrieval, but dependency/runtime readiness can block the 2-week schedule. |
 | Treat HWP/HWPX Kordoc MCP as stretch unless runtime is ready before CX extraction work starts. | MVP Stretch | Valuable for Korean enterprise documents, but external process integration is a schedule risk. |
-| Move end-user generation orchestration to `nex-ae-back`. | Boundary Review | Current platform boundary says AE back acts as the agent/orchestrator; CX should expose retrieval/evidence and content lifecycle. |
+| Move end-user generation orchestration to `nex-ae-api`. | Boundary Review | Current platform boundary says AE API acts as the agent/orchestrator; CX should expose retrieval/evidence and content lifecycle. |
 | Defer GraphDB. | Deferred | Source explicitly excludes GraphDB from the barebone. |
 | Defer provider failover and ensemble. | Deferred | Useful later, but the MVP needs one active provider per capability. |
 | Defer service lifecycle UI and host agent. | Deferred | AG dashboard is MVP; start/stop/restart control can follow after the service spine proves stable. |

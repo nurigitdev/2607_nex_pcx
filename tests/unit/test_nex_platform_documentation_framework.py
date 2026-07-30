@@ -18,6 +18,7 @@ EXPECTED_DOCS = [
     "10_2week_mvp_capability_map.md",
     "11_common_contract_freeze_candidate_map.md",
     "12_service_boundary_decision_record.md",
+    "13_ae_agent_orchestration_contract.md",
 ]
 
 
@@ -39,7 +40,7 @@ def test_readme_links_minimum_document_set_and_service_split() -> None:
     for service_name in (
         "nex-cx",
         "nex-ae-web",
-        "nex-ae-back",
+        "nex-ae-api",
         "nex-mo",
         "nex-oa",
         "nex-ag",
@@ -68,7 +69,7 @@ def test_service_boundary_preserves_user_confirmed_ownership() -> None:
     assert "token/session/API key" in boundary
     assert "permission claims" in boundary
     assert "Admin & governance" in boundary
-    assert "agent behavior belongs to `nex-ae-back`" in boundary
+    assert "agent behavior belongs to `nex-ae-api`" in boundary
 
 
 def test_srs_skeleton_keeps_two_week_mvp_and_traceability_scope() -> None:
@@ -139,9 +140,11 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "Auth claims" in common
     assert "Provider contract" in common
     assert "Retrieval package" in common
+    assert "Agent orchestration package" in common
     assert "Do not create a large shared utility package first" in common
     assert "11_common_contract_freeze_candidate_map.md" in common
     assert "12_service_boundary_decision_record.md" in common
+    assert "13_ae_agent_orchestration_contract.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -226,6 +229,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "10_2week_mvp_capability_map.md" in inventory
     assert "11_common_contract_freeze_candidate_map.md" in inventory
     assert "12_service_boundary_decision_record.md" in inventory
+    assert "13_ae_agent_orchestration_contract.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -242,14 +246,14 @@ def test_two_week_mvp_capability_map_distills_source_into_service_owners() -> No
         "nex-oa",
         "nex-ag",
         "nex-ae-web",
-        "nex-ae-back",
+        "nex-ae-api",
         "nex-cx",
         "nex-mo",
     ):
         assert service_name in mvp_map
 
-    assert "Browser -> nex-ae-web -> nex-ae-back -> nex-cx -> nex-mo" in mvp_map
-    assert "nex-ae-back`" in mvp_map
+    assert "Browser -> nex-ae-web -> nex-ae-api -> nex-cx -> nex-mo" in mvp_map
+    assert "nex-ae-api`" in mvp_map
     assert "source context and retrieval package ownership in `nex-cx`" in mvp_map
 
 
@@ -308,7 +312,7 @@ def test_service_boundary_decision_record_identifies_service_sources() -> None:
         "nex-ag",
         "nex-cx",
         "nex-ae-web",
-        "nex-ae-back",
+        "nex-ae-api",
         "nex-mo",
     ):
         assert service_name in decision_record
@@ -322,7 +326,7 @@ def test_service_boundary_decision_record_freezes_generation_ownership() -> None
     decision_record = _read("12_service_boundary_decision_record.md")
 
     assert "`nex-cx` owns retrieval context" in decision_record
-    assert "`nex-ae-back` owns user intent" in decision_record
+    assert "`nex-ae-api` owns user intent" in decision_record
     assert "`nex-mo` owns generation provider execution" in decision_record
     assert "retrieval context package, not a broad structured draft framework" in (decision_record)
     assert "AE may call MO generation" in decision_record
@@ -348,9 +352,49 @@ def test_service_boundary_summary_links_decision_record_and_frozen_owners() -> N
     assert "Frozen Ownership Summary" in boundary
     assert "`nex-oa` owns identity" in boundary
     assert "`nex-cx` owns original assets" in boundary
-    assert "`nex-ae-back` owns intent" in boundary
+    assert "`nex-ae-api` owns intent" in boundary
     assert "`nex-mo` owns provider aliases" in boundary
     assert "`nex-ag` observes and governs through service APIs" in boundary
+
+
+def test_ae_agent_orchestration_contract_defines_bounded_agent_modes() -> None:
+    contract = _read("13_ae_agent_orchestration_contract.md")
+
+    assert "bounded orchestrator" in contract
+    assert "`GENERAL_ANSWER`" in contract
+    assert "`DOCUMENT_SEARCH`" in contract
+    assert "`GROUNDED_ANSWER`" in contract
+    assert "`DOCUMENT_SUMMARY`" in contract
+    assert "`DOCUMENT_GENERATION`" in contract
+    assert "`ARTIFACT_TRANSFORM`" in contract
+    assert "Explicit mode can override intent detection" in contract
+
+
+def test_ae_agent_orchestration_contract_separates_cx_mo_and_ae_ownership() -> None:
+    contract = _read("13_ae_agent_orchestration_contract.md")
+
+    assert "`nex-ae-api` is the user-facing agent API" in contract
+    assert "`nex-cx` owns retrieval context packages" in contract
+    assert "`nex-mo` owns provider execution" in contract
+    assert "User-facing generation does not make CX the final answer owner" in contract
+    assert "AE -> CX retrieval package -> AE template/prompt package -> MO generation" in contract
+    assert "CX generation API compatibility" in contract
+    assert "AE remains the orchestrator" in contract
+
+
+def test_ae_agent_orchestration_contract_tracks_packages_jobs_and_guardrails() -> None:
+    contract = _read("13_ae_agent_orchestration_contract.md")
+
+    assert "Agent Request Package" in contract
+    assert "Retrieval Context Package" in contract
+    assert "Prompt Runtime Package" in contract
+    assert "Agent Result Package" in contract
+    assert "`INTENT_DETECTED`" in contract
+    assert "`GENERATION_RUNNING`" in contract
+    assert "These are `current_stage` values, not `job_status` enum values" in contract
+    assert "No direct provider URL" in contract
+    assert "No ungrounded citation" in contract
+    assert "retrieval package hash" in contract
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:

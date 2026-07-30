@@ -36,11 +36,11 @@ to freeze the first platform spine before writing service SRS documents.
 
 | Principle | Decision |
 | --- | --- |
-| User entry point | Browser traffic enters through `nex-ae-web` and `nex-ae-back`; users do not call `nex-cx` or `nex-mo` directly. |
+| User entry point | Browser traffic enters through `nex-ae-web` and `nex-ae-api`; users do not call `nex-cx` or `nex-mo` directly. |
 | Service ownership | Each service owns its database, write model, and authoritative records. |
 | Cross-service access | Services communicate through explicit APIs and signed service claims, not shared tables. |
 | Model access | Provider runtimes are reached through `nex-mo` stable APIs, not direct provider URLs. |
-| Retrieval before generation | `nex-cx` produces retrieval context; `nex-ae-back` composes prompt/template/final response; `nex-mo` executes provider calls. |
+| Retrieval before generation | `nex-cx` produces retrieval context; `nex-ae-api` composes prompt/template/final response; `nex-mo` executes provider calls. |
 | Admin visibility | `nex-ag` reads health, readiness, metrics, logs, audit, and policy status through service APIs. |
 | Auth authority | `nex-oa` is NeX Open Auth, not operations administration; it owns identity and service-auth trust decisions. |
 
@@ -52,14 +52,14 @@ to freeze the first platform spine before writing service SRS documents.
 | `nex-ag` | Admin & governance dashboard, service registry view, readiness snapshots, logs, audit trails, policy setting surface, monitoring, operations evidence. | Identity issuing, source document storage, model inference execution, end-user chat workspace. |
 | `nex-cx` | Content repository, original assets, extraction artifacts, normalized text/Markdown, chunk policy application, chunk adjacency, BM25 terms, embedding vectors, graph extension points, permission-filtered retrieval, evidence package. | User-facing chat session, prompt/template orchestration, final answer formatting, provider runtime management, auth token issuing. |
 | `nex-ae-web` | Korean-default user workspace UI, chat/document group navigation, upload UX, prompt composer, result preview, artifact download shortcuts. | Business data authority, provider routing, auth/session issuance, platform governance policy. |
-| `nex-ae-back` | Workspace API, chat document state, interaction/activity history, intent and mode selection, retrieval request orchestration, prompt package composition, template selection, final answer formatting, artifact metadata and export coordination. | Raw corpus storage, BM25/vector indexes, provider hosting, identity issuing, global operations policy. |
+| `nex-ae-api` | Workspace API, chat document state, interaction/activity history, intent and mode selection, retrieval request orchestration, prompt package composition, template selection, final answer formatting, artifact metadata and export coordination. | Raw corpus storage, BM25/vector indexes, provider hosting, identity issuing, global operations policy. |
 | `nex-mo` | Provider registry, capability aliases, embedding/reranker/generation provider contracts, provider health/readiness, provider metrics, vLLM metric snapshots, provider resource telemetry, admission/routing policy. | BM25, hybrid retrieval ranking, source document lifecycle, business templates, user chat UX, identity authority. |
 
 ## Canonical Call Chains
 
 | Scenario | MVP Call Chain | Boundary Rule |
 | --- | --- | --- |
-| Login/session | Browser -> `nex-ae-web` -> `nex-ae-back` -> `nex-oa` | AE adapts UX; OA issues and validates identity. |
+| Login/session | Browser -> `nex-ae-web` -> `nex-ae-api` -> `nex-oa` | AE adapts UX; OA issues and validates identity. |
 | Service authentication | Service -> `nex-oa` service-token/JWKS path -> target service | Every service validates explicit service claims. |
 | Upload and ingestion | Browser -> AE -> `nex-cx` -> `nex-mo` embedding API | AE owns workspace UX; CX owns content lifecycle; MO owns model execution. |
 | Search | Browser -> AE -> `nex-cx` search -> `nex-mo` embedding/reranker APIs | CX owns retrieval and evidence package. |
@@ -73,11 +73,11 @@ to freeze the first platform spine before writing service SRS documents.
 | Data Object | Authority | Read Consumers | Write Rule |
 | --- | --- | --- | --- |
 | User account, session, token, service principal | `nex-oa` | All services through claims/JWKS/introspection | Only OA writes. |
-| Document group, chat document, interaction, activity | `nex-ae-back` | AE web, AG summary views | Only AE writes. |
+| Document group, chat document, interaction, activity | `nex-ae-api` | AE web, AG summary views | Only AE writes. |
 | Uploaded source asset and extracted artifact | `nex-cx` | AE, AG | Only CX writes after AE upload handoff. |
 | Chunk, BM25 term, vector, graph edge | `nex-cx` | AE, AG | Only CX writes; MO returns vectors/scores but does not store corpus indexes. |
 | Retrieval context package and no-answer metadata | `nex-cx` | AE | CX writes package evidence; AE can persist run linkage. |
-| Prompt package, generation run, answer, artifact metadata | `nex-ae-back` | AE web, AG | AE writes user-facing generation records and artifacts. |
+| Prompt package, generation run, answer, artifact metadata | `nex-ae-api` | AE web, AG | AE writes user-facing generation records and artifacts. |
 | Provider route, model alias, provider metric | `nex-mo` | CX, AE, AG | Only MO writes provider registry and runtime telemetry. |
 | Admin policy setting and audit event | `nex-ag` plus service-local emitters | Administrators and operators | AG owns governance view; each service emits local audit/log events. |
 
@@ -91,7 +91,7 @@ Freeze candidate:
 
 - `nex-cx` owns retrieval context, evidence quality, citation anchors,
   permission filtering, source context expansion, and no-answer metadata.
-- `nex-ae-back` owns user intent, explicit execution mode, prompt contract,
+- `nex-ae-api` owns user intent, explicit execution mode, prompt contract,
   template version, final answer formatting, generated artifact metadata, and
   user-visible generation history.
 - `nex-mo` owns generation provider execution, provider runtime metadata,
@@ -113,7 +113,7 @@ Consequence:
 | Identity proof | `nex-oa` | OA signs user and service claims. |
 | Business visibility metadata | `nex-cx` | CX stores uploader, collection, classification, group scope, and document visibility metadata. |
 | Retrieval permission filtering | `nex-cx` | CX applies visibility filters using OA claims before ranking/evidence return. |
-| Workspace-level affordance | `nex-ae-web`, `nex-ae-back` | AE shows available scopes and preserves selected search/generation scope. |
+| Workspace-level affordance | `nex-ae-web`, `nex-ae-api` | AE shows available scopes and preserves selected search/generation scope. |
 | Governance policy UI | `nex-ag` | AG displays and changes policy through service APIs with audit. |
 
 ## Freeze Now
@@ -123,7 +123,7 @@ Consequence:
 | `nex-oa` means NeX Open Auth. | Avoids the old OA operations/administration naming conflict. |
 | `nex-ag` owns admin & governance. | Keeps operations UI, audit, policy, and monitoring in one service. |
 | `nex-cx` owns content and retrieval data. | Prevents AE/MO from becoming data repositories. |
-| `nex-ae-back` owns user-facing orchestration. | Keeps agent behavior close to chat UX, intent, prompt, template, and artifact experience. |
+| `nex-ae-api` owns user-facing orchestration. | Keeps agent behavior close to chat UX, intent, prompt, template, and artifact experience. |
 | `nex-mo` owns model-provider abstraction. | Lets embedding, reranker, generation, health, metrics, and resource telemetry evolve independently. |
 | AG and AE do not call provider runtime endpoints directly. | Keeps provider ports private and routing auditable through MO. |
 | No cross-service database joins. | Keeps service ownership testable and deployable. |

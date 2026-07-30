@@ -43,7 +43,7 @@ Use this order when sources conflict:
 | --- | --- |
 | Inventory | Register source documents and identify relevant sections. |
 | Distill | Extract claims, requirements, constraints, and open questions. |
-| Map | Assign each item to `nex-cx`, `nex-ae-web`, `nex-ae-back`, `nex-mo`, `nex-oa`, or `nex-ag`. |
+| Map | Assign each item to `nex-cx`, `nex-ae-web`, `nex-ae-api`, `nex-mo`, `nex-oa`, or `nex-ag`. |
 | Decide | Mark each item as MVP, deferred, rejected, duplicate, or needs review. |
 | Normalize | Convert accepted items into SRS, design, environment, testing, or common module docs. |
 | Trace | Preserve links to PCX evidence, source sections, and commit references. |

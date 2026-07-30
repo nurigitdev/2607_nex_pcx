@@ -33,7 +33,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-07` | `07_260723_NeX_OA_Operations_Administration_Design_v1.2.md` | 1,739 | 37,145 | `95d3fa9a5774` | `nex-oa` identity boundary | P1 conflict review |
 | `NP-SRC-08` | `08_260723_NeX_AG_Operations_Administration_Design_v1.6.md` | 1,692 | 41,146 | `80587282bd8f` | `nex-ag` admin & governance | P1 MVP |
 | `NP-SRC-09` | `09_260723_NeX_CX_Enterprise_Context_Knowledge_Lifecycle_Design_v1.2.md` | 2,161 | 36,545 | `704d8409db7e` | `nex-cx` content lifecycle | P1 MVP |
-| `NP-SRC-10` | `10_260723_NeX_AE_Work_Assistant_Workspace_Design_v1.4.md` | 2,090 | 41,681 | `04d334307f69` | `nex-ae-web`, `nex-ae-back` | P1 MVP |
+| `NP-SRC-10` | `10_260723_NeX_AE_Work_Assistant_Workspace_Design_v1.4.md` | 2,090 | 41,681 | `04d334307f69` | `nex-ae-web`, `nex-ae-api` | P1 MVP |
 | `NP-SRC-11` | `11_260723_NeX_MO_Model_Operations_Design_v1.3.md` | 2,007 | 37,651 | `f7c614ce29ad` | `nex-mo` model operations | P1 MVP |
 | `NP-SRC-12` | `12_260723_NeX_Platform_v2.0_Communication_Intelligence_Customer_Timeline_Concept_v0.1.md` | 718 | 13,332 | `a5264c70303a` | v2.0 roadmap | P4 deferred |
 | `NP-SRC-13` | `13_260724_NeX_Platform_2Week_Barebone_SRS_v1.1.md` | 1,258 | 23,868 | `5fd6b3492216` | 2-week MVP | P0 scope gate |
@@ -57,12 +57,14 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-07` | The file name uses `NeX_OA_Operations_Administration`, but the user-confirmed boundary defines `nex-oa` as NeX Open Auth. | Review identity/auth content first and move operations/admin content to `nex-ag` if needed. |
 | `NP-SRC-01` | Full SRS likely duplicates many smaller focused documents. | Use it after P0/P1 review as a completeness cross-check. |
 | `NP-SRC-12` | v2.0 communication/customer timeline scope can pull the MVP away from document intelligence. | Keep as roadmap/deferred unless it reveals a required extension point. |
+| `NP-SRC-10` | AE workspace material includes broad future agent capability. | Freeze bounded MVP agent orchestration in [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md); defer autonomous multi-step domain agents. |
 
 ## Next Review Sequence
 
 1. Completed: Distill `NP-SRC-13` into a small MVP capability map.
 2. Completed: Reconcile `NP-SRC-02` and `NP-SRC-03` into common contract and foundation rules.
 3. Completed: Map `NP-SRC-07` through `NP-SRC-11` to the user-confirmed service boundaries.
-4. Use `NP-SRC-15` to settle development environment and directory assumptions.
-5. Use `NP-SRC-01` as a final cross-check for missing requirements.
-6. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+4. Completed: Freeze bounded `nex-ae-api` agent orchestration from `NP-SRC-10`.
+5. Use `NP-SRC-15` to settle development environment and directory assumptions.
+6. Use `NP-SRC-01` as a final cross-check for missing requirements.
+7. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

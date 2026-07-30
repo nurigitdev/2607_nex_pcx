@@ -14,7 +14,7 @@ pass should document both options, then pick one before implementation.
 | --- | --- |
 | `nex-cx` | API service, migrations, extraction/chunking/retrieval modules, database access. |
 | `nex-ae-web` | Web frontend, i18n resources, design system assets, Playwright coverage. |
-| `nex-ae-back` | Agent orchestration APIs, prompt packaging, artifact generation, service clients. |
+| `nex-ae-api` | Agent orchestration APIs, prompt packaging, artifact generation, service clients. |
 | `nex-mo` | Provider registry, health checks, metric scrapers, operations runners. |
 | `nex-oa` | Auth service, token/session/API key handling, claim signing/validation. |
 | `nex-ag` | Admin APIs and UI for governance, logs, policies, readiness, monitoring. |

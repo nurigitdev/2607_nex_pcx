@@ -129,7 +129,7 @@ GET  /admin/v1/workers
 | Conflict | Source | Proposed Resolution |
 | --- | --- | --- |
 | `DEGRADED` appears as lifecycle state in `NP-SRC-03`, while `NP-SRC-02` says not to use `DEGRADED` for lifecycle. | `NP-SRC-02`, `NP-SRC-03` | Freeze `DEGRADED` only in `health_status`; keep lifecycle focused on process/control states. |
-| Generation ownership is split differently across source docs. | `NP-SRC-03`, `NP-SRC-13`, user-confirmed boundary | Keep `nex-ae-back` as user intent/prompt/template/final formatting orchestrator; keep `nex-cx` as retrieval/evidence/content lifecycle owner; keep `nex-mo` as provider execution owner. |
+| Generation ownership is split differently across source docs. | `NP-SRC-03`, `NP-SRC-13`, user-confirmed boundary | Keep `nex-ae-api` as user intent/prompt/template/final formatting orchestrator; keep `nex-cx` as retrieval/evidence/content lifecycle owner; keep `nex-mo` as provider execution owner. |
 | Statement coverage target differs across sources. | `NP-SRC-03` says 90%; `NP-SRC-13` says 95%; PCX current gate reports statement and branch separately. | Freeze branch coverage target 85%; keep statement target as MVP policy decision, with 95% as aspirational first-platform target unless implementation reality requires a written exception. |
 | Common foundation can become a large shared framework too early. | `NP-SRC-03`, PCX lessons | Freeze contracts first; defer broad shared utilities until service boundaries are proven. |
 

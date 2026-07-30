@@ -23,6 +23,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 11. [2-Week MVP Capability Map](10_2week_mvp_capability_map.md)
 12. [Common Contract Freeze Candidate Map](11_common_contract_freeze_candidate_map.md)
 13. [Service Boundary Decision Record](12_service_boundary_decision_record.md)
+14. [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md)
 
 ## Platform Services
 
@@ -32,7 +33,7 @@ The current target service split is:
 | --- | --- |
 | `nex-cx` | Content experience repository: source files, extracted text, chunks, embeddings, BM25, graph, and retrieval APIs. |
 | `nex-ae-web` | User-facing workspace UI/UX for chat, search, generation, summaries, artifacts, and downloads. |
-| `nex-ae-back` | Agent execution backend for intent routing, retrieval orchestration, generation orchestration, formatting, and artifact creation. |
+| `nex-ae-api` | Agent execution backend for intent routing, retrieval orchestration, generation orchestration, formatting, and artifact creation. |
 | `nex-mo` | Model operations service for embedding, reranker, generation provider connectivity and monitoring. |
 | `nex-oa` | NeX Open Auth: user auth, service auth, token/session/API key management, permission claims, and trust boundaries. |
 | `nex-ag` | Admin & governance service for operations, logs, policies, monitoring, readiness, and audit views. |
@@ -56,5 +57,8 @@ distilled the 2-week barebone SRS into a service-owned MVP capability map.
 Slice 421 distilled canonical terminology, state, API, error, job, logging, and
 trace contracts into freeze candidates. Slice 422 reconciled the service-specific
 source documents into a boundary decision record and ownership freeze candidate.
+Slice 423 defined `nex-ae-api` as the bounded user-facing agent orchestrator for
+intent, retrieval, prompt/template packaging, generation calls, artifact links,
+and chat workspace responses.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

@@ -19,7 +19,7 @@ The MVP includes the platform spine:
 
 - `nex-cx` document repository and retrieval API.
 - `nex-ae-web` user-facing workspace.
-- `nex-ae-back` agent orchestration backend.
+- `nex-ae-api` agent orchestration backend.
 - `nex-mo` model provider routing and monitoring.
 - `nex-oa` identity and service-auth boundary.
 - `nex-ag` admin & governance surface.
@@ -49,7 +49,7 @@ The MVP includes the platform spine:
 | FR-CX-001 | Store original files, extraction artifacts, chunks, embeddings, BM25 terms, graph metadata, and source anchors. | `nex-cx` | Yes |
 | FR-CX-002 | Provide retrieval APIs that return ranked chunks, score metadata, source context, and no-answer signals. | `nex-cx` | Yes |
 | FR-AE-001 | Provide chat-style UX for direct questions, document-grounded answers, summaries, reports, and artifacts. | `nex-ae-web` | Yes |
-| FR-AE-002 | Route user intent and compose retrieval context, prompt packages, provider requests, and final formatting. | `nex-ae-back` | Yes |
+| FR-AE-002 | Route user intent and compose retrieval context, prompt packages, provider requests, final formatting, artifact links, and chat workspace responses. | `nex-ae-api` | Yes |
 | FR-MO-001 | Manage embedding, reranker, and generation provider routes with health and runtime metrics. | `nex-mo` | Yes |
 | FR-OA-001 | Issue and validate user, session, token, API key, service identity, and permission claims. | `nex-oa` | Yes |
 | FR-AG-001 | Provide admin & governance views for logs, policies, readiness, monitoring, and audit trails. | `nex-ag` | Yes |
