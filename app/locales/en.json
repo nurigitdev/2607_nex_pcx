@@ -583,7 +583,7 @@
     "refresh": "Refresh",
     "seeded": "Saved {provider} config.",
     "seed_title": "Register DGX vLLM Defaults",
-    "seed_help": "Upsert Qwen3.6 vLLM endpoint, model id, timeout, and sampling values into DB config.",
+    "seed_help": "Upsert Qwen3.5 122B vLLM endpoint, model id, timeout, and sampling values into DB config.",
     "secret_env_only": "Secrets use env vars only",
     "provider_name": "Provider Name",
     "base_url": "Base URL",

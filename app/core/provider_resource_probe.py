@@ -152,14 +152,14 @@ DEFAULT_DGX_PROVIDER_RESOURCE_TARGETS: tuple[ProviderResourceTarget, ...] = (
         ram_critical_bytes=48 * 1024**3,
     ),
     ProviderResourceTarget(
-        provider_name="dgx_vllm_qwen36_27b_nvfp4",
+        provider_name="dgx_vllm_qwen35_122b_a10b_nvfp4",
         provider_type="vllm",
         host=DEFAULT_DGX_PROVIDER_RESOURCE_HOST,
         port=12000,
         process_match="vllm",
-        model_id="/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4",
-        ram_warning_bytes=64 * 1024**3,
-        ram_critical_bytes=96 * 1024**3,
+        model_id="/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4",
+        ram_warning_bytes=96 * 1024**3,
+        ram_critical_bytes=112 * 1024**3,
     ),
 )
 

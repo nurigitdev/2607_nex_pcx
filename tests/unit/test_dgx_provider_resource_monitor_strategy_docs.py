@@ -16,7 +16,7 @@ def _read(path: Path) -> str:
 def test_srs_documents_dgx_provider_resource_monitor_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.60" in srs_text
+    assert "Software Requirements Specification v1.61" in srs_text
     assert "DGX provider resource monitor strategy" in srs_text
     assert "FR-087" in srs_text
     assert "FR-088" in srs_text
@@ -61,7 +61,7 @@ def test_probe_script_doc_defines_read_only_dgx_evidence_contract() -> None:
     assert "scripts/probe_provider_resources.py" in probe_text
     assert "`kure-primary`" in probe_text
     assert "`qwen-reranker-primary`" in probe_text
-    assert "`dgx_vllm_qwen36_27b_nvfp4`" in probe_text
+    assert "`dgx_vllm_qwen35_122b_a10b_nvfp4`" in probe_text
     assert "--ssh-user nexpcx" in probe_text
     assert "--local-only" in probe_text
     assert "--persist" in probe_text

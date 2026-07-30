@@ -238,6 +238,8 @@ def _dry_run_payload(args: argparse.Namespace, targets) -> dict[str, object]:
                 "port": target.port,
                 "process_match": target.process_match,
                 "model_id": target.model_id,
+                "ram_warning_bytes": target.ram_warning_bytes,
+                "ram_critical_bytes": target.ram_critical_bytes,
             }
             for target in targets
         ],

@@ -10,7 +10,7 @@ run persistence or remote LLM calls.
 - Local development and CI use a deterministic `mock` generation provider.
 - Remote LLM execution uses an OpenAI-compatible vLLM server directly instead
   of wrapping the LLM in another FastAPI provider process.
-- The default remote model candidate is `nvidia/Qwen3.6-27B-NVFP4`.
+- The default remote model candidate is `nvidia/Qwen3.5-122B-A10B-NVFP4`.
 - Remote DGX-Spark smoke tests are deferred until the GPU host is reachable;
   schema, API, and UI contracts must still be testable with the mock provider.
 

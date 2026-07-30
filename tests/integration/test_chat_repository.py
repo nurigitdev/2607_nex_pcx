@@ -87,7 +87,7 @@ def _create_generation_fixture(database_url: str) -> tuple[int, int]:
         GenerationRunInput(
             search_log_id=search_log.search_log_id,
             retrieval_package_key=f"retrieval-package-{uuid4()}",
-            provider_name="mock_qwen36_27b_nvfp4",
+            provider_name="mock_qwen35_122b_a10b_nvfp4",
             provider_mode=GENERATION_PROVIDER_MODE_MOCK,
             model_id="mock-generation-model",
             retrieval_confidence_status=RETRIEVAL_CONFIDENCE_ANSWERABLE,

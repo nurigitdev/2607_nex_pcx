@@ -11,7 +11,7 @@ from app.main import create_app
 
 pytestmark = pytest.mark.integration
 
-MOCK_PROVIDER_NAME = "mock_qwen36_27b_nvfp4"
+MOCK_PROVIDER_NAME = "mock_qwen35_122b_a10b_nvfp4"
 
 
 def _seed_ids(database_url: str) -> dict[str, int]:

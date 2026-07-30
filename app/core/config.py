@@ -33,7 +33,7 @@ class Settings:
     remote_generation_provider_url: str | None = None
     remote_generation_provider_timeout_seconds: float = 120.0
     remote_generation_provider_api_key: str | None = None
-    generation_model_id: str = "nvidia/Qwen3.6-27B-NVFP4"
+    generation_model_id: str = "nvidia/Qwen3.5-122B-A10B-NVFP4"
     generation_max_tokens: int = 1024
     generation_temperature: float = 0.2
     generation_top_p: float = 0.9
@@ -69,7 +69,7 @@ def get_settings() -> Settings:
         remote_generation_provider_api_key=getenv("NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY"),
         generation_model_id=getenv(
             "NEX_PCX_GENERATION_MODEL_ID",
-            "nvidia/Qwen3.6-27B-NVFP4",
+            "nvidia/Qwen3.5-122B-A10B-NVFP4",
         ),
         generation_max_tokens=int(getenv("NEX_PCX_GENERATION_MAX_TOKENS", "1024")),
         generation_temperature=float(getenv("NEX_PCX_GENERATION_TEMPERATURE", "0.2")),

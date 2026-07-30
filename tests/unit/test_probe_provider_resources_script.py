@@ -49,11 +49,13 @@ def test_probe_provider_resources_dry_run_writes_outputs(tmp_path, capsys) -> No
     payload = json.loads(json_output.read_text(encoding="utf-8"))
     markdown = markdown_output.read_text(encoding="utf-8")
     assert payload["status"] == "dry_run"
-    assert payload["targets"][0]["provider_name"] == "dgx_vllm_qwen36_27b_nvfp4"
+    assert payload["targets"][0]["provider_name"] == "dgx_vllm_qwen35_122b_a10b_nvfp4"
     assert payload["targets"][0]["port"] == 12000
+    assert payload["targets"][0]["ram_warning_bytes"] == 96 * 1024**3
+    assert payload["targets"][0]["ram_critical_bytes"] == 112 * 1024**3
     assert "nvidia-smi --query-compute-apps" in payload["commands"][2]
     assert "# DGX Provider Resource Probe Dry Run" in markdown
-    assert "| dgx_vllm_qwen36_27b_nvfp4 | vllm | 12000 | vllm |" in markdown
+    assert "| dgx_vllm_qwen35_122b_a10b_nvfp4 | vllm | 12000 | vllm |" in markdown
 
 
 def test_probe_provider_resources_builds_remote_command() -> None:

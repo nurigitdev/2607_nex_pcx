@@ -33,7 +33,7 @@ from app.main import create_app
 
 pytestmark = pytest.mark.integration
 
-MOCK_PROVIDER_NAME = "mock_qwen36_27b_nvfp4"
+MOCK_PROVIDER_NAME = "mock_qwen35_122b_a10b_nvfp4"
 
 
 class _FakeRemoteGenerationProvider:
@@ -248,7 +248,7 @@ def _create_failed_answer_quality_run(database_url: str, search_log_id: int) -> 
             retrieval_package_key="pytest-history-failed",
             provider_name=MOCK_PROVIDER_NAME,
             provider_mode="mock",
-            model_id="nvidia/Qwen3.6-27B-NVFP4",
+            model_id="nvidia/Qwen3.5-122B-A10B-NVFP4",
             retrieval_confidence_status="answerable",
             citation_readiness_status="warning",
             query_text="generation history failed quality",
@@ -904,7 +904,7 @@ def test_generation_provider_metric_snapshot_api_reads_mock_persisted_metrics(
             summary["provider_mode"] == "mock" for summary in snapshot_body["mode_summaries"]
         )
         assert matching_runs
-        assert matching_runs[0]["provider_name"] == "mock_qwen36_27b_nvfp4"
+        assert matching_runs[0]["provider_name"] == "mock_qwen35_122b_a10b_nvfp4"
         assert matching_runs[0]["metric_present"] is True
         assert matching_runs[0]["succeeded"] is True
         assert matching_runs[0]["finish_reason"] == "mock_completed"
@@ -1029,7 +1029,7 @@ def test_generation_provider_metric_snapshot_ui_shows_recent_metrics(
         assert "data-generation-provider-metrics-mode-breakdown" in page_response.text
         assert "Provider Mode Breakdown" in page_response.text
         assert "data-generation-provider-metrics-runs" in page_response.text
-        assert "mock_qwen36_27b_nvfp4" in page_response.text
+        assert "mock_qwen35_122b_a10b_nvfp4" in page_response.text
         assert "mock_completed" in page_response.text
         assert f'href="/generation/runs/{run_id}"' in page_response.text
         assert "/api/admin/generation-provider-metrics/snapshot?limit=10" in page_response.text

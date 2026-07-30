@@ -55,10 +55,10 @@ def _read(path: Path) -> str:
 def test_srs_documents_generation_provider_strategy() -> None:
     srs_text = _read(SRS_PATH)
 
-    assert "Software Requirements Specification v1.60" in srs_text
+    assert "Software Requirements Specification v1.61" in srs_text
     assert "Generation provider strategy" in srs_text
     assert "vLLM runtime contract" in srs_text
-    assert "Qwen3.6-27B-NVFP4" in srs_text
+    assert "Qwen3.5-122B-A10B-NVFP4" in srs_text
     assert "FR-051" in srs_text
     assert "FR-052" in srs_text
     assert "FR-053" in srs_text
@@ -144,7 +144,7 @@ def test_generation_provider_strategy_doc_defines_mock_first_vllm_contract() -> 
     assert "`mock`" in strategy_text
     assert "`remote_openai_compatible`" in strategy_text
     assert "/v1/chat/completions" in strategy_text
-    assert "nvidia/Qwen3.6-27B-NVFP4" in strategy_text
+    assert "nvidia/Qwen3.5-122B-A10B-NVFP4" in strategy_text
     assert "low_confidence" in strategy_text
     assert "no_relevant_context" in strategy_text
 

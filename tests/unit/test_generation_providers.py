@@ -74,7 +74,7 @@ def test_generation_runtime_config_from_settings_builds_remote_client() -> None:
         remote_generation_provider_url = "http://dgx.local:8000/"
         remote_generation_provider_timeout_seconds = 77.5
         remote_generation_provider_api_key = "secret-token"
-        generation_model_id = "nvidia/Qwen3.6-27B-NVFP4"
+        generation_model_id = "nvidia/Qwen3.5-122B-A10B-NVFP4"
         generation_max_tokens = 2048
         generation_temperature = 0.3
         generation_top_p = 0.95

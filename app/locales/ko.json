@@ -583,7 +583,7 @@
     "refresh": "새로고침",
     "seeded": "{provider} 설정을 저장했습니다.",
     "seed_title": "DGX vLLM 기본값 등록",
-    "seed_help": "Qwen3.6 vLLM endpoint, model id, timeout, sampling 값을 DB 설정으로 upsert합니다.",
+    "seed_help": "Qwen3.5 122B vLLM endpoint, model id, timeout, sampling 값을 DB 설정으로 upsert합니다.",
     "secret_env_only": "Secret은 env var만 사용",
     "provider_name": "Provider Name",
     "base_url": "Base URL",

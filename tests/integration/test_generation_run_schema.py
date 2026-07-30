@@ -40,9 +40,9 @@ def test_generation_provider_config_default_seeded(migrated_database_url: str) -
         """,
     )
 
-    assert provider["provider_name"] == "mock_qwen36_27b_nvfp4"
+    assert provider["provider_name"] == "mock_qwen35_122b_a10b_nvfp4"
     assert provider["provider_mode"] == "mock"
-    assert provider["model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
+    assert provider["model_id"] == "nvidia/Qwen3.5-122B-A10B-NVFP4"
     assert provider["runtime_options"]["endpoint"] == "/v1/chat/completions"
 
 
@@ -152,7 +152,7 @@ def test_remote_openai_compatible_provider_requires_base_url(migrated_database_u
                 VALUES (
                     'invalid_remote_generation_provider',
                     'remote_openai_compatible',
-                    'nvidia/Qwen3.6-27B-NVFP4'
+                    'nvidia/Qwen3.5-122B-A10B-NVFP4'
                 )
                 """)
         conn.rollback()
@@ -180,9 +180,9 @@ def test_generation_run_guardrail_status_is_constrained(migrated_database_url: s
                 VALUES (
                     %s,
                     'package-invalid',
-                    'mock_qwen36_27b_nvfp4',
+                    'mock_qwen35_122b_a10b_nvfp4',
                     'mock',
-                    'nvidia/Qwen3.6-27B-NVFP4',
+                    'nvidia/Qwen3.5-122B-A10B-NVFP4',
                     'pending',
                     'unsafe',
                     'answerable',

@@ -7,7 +7,7 @@ Slice 348 adds a live smoke runner for the DGX-Spark vLLM generation runtime.
 - Host: `192.168.20.243`
 - Port: `12000`
 - Endpoint: `/v1/chat/completions`
-- Model id: `/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4`
+- Model id: `/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4`
 - Serving max model length label: `200k`
 
 The API key is never passed as a CLI argument and must be provided through:

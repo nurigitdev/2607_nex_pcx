@@ -16,7 +16,7 @@ from app.core.generation_runs import (
 )
 from app.main import create_app
 
-MOCK_PROVIDER_NAME = "mock_qwen36_27b_nvfp4"
+MOCK_PROVIDER_NAME = "mock_qwen35_122b_a10b_nvfp4"
 
 
 def _provider_name() -> str:

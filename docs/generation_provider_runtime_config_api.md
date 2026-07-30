@@ -9,7 +9,7 @@ drive vLLM generation runs after the mock-first phase.
 | --- | --- |
 | `GET /api/admin/generation-provider-configs` | List active or all generation provider configs with normalized runtime metadata |
 | `GET /api/admin/generation-provider-configs/default` | Read the active default provider config and runtime contract |
-| `POST /api/admin/generation-provider-configs/seed-dgx-vllm` | Upsert DGX-Spark Qwen3.6 vLLM defaults |
+| `POST /api/admin/generation-provider-configs/seed-dgx-vllm` | Upsert DGX-Spark Qwen3.5 122B vLLM defaults |
 
 The list endpoint accepts `include_inactive=true|false`; the default includes
 inactive rows so operators can inspect disabled runtime candidates.
@@ -18,10 +18,10 @@ inactive rows so operators can inspect disabled runtime candidates.
 
 The seed endpoint uses these safe defaults unless overridden in the request:
 
-- provider name: `dgx_vllm_qwen36_27b_nvfp4`
+- provider name: `dgx_vllm_qwen35_122b_a10b_nvfp4`
 - provider mode: `remote_openai_compatible`
 - base URL: `http://192.168.20.243:12000`
-- model id: `/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4`
+- model id: `/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4`
 - endpoint contract: `/v1/chat/completions`
 - API key reference: `NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY`
 - timeout: `300` seconds

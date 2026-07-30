@@ -163,7 +163,7 @@ def _restore_mock_generation_provider(database_url: str) -> None:
                     provider_base_url = NULL,
                     is_default = true,
                     is_active = true
-                WHERE provider_name = 'mock_qwen36_27b_nvfp4'
+                WHERE provider_name = 'mock_qwen35_122b_a10b_nvfp4'
                 """)
 
 

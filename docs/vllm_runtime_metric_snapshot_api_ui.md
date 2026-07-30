@@ -12,7 +12,7 @@ GET /api/admin/vllm-runtime-metrics/snapshots
 Query parameters:
 
 - `provider_name`: optional exact provider name filter, such as
-  `dgx_vllm_qwen36_27b_nvfp4`.
+  `dgx_vllm_qwen35_122b_a10b_nvfp4`.
 - `limit`: recent snapshot count. Default is `50`; maximum is `500`.
 - `include_raw_samples`: include raw Prometheus sample payloads when `true`.
 

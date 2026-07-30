@@ -32,10 +32,10 @@ generation_smoke = _load_script_module("run_dgx_vllm_generation_smoke.py")
 def test_build_dgx_vllm_generation_smoke_plan_defaults_to_dgx_vllm() -> None:
     plan = generation_smoke.build_dgx_vllm_generation_smoke_plan(api_key_configured=True)
 
-    assert plan.provider_name == "dgx-vllm-qwen3-6-27b"
+    assert plan.provider_name == "dgx-vllm-qwen3-5-122b-a10b"
     assert plan.base_url == "http://192.168.20.243:12000"
     assert plan.chat_completions_url == "http://192.168.20.243:12000/v1/chat/completions"
-    assert plan.model_id == "/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4"
+    assert plan.model_id == "/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4"
     assert plan.api_key_env == "NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY"
     assert plan.api_key_configured is True
     assert plan.serving_max_model_len_label == "200k"
@@ -130,7 +130,7 @@ def test_run_dgx_vllm_generation_smoke_reports_model_mismatch_when_required() ->
     assert report.passed is False
     assert report.observation.mismatches == (
         "response_model_id: expected "
-        "'/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4', got 'different-model'",
+        "'/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4', got 'different-model'",
     )
 
 
@@ -234,7 +234,7 @@ class _FakeGenerationSmokeProvider:
         self,
         *,
         answer_text: str = "연결 확인 완료입니다.",
-        response_model_id: str = "/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4",
+        response_model_id: str = "/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4",
         finish_reason: str | None = "stop",
         total_token_count: int | None = 35,
     ) -> None:
@@ -271,7 +271,7 @@ class _FakeGenerationSmokeProvider:
                     ),
                 },
             },
-            provider_name="dgx-vllm-qwen3-6-27b",
+            provider_name="dgx-vllm-qwen3-5-122b-a10b",
             requested_model_id=request.model_id,
             http_status_code=200,
             elapsed_ms=15,
@@ -287,7 +287,7 @@ class _FakeGenerationSmokeProvider:
             total_token_count=self.total_token_count,
             elapsed_ms=15,
             provider_metrics=metrics,
-            response_metadata={"provider_name": "dgx-vllm-qwen3-6-27b"},
+            response_metadata={"provider_name": "dgx-vllm-qwen3-5-122b-a10b"},
             raw_response={},
         )
 
@@ -299,7 +299,7 @@ class _FailingGenerationSmokeProvider:
     ) -> GenerationChatCompletionResponse:
         metrics = parse_openai_chat_completion_metrics(
             {"error": {"message": "model overloaded", "code": "overloaded"}},
-            provider_name="dgx-vllm-qwen3-6-27b",
+            provider_name="dgx-vllm-qwen3-5-122b-a10b",
             requested_model_id=request.model_id,
             http_status_code=503,
             elapsed_ms=7,

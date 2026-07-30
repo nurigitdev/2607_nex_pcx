@@ -224,7 +224,7 @@ def test_markdown_to_docx_bytes_embeds_export_evidence_metadata() -> None:
     assert paragraph_text[-1] == "Export Evidence"
     assert evidence_table["Generation Run ID"] == "42"
     assert evidence_table["Search Log ID"] == "24"
-    assert evidence_table["Provider"] == "mock_qwen36_27b_nvfp4 (mock)"
+    assert evidence_table["Provider"] == "mock_qwen35_122b_a10b_nvfp4 (mock)"
     assert evidence_table["Template"] == "report / v3"
     assert evidence_table["Export Readiness"] == "ready"
     assert evidence_table["Readiness Reasons"] == "-"
@@ -279,9 +279,9 @@ def _run(
         retrieval_package_key="pkg-generation-42",
         generation_template_id=None,
         provider_config_id=7,
-        provider_name="mock_qwen36_27b_nvfp4",
+        provider_name="mock_qwen35_122b_a10b_nvfp4",
         provider_mode="mock",
-        model_id="nvidia/Qwen3.6-27B-NVFP4",
+        model_id="nvidia/Qwen3.5-122B-A10B-NVFP4",
         prompt_version="grounded_answer_v1",
         prompt_hash="prompt-hash",
         context_hash="context-hash",

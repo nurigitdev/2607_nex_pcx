@@ -24,8 +24,8 @@ from app.core.vllm_runtime_metrics import (  # noqa: E402
 )
 
 DEFAULT_DGX_VLLM_BASE_URL = "http://192.168.20.243:12000"
-DEFAULT_DGX_VLLM_PROVIDER_NAME = "dgx_vllm_qwen36_27b_nvfp4"
-DEFAULT_DGX_VLLM_MODEL_ID = "/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4"
+DEFAULT_DGX_VLLM_PROVIDER_NAME = "dgx_vllm_qwen35_122b_a10b_nvfp4"
+DEFAULT_DGX_VLLM_MODEL_ID = "/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4"
 
 
 def main() -> int:

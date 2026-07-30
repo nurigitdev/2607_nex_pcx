@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260729_0042"
+HEAD_REVISION = "20260730_0043"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -172,8 +172,16 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
         """
         SELECT provider_mode, model_id
         FROM generation_provider_configs
-        WHERE provider_name = 'mock_qwen36_27b_nvfp4'
+        WHERE provider_name = 'mock_qwen35_122b_a10b_nvfp4'
           AND is_default
+        """,
+    )
+    dgx_generation_provider = fetch_one(
+        test_database_url,
+        """
+        SELECT provider_mode, provider_base_url, model_id, is_active, is_default, runtime_options
+        FROM generation_provider_configs
+        WHERE provider_name = 'dgx_vllm_qwen35_122b_a10b_nvfp4'
         """,
     )
     keyword_index_table = fetch_one(
@@ -279,7 +287,19 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert chat_message_link_table["table_name"] == "chat_message_links"
     assert chat_message_sequence_index["index_name"] == "idx_chat_messages_session_sequence"
     assert default_generation_provider["provider_mode"] == "mock"
-    assert default_generation_provider["model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
+    assert default_generation_provider["model_id"] == "nvidia/Qwen3.5-122B-A10B-NVFP4"
+    assert dgx_generation_provider["provider_mode"] == "remote_openai_compatible"
+    assert dgx_generation_provider["provider_base_url"] == "http://192.168.20.243:12000"
+    assert (
+        dgx_generation_provider["model_id"]
+        == "/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4"
+    )
+    assert dgx_generation_provider["is_active"] is False
+    assert dgx_generation_provider["is_default"] is False
+    assert (
+        dgx_generation_provider["runtime_options"]["api_key_env"]
+        == "NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY"
+    )
     assert keyword_index_table["table_name"] == "chunk_keyword_terms"
     assert keyword_indexing_stage_constraint["enabled"] is True
     assert vllm_metric_snapshot_table["table_name"] == "vllm_runtime_metric_snapshots"

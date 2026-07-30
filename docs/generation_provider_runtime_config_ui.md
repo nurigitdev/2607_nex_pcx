@@ -24,15 +24,15 @@ The page shows:
 
 `POST /admin/generation-provider-configs/seed-dgx-vllm`
 
-The form upserts the DGX Qwen3.6 vLLM runtime defaults without accepting or
+The form upserts the DGX Qwen3.5 122B vLLM runtime defaults without accepting or
 persisting an API key value. Operators can explicitly choose whether the seeded
 remote provider should become the default.
 
 The form uses these defaults:
 
-- `dgx_vllm_qwen36_27b_nvfp4`
+- `dgx_vllm_qwen35_122b_a10b_nvfp4`
 - `http://192.168.20.243:12000`
-- `/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4`
+- `/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4`
 - `NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY`
 - Qwen thinking disabled through `extra_body`
 

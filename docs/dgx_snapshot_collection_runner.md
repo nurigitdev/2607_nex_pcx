@@ -24,8 +24,8 @@ NEX_PCX_DATABASE_URL='postgresql://nex_pcx_app:<password>@127.0.0.1:5432/nex_pcx
   --ssh-user nexpcx \
   --remote-workdir /home/nexpcx/2607_nex_pcx \
   --vllm-base-url http://192.168.20.243:12000 \
-  --vllm-provider-name dgx_vllm_qwen36_27b_nvfp4 \
-  --vllm-model-id /home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4 \
+  --vllm-provider-name dgx_vllm_qwen35_122b_a10b_nvfp4 \
+  --vllm-model-id /home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4 \
   --json-output artifacts/dgx_snapshot_collection.json \
   --markdown-output artifacts/dgx_snapshot_collection.md \
   --pretty

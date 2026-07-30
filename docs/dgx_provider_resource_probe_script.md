@@ -12,7 +12,7 @@ capturing host/process-level resource evidence.
 | `bge-primary` | embedding | `9102` | `embedding_provider_service` |
 | `qwen-primary` | embedding | `9103` | `embedding_provider_service` |
 | `qwen-reranker-primary` | reranker | `9104` | `reranker_provider_service` |
-| `dgx_vllm_qwen36_27b_nvfp4` | vLLM | `12000` | `vllm` |
+| `dgx_vllm_qwen35_122b_a10b_nvfp4` | vLLM | `12000` | `vllm` |
 
 ## Dry Run
 

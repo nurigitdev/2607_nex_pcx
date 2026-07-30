@@ -61,7 +61,7 @@ from app.core.search_logs import (
 pytestmark = pytest.mark.integration
 
 NOW = datetime(2026, 7, 26, 10, 0, tzinfo=UTC)
-MOCK_PROVIDER_NAME = "mock_qwen36_27b_nvfp4"
+MOCK_PROVIDER_NAME = "mock_qwen35_122b_a10b_nvfp4"
 
 
 class _FakeRemoteGenerationProvider:
@@ -700,7 +700,7 @@ def test_mock_generation_executor_persists_answer_and_citations(
         )
         assert report.run.response_metadata["deterministic"] is True
         provider_metrics = report.run.response_metadata["provider_metrics"]
-        assert provider_metrics["provider_name"] == "mock_qwen36_27b_nvfp4"
+        assert provider_metrics["provider_name"] == "mock_qwen35_122b_a10b_nvfp4"
         assert provider_metrics["provider_mode"] == "mock"
         assert provider_metrics["finish_reason"] == MOCK_FINISH_REASON_COMPLETED
         assert provider_metrics["total_token_count"] == report.run.total_token_count

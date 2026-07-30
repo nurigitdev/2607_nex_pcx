@@ -1,11 +1,11 @@
 # NeX_PCX
 
-**Software Requirements Specification v1.60**
+**Software Requirements Specification v1.61**
 
 *pre-CX RAG / Embedding / VectorDB Experiment Bench*
 
 작성일: 2026-07-02  
-문서 상태: Draft v1.60
+문서 상태: Draft v1.61
 대상 시스템: FastAPI + Bootstrap + PostgreSQL/pgvector 기반 RAG 실험 플랫폼
 
 본 문서는 NeX-CX 본 개발 이전의 선행 검증 프로젝트인 NeX_PCX의 요구사항을 정의한다.
@@ -14,12 +14,12 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 문서명 | NeX_PCX Software Requirements Specification v1.60 |
+| 문서명 | NeX_PCX Software Requirements Specification v1.61 |
 | 프로젝트명 | NeX_PCX (pre-CX) |
 | 문서 목적 | NeX-CX 본 개발 전 RAG/Embedding/VectorDB 선행 검증 플랫폼의 기능, 데이터, 품질, 테스트 요구사항 정의 |
 | 주요 기술 스택 | FastAPI, Bootstrap, PostgreSQL, pgvector, Python, pytest, Playwright |
-| 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.6-27B-NVFP4 generation runtime |
-| 문서 버전 | v1.60 |
+| 핵심 평가 대상 | KURE-v1 1024, bge-m3 1024, Qwen3-Embedding-4B 1000, Qwen3-Embedding-4B 2560, Qwen3.5-122B-A10B-NVFP4 generation runtime |
+| 문서 버전 | v1.61 |
 
 | 버전 | 일자 | 작성/변경 내용 |
 | --- | --- | --- |
@@ -85,6 +85,7 @@
 | 1.58 | 2026-07-29 | DGX provider resource monitor strategy, embedding/reranker/vLLM provider별 RAM/VRAM/swap/process 관측 요구사항과 운영 threshold 방향 보강 |
 | 1.59 | 2026-07-29 | DGX-Spark unified-memory 환경을 고려해 provider/vLLM별 resident memory share와 GPU runtime memory 해석 기준을 운영 UI/API 요구사항에 보강 |
 | 1.60 | 2026-07-29 | DGX provider resource snapshot과 vLLM runtime metric snapshot을 한 번에 저장하는 bounded collection runner 운영 요구사항 보강 |
+| 1.61 | 2026-07-30 | DGX vLLM 기본 runtime을 Qwen3.5-122B-A10B-NVFP4로 정렬하고 기존 Qwen3.6 provider 이력과 신규 122B provider config를 분리하는 운영 요구사항 보강 |
 
 # 목차
 
@@ -355,7 +356,7 @@ NeX_PCX는 운영 서비스가 아니라 NeX-CX 본 개발을 위한 실험/검�
 | Retrieval Context Service | 검색 로그 결과를 생성 입력으로 정규화하고 citation, source anchor, permission scope, confidence metadata를 포함한 context package를 제공 |
 | Generation Template Service | 문서 유형별 template, section schema, style guidance, output format을 관리하고 prompt package와 generation run metadata에 template snapshot을 주입 |
 | Generation Provider Client | mock 또는 remote OpenAI-compatible vLLM runtime을 호출하고 model/provider/prompt/runtime metadata를 generation run에 기록 |
-| Remote vLLM Runtime | DGX-Spark 등 GPU 서버에서 Qwen3.6-27B-NVFP4 등 LLM을 OpenAI-compatible `/v1/chat/completions` 계약으로 제공 |
+| Remote vLLM Runtime | DGX-Spark 등 GPU 서버에서 Qwen3.5-122B-A10B-NVFP4 등 LLM을 OpenAI-compatible `/v1/chat/completions` 계약으로 제공 |
 | Chat Orchestrator | 대화형 입력을 chat intent로 분류하고 일반 답변, 문서 검색 요약, 근거 기반 답변, template 문서 생성, 문서 요약 기능 중 하나로 routing한다. |
 | Chat Repository | chat session/message, intent decision, linked search/generation/summary run, generated artifact link를 저장하고 대화 재현성을 제공한다. |
 | Statistics Service | 문서/chunk/vector/job/검색 통계 산출 |
@@ -373,7 +374,7 @@ postgres: PostgreSQL + pgvector
 worker-default: text extraction, parsing, chunking, light embedding job 처리
 worker-qwen: Qwen3-Embedding-4B 1000/2560 profile 전용 worker
 generation-mock: 개발/test 환경의 deterministic mock generation runtime
-vllm-qwen: DGX-Spark 외부 프로세스, Qwen3.6-27B-NVFP4 OpenAI-compatible chat completions runtime
+vllm-qwen: DGX-Spark 외부 프로세스, Qwen3.5-122B-A10B-NVFP4 OpenAI-compatible chat completions runtime
 playwright-test: E2E test runner (CI 또는 local gate)
 ```
 
@@ -445,7 +446,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-050 | Citation readiness check | 생성 단계로 넘기기 전 retrieval context의 citation key, 문서/파일 식별자, chunk 식별자, source anchor/location/lineage coverage를 점검하고 issue code를 표시한다. | MUST |
 | FR-051 | Generation provider strategy | 생성 기능은 provider mode를 `mock`과 `remote_openai_compatible`로 분리하고, 개발/test 환경에서는 deterministic mock provider로 schema/API/UI 계약을 먼저 검증한다. | MUST |
 | FR-052 | vLLM runtime contract | remote LLM provider는 vLLM OpenAI-compatible `/v1/chat/completions` 계약을 기본으로 사용하며 base URL, model id, API key 사용 여부, timeout, max tokens, temperature, top_p를 runtime 설정으로 관리한다. | MUST |
-| FR-053 | 기본 LLM 후보 | NeX_PCX의 기본 remote LLM 후보는 `nvidia/Qwen3.6-27B-NVFP4`로 정의하되, 실제 DGX-Spark 연결 smoke가 완료되기 전까지 운영 test는 mock provider를 기본값으로 사용한다. | SHOULD |
+| FR-053 | 기본 LLM 후보 | NeX_PCX의 기본 remote LLM 후보는 `nvidia/Qwen3.5-122B-A10B-NVFP4`로 정의하되, 실제 DGX-Spark 연결 smoke가 완료되기 전까지 운영 test는 mock provider를 기본값으로 사용한다. | SHOULD |
 | FR-054 | Grounded generation gate | 생성 실행은 retrieval confidence가 `answerable`이고 citation readiness가 `failed`가 아닌 context package를 우선 대상으로 하며, `low_confidence` 또는 `no_relevant_context` 상태에서는 no-answer 응답 또는 실행 차단을 기록한다. | MUST |
 | FR-055 | Generation run execution persistence | 생성 실행기는 prompt package, provider snapshot, retrieval confidence, citation readiness, answer/no-answer 결과, token/latency 추정치, citation 사용 여부를 `generation_runs`와 `generation_run_citations`에 재현 가능하게 저장한다. | MUST |
 | FR-056 | Generation run API | 검색 로그 ID를 기준으로 retrieval context를 구성해 mock generation run을 생성하는 API와, 저장된 generation run/citation detail을 조회하는 API를 제공한다. | MUST |
@@ -457,7 +458,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 | FR-062 | Generation provider metrics snapshot UI | Web UI는 최근 generation run의 provider metrics snapshot을 요약 카드, 실행별 token/latency table, raw JSON evidence로 표시하고 각 run detail로 이동할 수 있어야 한다. | SHOULD |
 | FR-063 | OpenAI-compatible vLLM client foundation | remote generation provider client는 `/v1/chat/completions` request payload를 구성하고 answer text, finish reason, token usage, latency, HTTP error payload를 표준 metrics와 함께 반환하거나 실패 객체로 보존할 수 있어야 한다. | MUST |
 | FR-064 | DGX vLLM generation smoke evidence | DGX-Spark vLLM runtime에 대해 `/v1/chat/completions` smoke runner를 제공하고 endpoint, model id, HTTP status, latency, finish reason, token usage, answer preview를 secret 없이 증적으로 저장할 수 있어야 한다. | MUST |
-| FR-065 | Generation provider runtime config API | 운영자는 DB에 저장된 generation provider 설정 목록과 default provider runtime contract를 조회하고, DGX vLLM Qwen3.6 기본값을 secret 값 없이 environment variable reference만으로 seed/upsert할 수 있어야 한다. | MUST |
+| FR-065 | Generation provider runtime config API | 운영자는 DB에 저장된 generation provider 설정 목록과 default provider runtime contract를 조회하고, DGX vLLM Qwen3.5 122B 기본값을 secret 값 없이 environment variable reference만으로 seed/upsert할 수 있어야 한다. | MUST |
 | FR-066 | Generation provider runtime config UI | Web UI는 generation provider 설정 목록, default provider, runtime validation 상태, API key env reference 구성 여부를 표시하고 DGX vLLM 기본값을 secret 입력 없이 seed할 수 있어야 한다. | SHOULD |
 | FR-067 | Remote vLLM generation executor foundation | remote generation executor는 default provider가 `remote_openai_compatible`일 때 prompt package를 `/v1/chat/completions` 요청으로 실행하고 성공, provider failure, guardrail no-answer 결과를 동일한 generation run/citation schema에 저장할 수 있어야 한다. | MUST |
 | FR-068 | Remote generation run API | API 사용자는 검색 이력의 retrieval context를 remote vLLM generation run으로 승격할 수 있어야 하며, API key는 DB에 저장하지 않고 provider 설정의 env reference를 해석해 runtime에만 전달해야 한다. | MUST |
@@ -601,7 +602,7 @@ MVP에서는 별도 broker process를 두지 않고 PostgreSQL의 row lock, leas
 
 - DGX vLLM smoke runner는 API key 값을 코드, CLI dry-run output, markdown/json 증적에 기록하지 않고 환경변수 이름과 configured 여부만 남겨야 한다. 성공 증적은 HTTP 2xx, non-empty answer, finish reason, token usage, provider metrics succeeded를 기준으로 판단한다. Qwen smoke request는 기본적으로 `chat_template_kwargs.enable_thinking=false`를 사용해 짧은 smoke token budget에서도 최종 assistant content가 반환되도록 한다.
 
-- 기본 remote LLM 후보는 `nvidia/Qwen3.6-27B-NVFP4`로 두되, 로컬 개발 환경과 remote DGX-Spark 접속이 불가능한 환경에서는 deterministic mock provider가 동일한 request/response shape로 동작해야 한다.
+- 기본 remote LLM 후보는 `nvidia/Qwen3.5-122B-A10B-NVFP4`로 두되, 로컬 개발 환경과 remote DGX-Spark 접속이 불가능한 환경에서는 deterministic mock provider가 동일한 request/response shape로 동작해야 한다.
 
 - DGX-Spark resource monitor는 provider health와 별도로 host/process 관측을 수행한다. remote embedding provider(FastAPI), remote reranker provider(FastAPI), vLLM(OpenAI-compatible runtime)는 각각 process 식별자, bind port, command fingerprint, RAM RSS, 전체 system memory 대비 resident memory share, CPU 사용률, GPU runtime memory, swap 사용 여부, uptime을 수집 대상에 포함해야 한다. DGX-Spark는 unified-memory 구조이므로 GPU runtime memory는 독립 VRAM 점유량으로 단정하지 않고 resident memory share, MemAvailable, swap pressure와 함께 해석해야 한다.
 
@@ -1817,7 +1818,7 @@ pytest tests/e2e
 
 - 검색 로그 기반 retrieval context package, citation readiness, retrieval confidence gate를 통해 생성 실행 가능 여부를 판단할 수 있다.
 
-- 생성 단계의 초기 실행은 deterministic mock provider로 가능해야 하며, remote DGX-Spark 접속 가능 시 vLLM OpenAI-compatible runtime smoke를 통해 Qwen3.6-27B-NVFP4 전환 가능성을 검증한다.
+- 생성 단계의 초기 실행은 deterministic mock provider로 가능해야 하며, remote DGX-Spark 접속 가능 시 vLLM OpenAI-compatible runtime smoke를 통해 Qwen3.5-122B-A10B-NVFP4 전환 가능성을 검증한다.
 
 - 대화형 workspace는 prompt 입력, intent routing, chat message 저장, linked search/generation/summary run 표시, generated artifact link 표시를 mock provider 기반으로 검증할 수 있어야 한다.
 
@@ -1847,7 +1848,7 @@ pytest tests/e2e
 | Hybrid score 왜곡 | 서로 다른 score scale을 단순 합산하여 품질을 오판 | 1차 hybrid는 RRF 기반 rank fusion으로 구현하고 score_components를 search log에 저장 |
 | Retrieval confidence gate 미적용 | 관련 없는 검색 결과를 근거로 LLM이 그럴듯한 오답을 생성 | `answerable` 상태와 citation readiness를 generation run 전제 조건으로 기록하고, low/no-context는 no-answer 또는 blocked status로 처리 |
 | vLLM remote runtime 장애 | 생성 실행 실패, timeout, 운영자 혼선 | mock provider를 기본 fallback으로 유지하고 provider base URL/model/timeout/health smoke evidence를 generation runtime metadata로 기록 |
-| Qwen3.6-27B-NVFP4 GPU 자원 부족 | DGX memory pressure, 긴 latency, context length 제한 | 초기 context budget을 보수적으로 제한하고 max_tokens/temperature/top_p/context budget을 설정화하며, office network에서 별도 smoke 후 활성화 |
+| Qwen3.5-122B-A10B-NVFP4 GPU 자원 부족 | DGX memory pressure, 긴 latency, context length 제한 | 초기 context budget을 보수적으로 제한하고 max_tokens/temperature/top_p/context budget을 설정화하며, office network에서 별도 smoke 후 활성화하고 resident memory warning/critical 기준을 122B runtime에 맞게 관리 |
 | DGX provider별 resource pressure 식별 실패 | 어떤 provider가 전체 memory/swap을 점유하는지 알 수 없어 운영 중 잘못된 프로세스를 재시작하거나 장애 대응이 지연됨 | provider별 process/port binding을 기준으로 RAM RSS, resident memory share, GPU runtime memory, swap pressure, uptime snapshot을 collection runner로 저장하고 Dashboard/운영 메뉴에서 threshold status를 표시 |
 | Chat intent 오분류 | 일반 답변이 필요한 질문에 문서 검색을 수행하거나, 근거 답변이 필요한 질문을 일반 답변으로 처리 | 초기에는 deterministic rule/mock router와 명시적 mode 선택을 함께 제공하고, intent/confidence/routing reason을 message metadata로 기록 |
 | Chat 결과와 산출물 추적 누락 | 사용자가 대화 중 생성한 문서 또는 근거 run을 다시 찾기 어려움 | chat_message_links로 search_log, generation_run, document, artifact/download link를 저장하고 UI에 message별 card로 표시 |
@@ -1893,7 +1894,7 @@ pytest tests/e2e
 
 - vLLM OpenAI-compatible server documentation: https://docs.vllm.ai/en/latest/serving/openai_compatible_server/
 
-- NVIDIA Qwen3.6-27B-NVFP4 model card: https://huggingface.co/nvidia/Qwen3.6-27B-NVFP4
+- NVIDIA Qwen3.5-122B-A10B-NVFP4 model card: https://huggingface.co/nvidia/Qwen3.5-122B-A10B-NVFP4
 
 - pgvector GitHub: https://github.com/pgvector/pgvector
 

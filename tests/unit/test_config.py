@@ -48,7 +48,7 @@ def test_default_settings(monkeypatch) -> None:
     assert settings.remote_generation_provider_url is None
     assert settings.remote_generation_provider_timeout_seconds == 120.0
     assert settings.remote_generation_provider_api_key is None
-    assert settings.generation_model_id == "nvidia/Qwen3.6-27B-NVFP4"
+    assert settings.generation_model_id == "nvidia/Qwen3.5-122B-A10B-NVFP4"
     assert settings.generation_max_tokens == 1024
     assert settings.generation_temperature == 0.2
     assert settings.generation_top_p == 0.9

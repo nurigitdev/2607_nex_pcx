@@ -64,9 +64,9 @@ GENERATION_CITATION_READINESS_STATUSES = {
     CITATION_READINESS_WARNING,
     CITATION_READINESS_FAILED,
 }
-DGX_VLLM_GENERATION_PROVIDER_NAME = "dgx_vllm_qwen36_27b_nvfp4"
+DGX_VLLM_GENERATION_PROVIDER_NAME = "dgx_vllm_qwen35_122b_a10b_nvfp4"
 DGX_VLLM_GENERATION_BASE_URL = "http://192.168.20.243:12000"
-DGX_VLLM_GENERATION_MODEL_ID = "/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4"
+DGX_VLLM_GENERATION_MODEL_ID = "/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4"
 DGX_VLLM_GENERATION_API_KEY_ENV = "NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY"
 DGX_VLLM_GENERATION_TIMEOUT_SECONDS = 300
 DGX_VLLM_GENERATION_MAX_TOKENS = 4096
@@ -683,7 +683,7 @@ def build_dgx_vllm_generation_provider_config_input(
     is_default: bool = False,
     is_active: bool = True,
     thinking_disabled: bool = True,
-    created_by: str | None = "slice_349_seed",
+    created_by: str | None = "slice_415_seed",
     created_by_user_id: int | None = None,
 ) -> GenerationProviderConfigInput:
     return validate_generation_provider_config_input(
@@ -713,7 +713,7 @@ def build_dgx_vllm_generation_provider_config_input(
                 "long_form_document_types": ["proposal", "report"],
                 "smoke_evidence": "docs/dgx_vllm_generation_smoke_result.md",
                 "secret_storage": "environment_variable_only",
-                "slice": 349,
+                "slice": 415,
             },
             created_by=created_by,
             created_by_user_id=created_by_user_id,
@@ -735,7 +735,7 @@ def seed_dgx_vllm_generation_provider_config(
     is_default: bool = False,
     is_active: bool = True,
     thinking_disabled: bool = True,
-    created_by: str | None = "slice_349_seed",
+    created_by: str | None = "slice_415_seed",
     created_by_user_id: int | None = None,
 ) -> GenerationProviderConfigRecord:
     config_input = build_dgx_vllm_generation_provider_config_input(

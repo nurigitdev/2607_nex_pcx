@@ -23,7 +23,7 @@ The script defaults to the DGX-Spark vLLM runtime:
 | vLLM port | `12000` |
 | Provider base URL | `http://192.168.20.243:12000` |
 | Chat endpoint | `/v1/chat/completions` |
-| Model | `/home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4` |
+| Model | `/home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4` |
 | API key source | `NEX_PCX_REMOTE_GENERATION_PROVIDER_API_KEY` |
 | Timeout | `300` seconds |
 | Max tokens | `512` |

@@ -14,8 +14,8 @@ histogram averages.
 ```bash
 ./.venv/bin/python scripts/scrape_vllm_runtime_metrics.py \
   --base-url http://192.168.20.243:12000 \
-  --provider-name dgx_vllm_qwen36_27b_nvfp4 \
-  --model-id /home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4 \
+  --provider-name dgx_vllm_qwen35_122b_a10b_nvfp4 \
+  --model-id /home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4 \
   --pretty
 ```
 
@@ -35,8 +35,8 @@ To persist the normalized snapshot:
 export NEX_PCX_DATABASE_URL='postgresql://nex_pcx_app:<password>@127.0.0.1:5432/nex_pcx_app'
 ./.venv/bin/python scripts/scrape_vllm_runtime_metrics.py \
   --base-url http://192.168.20.243:12000 \
-  --provider-name dgx_vllm_qwen36_27b_nvfp4 \
-  --model-id /home/nurivoice-dgx/models/nvidia/Qwen3.6-27B-NVFP4 \
+  --provider-name dgx_vllm_qwen35_122b_a10b_nvfp4 \
+  --model-id /home/nurivoice-dgx/models/nvidia/Qwen3.5-122B-A10B-NVFP4 \
   --persist \
   --pretty
 ```

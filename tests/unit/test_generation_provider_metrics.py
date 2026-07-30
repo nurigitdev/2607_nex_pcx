@@ -14,7 +14,7 @@ def test_parse_openai_chat_completion_metrics_reads_vllm_usage_and_finish_reason
             "id": "chatcmpl-001",
             "object": "chat.completion",
             "created": 1785000000,
-            "model": "nvidia/Qwen3.6-27B-NVFP4",
+            "model": "nvidia/Qwen3.5-122B-A10B-NVFP4",
             "system_fingerprint": "fp-qwen",
             "choices": [
                 {
@@ -30,7 +30,7 @@ def test_parse_openai_chat_completion_metrics_reads_vllm_usage_and_finish_reason
             },
         },
         provider_name="dgx-vllm",
-        requested_model_id="nvidia/Qwen3.6-27B-NVFP4",
+        requested_model_id="nvidia/Qwen3.5-122B-A10B-NVFP4",
         http_status_code=200,
         elapsed_ms=3400,
         provider_elapsed_ms=3200,
@@ -41,7 +41,7 @@ def test_parse_openai_chat_completion_metrics_reads_vllm_usage_and_finish_reason
     assert metrics.contract_version == GENERATION_PROVIDER_METRICS_CONTRACT_VERSION
     assert metrics.succeeded is True
     assert payload["provider_name"] == "dgx-vllm"
-    assert payload["response_model_id"] == "nvidia/Qwen3.6-27B-NVFP4"
+    assert payload["response_model_id"] == "nvidia/Qwen3.5-122B-A10B-NVFP4"
     assert payload["response_id"] == "chatcmpl-001"
     assert payload["finish_reason"] == "stop"
     assert payload["input_token_count"] == 1200

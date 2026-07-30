@@ -17,8 +17,8 @@ NOW = datetime(2026, 7, 29, 9, 30, tzinfo=UTC)
 SAMPLE_METRICS = """
 # HELP vllm:kv_cache_usage_perc KV cache usage
 # TYPE vllm:kv_cache_usage_perc gauge
-vllm:kv_cache_usage_perc{model_name="/home/models/Qwen3.6-27B-NVFP4",worker="0"} 0.72
-vllm:kv_cache_usage_perc{model_name="/home/models/Qwen3.6-27B-NVFP4",worker="1"} 0.81
+vllm:kv_cache_usage_perc{model_name="/home/models/Qwen3.5-122B-A10B-NVFP4",worker="0"} 0.72
+vllm:kv_cache_usage_perc{model_name="/home/models/Qwen3.5-122B-A10B-NVFP4",worker="1"} 0.81
 vllm:cpu_cache_usage_perc 0.13
 vllm:num_requests_running 2
 vllm:num_requests_waiting 3
