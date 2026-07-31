@@ -72,6 +72,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-08`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Operators need generation and artifact evidence without violating service ownership or leaking prompts/provider secrets. | Freeze AG read-only dashboard, audit projection, filter, redaction, and operator note requirements in [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md). |
 | `NP-SRC-02`, `NP-SRC-03` | Generation contracts need implementation-ready schema names and validation rules before OpenAPI and contract tests. | Seed the generation JSON Schema catalog and shared definitions in [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md). |
 | `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Generation implementation needs service-owned endpoint names, headers, idempotency, streaming/polling, and error codes before code begins. | Seed the generation OpenAPI route surface in [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md). |
+| `NP-SRC-02`, `NP-SRC-03`, PCX slice history | The generation step needs a mock-first acceptance spine before live provider or UI work starts. | Freeze generation E2E scenarios, contract test matrix, mock provider requirements, and evidence criteria in [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md). |
 
 ## Next Review Sequence
 
@@ -106,6 +107,9 @@ decisions rather than copying large source material wholesale.
     validation posture, and contract-test derivation points.
 18. Completed: Seed generation OpenAPI endpoint surface across AE, CX, MO, OA,
     and AG with headers, idempotency, streaming/polling, errors, and tests.
-19. Use `NP-SRC-15` to settle development environment and directory assumptions.
-20. Use `NP-SRC-01` as a final cross-check for missing requirements.
-21. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+19. Completed: Freeze generation E2E acceptance and contract test plan across
+    mock provider scenarios, service boundary tests, recovery branches, artifact
+    links, and AG audit redaction.
+20. Use `NP-SRC-15` to settle development environment and directory assumptions.
+21. Use `NP-SRC-01` as a final cross-check for missing requirements.
+22. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

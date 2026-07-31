@@ -38,6 +38,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 26. [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md)
 27. [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md)
 28. [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md)
+29. [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md)
 
 ## Platform Services
 
@@ -110,6 +111,9 @@ and AG can validate request, response, event, lineage, artifact, compatibility,
 and audit payloads before endpoint implementation. Slice 437 seeded the
 generation OpenAPI endpoint surface so AE, CX, MO, OA, and AG have a concrete
 service-owned route map for generation orchestration, artifact handling,
-provider execution, and governance reads.
+provider execution, and governance reads. Slice 438 froze the generation E2E
+acceptance and contract test plan so retrieval packages, generation execution,
+structured drafts, artifacts, progress events, recovery, compatibility, and AG
+audit can be verified as one mock-first MVP flow.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

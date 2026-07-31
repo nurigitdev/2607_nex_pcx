@@ -18,6 +18,7 @@ provider checks.
 | UI | Playwright flows for user, operator, and admin scenarios with Korean default screenshots. |
 | Smoke | Remote DGX provider health/request checks and startup/shutdown evidence. |
 | Regression | Full suite with coverage and branch coverage thresholds. |
+| Generation acceptance | Mock-first AE/CX/MO/AG end-to-end scenarios for retrieval-grounded generation, artifacts, recovery, and audit. |
 
 ## Coverage Gate
 
@@ -45,6 +46,8 @@ Add tests for:
 - Retry, stale lease, duplicate run, and queue drain guardrails.
 - Template completeness, rollback, and active-version selection.
 - Generation citation guardrail branches.
+- Generation progress, compatibility mismatch, recovery lineage, artifact
+  download permission, and AG redaction branches.
 - Optional tokenizer/provider dependency unavailable branches.
 
 ## Evidence Expectations
@@ -56,6 +59,7 @@ Add tests for:
 | Smoke markdown | Any live remote provider check. |
 | Coverage summary | Every committed slice. |
 | Operational snapshot | Startup/shutdown/readiness/provider resource slices. |
+| Generation E2E evidence | Generation acceptance and contract test implementation slices. |
 
 ## Test Data Rules
 

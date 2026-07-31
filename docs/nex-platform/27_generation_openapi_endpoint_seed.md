@@ -169,6 +169,7 @@ where the source service can determine retryability.
 
 This endpoint seed should feed:
 
-- Generation E2E acceptance scenario and contract test plan.
+- Generation E2E acceptance scenario and contract test plan, starting from
+  [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md).
 - Service-specific OpenAPI file generation.
 - Contract test fixtures and example payloads.

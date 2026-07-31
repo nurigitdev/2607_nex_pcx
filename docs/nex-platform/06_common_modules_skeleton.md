@@ -33,6 +33,7 @@ packages until service boundaries have survived implementation.
 | AG generation artifact audit requirements | Read-only dashboard views, filters, redaction, audit event projections, operator notes, and export requirements for generation and artifacts. | `nex-ag`, all services |
 | Generation contract JSON schema seed | Versioned schema catalog, shared definitions, validation rules, and schema-to-contract traceability for generation payloads. | All backend services, `nex-ae-web` |
 | Generation OpenAPI endpoint seed | Service-owned route map, headers, status codes, schemas, streaming/polling endpoints, and contract-test surface. | All services |
+| Generation E2E acceptance plan | Mock-first end-to-end scenarios, contract-test matrix, evidence artifacts, and MVP exit criteria. | All services |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
 ## Contract Style
@@ -89,6 +90,8 @@ packages until service boundaries have survived implementation.
   [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md).
 - Generation OpenAPI endpoint seed, starting from
   [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md).
+- Generation E2E acceptance and contract test plan, starting from
+  [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.
