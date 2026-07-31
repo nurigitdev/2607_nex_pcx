@@ -40,6 +40,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 28. [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md)
 29. [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md)
 30. [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md)
+31. [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md)
 
 ## Platform Services
 
@@ -118,6 +119,8 @@ structured drafts, artifacts, progress events, recovery, compatibility, and AG
 audit can be verified as one mock-first MVP flow. Slice 439 assembled the first
 NeX-Platform MVP SRS v0.1 draft across OA, CX, MO, AE API, AE web, AG,
 cross-service requirements, acceptance criteria, non-functional requirements,
-deferrals, and open decisions.
+deferrals, and open decisions. Slice 440 partitioned the MVP SRS into
+service-owned requirement IDs, interfaces, dependencies, priorities, shared
+platform requirements, and cross-service dependency order.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

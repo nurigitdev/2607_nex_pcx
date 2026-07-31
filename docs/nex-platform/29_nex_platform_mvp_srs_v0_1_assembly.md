@@ -199,7 +199,8 @@ The MVP is accepted when:
 
 This SRS assembly should feed:
 
-- Service-specific requirement partition.
+- Service-specific requirement partition, starting from
+  [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md).
 - Cross-service traceability matrix.
 - Development environment freeze.
 - Common schema and contract package layout.
