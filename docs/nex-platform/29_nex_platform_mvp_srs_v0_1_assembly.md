@@ -207,5 +207,6 @@ This SRS assembly should feed:
   [Platform Development Environment Freeze](32_platform_development_environment_freeze.md).
 - Common schema and contract package layout, starting from
   [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md).
-- Testing strategy detail.
+- Testing strategy detail, starting from
+  [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md).
 - First implementation roadmap and sprint backlog.

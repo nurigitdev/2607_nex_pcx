@@ -139,7 +139,8 @@ Examples should be small enough to review in pull requests.
 
 This layout should feed:
 
-- Testing strategy detail.
+- Testing strategy detail, starting from
+  [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md).
 - First sprint backlog for contract package bootstrap.
 - Service-specific OpenAPI/schema implementation slices.
 - CI contract validation command design.

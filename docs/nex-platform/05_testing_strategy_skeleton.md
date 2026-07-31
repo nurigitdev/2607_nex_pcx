@@ -4,7 +4,8 @@ Status: Draft bootstrap.
 
 Testing should preserve the NeX-PCX discipline: small slices, focused test
 additions, regression runs, coverage reporting, and evidence artifacts for live
-provider checks.
+provider checks. The detailed MVP testing strategy is now assembled in
+[Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md).
 
 ## Test Layers
 

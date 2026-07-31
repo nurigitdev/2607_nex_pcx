@@ -44,6 +44,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 32. [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md)
 33. [Platform Development Environment Freeze](32_platform_development_environment_freeze.md)
 34. [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md)
+35. [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md)
 
 ## Platform Services
 
@@ -132,6 +133,9 @@ monorepo-style workspace, service-owned packages and databases, local mock by
 default, live provider opt-in, profile-specific configuration, and setup
 guardrails. Slice 443 froze the common schema and contract package layout for
 versioned JSON Schema, OpenAPI files, examples, fixtures, ownership rules,
-versioning policy, and contract-test hooks.
+versioning policy, and contract-test hooks. Slice 444 detailed the MVP testing
+strategy across single-pass quality gate, statement/branch coverage, contract
+fixtures, mock E2E, live smoke, UI evidence, release evidence, and docs-only
+slice rules.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

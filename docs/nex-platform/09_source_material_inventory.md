@@ -78,6 +78,7 @@ decisions rather than copying large source material wholesale.
 | Source inventory, MVP SRS, service partition, PCX lessons | Requirements need traceability into contracts, tests, and evidence before implementation starts. | Seed source-to-requirement-to-test traceability in [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md). |
 | `NP-SRC-15`, PCX dev/test/live operations lessons | Implementation needs a frozen local/test/live development profile before repository bootstrap. | Freeze environment profiles, database naming, provider modes, and setup guardrails in [Platform Development Environment Freeze](32_platform_development_environment_freeze.md). |
 | Common contracts, JSON Schema seed, OpenAPI seed | Services need a shared contract package layout before schema/OpenAPI implementation starts. | Freeze schema, OpenAPI, examples, fixtures, ownership, and versioning policy in [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md). |
+| PCX quality gate and smoke evidence lessons | MVP implementation needs a concrete testing policy before CI and service bootstrap work begins. | Freeze single-pass quality gate, branch coverage, contract tests, mock E2E, live smoke, UI evidence, and docs-only rules in [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md). |
 
 ## Next Review Sequence
 
@@ -126,5 +127,8 @@ decisions rather than copying large source material wholesale.
     guardrails.
 24. Completed: Freeze common schema and contract package layout across schemas,
     OpenAPI, examples, fixtures, ownership, versioning, and test hooks.
-25. Use `NP-SRC-01` as a final cross-check for missing requirements.
-26. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+25. Completed: Detail MVP testing strategy across quality gate, branch coverage,
+    contract fixtures, mock E2E, live smoke, UI evidence, release evidence, and
+    docs-only rules.
+26. Use `NP-SRC-01` as a final cross-check for missing requirements.
+27. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
