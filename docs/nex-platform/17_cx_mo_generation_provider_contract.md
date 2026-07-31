@@ -239,7 +239,8 @@ All errors use `application/problem+json` and include `request_id`, `trace_id`,
 
 This contract should feed:
 
-- CX generation execution record and lineage contract.
+- CX generation execution record and lineage contract, starting from
+  [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
 - Structured draft and citation validation schema.
 - MO provider route and admission policy schema.
 - AG provider/generation operations dashboard requirements.

@@ -23,6 +23,7 @@ EXPECTED_DOCS = [
     "15_generation_routing_boundary_reconciliation.md",
     "16_ae_cx_generation_request_package_contract.md",
     "17_cx_mo_generation_provider_contract.md",
+    "18_cx_generation_execution_record_lineage_contract.md",
 ]
 
 
@@ -155,6 +156,7 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "15_generation_routing_boundary_reconciliation.md" in common
     assert "16_ae_cx_generation_request_package_contract.md" in common
     assert "17_cx_mo_generation_provider_contract.md" in common
+    assert "18_cx_generation_execution_record_lineage_contract.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -221,6 +223,8 @@ def test_common_contract_freeze_map_keeps_unsettled_contracts_out_of_freeze_now(
     assert "16_ae_cx_generation_request_package_contract.md" in freeze_map
     assert "CX-to-MO generation provider contract" in freeze_map
     assert "17_cx_mo_generation_provider_contract.md" in freeze_map
+    assert "CX generation execution record" in freeze_map
+    assert "18_cx_generation_execution_record_lineage_contract.md" in freeze_map
     assert "Statement coverage target differs" in freeze_map
     assert "Freeze contracts first" in freeze_map
 
@@ -248,6 +252,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "15_generation_routing_boundary_reconciliation.md" in inventory
     assert "16_ae_cx_generation_request_package_contract.md" in inventory
     assert "17_cx_mo_generation_provider_contract.md" in inventory
+    assert "18_cx_generation_execution_record_lineage_contract.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -355,6 +360,7 @@ def test_service_boundary_decision_record_freezes_generation_ownership() -> None
     )
     assert "AE-to-CX generation request package" in decision_record
     assert "CX-to-MO generation provider contract" in decision_record
+    assert "CX generation execution record" in decision_record
     assert "generated artifact metadata" in decision_record
 
 
@@ -584,6 +590,54 @@ def test_cx_mo_generation_provider_contract_freezes_streaming_errors_and_guardra
     assert "`mo.provider_runtime_failed`" in contract
     assert "No document semantics in MO" in contract
     assert "No leaked runtime secret" in contract
+
+
+def test_cx_generation_execution_record_contract_defines_root_and_record_family() -> None:
+    contract = _read("18_cx_generation_execution_record_lineage_contract.md")
+
+    assert "CX Generation Execution Record + Lineage Contract" in contract
+    assert "`cx_generation_executions`" in contract
+    assert "`cx_generation_request_snapshots`" in contract
+    assert "`cx_generation_prompt_packages`" in contract
+    assert "`cx_generation_evidence_refs`" in contract
+    assert "`cx_generation_mo_calls`" in contract
+    assert "`cx_structured_drafts`" in contract
+    assert "`cx_generation_validation_results`" in contract
+    assert "`cx_generation_id`" in contract
+    assert "`generation_status`" in contract
+    assert "`current_stage`" in contract
+
+
+def test_cx_generation_execution_record_contract_tracks_lineage_hashes_and_refs() -> None:
+    contract = _read("18_cx_generation_execution_record_lineage_contract.md")
+
+    assert "`generation_request_hash`" in contract
+    assert "`client_package_hash`" in contract
+    assert "`retrieval_package_hash`" in contract
+    assert "`provider_prompt_package_hash`" in contract
+    assert "`mo_generation_request_hash`" in contract
+    assert "`structured_draft_content_hash`" in contract
+    assert "`permission_snapshot_ref`" in contract
+    assert "`selected_evidence_ids`" in contract
+    assert "`mo_generation_id`" in contract
+    assert "`model_revision`" in contract
+    assert "`usage`" in contract
+
+
+def test_cx_generation_execution_record_contract_freezes_validation_retry_and_safe_views() -> None:
+    contract = _read("18_cx_generation_execution_record_lineage_contract.md")
+
+    assert "`structured_draft_validation_status`" in contract
+    assert "`citation_validation_status`" in contract
+    assert "`template_completeness_status`" in contract
+    assert "`invalid_citation_count`" in contract
+    assert "`parent_generation_id`" in contract
+    assert "`lineage_type`" in contract
+    assert "`attempt_no`" in contract
+    assert "Retries must preserve the original retrieval package ID/hash" in contract
+    assert "AE safe read view includes lineage refs and excludes provider secrets" in (contract)
+    assert "AG observes generation records through CX APIs" in contract
+    assert "`cx.citation_validation_failed`" in contract
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:

@@ -223,6 +223,8 @@ This contract should feed:
 
 - CX-to-MO generation provider request/response contract, starting from
   [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).
+- CX generation execution record and lineage contract, starting from
+  [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
 - AE artifact rendering contract.
 - Structured draft and citation validation schema.
 - OA service scope catalog for `ae:generation.request` and `cx:generation.run`.

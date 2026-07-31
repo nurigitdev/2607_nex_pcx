@@ -215,3 +215,5 @@ The first AE-to-CX generation request package is defined in
 [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md).
 The CX-to-MO generation provider contract is defined in
 [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).
+The CX generation execution and lineage record is defined in
+[CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).

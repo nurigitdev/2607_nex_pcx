@@ -122,6 +122,7 @@ GET  /admin/v1/workers
 | Evidence contract | Retrieval/generation needs stable evidence IDs, source locations, permission snapshots, and citation labels. | Freeze minimal retrieval package after CX/AE generation boundary review. |
 | AE-to-CX generation request package | Generation ownership is now reconciled, but the final JSON Schema file is not generated yet. | Use [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md) as the first schema seed. |
 | CX-to-MO generation provider contract | MO provider execution is now separated from CX prompt/evidence ownership, but final JSON Schema file is not generated yet. | Use [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md) as the first schema seed. |
+| CX generation execution record | Retrieval, prompt, MO, structured draft, citation, and retry lineage are connected, but final storage schema is not generated yet. | Use [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md) as the first lineage seed. |
 | Structured draft contract | Needed for document generation and artifact rendering. | Freeze after template, artifact, and AE/CX generation ownership are settled. |
 | Artifact rendering contract | Valuable for generated documents. | Freeze MD export first; defer DOCX/PPTX/PDF details. |
 | Channel request context | Helpful for future web/app/voice channels. | Keep optional fields; do not design channel-specific data models yet. |
