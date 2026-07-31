@@ -35,6 +35,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 23. [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md)
 24. [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md)
 25. [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md)
+26. [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md)
 
 ## Platform Services
 
@@ -98,6 +99,10 @@ requirements so generated artifacts appear as versioned preview/download cards
 inside AE chat while keeping source, quality, progress, and recovery lineage
 visible. Slice 434 froze the prompt/template/output compatibility matrix so AE
 and CX can reject mismatched generation modes, templates, prompt contracts,
-output schemas, target formats, and provider capabilities before a provider call.
+output schemas, target formats, and provider capabilities before a provider
+call. Slice 435 froze the AG generation and artifact audit dashboard
+requirements so operations can inspect generation timeline, artifact lineage,
+citations, compatibility, downloads, provider usage, and recovery events through
+service APIs.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

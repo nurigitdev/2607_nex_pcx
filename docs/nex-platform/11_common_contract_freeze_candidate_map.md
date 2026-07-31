@@ -129,6 +129,7 @@ GET  /admin/v1/workers
 | Generation failure and repair policy | Recovery needs stable failure classes, retryability, repair/regenerate actions, lineage fields, and operator/user warning rules. | Use [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md) as the first recovery policy seed. |
 | Chat workspace artifact link requirements | AE chat needs stable artifact cards, version links, preview/download actions, source drilldown, quality badges, and recovery affordances. | Use [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md) as the first chat-artifact UX seed. |
 | Prompt/template/output compatibility matrix | Generation needs explicit compatibility among execution mode, template, prompt contract, output schema, artifact intent, target format, quality policy, and provider capability. | Use [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md) as the first compatibility rule seed. |
+| AG generation artifact audit dashboard | Operators need read-only generation timeline, artifact lineage, citation/completeness, compatibility, download audit, provider usage, and recovery views. | Use [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md) as the first AG audit view seed. |
 | Channel request context | Helpful for future web/app/voice channels. | Keep optional fields; do not design channel-specific data models yet. |
 
 ## Conflicts To Resolve

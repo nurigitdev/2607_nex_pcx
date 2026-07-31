@@ -159,7 +159,8 @@ status, and warning codes. It should not expose raw provider prompts by default.
 
 This matrix should feed:
 
-- AG generation and artifact audit dashboard requirements.
+- AG generation and artifact audit dashboard requirements, starting from
+  [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md).
 - Generation JSON Schema seed.
 - Generation OpenAPI endpoint seed.
 - Generation E2E acceptance scenario and contract test plan.

@@ -30,6 +30,7 @@ packages until service boundaries have survived implementation.
 | Generation failure and repair policy | Failure classes, retryability, repair/regenerate actions, lineage edges, policy hashes, and user-facing recovery behavior. | `nex-ae-api`, `nex-cx`, `nex-mo`, `nex-ag` |
 | Chat workspace artifact link requirements | Artifact cards, preview/download routes, source drilldown, quality badges, recovery actions, localization, and accessibility requirements. | `nex-ae-web`, `nex-ae-api` |
 | Prompt/template/output compatibility matrix | Valid combinations of execution mode, template, prompt contract, output schema, artifact intent, target format, quality policy, and provider capability. | `nex-ae-api`, `nex-cx`, `nex-mo`, `nex-ag` |
+| AG generation artifact audit requirements | Read-only dashboard views, filters, redaction, audit event projections, operator notes, and export requirements for generation and artifacts. | `nex-ag`, all services |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
 ## Contract Style
@@ -80,6 +81,8 @@ packages until service boundaries have survived implementation.
   [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md).
 - Prompt/template/output compatibility schemas, starting from
   [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md).
+- AG generation artifact audit dashboard schemas, starting from
+  [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

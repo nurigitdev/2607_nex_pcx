@@ -174,6 +174,7 @@ This contract should feed:
 - Generation failure, repair, and retry policy contract, starting from
   [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md).
 - Chat workspace artifact link requirements.
-- AG generation and artifact audit dashboard requirements.
+- AG generation and artifact audit dashboard requirements, starting from
+  [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md).
 - Generation OpenAPI endpoint seed.
 - Generation E2E acceptance scenario and contract test plan.

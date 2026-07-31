@@ -291,4 +291,6 @@ This contract should feed:
   [Generation Progress Event Contract](21_generation_progress_event_contract.md).
 - Artifact render job JSON Schema and OpenAPI seed.
 - Generation failure, repair, and retry policy contract.
-- AG artifact audit and generated-document governance dashboard requirements.
+- AG artifact audit and generated-document governance dashboard requirements,
+  starting from
+  [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md).
