@@ -46,6 +46,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 34. [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md)
 35. [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md)
 36. [Design System v0.1 Expansion](35_design_system_v0_1_expansion.md)
+37. [Implementation Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md)
 
 ## Platform Services
 
@@ -139,6 +140,9 @@ strategy across single-pass quality gate, statement/branch coverage, contract
 fixtures, mock E2E, live smoke, UI evidence, release evidence, and docs-only
 slice rules. Slice 445 expanded the design system into MVP-ready principles,
 tokens, layouts, components, status badge rules, Korean/English copy guidance,
-accessibility requirements, UI evidence, and anti-patterns.
+accessibility requirements, UI evidence, and anti-patterns. Slice 446 assembled
+the implementation roadmap and first sprint backlog so the MVP can move from
+documentation into a mock-first service skeleton, contract package, OA claim
+check, MO mock provider, CX facade, AE interaction stub, and AG readiness path.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

@@ -155,5 +155,6 @@ This environment freeze should feed:
   [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md).
 - Testing strategy detail, starting from
   [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md).
-- First sprint repository and bootstrap backlog.
+- First sprint repository and bootstrap backlog, starting from
+  [Implementation Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md).
 - Operations runbook for local/mock/live startup.

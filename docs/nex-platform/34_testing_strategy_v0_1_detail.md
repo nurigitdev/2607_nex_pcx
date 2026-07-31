@@ -148,5 +148,6 @@ This testing strategy should feed:
 
 - Design system expansion for UI evidence rules, starting from
   [Design System v0.1 Expansion](35_design_system_v0_1_expansion.md).
-- First sprint backlog and quality gate tasks.
+- First sprint backlog and quality gate tasks, starting from
+  [Implementation Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md).
 - CI command design and contract validation implementation.

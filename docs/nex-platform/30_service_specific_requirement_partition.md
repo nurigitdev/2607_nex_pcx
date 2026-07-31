@@ -145,5 +145,6 @@ This partition should feed:
 - Cross-service traceability matrix, starting from
   [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md).
 - Service-specific SRS sections.
-- First sprint implementation backlog.
+- First sprint implementation backlog, starting from
+  [Implementation Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md).
 - Contract test ownership map.

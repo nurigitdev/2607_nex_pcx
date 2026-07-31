@@ -136,7 +136,8 @@ slice is explicitly live-smoke oriented.
 
 This design expansion should feed:
 
-- First sprint backlog and UI bootstrap tasks.
+- First sprint backlog and UI bootstrap tasks, starting from
+  [Implementation Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md).
 - AE workspace page-level information architecture.
 - AG dashboard page-level information architecture.
 - Playwright screenshot acceptance plan.

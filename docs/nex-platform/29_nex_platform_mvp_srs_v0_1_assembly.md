@@ -211,4 +211,5 @@ This SRS assembly should feed:
   [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md).
 - Design system expansion, starting from
   [Design System v0.1 Expansion](35_design_system_v0_1_expansion.md).
-- First implementation roadmap and sprint backlog.
+- First implementation roadmap and sprint backlog, starting from
+  [Implementation Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md).

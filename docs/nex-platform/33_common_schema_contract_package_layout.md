@@ -141,6 +141,7 @@ This layout should feed:
 
 - Testing strategy detail, starting from
   [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md).
-- First sprint backlog for contract package bootstrap.
+- First sprint backlog for contract package bootstrap, starting from
+  [Implementation Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md).
 - Service-specific OpenAPI/schema implementation slices.
 - CI contract validation command design.

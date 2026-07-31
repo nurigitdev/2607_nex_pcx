@@ -80,6 +80,7 @@ decisions rather than copying large source material wholesale.
 | Common contracts, JSON Schema seed, OpenAPI seed | Services need a shared contract package layout before schema/OpenAPI implementation starts. | Freeze schema, OpenAPI, examples, fixtures, ownership, and versioning policy in [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md). |
 | PCX quality gate and smoke evidence lessons | MVP implementation needs a concrete testing policy before CI and service bootstrap work begins. | Freeze single-pass quality gate, branch coverage, contract tests, mock E2E, live smoke, UI evidence, and docs-only rules in [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md). |
 | `NP-SRC-10`, `NP-SRC-08`, PCX UI lessons | AE and AG need a shared UI standard before chat workspace and admin dashboard implementation. | Expand MVP design principles, tokens, components, status rules, copy, accessibility, and screenshot evidence in [Design System v0.1 Expansion](35_design_system_v0_1_expansion.md). |
+| MVP SRS, service partition, environment, contract layout, testing, design system | The documentation set needs a concrete first implementation roadmap before Slice 447+ code work starts. | Assemble the 2-week roadmap, Sprint 1 backlog, evidence list, and stop conditions in [Implementation Roadmap + First Sprint Backlog](36_implementation_roadmap_first_sprint_backlog.md). |
 
 ## Next Review Sequence
 
@@ -134,5 +135,8 @@ decisions rather than copying large source material wholesale.
 26. Completed: Expand MVP design system across principles, tokens, layouts,
     component states, status badges, copy, accessibility, evidence, and
     anti-patterns.
-27. Use `NP-SRC-01` as a final cross-check for missing requirements.
-28. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+27. Completed: Assemble implementation roadmap and first sprint backlog across
+    service skeleton, quality gate, contract package, OA claim check, MO mock,
+    CX facade, AE interaction, AG readiness, evidence, and stop conditions.
+28. Use `NP-SRC-01` as a final cross-check for missing requirements.
+29. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
