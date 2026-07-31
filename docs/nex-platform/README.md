@@ -43,6 +43,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 31. [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md)
 32. [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md)
 33. [Platform Development Environment Freeze](32_platform_development_environment_freeze.md)
+34. [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md)
 
 ## Platform Services
 
@@ -129,6 +130,8 @@ requirement IDs, service owners, contracts, tests, evidence artifacts, and
 coverage gaps. Slice 442 froze the first development environment assumptions:
 monorepo-style workspace, service-owned packages and databases, local mock by
 default, live provider opt-in, profile-specific configuration, and setup
-guardrails.
+guardrails. Slice 443 froze the common schema and contract package layout for
+versioned JSON Schema, OpenAPI files, examples, fixtures, ownership rules,
+versioning policy, and contract-test hooks.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

@@ -205,6 +205,7 @@ This SRS assembly should feed:
   [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md).
 - Development environment freeze, starting from
   [Platform Development Environment Freeze](32_platform_development_environment_freeze.md).
-- Common schema and contract package layout.
+- Common schema and contract package layout, starting from
+  [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md).
 - Testing strategy detail.
 - First implementation roadmap and sprint backlog.

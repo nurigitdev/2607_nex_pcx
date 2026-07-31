@@ -171,5 +171,6 @@ This endpoint seed should feed:
 
 - Generation E2E acceptance scenario and contract test plan, starting from
   [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md).
-- Service-specific OpenAPI file generation.
+- Service-specific OpenAPI file generation, starting from
+  [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md).
 - Contract test fixtures and example payloads.

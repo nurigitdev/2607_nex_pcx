@@ -135,6 +135,7 @@ GET  /admin/v1/workers
 | Generation E2E acceptance and contract test plan | Generation needs a mock-first spine that verifies retrieval package, CX generation, MO provider execution, AE artifact, recovery, compatibility, and AG audit together. | Use [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md) as the first acceptance seed. |
 | Service-specific requirement partition | MVP implementation needs stable service-owned requirement IDs and dependency order before backlog slicing. | Use [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md) as the first requirement partition seed. |
 | Cross-service traceability matrix | MVP requirements need source, decision, contract, test, and evidence traceability before implementation starts. | Use [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md) as the first traceability seed. |
+| Common schema and contract package layout | Service teams need one place for JSON Schema, OpenAPI, examples, negative fixtures, versioning, and contract validation hooks. | Use [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md) as the first package layout seed. |
 | Channel request context | Helpful for future web/app/voice channels. | Keep optional fields; do not design channel-specific data models yet. |
 
 ## Conflicts To Resolve

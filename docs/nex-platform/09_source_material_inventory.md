@@ -77,6 +77,7 @@ decisions rather than copying large source material wholesale.
 | MVP SRS assembly and service boundary records | Implementation needs stable service-owned requirement IDs before backlog slicing. | Partition the MVP SRS by service in [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md). |
 | Source inventory, MVP SRS, service partition, PCX lessons | Requirements need traceability into contracts, tests, and evidence before implementation starts. | Seed source-to-requirement-to-test traceability in [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md). |
 | `NP-SRC-15`, PCX dev/test/live operations lessons | Implementation needs a frozen local/test/live development profile before repository bootstrap. | Freeze environment profiles, database naming, provider modes, and setup guardrails in [Platform Development Environment Freeze](32_platform_development_environment_freeze.md). |
+| Common contracts, JSON Schema seed, OpenAPI seed | Services need a shared contract package layout before schema/OpenAPI implementation starts. | Freeze schema, OpenAPI, examples, fixtures, ownership, and versioning policy in [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md). |
 
 ## Next Review Sequence
 
@@ -123,5 +124,7 @@ decisions rather than copying large source material wholesale.
 23. Completed: Freeze development environment assumptions across workspace
     layout, runtime baseline, profiles, service DBs, provider modes, and setup
     guardrails.
-24. Use `NP-SRC-01` as a final cross-check for missing requirements.
-25. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+24. Completed: Freeze common schema and contract package layout across schemas,
+    OpenAPI, examples, fixtures, ownership, versioning, and test hooks.
+25. Use `NP-SRC-01` as a final cross-check for missing requirements.
+26. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

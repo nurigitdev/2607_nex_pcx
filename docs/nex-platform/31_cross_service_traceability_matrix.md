@@ -96,6 +96,7 @@ This matrix should feed:
 
 - Development environment freeze, starting from
   [Platform Development Environment Freeze](32_platform_development_environment_freeze.md).
-- Common schema and contract package layout.
+- Common schema and contract package layout, starting from
+  [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md).
 - Testing strategy detail.
 - First sprint backlog and acceptance evidence checklist.

@@ -151,7 +151,8 @@ environment files, secret stores, or deployment configuration.
 
 This environment freeze should feed:
 
-- Common schema and contract package layout.
+- Common schema and contract package layout, starting from
+  [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md).
 - Testing strategy detail.
 - First sprint repository and bootstrap backlog.
 - Operations runbook for local/mock/live startup.

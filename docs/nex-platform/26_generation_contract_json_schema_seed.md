@@ -156,4 +156,5 @@ This seed should feed:
   [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md).
 - Generation E2E acceptance scenario and contract test plan, starting from
   [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md).
-- Future schema package layout decision for service repositories.
+- Schema package layout decision, starting from
+  [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md).
