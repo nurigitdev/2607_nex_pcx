@@ -73,6 +73,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-02`, `NP-SRC-03` | Generation contracts need implementation-ready schema names and validation rules before OpenAPI and contract tests. | Seed the generation JSON Schema catalog and shared definitions in [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md). |
 | `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Generation implementation needs service-owned endpoint names, headers, idempotency, streaming/polling, and error codes before code begins. | Seed the generation OpenAPI route surface in [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md). |
 | `NP-SRC-02`, `NP-SRC-03`, PCX slice history | The generation step needs a mock-first acceptance spine before live provider or UI work starts. | Freeze generation E2E scenarios, contract test matrix, mock provider requirements, and evidence criteria in [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md). |
+| `NP-SRC-13`, `NP-SRC-02`, `NP-SRC-03`, PCX slice history | The distilled decisions need one buildable MVP SRS before service-specific requirement partitioning. | Assemble the first MVP SRS in [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md). |
 
 ## Next Review Sequence
 
@@ -110,6 +111,8 @@ decisions rather than copying large source material wholesale.
 19. Completed: Freeze generation E2E acceptance and contract test plan across
     mock provider scenarios, service boundary tests, recovery branches, artifact
     links, and AG audit redaction.
-20. Use `NP-SRC-15` to settle development environment and directory assumptions.
-21. Use `NP-SRC-01` as a final cross-check for missing requirements.
-22. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+20. Completed: Assemble NeX-Platform MVP SRS v0.1 across service requirements,
+    vertical acceptance, non-functional requirements, deferrals, and open items.
+21. Use `NP-SRC-15` to settle development environment and directory assumptions.
+22. Use `NP-SRC-01` as a final cross-check for missing requirements.
+23. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

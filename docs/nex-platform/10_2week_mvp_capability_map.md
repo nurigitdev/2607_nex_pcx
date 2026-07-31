@@ -150,7 +150,8 @@ Browser -> nex-ae-web -> nex-ae-api -> nex-cx -> nex-mo
 
 This map should feed:
 
-- NeX-Platform MVP SRS v0.1.
+- NeX-Platform MVP SRS v0.1, assembled in
+  [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md).
 - NeX-PCX evidence index.
 - Common contract freeze candidate map.
 - Service boundary conflict review, especially `nex-oa` and generation ownership.

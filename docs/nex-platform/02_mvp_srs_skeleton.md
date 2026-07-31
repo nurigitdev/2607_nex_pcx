@@ -2,8 +2,10 @@
 
 Status: Draft bootstrap.
 
-This skeleton is for the first NeX-Platform SRS. It should stay small enough to
-support a 2-week MVP while preserving architecture hooks for later expansion.
+This skeleton seeded the first NeX-Platform SRS. The assembled v0.1 draft now
+lives in [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md).
+Keep this file as the compact outline and update the assembled SRS for
+service-specific implementation planning.
 
 ## 1. Introduction
 

@@ -151,6 +151,8 @@ Generation MVP can move from design to implementation when:
 
 This plan should feed:
 
+- MVP SRS assembly, starting from
+  [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md).
 - Service-specific implementation backlog for generation MVP.
 - Contract fixture and example payload creation.
 - OpenAPI generation and contract test automation.
