@@ -223,3 +223,5 @@ The AE artifact rendering handoff is defined in
 [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
 The generation progress event contract is defined in
 [Generation Progress Event Contract](21_generation_progress_event_contract.md).
+The chat workspace artifact link requirements are defined in
+[Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md).

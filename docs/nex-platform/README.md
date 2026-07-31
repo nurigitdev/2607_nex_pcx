@@ -33,6 +33,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 21. [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md)
 22. [Generation Progress Event Contract](21_generation_progress_event_contract.md)
 23. [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md)
+24. [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md)
 
 ## Platform Services
 
@@ -91,6 +92,9 @@ contract so AE, CX, MO, and AG can expose the same stage, event, status, and
 redacted metadata timeline for long-running generation. Slice 432 froze the
 generation failure, repair, and retry policy so failed or incomplete generation
 can recover through retry, repair, regenerate, sectional retry, or warning
-acceptance without losing lineage.
+acceptance without losing lineage. Slice 433 froze chat workspace artifact link
+requirements so generated artifacts appear as versioned preview/download cards
+inside AE chat while keeping source, quality, progress, and recovery lineage
+visible.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

@@ -127,6 +127,7 @@ GET  /admin/v1/workers
 | AE artifact rendering handoff contract | Generated drafts need AE-owned artifact records, versions, render jobs, file metadata, preview/download links, and CX lineage refs. | Use [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md) as the first artifact schema seed. |
 | Generation progress event contract | Long-running generation and artifact rendering need stable event envelopes, stage names, status separation, streaming/polling semantics, and redacted progress metadata. | Use [Generation Progress Event Contract](21_generation_progress_event_contract.md) as the first progress schema seed. |
 | Generation failure and repair policy | Recovery needs stable failure classes, retryability, repair/regenerate actions, lineage fields, and operator/user warning rules. | Use [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md) as the first recovery policy seed. |
+| Chat workspace artifact link requirements | AE chat needs stable artifact cards, version links, preview/download actions, source drilldown, quality badges, and recovery affordances. | Use [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md) as the first chat-artifact UX seed. |
 | Channel request context | Helpful for future web/app/voice channels. | Keep optional fields; do not design channel-specific data models yet. |
 
 ## Conflicts To Resolve

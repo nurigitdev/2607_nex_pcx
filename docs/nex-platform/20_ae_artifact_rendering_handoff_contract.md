@@ -17,6 +17,7 @@ Sources:
 - [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md)
 - [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md)
 - [Generation Progress Event Contract](21_generation_progress_event_contract.md)
+- [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md)
 
 This document freezes the first handoff contract for turning a CX-validated
 structured draft into AE-owned user artifacts. The handoff keeps generated
@@ -284,7 +285,8 @@ All errors use the common `application/problem+json` envelope and preserve
 
 This contract should feed:
 
-- AE chat workspace artifact link and preview requirements.
+- AE chat workspace artifact link and preview requirements, starting from
+  [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md).
 - Generation progress event contract, starting from
   [Generation Progress Event Contract](21_generation_progress_event_contract.md).
 - Artifact render job JSON Schema and OpenAPI seed.

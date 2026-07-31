@@ -28,6 +28,7 @@ packages until service boundaries have survived implementation.
 | AE artifact rendering handoff contract | Generated artifact records, versions, render jobs, rendered files, preview/download links, and CX source lineage refs. | `nex-ae-api`, `nex-ae-web`, `nex-ag` |
 | Generation progress event contract | Event envelope, event types, current stages, common job status, streaming/polling semantics, and redacted progress metadata. | `nex-ae-api`, `nex-ae-web`, `nex-cx`, `nex-mo`, `nex-ag` |
 | Generation failure and repair policy | Failure classes, retryability, repair/regenerate actions, lineage edges, policy hashes, and user-facing recovery behavior. | `nex-ae-api`, `nex-cx`, `nex-mo`, `nex-ag` |
+| Chat workspace artifact link requirements | Artifact cards, preview/download routes, source drilldown, quality badges, recovery actions, localization, and accessibility requirements. | `nex-ae-web`, `nex-ae-api` |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
 ## Contract Style
@@ -74,6 +75,8 @@ packages until service boundaries have survived implementation.
   [Generation Progress Event Contract](21_generation_progress_event_contract.md).
 - Generation failure and repair policy schemas, starting from
   [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md).
+- Chat workspace artifact link requirements, starting from
+  [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

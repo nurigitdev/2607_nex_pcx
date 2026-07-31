@@ -18,6 +18,7 @@ Sources:
 - [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md)
 - [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md)
 - [Generation Progress Event Contract](21_generation_progress_event_contract.md)
+- [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md)
 
 This document freezes the first failure, repair, and retry policy for
 generation. The goal is to make failed or incomplete generation recoverable
@@ -150,7 +151,8 @@ AE should never hide a failed validation behind a polished artifact.
 
 This contract should feed:
 
-- Chat workspace artifact link requirements.
+- Chat workspace artifact link requirements, starting from
+  [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md).
 - Prompt/template/output compatibility rule matrix.
 - AG generation and artifact audit dashboard requirements.
 - Generation OpenAPI endpoint seed.
