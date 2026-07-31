@@ -221,3 +221,5 @@ The structured draft and citation schema is defined in
 [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
 The AE artifact rendering handoff is defined in
 [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
+The generation progress event contract is defined in
+[Generation Progress Event Contract](21_generation_progress_event_contract.md).

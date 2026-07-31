@@ -31,6 +31,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 19. [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md)
 20. [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md)
 21. [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md)
+22. [Generation Progress Event Contract](21_generation_progress_event_contract.md)
 
 ## Platform Services
 
@@ -84,6 +85,8 @@ CX can validate sections, blocks, citation claims, evidence anchors, and
 template completeness before AE renders artifacts. Slice 430 froze the AE
 artifact rendering handoff contract so validated CX drafts can become AE-owned
 artifact records, render jobs, files, previews, downloads, and chat links
-without losing generation lineage.
+without losing generation lineage. Slice 431 froze the generation progress event
+contract so AE, CX, MO, and AG can expose the same stage, event, status, and
+redacted metadata timeline for long-running generation.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

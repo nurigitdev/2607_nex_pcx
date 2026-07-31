@@ -26,6 +26,7 @@ packages until service boundaries have survived implementation.
 | CX generation execution record | Retrieval package hash, prompt package hash, MO call metadata, draft validation, citation validation, and retry lineage. | `nex-cx`, `nex-ae-api`, `nex-ag` |
 | Structured draft and citation schema | Sections, blocks, citation claims, source anchors, validation statuses, completeness checks, and safe read shape. | `nex-cx`, `nex-ae-api`, `nex-ag` |
 | AE artifact rendering handoff contract | Generated artifact records, versions, render jobs, rendered files, preview/download links, and CX source lineage refs. | `nex-ae-api`, `nex-ae-web`, `nex-ag` |
+| Generation progress event contract | Event envelope, event types, current stages, common job status, streaming/polling semantics, and redacted progress metadata. | `nex-ae-api`, `nex-ae-web`, `nex-cx`, `nex-mo`, `nex-ag` |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
 ## Contract Style
@@ -68,6 +69,8 @@ packages until service boundaries have survived implementation.
   [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
 - AE artifact rendering handoff schemas, starting from
   [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
+- Generation progress event schemas, starting from
+  [Generation Progress Event Contract](21_generation_progress_event_contract.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

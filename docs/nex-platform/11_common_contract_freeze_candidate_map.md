@@ -125,6 +125,7 @@ GET  /admin/v1/workers
 | CX generation execution record | Retrieval, prompt, MO, structured draft, citation, and retry lineage are connected, but final storage schema is not generated yet. | Use [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md) as the first lineage seed. |
 | Structured draft and citation schema | Document generation needs stable sections, blocks, citation claims, evidence anchors, validation statuses, and safe read shape before artifact rendering. | Use [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md) as the first schema seed. |
 | AE artifact rendering handoff contract | Generated drafts need AE-owned artifact records, versions, render jobs, file metadata, preview/download links, and CX lineage refs. | Use [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md) as the first artifact schema seed. |
+| Generation progress event contract | Long-running generation and artifact rendering need stable event envelopes, stage names, status separation, streaming/polling semantics, and redacted progress metadata. | Use [Generation Progress Event Contract](21_generation_progress_event_contract.md) as the first progress schema seed. |
 | Channel request context | Helpful for future web/app/voice channels. | Keep optional fields; do not design channel-specific data models yet. |
 
 ## Conflicts To Resolve
