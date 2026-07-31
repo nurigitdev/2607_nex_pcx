@@ -75,6 +75,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-02`, `NP-SRC-03`, PCX slice history | The generation step needs a mock-first acceptance spine before live provider or UI work starts. | Freeze generation E2E scenarios, contract test matrix, mock provider requirements, and evidence criteria in [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md). |
 | `NP-SRC-13`, `NP-SRC-02`, `NP-SRC-03`, PCX slice history | The distilled decisions need one buildable MVP SRS before service-specific requirement partitioning. | Assemble the first MVP SRS in [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md). |
 | MVP SRS assembly and service boundary records | Implementation needs stable service-owned requirement IDs before backlog slicing. | Partition the MVP SRS by service in [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md). |
+| Source inventory, MVP SRS, service partition, PCX lessons | Requirements need traceability into contracts, tests, and evidence before implementation starts. | Seed source-to-requirement-to-test traceability in [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md). |
 
 ## Next Review Sequence
 
@@ -116,6 +117,8 @@ decisions rather than copying large source material wholesale.
     vertical acceptance, non-functional requirements, deferrals, and open items.
 21. Completed: Partition MVP SRS requirements into service-owned ID families,
     priorities, interfaces, dependencies, and cross-service dependency order.
-22. Use `NP-SRC-15` to settle development environment and directory assumptions.
-23. Use `NP-SRC-01` as a final cross-check for missing requirements.
-24. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+22. Completed: Seed cross-service traceability from source material and PCX
+    lessons to requirements, contracts, tests, evidence, and coverage gaps.
+23. Use `NP-SRC-15` to settle development environment and directory assumptions.
+24. Use `NP-SRC-01` as a final cross-check for missing requirements.
+25. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

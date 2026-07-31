@@ -41,6 +41,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 29. [Generation E2E Acceptance + Contract Test Plan](28_generation_e2e_acceptance_contract_test_plan.md)
 30. [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md)
 31. [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md)
+32. [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md)
 
 ## Platform Services
 
@@ -121,6 +122,9 @@ NeX-Platform MVP SRS v0.1 draft across OA, CX, MO, AE API, AE web, AG,
 cross-service requirements, acceptance criteria, non-functional requirements,
 deferrals, and open decisions. Slice 440 partitioned the MVP SRS into
 service-owned requirement IDs, interfaces, dependencies, priorities, shared
-platform requirements, and cross-service dependency order.
+platform requirements, and cross-service dependency order. Slice 441 seeded the
+cross-service traceability matrix from source material and PCX lessons to
+requirement IDs, service owners, contracts, tests, evidence artifacts, and
+coverage gaps.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

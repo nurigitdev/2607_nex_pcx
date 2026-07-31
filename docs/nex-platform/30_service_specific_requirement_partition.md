@@ -142,7 +142,8 @@ implementation ticket IDs separately, but should reference these IDs.
 
 This partition should feed:
 
-- Cross-service traceability matrix.
+- Cross-service traceability matrix, starting from
+  [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md).
 - Service-specific SRS sections.
 - First sprint implementation backlog.
 - Contract test ownership map.

@@ -201,7 +201,8 @@ This SRS assembly should feed:
 
 - Service-specific requirement partition, starting from
   [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md).
-- Cross-service traceability matrix.
+- Cross-service traceability matrix, starting from
+  [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md).
 - Development environment freeze.
 - Common schema and contract package layout.
 - Testing strategy detail.
