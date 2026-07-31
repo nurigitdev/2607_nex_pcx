@@ -64,6 +64,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-11` | MO material defines stable generation API, alias resolution, admission, routing, streaming, cancel, and usage metadata. | Freeze the CX-to-MO provider-facing generation contract in [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md). |
 | `NP-SRC-02`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Source documents connect generation request, evidence, prompt package hash, structured draft, citation, and MO usage metadata. | Freeze the CX execution and lineage record in [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md). |
 | `NP-SRC-02`, `NP-SRC-09`, `NP-SRC-10` | Source documents require generated answers and documents to remain source-grounded, template-aware, and renderable. | Freeze structured draft sections, blocks, citation claims, validation statuses, and safe read shape in [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md). |
+| `NP-SRC-02`, `NP-SRC-10`, `NP-SRC-13` | Source documents and PCX lessons require generated documents to become previewable/downloadable workspace artifacts without moving corpus ownership out of CX. | Freeze AE artifact records, versions, render jobs, files, links, and source refs in [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md). |
 
 ## Next Review Sequence
 
@@ -80,6 +81,8 @@ decisions rather than copying large source material wholesale.
    evidence, prompt package, MO call, draft, and validation refs.
 10. Completed: Freeze structured draft and citation schema across generated
     sections, blocks, citation claims, evidence anchors, and validation status.
-11. Use `NP-SRC-15` to settle development environment and directory assumptions.
-12. Use `NP-SRC-01` as a final cross-check for missing requirements.
-13. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+11. Completed: Freeze AE artifact rendering handoff across artifact records,
+    versions, render jobs, files, preview/download links, and CX source refs.
+12. Use `NP-SRC-15` to settle development environment and directory assumptions.
+13. Use `NP-SRC-01` as a final cross-check for missing requirements.
+14. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

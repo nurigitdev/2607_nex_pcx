@@ -227,6 +227,7 @@ This contract should feed:
   [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
 - Structured draft and citation validation schema, starting from
   [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
-- AE artifact rendering contract.
+- AE artifact rendering handoff contract, starting from
+  [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
 - OA service scope catalog for `ae:generation.request` and `cx:generation.run`.
 - AG generation audit and lineage dashboard requirements.

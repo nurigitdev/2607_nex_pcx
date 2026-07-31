@@ -124,7 +124,7 @@ GET  /admin/v1/workers
 | CX-to-MO generation provider contract | MO provider execution is now separated from CX prompt/evidence ownership, but final JSON Schema file is not generated yet. | Use [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md) as the first schema seed. |
 | CX generation execution record | Retrieval, prompt, MO, structured draft, citation, and retry lineage are connected, but final storage schema is not generated yet. | Use [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md) as the first lineage seed. |
 | Structured draft and citation schema | Document generation needs stable sections, blocks, citation claims, evidence anchors, validation statuses, and safe read shape before artifact rendering. | Use [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md) as the first schema seed. |
-| Artifact rendering contract | Valuable for generated documents. | Freeze MD export first; defer DOCX/PPTX/PDF details. |
+| AE artifact rendering handoff contract | Generated drafts need AE-owned artifact records, versions, render jobs, file metadata, preview/download links, and CX lineage refs. | Use [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md) as the first artifact schema seed. |
 | Channel request context | Helpful for future web/app/voice channels. | Keep optional fields; do not design channel-specific data models yet. |
 
 ## Conflicts To Resolve

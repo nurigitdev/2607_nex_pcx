@@ -15,6 +15,7 @@ Sources:
 - [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md)
 - [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md)
 - [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md)
+- [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md)
 
 This document freezes the first CX-owned generation execution record and lineage
 contract. The purpose is to preserve evidence continuity from retrieval through
@@ -271,6 +272,7 @@ This contract should feed:
 - Structured draft and citation validation schema, starting from
   [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
 - Generation progress event contract.
-- AE artifact rendering handoff contract.
+- AE artifact rendering handoff contract, starting from
+  [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
 - Generation failure and retry policy contract.
 - AG generation audit and lineage dashboard requirements.

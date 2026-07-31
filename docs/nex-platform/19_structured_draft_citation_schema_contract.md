@@ -12,6 +12,7 @@ Sources:
   (`10_260723_NeX_AE_Work_Assistant_Workspace_Design_v1.4.md`)
 - [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md)
 - [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md)
+- [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md)
 
 This document freezes the first CX-owned structured draft and citation schema
 contract. It defines the generated content shape that CX can validate before AE
@@ -262,7 +263,8 @@ All errors use the common `application/problem+json` envelope and preserve
 
 This contract should feed:
 
-- AE artifact rendering handoff contract.
+- AE artifact rendering handoff contract, starting from
+  [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
 - Generation progress event contract.
 - Generation failure, repair, and retry policy contract.
 - AG generation audit and lineage dashboard requirements.

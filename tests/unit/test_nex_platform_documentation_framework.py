@@ -25,6 +25,7 @@ EXPECTED_DOCS = [
     "17_cx_mo_generation_provider_contract.md",
     "18_cx_generation_execution_record_lineage_contract.md",
     "19_structured_draft_citation_schema_contract.md",
+    "20_ae_artifact_rendering_handoff_contract.md",
 ]
 
 
@@ -160,6 +161,8 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "18_cx_generation_execution_record_lineage_contract.md" in common
     assert "Structured draft and citation schema" in common
     assert "19_structured_draft_citation_schema_contract.md" in common
+    assert "AE artifact rendering handoff contract" in common
+    assert "20_ae_artifact_rendering_handoff_contract.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -221,7 +224,8 @@ def test_common_contract_freeze_map_keeps_unsettled_contracts_out_of_freeze_now(
     assert "Evidence contract" in freeze_map
     assert "Structured draft and citation schema" in freeze_map
     assert "19_structured_draft_citation_schema_contract.md" in freeze_map
-    assert "Artifact rendering contract" in freeze_map
+    assert "AE artifact rendering handoff contract" in freeze_map
+    assert "20_ae_artifact_rendering_handoff_contract.md" in freeze_map
     assert "Generation ownership" in freeze_map
     assert "AE-to-CX generation request package" in freeze_map
     assert "16_ae_cx_generation_request_package_contract.md" in freeze_map
@@ -258,6 +262,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "17_cx_mo_generation_provider_contract.md" in inventory
     assert "18_cx_generation_execution_record_lineage_contract.md" in inventory
     assert "19_structured_draft_citation_schema_contract.md" in inventory
+    assert "20_ae_artifact_rendering_handoff_contract.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -367,6 +372,7 @@ def test_service_boundary_decision_record_freezes_generation_ownership() -> None
     assert "CX-to-MO generation provider contract" in decision_record
     assert "CX generation execution record" in decision_record
     assert "Structured draft and citation schema" in decision_record
+    assert "AE artifact rendering handoff contract" in decision_record
     assert "generated artifact metadata" in decision_record
 
 
@@ -379,6 +385,9 @@ def test_service_boundary_decision_record_keeps_data_authority_separated() -> No
     assert "Only MO writes" in decision_record
     assert "Generated artifacts remain AE-owned" in decision_record
     assert "Structured draft, citation claims, and validation metadata" in (decision_record)
+    assert "artifact records, render jobs, file metadata, preview/download links" in (
+        decision_record
+    )
     assert "AG observes and governs through service APIs" in decision_record
     assert "Provider runtimes are reached through `nex-mo` stable APIs" in (decision_record)
 
@@ -504,6 +513,7 @@ def test_generation_routing_reconciliation_keeps_ae_cx_mo_ownership_separate() -
     assert "Structured draft validation" in routing
     assert "19_structured_draft_citation_schema_contract.md" in routing
     assert "Artifact rendering and links" in routing
+    assert "20_ae_artifact_rendering_handoff_contract.md" in routing
     assert "General Answer Or Intent Analysis" in routing
     assert "requires a later explicit policy" in routing
     assert "16_ae_cx_generation_request_package_contract.md" in routing
@@ -647,6 +657,7 @@ def test_cx_generation_execution_record_contract_freezes_validation_retry_and_sa
     assert "AG observes generation records through CX APIs" in contract
     assert "`cx.citation_validation_failed`" in contract
     assert "19_structured_draft_citation_schema_contract.md" in contract
+    assert "20_ae_artifact_rendering_handoff_contract.md" in contract
 
 
 def test_structured_draft_citation_contract_defines_schema_and_ownership() -> None:
@@ -699,6 +710,58 @@ def test_structured_draft_citation_contract_freezes_validation_hashes_and_safe_r
     assert "`cx.unsupported_block_type`" in contract
     assert "AE safe read view excludes provider credentials" in contract
     assert "CX must not mark the root generation execution as `SUCCEEDED`" in (contract)
+    assert "20_ae_artifact_rendering_handoff_contract.md" in contract
+
+
+def test_ae_artifact_rendering_handoff_contract_defines_boundary_and_records() -> None:
+    contract = _read("20_ae_artifact_rendering_handoff_contract.md")
+
+    assert "AE Artifact Rendering Handoff Contract" in contract
+    assert "AE owns artifact records, versions, titles, workspace links" in contract
+    assert "CX must not own user-facing artifact records or download links" in (contract)
+    assert "`ae_artifacts`" in contract
+    assert "`ae_artifact_versions`" in contract
+    assert "`ae_artifact_render_jobs`" in contract
+    assert "`ae_artifact_files`" in contract
+    assert "`ae_artifact_links`" in contract
+    assert "`ae_artifact_source_refs`" in contract
+    assert "`artifact_id`" in contract
+    assert "`artifact_schema_version`" in contract
+
+
+def test_ae_artifact_rendering_handoff_contract_tracks_handoff_hashes_and_files() -> None:
+    contract = _read("20_ae_artifact_rendering_handoff_contract.md")
+
+    assert "`handoff_schema_version`" in contract
+    assert "`cx_generation_id`" in contract
+    assert "`structured_draft_id`" in contract
+    assert "`structured_draft_content_hash`" in contract
+    assert "`citation_claims_hash`" in contract
+    assert "`validation_result_hash`" in contract
+    assert "`target_formats`" in contract
+    assert "`render_job_id`" in contract
+    assert "`job_status`" in contract
+    assert "`current_stage`" in contract
+    assert "`artifact_file_id`" in contract
+    assert "`storage_ref`" in contract
+    assert "`file_hash`" in contract
+    assert "`source_version_hash`" in contract
+
+
+def test_ae_artifact_rendering_handoff_contract_freezes_links_guardrails_and_errors() -> None:
+    contract = _read("20_ae_artifact_rendering_handoff_contract.md")
+
+    assert "`artifact_link_id`" in contract
+    assert "`link_type`" in contract
+    assert "`access_policy`" in contract
+    assert "Preview/download requests revalidate actor access" in contract
+    assert "No unvalidated draft artifact" in contract
+    assert "No raw filesystem path leak" in contract
+    assert "No artifact-only lineage" in contract
+    assert "`ae.source_draft_hash_mismatch`" in contract
+    assert "`ae.citation_validation_required`" in contract
+    assert "`ae.render_format_unsupported`" in contract
+    assert "`ae.artifact_access_denied`" in contract
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:

@@ -175,3 +175,5 @@ The CX generation execution and lineage record is defined in
 [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
 The structured draft and citation schema is defined in
 [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
+The AE artifact rendering handoff is defined in
+[AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
