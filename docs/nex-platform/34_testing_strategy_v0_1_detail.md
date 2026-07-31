@@ -146,6 +146,7 @@ When a slice changes only documentation:
 
 This testing strategy should feed:
 
-- Design system expansion for UI evidence rules.
+- Design system expansion for UI evidence rules, starting from
+  [Design System v0.1 Expansion](35_design_system_v0_1_expansion.md).
 - First sprint backlog and quality gate tasks.
 - CI command design and contract validation implementation.

@@ -4,7 +4,9 @@ Status: Draft bootstrap.
 
 The design system should keep NeX-Platform screens consistent while the services
 split apart. Bootstrap can remain the implementation baseline, but NeX-specific
-tokens and components should be documented before the UI grows further.
+tokens and components should be documented before the UI grows further. The MVP
+expansion is now assembled in
+[Design System v0.1 Expansion](35_design_system_v0_1_expansion.md).
 
 ## Design Principles
 

@@ -45,6 +45,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 33. [Platform Development Environment Freeze](32_platform_development_environment_freeze.md)
 34. [Common Schema + Contract Package Layout](33_common_schema_contract_package_layout.md)
 35. [Testing Strategy v0.1 Detail](34_testing_strategy_v0_1_detail.md)
+36. [Design System v0.1 Expansion](35_design_system_v0_1_expansion.md)
 
 ## Platform Services
 
@@ -136,6 +137,8 @@ versioned JSON Schema, OpenAPI files, examples, fixtures, ownership rules,
 versioning policy, and contract-test hooks. Slice 444 detailed the MVP testing
 strategy across single-pass quality gate, statement/branch coverage, contract
 fixtures, mock E2E, live smoke, UI evidence, release evidence, and docs-only
-slice rules.
+slice rules. Slice 445 expanded the design system into MVP-ready principles,
+tokens, layouts, components, status badge rules, Korean/English copy guidance,
+accessibility requirements, UI evidence, and anti-patterns.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.
