@@ -29,6 +29,7 @@ packages until service boundaries have survived implementation.
 | Generation progress event contract | Event envelope, event types, current stages, common job status, streaming/polling semantics, and redacted progress metadata. | `nex-ae-api`, `nex-ae-web`, `nex-cx`, `nex-mo`, `nex-ag` |
 | Generation failure and repair policy | Failure classes, retryability, repair/regenerate actions, lineage edges, policy hashes, and user-facing recovery behavior. | `nex-ae-api`, `nex-cx`, `nex-mo`, `nex-ag` |
 | Chat workspace artifact link requirements | Artifact cards, preview/download routes, source drilldown, quality badges, recovery actions, localization, and accessibility requirements. | `nex-ae-web`, `nex-ae-api` |
+| Prompt/template/output compatibility matrix | Valid combinations of execution mode, template, prompt contract, output schema, artifact intent, target format, quality policy, and provider capability. | `nex-ae-api`, `nex-cx`, `nex-mo`, `nex-ag` |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
 ## Contract Style
@@ -77,6 +78,8 @@ packages until service boundaries have survived implementation.
   [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md).
 - Chat workspace artifact link requirements, starting from
   [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md).
+- Prompt/template/output compatibility schemas, starting from
+  [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

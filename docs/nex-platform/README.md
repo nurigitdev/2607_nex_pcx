@@ -34,6 +34,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 22. [Generation Progress Event Contract](21_generation_progress_event_contract.md)
 23. [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md)
 24. [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md)
+25. [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md)
 
 ## Platform Services
 
@@ -95,6 +96,8 @@ can recover through retry, repair, regenerate, sectional retry, or warning
 acceptance without losing lineage. Slice 433 froze chat workspace artifact link
 requirements so generated artifacts appear as versioned preview/download cards
 inside AE chat while keeping source, quality, progress, and recovery lineage
-visible.
+visible. Slice 434 froze the prompt/template/output compatibility matrix so AE
+and CX can reject mismatched generation modes, templates, prompt contracts,
+output schemas, target formats, and provider capabilities before a provider call.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

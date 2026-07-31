@@ -174,7 +174,8 @@ internals.
 
 This requirements document should feed:
 
-- Prompt/template/output compatibility rule matrix.
+- Prompt/template/output compatibility rule matrix, starting from
+  [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md).
 - AG generation and artifact audit dashboard requirements.
 - Generation OpenAPI endpoint seed.
 - Generation E2E acceptance scenario and contract test plan.

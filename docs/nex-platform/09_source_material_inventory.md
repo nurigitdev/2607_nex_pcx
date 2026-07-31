@@ -68,6 +68,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Long-running generation needs consistent status, stage, progress, streaming, and redacted timeline events across AE, CX, MO, and AG. | Freeze generation progress event envelope and stage/event taxonomy in [Generation Progress Event Contract](21_generation_progress_event_contract.md). |
 | `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Failed or incomplete generation needs explicit retry, repair, regenerate, sectional retry, and warning acceptance rules. | Freeze recovery action taxonomy, failure classes, lineage fields, and policy hashes in [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md). |
 | `NP-SRC-02`, `NP-SRC-10`, `NP-SRC-13` | Generated artifacts should be visible in chat as previewable/downloadable, versioned, source-aware workspace objects. | Freeze chat artifact card, link, source drilldown, recovery action, localization, and accessibility requirements in [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md). |
+| `NP-SRC-02`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-13` | Template selection, prompt version, output schema, artifact intent, and provider capability can drift unless compatibility is explicit. | Freeze valid generation combinations and mismatch handling in [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md). |
 
 ## Next Review Sequence
 
@@ -92,6 +93,9 @@ decisions rather than copying large source material wholesale.
     failure classes, recovery actions, lineage, policy hashes, and UX behavior.
 14. Completed: Freeze chat workspace artifact link requirements across artifact
     cards, source drilldown, quality badges, actions, and localization.
-15. Use `NP-SRC-15` to settle development environment and directory assumptions.
-16. Use `NP-SRC-01` as a final cross-check for missing requirements.
-17. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+15. Completed: Freeze prompt/template/output compatibility across execution
+    modes, templates, prompt contracts, output schemas, artifact intents,
+    formats, quality policies, and provider capabilities.
+16. Use `NP-SRC-15` to settle development environment and directory assumptions.
+17. Use `NP-SRC-01` as a final cross-check for missing requirements.
+18. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

@@ -153,7 +153,8 @@ This contract should feed:
 
 - Chat workspace artifact link requirements, starting from
   [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md).
-- Prompt/template/output compatibility rule matrix.
+- Prompt/template/output compatibility rule matrix, starting from
+  [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md).
 - AG generation and artifact audit dashboard requirements.
 - Generation OpenAPI endpoint seed.
 - Generation E2E acceptance scenario and contract test plan.

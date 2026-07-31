@@ -229,5 +229,7 @@ This contract should feed:
   [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
 - AE artifact rendering handoff contract, starting from
   [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
+- Prompt/template/output compatibility rule matrix, starting from
+  [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md).
 - OA service scope catalog for `ae:generation.request` and `cx:generation.run`.
 - AG generation audit and lineage dashboard requirements.
