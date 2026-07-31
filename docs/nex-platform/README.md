@@ -32,6 +32,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 20. [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md)
 21. [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md)
 22. [Generation Progress Event Contract](21_generation_progress_event_contract.md)
+23. [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md)
 
 ## Platform Services
 
@@ -87,6 +88,9 @@ artifact rendering handoff contract so validated CX drafts can become AE-owned
 artifact records, render jobs, files, previews, downloads, and chat links
 without losing generation lineage. Slice 431 froze the generation progress event
 contract so AE, CX, MO, and AG can expose the same stage, event, status, and
-redacted metadata timeline for long-running generation.
+redacted metadata timeline for long-running generation. Slice 432 froze the
+generation failure, repair, and retry policy so failed or incomplete generation
+can recover through retry, repair, regenerate, sectional retry, or warning
+acceptance without losing lineage.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

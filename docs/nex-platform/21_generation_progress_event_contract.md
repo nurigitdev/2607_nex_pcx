@@ -17,6 +17,7 @@ Sources:
 - [AE Agent Orchestration Contract](13_ae_agent_orchestration_contract.md)
 - [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md)
 - [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md)
+- [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md)
 
 This document freezes the first progress event contract for long-running
 generation. It lets AE web, AE API, CX, MO, and AG describe the same generation
@@ -170,7 +171,8 @@ event ID resume when practical.
 
 This contract should feed:
 
-- Generation failure, repair, and retry policy contract.
+- Generation failure, repair, and retry policy contract, starting from
+  [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md).
 - Chat workspace artifact link requirements.
 - AG generation and artifact audit dashboard requirements.
 - Generation OpenAPI endpoint seed.

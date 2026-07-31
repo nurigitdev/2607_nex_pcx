@@ -17,6 +17,7 @@ Sources:
 - [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md)
 - [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md)
 - [Generation Progress Event Contract](21_generation_progress_event_contract.md)
+- [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md)
 
 This document freezes the first CX-owned generation execution record and lineage
 contract. The purpose is to preserve evidence continuity from retrieval through
@@ -276,5 +277,6 @@ This contract should feed:
   [Generation Progress Event Contract](21_generation_progress_event_contract.md).
 - AE artifact rendering handoff contract, starting from
   [AE Artifact Rendering Handoff Contract](20_ae_artifact_rendering_handoff_contract.md).
-- Generation failure and retry policy contract.
+- Generation failure and retry policy contract, starting from
+  [Generation Failure + Repair/Retry Policy Contract](22_generation_failure_repair_retry_policy_contract.md).
 - AG generation audit and lineage dashboard requirements.
