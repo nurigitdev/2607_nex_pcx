@@ -176,7 +176,8 @@ AG should make operational risk visible before it becomes a control plane.
 
 This requirements document should feed:
 
-- Generation JSON Schema seed.
+- Generation JSON Schema seed, starting from
+  [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md).
 - Generation OpenAPI endpoint seed.
 - Generation E2E acceptance scenario and contract test plan.
 - AG MVP dashboard SRS sections.

@@ -36,6 +36,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 24. [Chat Workspace Artifact Link Requirements](23_chat_workspace_artifact_link_requirements.md)
 25. [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md)
 26. [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md)
+27. [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md)
 
 ## Platform Services
 
@@ -103,6 +104,8 @@ output schemas, target formats, and provider capabilities before a provider
 call. Slice 435 froze the AG generation and artifact audit dashboard
 requirements so operations can inspect generation timeline, artifact lineage,
 citations, compatibility, downloads, provider usage, and recovery events through
-service APIs.
+service APIs. Slice 436 seeded the generation JSON Schema catalog so AE, CX, MO,
+and AG can validate request, response, event, lineage, artifact, compatibility,
+and audit payloads before endpoint implementation.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

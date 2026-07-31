@@ -161,6 +161,7 @@ This matrix should feed:
 
 - AG generation and artifact audit dashboard requirements, starting from
   [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md).
-- Generation JSON Schema seed.
+- Generation JSON Schema seed, starting from
+  [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md).
 - Generation OpenAPI endpoint seed.
 - Generation E2E acceptance scenario and contract test plan.
