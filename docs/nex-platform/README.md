@@ -27,6 +27,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 15. [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md)
 16. [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md)
 17. [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md)
+18. [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md)
 
 ## Platform Services
 
@@ -69,6 +70,9 @@ prompt/template/generation hand-off. Slice 425 reconciled generation routing so
 document-grounded generation is AE-orchestrated but CX-mediated before MO
 provider execution. Slice 426 froze the first AE-to-CX generation request
 package so AE can send intent, template, output, quality, and retrieval package
-references to CX without leaking provider runtime ownership.
+references to CX without leaking provider runtime ownership. Slice 427 froze the
+first CX-to-MO generation provider contract so CX can call MO by stable alias
+while MO owns admission, routing, provider execution, streaming/cancel, and
+usage metadata.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

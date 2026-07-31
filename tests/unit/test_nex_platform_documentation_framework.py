@@ -22,6 +22,7 @@ EXPECTED_DOCS = [
     "14_cx_ae_retrieval_context_package_contract.md",
     "15_generation_routing_boundary_reconciliation.md",
     "16_ae_cx_generation_request_package_contract.md",
+    "17_cx_mo_generation_provider_contract.md",
 ]
 
 
@@ -153,6 +154,7 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "14_cx_ae_retrieval_context_package_contract.md" in common
     assert "15_generation_routing_boundary_reconciliation.md" in common
     assert "16_ae_cx_generation_request_package_contract.md" in common
+    assert "17_cx_mo_generation_provider_contract.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -217,6 +219,8 @@ def test_common_contract_freeze_map_keeps_unsettled_contracts_out_of_freeze_now(
     assert "Generation ownership" in freeze_map
     assert "AE-to-CX generation request package" in freeze_map
     assert "16_ae_cx_generation_request_package_contract.md" in freeze_map
+    assert "CX-to-MO generation provider contract" in freeze_map
+    assert "17_cx_mo_generation_provider_contract.md" in freeze_map
     assert "Statement coverage target differs" in freeze_map
     assert "Freeze contracts first" in freeze_map
 
@@ -243,6 +247,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "14_cx_ae_retrieval_context_package_contract.md" in inventory
     assert "15_generation_routing_boundary_reconciliation.md" in inventory
     assert "16_ae_cx_generation_request_package_contract.md" in inventory
+    assert "17_cx_mo_generation_provider_contract.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -349,6 +354,7 @@ def test_service_boundary_decision_record_freezes_generation_ownership() -> None
         decision_record
     )
     assert "AE-to-CX generation request package" in decision_record
+    assert "CX-to-MO generation provider contract" in decision_record
     assert "generated artifact metadata" in decision_record
 
 
@@ -532,6 +538,52 @@ def test_ae_cx_generation_request_contract_freezes_validation_and_replay_rules()
     assert "`cx.no_answer_generation_blocked`" in contract
     assert "`cx.provider_runtime_field_forbidden`" in contract
     assert "`application/problem+json`" in contract
+
+
+def test_cx_mo_generation_provider_contract_defines_request_and_boundary() -> None:
+    contract = _read("17_cx_mo_generation_provider_contract.md")
+
+    assert "CX-to-MO Generation Provider Contract" in contract
+    assert "`POST /api/v1/generations`" in contract
+    assert "`POST /api/v1/generations/stream`" in contract
+    assert "`nex-cx`" in contract
+    assert "`nex-mo`" in contract
+    assert "`request_schema_version`" in contract
+    assert "`cx_generation_id`" in contract
+    assert "`provider_prompt_package_hash`" in contract
+    assert "`alias`" in contract
+    assert "`workload_class`" in contract
+    assert "`response_format`" in contract
+
+
+def test_cx_mo_generation_provider_contract_tracks_response_usage_and_runtime_metadata() -> None:
+    contract = _read("17_cx_mo_generation_provider_contract.md")
+
+    assert "`mo_generation_id`" in contract
+    assert "`job_id`" in contract
+    assert "`model_revision`" in contract
+    assert "`deployment_id`" in contract
+    assert "`provider_type`" in contract
+    assert "`finish_reason`" in contract
+    assert "`usage`" in contract
+    assert "`queue_ms`" in contract
+    assert "`provider_ms`" in contract
+    assert "`tokens_per_second`" in contract
+
+
+def test_cx_mo_generation_provider_contract_freezes_streaming_errors_and_guardrails() -> None:
+    contract = _read("17_cx_mo_generation_provider_contract.md")
+
+    assert "CX does not call vLLM" in contract
+    assert "MO should validate the requested response format" in contract
+    assert "event_type`, `job_status`, and `current_stage`" in contract
+    assert "Same key plus same `provider_prompt_package_hash`" in contract
+    assert "`mo.alias_not_found`" in contract
+    assert "`mo.deployment_unavailable`" in contract
+    assert "`mo.provider_timeout`" in contract
+    assert "`mo.provider_runtime_failed`" in contract
+    assert "No document semantics in MO" in contract
+    assert "No leaked runtime secret" in contract
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:

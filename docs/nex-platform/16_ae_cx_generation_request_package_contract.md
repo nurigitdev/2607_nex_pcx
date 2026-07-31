@@ -221,7 +221,8 @@ All errors use the common `application/problem+json` envelope and preserve
 
 This contract should feed:
 
-- CX-to-MO generation provider request/response contract.
+- CX-to-MO generation provider request/response contract, starting from
+  [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).
 - AE artifact rendering contract.
 - Structured draft and citation validation schema.
 - OA service scope catalog for `ae:generation.request` and `cx:generation.run`.

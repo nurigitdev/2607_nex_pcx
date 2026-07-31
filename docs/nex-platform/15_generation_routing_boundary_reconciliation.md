@@ -169,3 +169,5 @@ through CX unless a later decision explicitly changes the policy.
 
 The first AE-to-CX generation request package is defined in
 [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md).
+The CX-to-MO provider-facing generation contract is defined in
+[CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).

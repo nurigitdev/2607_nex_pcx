@@ -22,6 +22,7 @@ packages until service boundaries have survived implementation.
 | Agent orchestration package | Intent, execution mode, generation policy package, retrieval package reference, job stage, and result lineage. | `nex-ae-api`, `nex-ae-web` |
 | Generation routing contract | AE-owned user intent, CX-mediated document generation, MO provider execution, and returned usage lineage. | `nex-ae-api`, `nex-cx`, `nex-mo` |
 | AE-to-CX generation request package | Template, prompt contract, retrieval package reference, output contract, quality policy, and bounded generation parameters. | `nex-ae-api`, `nex-cx` |
+| CX-to-MO generation provider contract | Alias, workload class, provider-facing prompt package hash, response format, admission, streaming, usage, and runtime metadata. | `nex-cx`, `nex-mo` |
 | Artifact contract | Generated document metadata, preview, export, download link, lineage. | `nex-ae-api`, `nex-ae-web` |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
@@ -57,6 +58,8 @@ packages until service boundaries have survived implementation.
   [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md).
 - AE-to-CX generation request schemas, starting from
   [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md).
+- CX-to-MO generation provider schemas, starting from
+  [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

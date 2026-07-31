@@ -61,6 +61,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-09` | CX material includes broad search, generation, structured draft, and artifact scope. | Freeze the CX-to-AE retrieval/evidence package in [CX-to-AE Retrieval Context Package Contract](14_cx_ae_retrieval_context_package_contract.md); keep final user-facing generation orchestration in AE. |
 | `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Source documents state that AE should not call MO directly for document generation. | Reconcile direct-call wording in [Generation Routing Boundary Reconciliation](15_generation_routing_boundary_reconciliation.md): AE orchestrates, CX mediates document-grounded generation, MO executes providers. |
 | `NP-SRC-02`, `NP-SRC-09`, `NP-SRC-10` | Source documents repeat a compact NeX-CX Generation Request schema. | Freeze the expanded AE-to-CX request package in [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md). |
+| `NP-SRC-11` | MO material defines stable generation API, alias resolution, admission, routing, streaming, cancel, and usage metadata. | Freeze the CX-to-MO provider-facing generation contract in [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md). |
 
 ## Next Review Sequence
 
@@ -72,6 +73,7 @@ decisions rather than copying large source material wholesale.
 6. Completed: Reconcile document-grounded generation routing through CX before MO.
 7. Completed: Freeze AE-to-CX generation request package from `NP-SRC-02`,
    `NP-SRC-09`, and `NP-SRC-10`.
-8. Use `NP-SRC-15` to settle development environment and directory assumptions.
-9. Use `NP-SRC-01` as a final cross-check for missing requirements.
-10. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+8. Completed: Freeze CX-to-MO generation provider contract from `NP-SRC-11`.
+9. Use `NP-SRC-15` to settle development environment and directory assumptions.
+10. Use `NP-SRC-01` as a final cross-check for missing requirements.
+11. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

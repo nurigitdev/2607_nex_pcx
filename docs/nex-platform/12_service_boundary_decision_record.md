@@ -137,6 +137,7 @@ Consequence:
 | --- | --- |
 | CX retrieval context package schema | Define minimum fields for chunks, scores, source anchors, permission snapshot, no-answer status, and package hash. |
 | AE-to-CX generation request package | Define prompt version, template version, execution mode, retrieval package reference, output contract, quality policy, and bounded generation parameters. |
+| CX-to-MO generation provider contract | Define alias, workload, provider-facing prompt package hash, response format, admission, streaming/cancel, usage, and runtime metadata. |
 | AE artifact schema | Define Markdown-first artifact metadata, preview, download, lineage, and optional later DOCX/PDF render records. |
 | MO provider capability aliases | Define stable capability names for embedding, reranking, generation, and future speech providers. |
 | AG policy write surface | Decide which policy changes AG can write in MVP versus read-only observe. |
