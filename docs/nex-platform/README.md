@@ -42,6 +42,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 30. [NeX-Platform MVP SRS v0.1 Assembly](29_nex_platform_mvp_srs_v0_1_assembly.md)
 31. [Service-Specific Requirement Partition](30_service_specific_requirement_partition.md)
 32. [Cross-Service Traceability Matrix](31_cross_service_traceability_matrix.md)
+33. [Platform Development Environment Freeze](32_platform_development_environment_freeze.md)
 
 ## Platform Services
 
@@ -125,6 +126,9 @@ service-owned requirement IDs, interfaces, dependencies, priorities, shared
 platform requirements, and cross-service dependency order. Slice 441 seeded the
 cross-service traceability matrix from source material and PCX lessons to
 requirement IDs, service owners, contracts, tests, evidence artifacts, and
-coverage gaps.
+coverage gaps. Slice 442 froze the first development environment assumptions:
+monorepo-style workspace, service-owned packages and databases, local mock by
+default, live provider opt-in, profile-specific configuration, and setup
+guardrails.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

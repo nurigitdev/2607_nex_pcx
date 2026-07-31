@@ -3,7 +3,9 @@
 Status: Draft bootstrap.
 
 This document captures the environment assumptions that should be made explicit
-before NeX-Platform implementation begins.
+before NeX-Platform implementation begins. The first frozen version is now
+assembled in
+[Platform Development Environment Freeze](32_platform_development_environment_freeze.md).
 
 ## Repository Layout Assumption
 

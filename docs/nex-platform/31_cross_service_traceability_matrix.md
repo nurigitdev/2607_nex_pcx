@@ -94,7 +94,8 @@ than a frozen MVP item.
 
 This matrix should feed:
 
-- Development environment freeze.
+- Development environment freeze, starting from
+  [Platform Development Environment Freeze](32_platform_development_environment_freeze.md).
 - Common schema and contract package layout.
 - Testing strategy detail.
 - First sprint backlog and acceptance evidence checklist.
