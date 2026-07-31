@@ -32,6 +32,7 @@ packages until service boundaries have survived implementation.
 | Prompt/template/output compatibility matrix | Valid combinations of execution mode, template, prompt contract, output schema, artifact intent, target format, quality policy, and provider capability. | `nex-ae-api`, `nex-cx`, `nex-mo`, `nex-ag` |
 | AG generation artifact audit requirements | Read-only dashboard views, filters, redaction, audit event projections, operator notes, and export requirements for generation and artifacts. | `nex-ag`, all services |
 | Generation contract JSON schema seed | Versioned schema catalog, shared definitions, validation rules, and schema-to-contract traceability for generation payloads. | All backend services, `nex-ae-web` |
+| Generation OpenAPI endpoint seed | Service-owned route map, headers, status codes, schemas, streaming/polling endpoints, and contract-test surface. | All services |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
 ## Contract Style
@@ -86,6 +87,8 @@ packages until service boundaries have survived implementation.
   [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md).
 - Generation JSON Schema catalog, starting from
   [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md).
+- Generation OpenAPI endpoint seed, starting from
+  [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

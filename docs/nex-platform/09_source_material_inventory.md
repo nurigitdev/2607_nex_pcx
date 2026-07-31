@@ -71,6 +71,7 @@ decisions rather than copying large source material wholesale.
 | `NP-SRC-02`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-13` | Template selection, prompt version, output schema, artifact intent, and provider capability can drift unless compatibility is explicit. | Freeze valid generation combinations and mismatch handling in [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md). |
 | `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-08`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Operators need generation and artifact evidence without violating service ownership or leaking prompts/provider secrets. | Freeze AG read-only dashboard, audit projection, filter, redaction, and operator note requirements in [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md). |
 | `NP-SRC-02`, `NP-SRC-03` | Generation contracts need implementation-ready schema names and validation rules before OpenAPI and contract tests. | Seed the generation JSON Schema catalog and shared definitions in [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md). |
+| `NP-SRC-02`, `NP-SRC-03`, `NP-SRC-09`, `NP-SRC-10`, `NP-SRC-11` | Generation implementation needs service-owned endpoint names, headers, idempotency, streaming/polling, and error codes before code begins. | Seed the generation OpenAPI route surface in [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md). |
 
 ## Next Review Sequence
 
@@ -103,6 +104,8 @@ decisions rather than copying large source material wholesale.
     provider usage, redaction, and operator notes.
 17. Completed: Seed generation JSON Schema catalog, shared definitions,
     validation posture, and contract-test derivation points.
-18. Use `NP-SRC-15` to settle development environment and directory assumptions.
-19. Use `NP-SRC-01` as a final cross-check for missing requirements.
-20. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.
+18. Completed: Seed generation OpenAPI endpoint surface across AE, CX, MO, OA,
+    and AG with headers, idempotency, streaming/polling, errors, and tests.
+19. Use `NP-SRC-15` to settle development environment and directory assumptions.
+20. Use `NP-SRC-01` as a final cross-check for missing requirements.
+21. Keep `NP-SRC-05`, `NP-SRC-06`, and `NP-SRC-12` mostly deferred unless they reveal an MVP blocker.

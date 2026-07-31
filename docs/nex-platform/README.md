@@ -37,6 +37,7 @@ and slice history as design input for a smaller, buildable platform baseline.
 25. [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md)
 26. [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md)
 27. [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md)
+28. [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md)
 
 ## Platform Services
 
@@ -106,6 +107,9 @@ requirements so operations can inspect generation timeline, artifact lineage,
 citations, compatibility, downloads, provider usage, and recovery events through
 service APIs. Slice 436 seeded the generation JSON Schema catalog so AE, CX, MO,
 and AG can validate request, response, event, lineage, artifact, compatibility,
-and audit payloads before endpoint implementation.
+and audit payloads before endpoint implementation. Slice 437 seeded the
+generation OpenAPI endpoint surface so AE, CX, MO, OA, and AG have a concrete
+service-owned route map for generation orchestration, artifact handling,
+provider execution, and governance reads.
 Later slices should fill the skeleton with source-backed decisions instead of
 copying large documents wholesale.

@@ -131,6 +131,7 @@ GET  /admin/v1/workers
 | Prompt/template/output compatibility matrix | Generation needs explicit compatibility among execution mode, template, prompt contract, output schema, artifact intent, target format, quality policy, and provider capability. | Use [Prompt/Template/Output Compatibility Matrix](24_prompt_template_output_compatibility_matrix.md) as the first compatibility rule seed. |
 | AG generation artifact audit dashboard | Operators need read-only generation timeline, artifact lineage, citation/completeness, compatibility, download audit, provider usage, and recovery views. | Use [AG Generation Artifact Audit Dashboard Requirements](25_ag_generation_artifact_audit_dashboard_requirements.md) as the first AG audit view seed. |
 | Generation contract JSON schema catalog | Generation request, response, event, lineage, draft, artifact, compatibility, and audit contracts need explicit schema IDs before OpenAPI and contract tests. | Use [Generation Contract JSON Schema Seed](26_generation_contract_json_schema_seed.md) as the first schema catalog seed. |
+| Generation OpenAPI endpoint surface | Generation orchestration needs service-owned AE/CX/MO/AG/OA endpoints, headers, idempotency, error codes, and streaming/polling routes. | Use [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md) as the first endpoint seed. |
 | Channel request context | Helpful for future web/app/voice channels. | Keep optional fields; do not design channel-specific data models yet. |
 
 ## Conflicts To Resolve

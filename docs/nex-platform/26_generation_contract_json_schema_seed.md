@@ -152,6 +152,7 @@ own implementation slice.
 
 This seed should feed:
 
-- Generation OpenAPI endpoint seed.
+- Generation OpenAPI endpoint seed, starting from
+  [Generation OpenAPI Endpoint Seed](27_generation_openapi_endpoint_seed.md).
 - Generation E2E acceptance scenario and contract test plan.
 - Future schema package layout decision for service repositories.
