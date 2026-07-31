@@ -173,3 +173,5 @@ The CX-to-MO provider-facing generation contract is defined in
 [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).
 The CX generation execution and lineage record is defined in
 [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
+The structured draft and citation schema is defined in
+[Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).

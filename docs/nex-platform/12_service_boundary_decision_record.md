@@ -78,6 +78,7 @@ to freeze the first platform spine before writing service SRS documents.
 | Chunk, BM25 term, vector, graph edge | `nex-cx` | AE, AG | Only CX writes; MO returns vectors/scores but does not store corpus indexes. |
 | Retrieval context package and no-answer metadata | `nex-cx` | AE | CX writes package evidence; AE can persist run linkage. |
 | Provider-facing prompt package and document-grounded generation execution record | `nex-cx` | AE, AG | CX connects evidence, prompt package, MO request metadata, structured draft, and citation lineage. |
+| Structured draft, citation claims, and validation metadata | `nex-cx` | AE, AG | CX validates generated sections, blocks, evidence anchors, citations, and template completeness before AE renders artifacts. |
 | User-facing generation request, answer presentation, and artifact metadata | `nex-ae-api` | AE web, AG | AE writes chat/workspace records, final formatting, and artifact links. |
 | Provider route, model alias, provider metric | `nex-mo` | CX, AE, AG | Only MO writes provider registry and runtime telemetry. |
 | Admin policy setting and audit event | `nex-ag` plus service-local emitters | Administrators and operators | AG owns governance view; each service emits local audit/log events. |
@@ -139,6 +140,7 @@ Consequence:
 | AE-to-CX generation request package | Define prompt version, template version, execution mode, retrieval package reference, output contract, quality policy, and bounded generation parameters. |
 | CX-to-MO generation provider contract | Define alias, workload, provider-facing prompt package hash, response format, admission, streaming/cancel, usage, and runtime metadata. |
 | CX generation execution record | Define generation request hash, retrieval package hash, prompt package hash, MO call metadata, structured draft status, citation status, and retry lineage. |
+| Structured draft and citation schema | Define generated section/block shape, citation claim shape, evidence anchor validation, completeness status, and AE safe read view. |
 | AE artifact schema | Define Markdown-first artifact metadata, preview, download, lineage, and optional later DOCX/PDF render records. |
 | MO provider capability aliases | Define stable capability names for embedding, reranking, generation, and future speech providers. |
 | AG policy write surface | Decide which policy changes AG can write in MVP versus read-only observe. |
@@ -177,5 +179,6 @@ This record should feed:
 - AE-to-CX generation request package contract.
 - CX-to-MO generation provider contract.
 - CX generation execution record and lineage contract.
+- Structured draft and citation schema contract.
 - OA claim and service scope catalog.
 - AG read-only operations dashboard scope.

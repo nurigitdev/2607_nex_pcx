@@ -24,6 +24,7 @@ packages until service boundaries have survived implementation.
 | AE-to-CX generation request package | Template, prompt contract, retrieval package reference, output contract, quality policy, and bounded generation parameters. | `nex-ae-api`, `nex-cx` |
 | CX-to-MO generation provider contract | Alias, workload class, provider-facing prompt package hash, response format, admission, streaming, usage, and runtime metadata. | `nex-cx`, `nex-mo` |
 | CX generation execution record | Retrieval package hash, prompt package hash, MO call metadata, draft validation, citation validation, and retry lineage. | `nex-cx`, `nex-ae-api`, `nex-ag` |
+| Structured draft and citation schema | Sections, blocks, citation claims, source anchors, validation statuses, completeness checks, and safe read shape. | `nex-cx`, `nex-ae-api`, `nex-ag` |
 | Artifact contract | Generated document metadata, preview, export, download link, lineage. | `nex-ae-api`, `nex-ae-web` |
 | Feature flag | Runtime toggles for experimental providers, tokenizers, templates, policies. | All services |
 
@@ -63,6 +64,8 @@ packages until service boundaries have survived implementation.
   [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md).
 - CX generation execution and lineage schemas, starting from
   [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
+- Structured draft and citation schemas, starting from
+  [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
 - Error code catalog.
 - Claim and scope catalog.
 - Audit event taxonomy.

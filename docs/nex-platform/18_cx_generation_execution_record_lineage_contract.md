@@ -14,6 +14,7 @@ Sources:
   (`11_260723_NeX_MO_Model_Operations_Design_v1.3.md`)
 - [AE-to-CX Generation Request Package Contract](16_ae_cx_generation_request_package_contract.md)
 - [CX-to-MO Generation Provider Contract](17_cx_mo_generation_provider_contract.md)
+- [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md)
 
 This document freezes the first CX-owned generation execution record and lineage
 contract. The purpose is to preserve evidence continuity from retrieval through
@@ -158,7 +159,8 @@ file paths, or provider credentials to AE.
 | `invalid_citation_count` | No | Count of citations not tied to evidence refs. |
 | `repair_attempt_count` | No | Count of CX repair attempts. |
 
-Structured draft schema details are intentionally left for the next contract.
+Structured draft schema details are defined in
+[Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
 This Slice freezes how draft and validation IDs/statuses connect back to the
 generation execution record.
 
@@ -266,7 +268,8 @@ error details.
 
 This contract should feed:
 
-- Structured draft and citation validation schema.
+- Structured draft and citation validation schema, starting from
+  [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
 - Generation progress event contract.
 - AE artifact rendering handoff contract.
 - Generation failure and retry policy contract.

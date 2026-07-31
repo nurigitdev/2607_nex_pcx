@@ -241,7 +241,8 @@ This contract should feed:
 
 - CX generation execution record and lineage contract, starting from
   [CX Generation Execution Record + Lineage Contract](18_cx_generation_execution_record_lineage_contract.md).
-- Structured draft and citation validation schema.
+- Structured draft and citation validation schema, starting from
+  [Structured Draft + Citation Schema Contract](19_structured_draft_citation_schema_contract.md).
 - MO provider route and admission policy schema.
 - AG provider/generation operations dashboard requirements.
 - OA service scope catalog for `cx:generation.run` and `mo:generation`.

@@ -24,6 +24,7 @@ EXPECTED_DOCS = [
     "16_ae_cx_generation_request_package_contract.md",
     "17_cx_mo_generation_provider_contract.md",
     "18_cx_generation_execution_record_lineage_contract.md",
+    "19_structured_draft_citation_schema_contract.md",
 ]
 
 
@@ -157,6 +158,8 @@ def test_common_modules_focus_on_contracts_not_early_code_sharing() -> None:
     assert "16_ae_cx_generation_request_package_contract.md" in common
     assert "17_cx_mo_generation_provider_contract.md" in common
     assert "18_cx_generation_execution_record_lineage_contract.md" in common
+    assert "Structured draft and citation schema" in common
+    assert "19_structured_draft_citation_schema_contract.md" in common
 
 
 def test_common_contract_freeze_map_identifies_sources_and_frozen_api_basics() -> None:
@@ -216,7 +219,8 @@ def test_common_contract_freeze_map_keeps_unsettled_contracts_out_of_freeze_now(
     assert "OpenAPI/JSON Schema generation" in freeze_map
     assert "Shared `nex_common` package" in freeze_map
     assert "Evidence contract" in freeze_map
-    assert "Structured draft contract" in freeze_map
+    assert "Structured draft and citation schema" in freeze_map
+    assert "19_structured_draft_citation_schema_contract.md" in freeze_map
     assert "Artifact rendering contract" in freeze_map
     assert "Generation ownership" in freeze_map
     assert "AE-to-CX generation request package" in freeze_map
@@ -253,6 +257,7 @@ def test_source_material_inventory_tracks_files_without_committing_raw_sources()
     assert "16_ae_cx_generation_request_package_contract.md" in inventory
     assert "17_cx_mo_generation_provider_contract.md" in inventory
     assert "18_cx_generation_execution_record_lineage_contract.md" in inventory
+    assert "19_structured_draft_citation_schema_contract.md" in inventory
     assert "P4 roadmap" in inventory
 
 
@@ -361,6 +366,7 @@ def test_service_boundary_decision_record_freezes_generation_ownership() -> None
     assert "AE-to-CX generation request package" in decision_record
     assert "CX-to-MO generation provider contract" in decision_record
     assert "CX generation execution record" in decision_record
+    assert "Structured draft and citation schema" in decision_record
     assert "generated artifact metadata" in decision_record
 
 
@@ -372,6 +378,7 @@ def test_service_boundary_decision_record_keeps_data_authority_separated() -> No
     assert "Only CX writes" in decision_record
     assert "Only MO writes" in decision_record
     assert "Generated artifacts remain AE-owned" in decision_record
+    assert "Structured draft, citation claims, and validation metadata" in (decision_record)
     assert "AG observes and governs through service APIs" in decision_record
     assert "Provider runtimes are reached through `nex-mo` stable APIs" in (decision_record)
 
@@ -495,6 +502,7 @@ def test_generation_routing_reconciliation_keeps_ae_cx_mo_ownership_separate() -
     assert "Provider-facing prompt package" in routing
     assert "Generation provider request" in routing
     assert "Structured draft validation" in routing
+    assert "19_structured_draft_citation_schema_contract.md" in routing
     assert "Artifact rendering and links" in routing
     assert "General Answer Or Intent Analysis" in routing
     assert "requires a later explicit policy" in routing
@@ -638,6 +646,59 @@ def test_cx_generation_execution_record_contract_freezes_validation_retry_and_sa
     assert "AE safe read view includes lineage refs and excludes provider secrets" in (contract)
     assert "AG observes generation records through CX APIs" in contract
     assert "`cx.citation_validation_failed`" in contract
+    assert "19_structured_draft_citation_schema_contract.md" in contract
+
+
+def test_structured_draft_citation_contract_defines_schema_and_ownership() -> None:
+    contract = _read("19_structured_draft_citation_schema_contract.md")
+
+    assert "Structured Draft + Citation Schema Contract" in contract
+    assert "`cx_structured_draft.v1`" in contract
+    assert "`cx_citation_claim.v1`" in contract
+    assert "CX owns structured draft validation and citation evidence integrity" in (contract)
+    assert "AE owns user-facing rendering, artifact records, previews, and downloads" in (contract)
+    assert "MO owns provider execution metadata, not document semantics" in contract
+    assert "`structured_draft_id`" in contract
+    assert "`cx_generation_id`" in contract
+    assert "`draft_schema_version`" in contract
+    assert "`content_hash`" in contract
+
+
+def test_structured_draft_citation_contract_tracks_sections_blocks_and_claims() -> None:
+    contract = _read("19_structured_draft_citation_schema_contract.md")
+
+    assert "`section_id`" in contract
+    assert "`template_section_id`" in contract
+    assert "`section_type`" in contract
+    assert "`required`" in contract
+    assert "`block_id`" in contract
+    assert "`block_type`" in contract
+    assert "`citation_ids`" in contract
+    assert "`citation_id`" in contract
+    assert "`citation_label`" in contract
+    assert "`claim_text_hash`" in contract
+    assert "`evidence_id`" in contract
+    assert "`retrieval_package_id`" in contract
+    assert "`content_version_id`" in contract
+    assert "`chunk_policy_id`" in contract
+    assert "`source_anchor`" in contract
+    assert "`support_level`" in contract
+
+
+def test_structured_draft_citation_contract_freezes_validation_hashes_and_safe_read() -> None:
+    contract = _read("19_structured_draft_citation_schema_contract.md")
+
+    assert "`structured_draft_validation_status`" in contract
+    assert "`citation_validation_status`" in contract
+    assert "`template_completeness_status`" in contract
+    assert "`structured_draft_content_hash`" in contract
+    assert "`citation_claims_hash`" in contract
+    assert "`validation_result_hash`" in contract
+    assert "`cx.citation_evidence_mismatch`" in contract
+    assert "`cx.required_section_missing`" in contract
+    assert "`cx.unsupported_block_type`" in contract
+    assert "AE safe read view excludes provider credentials" in contract
+    assert "CX must not mark the root generation execution as `SUCCEEDED`" in (contract)
 
 
 def test_pcx_lessons_seed_covers_retrieval_generation_provider_and_governance() -> None:
