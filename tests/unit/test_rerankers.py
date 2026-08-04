@@ -257,6 +257,8 @@ def test_reranker_runtime_config_builds_remote_client() -> None:
         reranker_provider_mode = " REMOTE "
         remote_reranker_provider_url = "http://reranker.local/"
         remote_reranker_provider_timeout_seconds = 17.5
+        reranker_profile_name = " custom_reranker_profile "
+        reranker_model_id = " custom-reranker-model "
 
     http_client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200)))
     config = reranker_runtime_config_from_settings(SettingsStub())
@@ -266,6 +268,8 @@ def test_reranker_runtime_config_builds_remote_client() -> None:
         mode=REMOTE_RERANKER_PROVIDER_MODE,
         remote_base_url="http://reranker.local",
         remote_timeout_seconds=17.5,
+        reranker_profile_name="custom_reranker_profile",
+        reranker_model_id="custom-reranker-model",
     )
     assert isinstance(provider, RemoteRerankerProviderClient)
     assert provider.base_url == "http://reranker.local"
@@ -287,6 +291,12 @@ def test_reranker_runtime_config_rejects_invalid_remote_settings() -> None:
                 remote_timeout_seconds=0,
             )
         )
+
+    with pytest.raises(InvalidRerankerError, match="reranker_profile_name"):
+        normalize_reranker_runtime_config(RerankerRuntimeConfig(reranker_profile_name=" "))
+
+    with pytest.raises(InvalidRerankerError, match="reranker_model_id"):
+        normalize_reranker_runtime_config(RerankerRuntimeConfig(reranker_model_id=" "))
 
 
 def test_remote_reranker_provider_client_reads_health_and_reranks() -> None:

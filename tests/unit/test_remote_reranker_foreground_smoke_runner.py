@@ -49,13 +49,13 @@ def _health_payload(**overrides: Any) -> dict[str, Any]:
     return {
         "ready": True,
         "provider_type": "remote",
-        "provider_model_id": "Qwen/Qwen3-Reranker-4B",
-        "reranker_profile_name": "qwen3_reranker_4b",
+        "provider_model_id": "Qwen/Qwen3-Reranker-0.6B",
+        "reranker_profile_name": "qwen3_reranker_0_6b",
         "device": "cuda:0",
         "runtime_metadata": {
             "service": "nex_pcx_reranker_provider_service",
             "backend": "qwen_reranker",
-            "model_dir": "/home/nexpcx/2607_nex_pcx/models/qwen3_reranker_4b",
+            "model_dir": "/home/nexpcx/2607_nex_pcx/models/qwen3_reranker_0_6b",
             "model_dir_exists": True,
         },
         **overrides,
@@ -136,7 +136,7 @@ def test_run_remote_reranker_foreground_smoke_fails_on_health_mismatch(
     assert result.health_ok is False
     assert result.error == "Health response did not match the expected reranker provider plan."
     assert result.health_mismatches == (
-        "provider_model_id: expected 'Qwen/Qwen3-Reranker-4B', got 'other'",
+        "provider_model_id: expected 'Qwen/Qwen3-Reranker-0.6B', got 'other'",
     )
 
 
@@ -283,7 +283,7 @@ def test_reranker_health_mismatches_validate_expected_payload() -> None:
     assert "runtime_metadata.backend: expected 'qwen_reranker', got 'mock'" in mismatches
     assert (
         "runtime_metadata.model_dir: expected "
-        "'/home/nexpcx/2607_nex_pcx/models/qwen3_reranker_4b', got '/tmp/model'"
+        "'/home/nexpcx/2607_nex_pcx/models/qwen3_reranker_0_6b', got '/tmp/model'"
     ) in mismatches
     assert "runtime_metadata.model_dir_exists: expected True, got False" in mismatches
 

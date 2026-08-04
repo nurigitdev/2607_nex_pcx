@@ -133,6 +133,8 @@ def rerank_search_results(
     results: tuple[SearchRerankSourceResult, ...] | list[SearchRerankSourceResult],
     top_k: int,
     provider: RerankerProvider | None = None,
+    reranker_profile_name: str | None = None,
+    reranker_model_id: str | None = None,
 ) -> tuple[RerankedSearchResult, ...]:
     if top_k <= 0:
         raise InvalidRerankedSearchError("top_k must be greater than 0")
@@ -144,11 +146,17 @@ def rerank_search_results(
     source_by_key = {_candidate_key(result): result for result in results}
     if len(source_by_key) != len(results):
         raise InvalidRerankedSearchError("search result candidates must be unique")
+    request_kwargs: dict[str, str] = {}
+    if reranker_profile_name is not None:
+        request_kwargs["reranker_profile_name"] = reranker_profile_name
+    if reranker_model_id is not None:
+        request_kwargs["reranker_model_id"] = reranker_model_id
     rerank_result = rerank_candidates(
         RerankRequest(
             query_text=query_text,
             candidates=build_rerank_candidates(results),
             top_k=top_k,
+            **request_kwargs,
         ),
         provider=provider,
     )

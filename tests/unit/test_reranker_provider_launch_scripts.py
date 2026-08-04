@@ -30,7 +30,7 @@ def test_reranker_provider_launch_plan_builds_qwen_runtime_command() -> None:
         port=19104,
         device="cuda:0",
         models_dir="/srv/nex_pcx/models",
-        provider_model_id="Qwen/Qwen3-Reranker-4B",
+        provider_model_id="Qwen/Qwen3-Reranker-0.6B",
         reload=True,
     )
 
@@ -53,12 +53,12 @@ def test_reranker_provider_launch_plan_builds_qwen_runtime_command() -> None:
     )
     assert plan.environment == {
         "NEX_PCX_RERANKER_PROVIDER_BACKEND": "qwen_reranker",
-        "NEX_PCX_RERANKER_PROVIDER_MODEL_ID": "Qwen/Qwen3-Reranker-4B",
-        "NEX_PCX_RERANKER_PROVIDER_PROFILE_NAME": "qwen3_reranker_4b",
+        "NEX_PCX_RERANKER_PROVIDER_MODEL_ID": "Qwen/Qwen3-Reranker-0.6B",
+        "NEX_PCX_RERANKER_PROVIDER_PROFILE_NAME": "qwen3_reranker_0_6b",
         "NEX_PCX_RERANKER_PROVIDER_DEVICE": "cuda:0",
         "NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE": "bfloat16",
         "NEX_PCX_RERANKER_PROVIDER_MODELS_DIR": "/srv/nex_pcx/models",
-        "NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME": "qwen3_reranker_4b",
+        "NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME": "qwen3_reranker_0_6b",
     }
     assert "NEX_PCX_RERANKER_PROVIDER_BACKEND=qwen_reranker" in plan.shell_command
     assert "NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE=bfloat16" in plan.shell_command

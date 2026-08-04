@@ -8,8 +8,8 @@ from urllib.parse import urljoin
 
 from app.core.vector_search import MAX_TOP_K
 
-DEFAULT_RERANKER_PROFILE_NAME = "qwen3_reranker_4b"
-DEFAULT_RERANKER_MODEL_ID = "Qwen/Qwen3-Reranker-4B"
+DEFAULT_RERANKER_PROFILE_NAME = "qwen3_reranker_0_6b"
+DEFAULT_RERANKER_MODEL_ID = "Qwen/Qwen3-Reranker-0.6B"
 DEFAULT_RERANKER_PROVIDER_TYPE = "mock_lexical_overlap"
 RERANK_RETRIEVAL_STRATEGY = "reranked"
 MOCK_RERANKER_PROVIDER_MODE = "mock"
@@ -79,6 +79,8 @@ class RerankerRuntimeConfig:
     mode: str = MOCK_RERANKER_PROVIDER_MODE
     remote_base_url: str | None = None
     remote_timeout_seconds: float = 60.0
+    reranker_profile_name: str = DEFAULT_RERANKER_PROFILE_NAME
+    reranker_model_id: str = DEFAULT_RERANKER_MODEL_ID
     remote_headers: Mapping[str, str] = field(default_factory=dict)
 
 
@@ -104,6 +106,12 @@ def reranker_runtime_config_from_settings(settings: object) -> RerankerRuntimeCo
             remote_timeout_seconds=float(
                 getattr(settings, "remote_reranker_provider_timeout_seconds", 60.0)
             ),
+            reranker_profile_name=str(
+                getattr(settings, "reranker_profile_name", DEFAULT_RERANKER_PROFILE_NAME)
+            ),
+            reranker_model_id=str(
+                getattr(settings, "reranker_model_id", DEFAULT_RERANKER_MODEL_ID)
+            ),
         )
     )
 
@@ -127,6 +135,11 @@ def normalize_reranker_runtime_config(config: RerankerRuntimeConfig) -> Reranker
         mode=mode,
         remote_base_url=remote_base_url,
         remote_timeout_seconds=config.remote_timeout_seconds,
+        reranker_profile_name=_validate_nonblank(
+            config.reranker_profile_name,
+            "reranker_profile_name",
+        ),
+        reranker_model_id=_validate_nonblank(config.reranker_model_id, "reranker_model_id"),
         remote_headers=_normalize_remote_headers(config.remote_headers),
     )
 

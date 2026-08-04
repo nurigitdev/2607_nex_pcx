@@ -25,8 +25,8 @@ class FakeRemoteRerankerClient:
     health_payload = RerankerHealth(
         ready=True,
         provider_type=REMOTE_RERANKER_PROVIDER_MODE,
-        provider_model_id="Qwen/Qwen3-Reranker-4B",
-        reranker_profile_name="qwen3_reranker_4b",
+        provider_model_id="Qwen/Qwen3-Reranker-0.6B",
+        reranker_profile_name="qwen3_reranker_0_6b",
         device="cuda:0",
         runtime_metadata={
             "service": "nex_pcx_reranker_provider_service",
@@ -82,8 +82,8 @@ def _health_payload(**overrides: Any) -> dict[str, Any]:
     payload = {
         "ready": True,
         "provider_type": "remote",
-        "provider_model_id": "Qwen/Qwen3-Reranker-4B",
-        "reranker_profile_name": "qwen3_reranker_4b",
+        "provider_model_id": "Qwen/Qwen3-Reranker-0.6B",
+        "reranker_profile_name": "qwen3_reranker_0_6b",
         "device": "cuda:0",
         "runtime_metadata": {
             "service": "nex_pcx_reranker_provider_service",
@@ -170,6 +170,8 @@ def test_remote_reranker_operations_status_uses_configured_remote_url(
             reranker_provider_mode="remote",
             remote_reranker_provider_url="http://reranker.local:9199/",
             remote_reranker_provider_timeout_seconds=71.0,
+            reranker_profile_name="custom_profile",
+            reranker_model_id="custom-model",
         ),
         request_smoke=True,
     )
@@ -180,6 +182,10 @@ def test_remote_reranker_operations_status_uses_configured_remote_url(
     assert status.payload["operations_status"] == "ready"
     assert status.payload["app_runtime"]["status"] == "remote_selected"
     assert status.payload["app_runtime"]["timeout_seconds"] == 71.0
+    assert captured["plan"].reranker_profile_name == "custom_profile"
+    assert captured["plan"].provider_model_id == "custom-model"
+    assert status.payload["app_runtime"]["reranker_profile_name"] == "custom_profile"
+    assert status.payload["app_runtime"]["reranker_model_id"] == "custom-model"
     assert status.payload["request_smoke"]["summary"]["returned_count"] == 2
 
 
@@ -341,8 +347,8 @@ def test_run_remote_reranker_operations_status_skips_smoke_on_health_mismatch(
         health_payload = RerankerHealth(
             ready=True,
             provider_type=REMOTE_RERANKER_PROVIDER_MODE,
-            provider_model_id="Qwen/Qwen3-Reranker-4B",
-            reranker_profile_name="qwen3_reranker_4b",
+            provider_model_id="Qwen/Qwen3-Reranker-0.6B",
+            reranker_profile_name="qwen3_reranker_0_6b",
             device="cpu",
             runtime_metadata={
                 "service": "nex_pcx_reranker_provider_service",

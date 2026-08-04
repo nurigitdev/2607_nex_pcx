@@ -29,7 +29,7 @@ def test_remote_reranker_setup_plan_matches_dgx_defaults() -> None:
     assert plan.workdir == "/home/nexpcx/2607_nex_pcx"
     assert plan.python_bin == "/home/nexpcx/2607_nex_pcx/.venv/bin/python"
     assert plan.models_dir == "/home/nexpcx/2607_nex_pcx/models"
-    assert plan.model_dir_name == "qwen3_reranker_4b"
+    assert plan.model_dir_name == "qwen3_reranker_0_6b"
     assert plan.route_base_url == "http://192.168.20.243:9104"
     assert plan.health_url == "http://192.168.20.243:9104/healthz"
     assert plan.launch_plan.backend == "qwen_reranker"
@@ -60,7 +60,7 @@ def test_remote_reranker_setup_plan_matches_dgx_defaults() -> None:
 def test_remote_reranker_setup_renders_env_without_app_database_secret() -> None:
     plan = setup_remote_reranker_provider.build_setup_plan(
         route_host="192.168.20.243",
-        provider_model_id="Qwen/Qwen3-Reranker-4B",
+        provider_model_id="Qwen/Qwen3-Reranker-0.6B",
     )
 
     env_text = setup_remote_reranker_provider.render_env_file(plan)
@@ -69,7 +69,7 @@ def test_remote_reranker_setup_renders_env_without_app_database_secret() -> None
     assert "NEX_PCX_RERANKER_PROVIDER_BACKEND=qwen_reranker" in env_text
     assert "NEX_PCX_RERANKER_PROVIDER_DEVICE=cuda:0" in env_text
     assert "NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE=bfloat16" in env_text
-    assert "NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME=qwen3_reranker_4b" in env_text
+    assert "NEX_PCX_RERANKER_PROVIDER_MODEL_DIR_NAME=qwen3_reranker_0_6b" in env_text
     assert "NEX_PCX_DATABASE_URL" not in env_text
     assert "nuri1004" not in env_text
 

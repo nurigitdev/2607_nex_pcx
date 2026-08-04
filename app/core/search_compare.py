@@ -56,8 +56,6 @@ from app.core.reranked_search import (
     rerank_search_results,
 )
 from app.core.rerankers import (
-    DEFAULT_RERANKER_MODEL_ID,
-    DEFAULT_RERANKER_PROFILE_NAME,
     DEFAULT_RERANKER_PROVIDER_TYPE,
     MOCK_RERANKER_PROVIDER_MODE,
     RERANK_RETRIEVAL_STRATEGY,
@@ -1235,7 +1233,7 @@ def _reranked_query_runtime_metadata(
     return {
         "provider_type": "rerank",
         "provider_model_id": str(
-            score_components.get("reranker_model_id", DEFAULT_RERANKER_MODEL_ID)
+            score_components.get("reranker_model_id", reranker_runtime_config.reranker_model_id)
         ),
         "runtime_source": "local_reranker_contract",
         "query_embedding_bridge": True,
@@ -1249,10 +1247,13 @@ def _reranked_query_runtime_metadata(
         "provider_runtime_base_url": reranker_runtime_config.remote_base_url,
         "provider_runtime_timeout_seconds": reranker_runtime_config.remote_timeout_seconds,
         "reranker_profile_name": str(
-            score_components.get("reranker_profile_name", DEFAULT_RERANKER_PROFILE_NAME)
+            score_components.get(
+                "reranker_profile_name",
+                reranker_runtime_config.reranker_profile_name,
+            )
         ),
         "reranker_model_id": str(
-            score_components.get("reranker_model_id", DEFAULT_RERANKER_MODEL_ID)
+            score_components.get("reranker_model_id", reranker_runtime_config.reranker_model_id)
         ),
         "reranker_provider_type": str(
             score_components.get("reranker_provider_type", DEFAULT_RERANKER_PROVIDER_TYPE)
@@ -1530,6 +1531,8 @@ def run_search_compare(
                         results=tuple(vector_results),
                         top_k=validated.top_k,
                         provider=reranker_provider,
+                        reranker_profile_name=fallback_reranker_config.reranker_profile_name,
+                        reranker_model_id=fallback_reranker_config.reranker_model_id,
                     )
                 finally:
                     if hasattr(reranker_provider, "close"):

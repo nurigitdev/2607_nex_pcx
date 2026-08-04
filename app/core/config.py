@@ -29,6 +29,8 @@ class Settings:
     reranker_provider_mode: str = "mock"
     remote_reranker_provider_url: str | None = None
     remote_reranker_provider_timeout_seconds: float = 60.0
+    reranker_profile_name: str = "qwen3_reranker_0_6b"
+    reranker_model_id: str = "Qwen/Qwen3-Reranker-0.6B"
     generation_provider_mode: str = "mock"
     remote_generation_provider_url: str | None = None
     remote_generation_provider_timeout_seconds: float = 120.0
@@ -60,6 +62,14 @@ def get_settings() -> Settings:
         remote_reranker_provider_url=getenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_URL"),
         remote_reranker_provider_timeout_seconds=float(
             getenv("NEX_PCX_REMOTE_RERANKER_PROVIDER_TIMEOUT_SECONDS", "60.0")
+        ),
+        reranker_profile_name=getenv(
+            "NEX_PCX_RERANKER_PROFILE_NAME",
+            "qwen3_reranker_0_6b",
+        ),
+        reranker_model_id=getenv(
+            "NEX_PCX_RERANKER_MODEL_ID",
+            "Qwen/Qwen3-Reranker-0.6B",
         ),
         generation_provider_mode=getenv("NEX_PCX_GENERATION_PROVIDER_MODE", "mock"),
         remote_generation_provider_url=getenv("NEX_PCX_REMOTE_GENERATION_PROVIDER_URL"),

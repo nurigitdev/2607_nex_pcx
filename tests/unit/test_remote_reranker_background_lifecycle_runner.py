@@ -67,13 +67,13 @@ def _health_payload(**overrides: Any) -> dict[str, Any]:
     payload = {
         "ready": True,
         "provider_type": "remote",
-        "provider_model_id": "Qwen/Qwen3-Reranker-4B",
-        "reranker_profile_name": "qwen3_reranker_4b",
+        "provider_model_id": "Qwen/Qwen3-Reranker-0.6B",
+        "reranker_profile_name": "qwen3_reranker_0_6b",
         "device": "cuda:0",
         "runtime_metadata": {
             "service": "nex_pcx_reranker_provider_service",
             "backend": "qwen_reranker",
-            "model_dir": "/home/nexpcx/2607_nex_pcx/models/qwen3_reranker_4b",
+            "model_dir": "/home/nexpcx/2607_nex_pcx/models/qwen3_reranker_0_6b",
             "model_dir_exists": True,
         },
     }

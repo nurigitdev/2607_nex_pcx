@@ -5,7 +5,7 @@ from app.core.database import fetch_one
 from app.core.migrations import downgrade, make_alembic_config, upgrade
 
 pytestmark = pytest.mark.integration
-HEAD_REVISION = "20260730_0043"
+HEAD_REVISION = "20260804_0044"
 
 
 def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
@@ -91,6 +91,14 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
           AND profile_kind = 'rerank'
           AND strategy_name = 'reranked_vector_cosine'
           AND is_active
+        """,
+    )
+    reranked_profile_runtime = fetch_one(
+        test_database_url,
+        """
+        SELECT runtime_parameters
+        FROM search_profiles
+        WHERE search_profile_name = 'reranked_vector_cosine'
         """,
     )
     generation_run_table = fetch_one(
@@ -268,6 +276,12 @@ def test_alembic_upgrade_head_enables_pgvector(test_database_url: str) -> None:
     assert search_profile_table["table_name"] == "search_profiles"
     assert bm25_profile_count["count"] == 1
     assert reranked_profile_count["count"] == 1
+    assert reranked_profile_runtime["runtime_parameters"]["reranker_profile_name"] == (
+        "qwen3_reranker_0_6b"
+    )
+    assert reranked_profile_runtime["runtime_parameters"]["reranker_model_id"] == (
+        "Qwen/Qwen3-Reranker-0.6B"
+    )
     assert generation_run_table["table_name"] == "generation_runs"
     assert "grounded_answer_v1_prompt_v1" in generation_run_prompt_version_default["column_default"]
     assert generation_citation_table["table_name"] == "generation_run_citations"

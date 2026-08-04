@@ -28,8 +28,8 @@ def _status_payload(*, request_smoke_checked: bool = False) -> dict[str, Any]:
         "pid": "2437559",
         "provider": {
             "provider_name": "qwen-reranker-primary",
-            "provider_model_id": "Qwen/Qwen3-Reranker-4B",
-            "reranker_profile_name": "qwen3_reranker_4b",
+            "provider_model_id": "Qwen/Qwen3-Reranker-0.6B",
+            "reranker_profile_name": "qwen3_reranker_0_6b",
             "backend": "qwen_reranker",
             "device": "cuda:0",
             "base_url": "http://192.168.20.243:9104",

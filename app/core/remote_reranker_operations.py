@@ -152,6 +152,8 @@ def get_remote_reranker_operations_status(
             workdir=workdir,
             route_host=route_host,
             port=port,
+            provider_model_id=str(runtime_config["reranker_model_id"]),
+            reranker_profile_name=str(runtime_config["reranker_profile_name"]),
         )
         report = run_remote_reranker_operations_status(
             plan,
@@ -192,12 +194,19 @@ def build_remote_reranker_operations_plan(
     route_host: str | None = None,
     port: int = DEFAULT_REMOTE_RERANKER_PORT,
     provider_host: str = DEFAULT_REMOTE_RERANKER_PROVIDER_HOST,
+    provider_model_id: str = DEFAULT_RERANKER_MODEL_ID,
+    reranker_profile_name: str = DEFAULT_RERANKER_PROFILE_NAME,
 ) -> RemoteRerankerOperationsPlan:
     selected_host = _validate_nonblank(host, "host")
     selected_ssh_user = _validate_nonblank(ssh_user, "ssh_user")
     selected_workdir = _validate_nonblank(workdir, "workdir")
     selected_route_host = _validate_nonblank(route_host or selected_host, "route_host")
     selected_provider_host = _validate_nonblank(provider_host, "provider_host")
+    selected_provider_model_id = _validate_nonblank(provider_model_id, "provider_model_id")
+    selected_reranker_profile_name = _validate_nonblank(
+        reranker_profile_name,
+        "reranker_profile_name",
+    )
     if port <= 0:
         raise ValueError("port must be greater than 0")
 
@@ -210,8 +219,8 @@ def build_remote_reranker_operations_plan(
     plan = RemoteRerankerOperationsPlan(
         provider_name=DEFAULT_REMOTE_RERANKER_PROVIDER_NAME,
         backend=DEFAULT_REMOTE_RERANKER_BACKEND,
-        reranker_profile_name=DEFAULT_RERANKER_PROFILE_NAME,
-        provider_model_id=DEFAULT_RERANKER_MODEL_ID,
+        reranker_profile_name=selected_reranker_profile_name,
+        provider_model_id=selected_provider_model_id,
         device=DEFAULT_REMOTE_RERANKER_DEVICE,
         ssh_target=f"{selected_ssh_user}@{selected_host}",
         workdir=selected_workdir,
@@ -296,6 +305,12 @@ def run_remote_reranker_operations_status(
 
 
 def _runtime_config_payload(settings: Settings) -> dict[str, Any]:
+    raw_reranker_profile_name = str(
+        getattr(settings, "reranker_profile_name", DEFAULT_RERANKER_PROFILE_NAME)
+    ).strip()
+    raw_reranker_model_id = str(
+        getattr(settings, "reranker_model_id", DEFAULT_RERANKER_MODEL_ID)
+    ).strip()
     try:
         config = reranker_runtime_config_from_settings(settings)
     except InvalidRerankerError as exc:
@@ -304,6 +319,8 @@ def _runtime_config_payload(settings: Settings) -> dict[str, Any]:
             "mode": "invalid",
             "remote_base_url": None,
             "timeout_seconds": None,
+            "reranker_profile_name": raw_reranker_profile_name,
+            "reranker_model_id": raw_reranker_model_id,
             "configured_for_remote": False,
             "error": str(exc),
         }
@@ -314,6 +331,8 @@ def _runtime_config_payload(settings: Settings) -> dict[str, Any]:
         "mode": config.mode,
         "remote_base_url": config.remote_base_url,
         "timeout_seconds": config.remote_timeout_seconds,
+        "reranker_profile_name": config.reranker_profile_name,
+        "reranker_model_id": config.reranker_model_id,
         "configured_for_remote": config.mode == REMOTE_RERANKER_PROVIDER_MODE,
         "error": None,
     }

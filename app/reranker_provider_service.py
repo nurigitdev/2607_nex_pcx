@@ -32,7 +32,7 @@ from app.core.rerankers import (
 
 RERANKER_PROVIDER_BACKEND_MOCK = "mock"
 RERANKER_PROVIDER_BACKEND_QWEN = "qwen_reranker"
-DEFAULT_RERANKER_MODEL_DIR_NAME = "qwen3_reranker_4b"
+DEFAULT_RERANKER_MODEL_DIR_NAME = "qwen3_reranker_0_6b"
 
 
 @dataclass(frozen=True)

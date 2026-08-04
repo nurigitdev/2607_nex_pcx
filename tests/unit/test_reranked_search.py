@@ -7,7 +7,7 @@ from app.core.reranked_search import (
     build_rerank_candidates,
     rerank_search_results,
 )
-from app.core.rerankers import RERANK_RETRIEVAL_STRATEGY
+from app.core.rerankers import RERANK_RETRIEVAL_STRATEGY, RerankResult, RerankResultItem
 from app.core.vector_search import VectorSearchResult
 
 
@@ -116,8 +116,51 @@ def test_rerank_search_results_returns_reranked_result_shape_and_components() ->
     assert top.score_components["source_profile_name"] == "qwen3_4b_2560"
     assert top.score_components["source_retrieval_strategy"] == "vector_cosine"
     assert top.score_components["source_rank"] == 2
-    assert top.score_components["reranker_model_id"] == "Qwen/Qwen3-Reranker-4B"
+    assert top.score_components["reranker_model_id"] == "Qwen/Qwen3-Reranker-0.6B"
     assert top.score_components["candidate_count"] == 2
+
+
+def test_rerank_search_results_passes_runtime_reranker_contract_to_provider() -> None:
+    seen_request = None
+
+    class CapturingProvider:
+        provider_type = "remote"
+
+        def rerank(self, request):
+            nonlocal seen_request
+            seen_request = request
+            return RerankResult(
+                query_text=request.query_text,
+                reranker_profile_name=request.reranker_profile_name,
+                reranker_model_id=request.reranker_model_id,
+                provider_type=self.provider_type,
+                retrieval_strategy=RERANK_RETRIEVAL_STRATEGY,
+                candidate_count=len(request.candidates),
+                returned_count=1,
+                top_k=1,
+                results=(
+                    RerankResultItem(
+                        candidate=request.candidates[0],
+                        rank=1,
+                        score=0.77,
+                    ),
+                ),
+            )
+
+    results = rerank_search_results(
+        query_text="policy",
+        results=(_vector_result(10, 1, "policy vector", 0.8),),
+        top_k=1,
+        provider=CapturingProvider(),
+        reranker_profile_name="custom_profile",
+        reranker_model_id="custom-model",
+    )
+
+    assert seen_request is not None
+    assert seen_request.reranker_profile_name == "custom_profile"
+    assert seen_request.reranker_model_id == "custom-model"
+    assert results[0].score_components["reranker_profile_name"] == "custom_profile"
+    assert results[0].score_components["reranker_model_id"] == "custom-model"
 
 
 def test_rerank_search_results_returns_empty_for_no_candidates() -> None:

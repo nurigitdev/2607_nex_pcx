@@ -47,7 +47,7 @@ def test_reranker_provider_service_healthz_reports_runtime_contract() -> None:
     app = create_app(
         RerankerProviderServiceSettings(
             provider_model_id="gpu-qwen-reranker",
-            reranker_profile_name="qwen3_reranker_4b",
+            reranker_profile_name="qwen3_reranker_0_6b",
             device="cuda:0",
         )
     )
@@ -60,7 +60,7 @@ def test_reranker_provider_service_healthz_reports_runtime_contract() -> None:
     assert body["ready"] is True
     assert body["provider_type"] == "remote"
     assert body["provider_model_id"] == "gpu-qwen-reranker"
-    assert body["reranker_profile_name"] == "qwen3_reranker_4b"
+    assert body["reranker_profile_name"] == "qwen3_reranker_0_6b"
     assert body["device"] == "cuda:0"
     assert body["runtime_metadata"]["service"] == "nex_pcx_reranker_provider_service"
     assert body["runtime_metadata"]["backend"] == "mock"
@@ -122,7 +122,7 @@ def test_reranker_provider_service_rejects_unsupported_model_id() -> None:
 def test_reranker_provider_service_settings_read_environment(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_BACKEND", " QWEN_RERANKER ")
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_MODEL_ID", "local-qwen-reranker")
-    monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_PROFILE_NAME", "qwen3_reranker_4b_local")
+    monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_PROFILE_NAME", "qwen3_reranker_0_6b_local")
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_DEVICE", "cuda:1")
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_TORCH_DTYPE", "bf16")
     monkeypatch.setenv("NEX_PCX_RERANKER_PROVIDER_READY", "false")
@@ -133,7 +133,7 @@ def test_reranker_provider_service_settings_read_environment(monkeypatch, tmp_pa
 
     assert settings.backend == "qwen_reranker"
     assert settings.provider_model_id == "local-qwen-reranker"
-    assert settings.reranker_profile_name == "qwen3_reranker_4b_local"
+    assert settings.reranker_profile_name == "qwen3_reranker_0_6b_local"
     assert settings.device == "cuda:1"
     assert settings.torch_dtype == "bf16"
     assert settings.ready is False
@@ -194,7 +194,7 @@ def test_reranker_provider_service_can_use_qwen_cross_encoder_backend(
         SimpleNamespace(CrossEncoder=FakeCrossEncoder),
     )
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(bfloat16=bfloat16_dtype))
-    model_dir = tmp_path / "qwen3_reranker_4b"
+    model_dir = tmp_path / "qwen3_reranker_0_6b"
     model_dir.mkdir()
     app = create_app(
         RerankerProviderServiceSettings(
@@ -246,7 +246,7 @@ def test_qwen_reranker_backend_rejects_invalid_score_count(tmp_path, monkeypatch
         "sentence_transformers",
         SimpleNamespace(CrossEncoder=FakeCrossEncoder),
     )
-    model_dir = tmp_path / "qwen3_reranker_4b"
+    model_dir = tmp_path / "qwen3_reranker_0_6b"
     model_dir.mkdir()
     app = create_app(
         RerankerProviderServiceSettings(
@@ -275,7 +275,7 @@ def test_qwen_reranker_backend_rejects_nonfinite_scores(tmp_path, monkeypatch) -
         "sentence_transformers",
         SimpleNamespace(CrossEncoder=FakeCrossEncoder),
     )
-    model_dir = tmp_path / "qwen3_reranker_4b"
+    model_dir = tmp_path / "qwen3_reranker_0_6b"
     model_dir.mkdir()
     app = create_app(
         RerankerProviderServiceSettings(

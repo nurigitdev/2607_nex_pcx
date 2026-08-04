@@ -443,8 +443,8 @@ def test_search_reranker_runtime_control_payload_reports_mock_defaults() -> None
     assert payload["mode"] == "mock"
     assert payload["remote_base_url"] == ""
     assert payload["timeout_seconds"] == 60.0
-    assert payload["reranker_profile_name"] == "qwen3_reranker_4b"
-    assert payload["reranker_model_id"] == "Qwen/Qwen3-Reranker-4B"
+    assert payload["reranker_profile_name"] == "qwen3_reranker_0_6b"
+    assert payload["reranker_model_id"] == "Qwen/Qwen3-Reranker-0.6B"
 
 
 def test_search_reranker_runtime_control_payload_normalizes_remote_config() -> None:
@@ -453,6 +453,8 @@ def test_search_reranker_runtime_control_payload_normalizes_remote_config() -> N
             reranker_provider_mode=" REMOTE ",
             remote_reranker_provider_url=" http://reranker.local:9104/ ",
             remote_reranker_provider_timeout_seconds=90.0,
+            reranker_profile_name=" custom_reranker_profile ",
+            reranker_model_id=" custom-reranker-model ",
         )
     )
 
@@ -460,6 +462,8 @@ def test_search_reranker_runtime_control_payload_normalizes_remote_config() -> N
     assert payload["mode"] == "remote"
     assert payload["remote_base_url"] == "http://reranker.local:9104"
     assert payload["timeout_seconds"] == 90.0
+    assert payload["reranker_profile_name"] == "custom_reranker_profile"
+    assert payload["reranker_model_id"] == "custom-reranker-model"
     assert payload["validation_error"] == ""
 
 

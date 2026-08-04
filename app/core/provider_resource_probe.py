@@ -147,7 +147,7 @@ DEFAULT_DGX_PROVIDER_RESOURCE_TARGETS: tuple[ProviderResourceTarget, ...] = (
         host=DEFAULT_DGX_PROVIDER_RESOURCE_HOST,
         port=9104,
         process_match="reranker_provider_service",
-        model_id="qwen3_reranker_4b",
+        model_id="qwen3_reranker_0_6b",
         ram_warning_bytes=32 * 1024**3,
         ram_critical_bytes=48 * 1024**3,
     ),

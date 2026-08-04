@@ -35,8 +35,8 @@ def test_build_reranker_request_smoke_plan_defaults_to_dgx_reranker() -> None:
     assert plan.provider_name == "qwen-reranker-primary"
     assert plan.base_url == "http://192.168.20.243:9104"
     assert plan.rerank_url == "http://192.168.20.243:9104/v1/rerank"
-    assert plan.provider_model_id == "Qwen/Qwen3-Reranker-4B"
-    assert plan.reranker_profile_name == "qwen3_reranker_4b"
+    assert plan.provider_model_id == "Qwen/Qwen3-Reranker-0.6B"
+    assert plan.reranker_profile_name == "qwen3_reranker_0_6b"
     assert plan.expected_backend == "qwen_reranker"
     assert plan.expected_device == "cuda:0"
     assert plan.timeout_seconds == 300.0
@@ -100,8 +100,8 @@ def test_run_reranker_request_smoke_passes_for_expected_response() -> None:
     observation = report.observation
     assert observation.passed is True
     assert observation.provider_type == "remote"
-    assert observation.reranker_model_id == "Qwen/Qwen3-Reranker-4B"
-    assert observation.reranker_profile_name == "qwen3_reranker_4b"
+    assert observation.reranker_model_id == "Qwen/Qwen3-Reranker-0.6B"
+    assert observation.reranker_profile_name == "qwen3_reranker_0_6b"
     assert observation.candidate_count == 3
     assert observation.returned_count == 2
     assert observation.provider_elapsed_ms == 11
@@ -120,7 +120,7 @@ def test_run_reranker_request_smoke_reports_response_mismatches() -> None:
 
     assert report.passed is False
     assert report.observation.mismatches == (
-        "reranker_model_id: expected 'Qwen/Qwen3-Reranker-4B', got 'wrong-model'",
+        "reranker_model_id: expected 'Qwen/Qwen3-Reranker-0.6B', got 'wrong-model'",
     )
 
 
@@ -213,7 +213,7 @@ class _FakeRerankerSmokeProvider:
     def __init__(
         self,
         *,
-        provider_model_id: str = "Qwen/Qwen3-Reranker-4B",
+        provider_model_id: str = "Qwen/Qwen3-Reranker-0.6B",
         provider_type: str = "remote",
         runtime_metadata: dict[str, object] | None = None,
     ) -> None:

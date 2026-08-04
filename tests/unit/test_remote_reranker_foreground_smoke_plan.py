@@ -31,15 +31,15 @@ def test_remote_reranker_foreground_plan_defaults_to_dgx_spark() -> None:
     assert plan.base_url == "http://192.168.20.243:9104"
     assert plan.health_url == "http://192.168.20.243:9104/healthz"
     assert plan.backend == "qwen_reranker"
-    assert plan.reranker_profile_name == "qwen3_reranker_4b"
-    assert plan.provider_model_id == "Qwen/Qwen3-Reranker-4B"
+    assert plan.reranker_profile_name == "qwen3_reranker_0_6b"
+    assert plan.provider_model_id == "Qwen/Qwen3-Reranker-0.6B"
     assert plan.health_check_command == ("curl", "-fsS", "http://192.168.20.243:9104/healthz")
     assert plan.ssh_launch_command[:3] == ("ssh", "-t", "nexpcx@192.168.20.243")
     assert "NEX_PCX_RERANKER_PROVIDER_BACKEND=qwen_reranker" in plan.remote_launch_command
     assert "app.reranker_provider_service:app" in plan.remote_launch_command
     assert plan.readiness_command[:2] == ("ssh", "nexpcx@192.168.20.243")
     assert "test -f app/reranker_provider_service.py" in plan.readiness_command[-1]
-    assert "test -d /home/nexpcx/2607_nex_pcx/models/qwen3_reranker_4b" in (
+    assert "test -d /home/nexpcx/2607_nex_pcx/models/qwen3_reranker_0_6b" in (
         plan.readiness_command[-1]
     )
 

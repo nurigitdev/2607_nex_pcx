@@ -44,6 +44,8 @@ export NEX_PCX_EMBEDDING_ROUTE_READINESS_DEFER_SECONDS="300"
 export NEX_PCX_RERANKER_PROVIDER_MODE="remote"
 export NEX_PCX_REMOTE_RERANKER_PROVIDER_URL="http://192.168.20.243:9104"
 export NEX_PCX_REMOTE_RERANKER_PROVIDER_TIMEOUT_SECONDS="300"
+export NEX_PCX_RERANKER_PROFILE_NAME="qwen3_reranker_0_6b"
+export NEX_PCX_RERANKER_MODEL_ID="Qwen/Qwen3-Reranker-0.6B"
 export NEX_PCX_FOREGROUND_PIPELINE_LIMIT="1"
 export NEX_PCX_FOREGROUND_EMBEDDING_LIMIT_PER_PROFILE="5"
 export NEX_PCX_FOREGROUND_WORKER_CYCLE_INTERVAL_SECONDS="5"
@@ -64,7 +66,7 @@ Recommended remote reranker base URL:
 
 | Profile | Base URL |
 | --- | --- |
-| `qwen3_reranker_4b` | `http://192.168.20.243:9104` |
+| `qwen3_reranker_0_6b` | `http://192.168.20.243:9104` |
 
 ## Startup Checklist
 

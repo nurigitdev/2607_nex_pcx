@@ -78,8 +78,8 @@ def test_reranked_vector_cosine_strategy_contract_is_active_rerank_foundation() 
     assert strategy.runtime_parameters == {
         "source_strategy": "vector_cosine",
         "retrieval_strategy": "reranked",
-        "reranker_profile_name": "qwen3_reranker_4b",
-        "reranker_model_id": "Qwen/Qwen3-Reranker-4B",
+        "reranker_profile_name": "qwen3_reranker_0_6b",
+        "reranker_model_id": "Qwen/Qwen3-Reranker-0.6B",
         "candidate_multiplier": 4,
     }
 

@@ -43,7 +43,7 @@ def _search_log(results: tuple[SearchLogResultDetailRecord, ...]) -> SearchLogDe
             top_k=3,
             similarity_metric="cosine",
             profiles=("bge_m3_1024", "reranked_vector_cosine", "bm25_keyword"),
-            query_runtime_metadata={"reranker_profile_name": "qwen3_reranker_4b"},
+            query_runtime_metadata={"reranker_profile_name": "qwen3_reranker_0_6b"},
             total_elapsed_ms=123,
             created_by="unit-test",
             created_by_user_id=3,

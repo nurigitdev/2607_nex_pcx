@@ -6867,6 +6867,8 @@ def search_reranker_runtime_control_payload(settings: object) -> dict[str, objec
     raw_mode = str(getattr(settings, "reranker_provider_mode", "mock") or "mock").strip().lower()
     raw_base_url = getattr(settings, "remote_reranker_provider_url", None)
     raw_timeout = getattr(settings, "remote_reranker_provider_timeout_seconds", 60.0)
+    raw_profile_name = getattr(settings, "reranker_profile_name", DEFAULT_RERANKER_PROFILE_NAME)
+    raw_model_id = getattr(settings, "reranker_model_id", DEFAULT_RERANKER_MODEL_ID)
     try:
         config = reranker_runtime_config_from_settings(settings)
         return {
@@ -6875,8 +6877,8 @@ def search_reranker_runtime_control_payload(settings: object) -> dict[str, objec
             "mode": config.mode,
             "remote_base_url": config.remote_base_url or "",
             "timeout_seconds": config.remote_timeout_seconds,
-            "reranker_profile_name": DEFAULT_RERANKER_PROFILE_NAME,
-            "reranker_model_id": DEFAULT_RERANKER_MODEL_ID,
+            "reranker_profile_name": config.reranker_profile_name,
+            "reranker_model_id": config.reranker_model_id,
         }
     except (InvalidRerankerError, TypeError, ValueError) as exc:
         try:
@@ -6889,8 +6891,8 @@ def search_reranker_runtime_control_payload(settings: object) -> dict[str, objec
             "mode": raw_mode or "mock",
             "remote_base_url": str(raw_base_url).strip().rstrip("/") if raw_base_url else "",
             "timeout_seconds": timeout_seconds,
-            "reranker_profile_name": DEFAULT_RERANKER_PROFILE_NAME,
-            "reranker_model_id": DEFAULT_RERANKER_MODEL_ID,
+            "reranker_profile_name": str(raw_profile_name).strip(),
+            "reranker_model_id": str(raw_model_id).strip(),
         }
 
 
